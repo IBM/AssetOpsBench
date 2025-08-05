@@ -14,11 +14,12 @@ from agent_hive.tools.fmsr import (
     fmsr_agent_description,
 )
 from agent_hive.tools.skyspark import (
-    iot_tools,
-    iot_fewshots,
+    iot_bms_tools,
+    iot_bms_fewshots,
     iot_agent_description,
     iot_agent_name,
 )
+
 from agent_hive.workflows.planning import PlanningWorkflow
 from agent_hive.workflows.planning_review import PlanningReviewWorkflow
 from agent_hive.agents.react_agent import ReactAgent
@@ -43,9 +44,9 @@ def run_planning_workflow_with_reflection(
     iot_rr_agent = ReactReflectAgent(
         name=iot_agent_name,
         description=iot_agent_description,
-        tools=iot_tools,
+        tools=iot_bms_tools,
         llm=llm_model,
-        few_shots=iot_fewshots,
+        few_shots=iot_bms_fewshots,
     )
 
     fmsr_rr_agent = ReactReflectAgent(
@@ -88,9 +89,9 @@ def run_planning_workflow(
     iot_r_agent = ReactAgent(
         name=iot_agent_name,
         description=iot_agent_description,
-        tools=iot_tools,
+        tools=iot_bms_tools,
         llm=llm_model,
-        few_shots=iot_fewshots,
+        few_shots=iot_bms_fewshots,
     )
 
     fmsr_r_agent = ReactAgent(

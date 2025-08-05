@@ -12,7 +12,7 @@ python -m pip show iotagent
 python -m pip show tsfmagent
 
 # Run the entire thing
-python /home/run_plan_execute.py --utterance_file /home/scenarios/multi_agent/end2end_utterance.json --llm 6 --workflow pr
+python /home/run_plan_execute.py --utterance_file /home/scenarios/multi_agent/end2end_utterance.json --llm 6 --workflow p
 
 # Keep the container alive
 tail -f /dev/null
