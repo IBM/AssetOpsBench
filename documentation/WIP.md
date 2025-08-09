@@ -1,134 +1,125 @@
-🛠 Developer Guide: Preparing `execution_steps`, `execution_nodes`, and `execution_links` for Task Planning with Tools and Agents
+"# 🛠 Developer Guide: Preparing `planning_steps`, `execution_steps`, and `execution_links` for Task Planning with Tools and Agents
 
-This guide helps developers convert a user instruction, selected component definitions (`sampled_nodes`), and execution dependencies (`sampled_links`)
-into structured formats usable by a multi-component system—where each node may be a traditional tool or an autonomous agent.
+This guide explains how to transform a user instruction, selected components (`sampled_nodes`), and their dependencies (`sampled_links`) into a structured plan for execution in a multi-component system—where each node can be a tool or an autonomous agent.
+
+---
+## 🎯 Objective
+Given:  
+1. A user instruction in natural language.  
+2. Component definitions and dependencies.  
+
+Produce:  
+- **`planning_steps`**: Human-readable, ordered plan.  
+- **`execution_steps`**: Machine-readable list of action objects with arguments.  
+- **`execution_links`**: Directed dependencies between steps.
 
 ---
 
-🎯 Objective
+## 1. `planning_steps` — Natural Language Execution Plan
 
-Given:
-- A user instruction (natural language)
+A sequence of simple sentences that describe what will happen and in what order.  
+- One sentence per action.  
+- Mention argument values when known.  
 
-Produce:
-- execution_steps: natural language execution plan
-- execution_nodes: component calls with filled arguments
-- execution_links: execution dependencies between components
+**Example**:
 
----
-
-1. `execution_steps`: Step-by-Step Plan
-
-✅ Purpose:
-A list of natural language instructions describing the intended execution order of components.
-
-🧠 How to Create:
-- One sentence per component (tool or agent).
-- Follow the execution order from execution_links (topological sort).
-- Describe the task and its goal using argument values.
-- Use connectors like “First”, “Then”, “Once done”.
-
-💡 Example:
-- Step 1: Execute the software_management node to install 'example_software'
-- Step 2: Then trigger the set_alarm node to set an alarm at '08:00'
+\"1. First call action sites with no parameters\"  
+\"2. Then run IoT node to collect data\"
 
 ---
 
-2. `execution_nodes`: Component Invocation with Arguments
+## 2. `execution_steps` — Component Calls with Arguments
 
-✅ Purpose:
-Define a list of concrete calls to tools or agents with resolved argument values from the instruction.
+This is a list of objects, each defining one action.  
 
-🧠 How to Create:
-- For each node in sampled_nodes, collect the required arguments.
-- Extract values from the user instruction or infer default/fallback values.
-- Format:
+Each object contains:  
+- `name`: Unique step identifier.  
+- `action`: Tool or agent name.  
+- `arguments`: List of `{ name, value, dynamic?, source?, transient? }`.
+
+**Static value example**:
+
+```json
+{
+  "name": "Ioi1",
+  "action": "IoT",
+  "arguments": [
     {
-        "task": "node_name",
-        "arguments": [
-            { "name": "arg_name", "value": "value" }
-        ]
+      "name": "threshold",
+      "value": 0.8
     }
+  ]
+}
+```
 
-💡 Example:
-    {
-        "task": "software_management",
-        "arguments": [
-            { "name": "software", "value": "example_software" },
-            { "name": "instruction", "value": "install" }
-        ]
-    }
+#### Dynamic Argument Handling
+
+Some arguments cannot be fixed at planning time because they change per execution or depend on the output of another step.  
+
+- Add `"dynamic": true` to mark them as unresolved until runtime.  
+- If value comes from another step’s output: set `"source": "<step_name>:<output_name>"`.  
+- If value is computed at runtime (e.g., current date): `"source": "runtime"`.  
+- If value is unique for each run (e.g., generated file IDs): also add `"transient": true`.
+
+**Example**:
+```json
+{
+  "name": "file_id",
+  "value": "",
+  "dynamic": true,
+  "transient": true,
+  "source": "Ioi1:file_id"
+}
+```
 
 ---
 
-3. `execution_links`: Directed Dependencies Between Nodes
+## 3. `execution_links` — Directed Dependencies
 
-✅ Purpose:
-Encodes execution order using source-target pairs, forming a directed acyclic graph.
+A list of `{ \"source\": step_name, \"target\": step_name }` pairs defining execution order.
 
-🧠 How to Create:
-Use sampled_links as-is. Each entry defines that the `target` must be executed after the `source`.
+**Example**:
 
-💡 Example:
-    [
-        { "source": "software_management", "target": "set_alarm" }
-    ]
-
-This implies: Run software_management first, then set_alarm.
+```json
+[
+  { "source": "Ioi1", "target": "FMSR1" }
+]
+```
+Means: `Ioi1` runs before `FMSR1`.
 
 ---
 
-🔁 Full Example
+## 5. Full Example (AHU Merge)
 
-Instruction:
-    Please install the 'example_software' and set an alarm for 08:00
+**Instruction**:  
+> For AHU1 and AHU2, get site files and merge them **`planning_steps`**: 
+\"1. Retrieve site file for AHU1\"  
+\"2. Retrieve site file for AHU2\"  
+\"3. Merge the two files\"
 
-
-```
-sampled_links:
-    [
-        { "source": "software_management", "target": "set_alarm" }
+**`execution_steps`**:
+```json
+[
+  {
+    "name": "site_AHU1",
+    "action": "site",
+    "arguments": [
+      { "name": "ahu_id", "value": "ahu1", "dynamic": false }
     ]
-```
-
-```
-execution_steps:
-    [
-        "Step 1: Execute the software_management node to install 'example_software'",
-        "Step 2: Then trigger the set_alarm node to set an alarm at '08:00'"
+  },
+  {
+    "name": "site_AHU2",
+    "action": "site",
+    "arguments": [
+      { "name": "ahu_id", "value": "ahu2", "dynamic": false }
     ]
-```
-
-execution_nodes:
-    [
-        {
-            "task": "software_management",
-            "arguments": [
-                { "name": "software", "value": "example_software" },
-                { "name": "instruction", "value": "install" }
-            ]
-        },
-        {
-            "task": "set_alarm",
-            "arguments": [
-                { "name": "time", "value": "08:00" }
-            ]
-        }
+  },
+  {
+    "name": "file_merge",
+    "action": "filemerge",
+    "arguments": [
+      { "name": "file1", "value": "", "dynamic": true, "source": "site_AHU1:file_id", "transient": true },
+      { "name": "file2", "value": "", "dynamic": true, "source": "site_AHU2:file_id", "transient": true }
     ]
-
-execution_links:
-    [
-        { "source": "software_management", "target": "set_alarm" }
-    ]
-
----
-
-🧠 Summary
-
-| Field             | Description                                  |
-|-------------------|----------------------------------------------|
-| execution_steps   | Ordered, human-readable plan of action       |
-| execution_nodes   | Fully-resolved invocations of tools/agents   |
-| execution_links   | Execution order as source-target relationships |
-
-Use this guide to plan, orchestrate, or visualize tasks in systems that mix tools, APIs, and autonomous agents.
+  }
+]
