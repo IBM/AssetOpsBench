@@ -189,51 +189,71 @@ class NewPlanningWorkflow(Workflow):
         logger.info(f"[EDIT SECTION 2] Building prompt with metadata - Category: {query_category}, Type: {query_type}")
 
         # Build query info section if metadata is available
-        query_info = ""
+        query_info = "### 2. Query Context & Guidance\nNo additional query information provided."
         if query_type or query_category or characteristic_form:
-            query_info = "📊 QUERY INFORMATION:\n"
+            query_info = "### 2. Query Context & Guidance\n"
+            query_info += "Use this information to better understand the user's goal:\n"
             if query_type:
-                query_info += f"- Query Type: {query_type}\n"
+                query_info += f"- **Query Type:** {query_type}\n"
             if query_category:
-                query_info += f"- Query Category: {query_category}\n"
+                query_info += f"- **Query Category:** {query_category}\n"
             if characteristic_form:
-                query_info += f"- Expected Output Format: {characteristic_form}\n"
-            query_info += "\n"
+                query_info += f"- **Expected Format:** {characteristic_form}\n"
+            
+            # Add explicit guidance linked to the metadata
+            if query_type == "Inference Query":
+                query_info += "-> **Action:** Your plan should focus on analysis and deriving insights, not just data retrieval."
+            elif query_type == "Data Query":
+                query_info += "-> **Action:** Your plan should focus on retrieving specific data values."
+            elif query_type == "Anomaly Detection Query":
+                query_info += "-> **Action:** Your plan must involve an agent capable of identifying outliers or abnormal patterns."
+            
             logger.info(f"[EDIT SECTION 2] Query information section added to prompt")
         else:
-            logger.info(f"[EDIT SECTION 2] No metadata available, using generic query analysis guidance")
+            logger.info(f"[EDIT SECTION 2] No metadata available, using generic prompt")
 
         prompt = f"""
-🚀 You are an AI assistant tasked with creating a step-by-step plan to solve a complex problem using the external agents provided.  
+🚀 You are an expert AI planner. Your job is to create a step-by-step execution plan to solve a user's problem using *only* the provided agents.
 
-{query_info}📊 QUERY ANALYSIS GUIDANCE:
-- For Knowledge Queries: Return lists, metadata, or references to available resources
-- For Data Queries: Retrieve and provide specific data values or formatted responses
-- For Inference Queries: Perform analysis and derive insights from available data
-- For Anomaly Detection Queries: Identify abnormal patterns or outliers in data
-- For Tuning Queries: Optimize parameters or configurations based on requirements
-- For Complex Queries: Decompose into multiple subtasks requiring different agents working together
+## 1. Your Planning Strategy ##
+1.  **Analyze the Goal:** First, read the "Problem to Solve" (Section 4) carefully.
+2.  **Review Context:** Look at the "Query Context" (Section 2) for clues about the user's intent (e.g., 'Inference', 'Data Query').
+3.  **Consult Agent Menu:** Review the "Available Agents" (Section 3). Pay close attention to their descriptions and "Tasks that agent can solve" examples.
+4.  **Decompose the Problem:** Break the main "Problem to Solve" into a small number of logical sub-tasks (fewer than 5).
+5.  **Assign Agents:** For *each* sub-task, select the *best* agent from the "Available Agents" list. The agent's name must be an *exact match*.
+6.  **Set Dependencies:** Determine the data flow. If a task needs the output from a previous task, use its step number (e.g., #S1). The first task *must* have a dependency of 'None'.
+7.  **Ensure a Final Answer:** The *last step* in your plan *must* be a task that synthesizes all previous results (e.g., #S1, #S2) and provides a complete, final answer to the user's "Problem to Solve".
+8.  **Format the Output:** Present *only* the final plan in the required format. Do not add any other text, conversation, or explanation.
 
-⚠️ Constraints:
-- Only use the agents listed below. No new agents may be added.
-- The base ReAct agent and Executor component are fixed. Do not change them.
-- For Complex Queries: Use multiple agents to break down the problem into subtasks.
-- Produce a plan with fewer than 5 steps.
-- Include Task, Agent, Dependency, and ExpectedOutput for each step.
-- Make instructions clear, unambiguous, and actionable.
-- Ensure each task is specific and achievable by the assigned agent.
+{query_info}
 
-Each step must follow this format:
-#Task<N>: <Describe your task here>
-#Agent<N>: <agent_name>
-#Dependency<N>: <use #S1, #S2, ... or None>
-#ExpectedOutput<N>: <Expected output>
-
-## Here are the available agents: ##
+## 3. Available Agents (Your "Menu") ##
 {agent_descriptions}
 
-## Problem to solve: ##
+## 4. Problem to Solve (The "Goal") ##
 {task_description}
+
+## 5. Critical Rules & Output Format ##
+Your response *must* follow these rules to avoid common failures:
+
+⚠️ **1. Ensure a Final Answer:** The *last step* must synthesize all previous steps (e.g., `#Dependency<N>: #S1, #S2`) to fully answer the user's "Problem to Solve". A plan that only fetches data but doesn't present it is a failure.
+
+⚠️ **2. Be Efficient (No Redundancy):** Do *not* create redundant tasks to fetch the same data. If data is retrieved in #S1, re-use it (via dependency) in #S3. Do not fetch it again.
+
+⚠️ **3. Manage Data Flow (CRITICAL):** Think about data *compatibility*. When setting `#Dependency: #S1`, ensure the *output format* of #S1 matches the *input requirement* of #S2. Do not pipe a JSON file to an agent that expects plain text.
+
+⚠️ **4. Write Actionable Sub-tasks:** Each `#Task<N>` description must be a clear, unambiguous, and *actionable* command. Use the agent's "Tasks that agent can solve" examples as a style guide.
+
+⚠️ **5. Agent Constraint:** You *must* use *only* the agent names provided in Section 3. Do not invent agents.
+
+⚠️ **6. Step Limit:** The plan *must* be fewer than 5 steps.
+
+⚠️ **7. Format:** Your *entire* response *must* be *only* the plan in the format below. Do not add *any* other text (e.g., "Here is the plan:").
+
+#Task<N>: <Describe the sub-task>
+#Agent<N>: <Exact_agent_name_from_Section_3>
+#Dependency<N>: <#S1, #S2, ... or None>
+#ExpectedOutput<N>: <What this step will produce to be used by other steps or the final answer>
 
 Output (your generated plan) ⬇️:
 """

@@ -11,7 +11,10 @@ python -m pip show fmsr_agent
 python -m pip show iotagent
 python -m pip show tsfmagent
 
-# Run the entire thing
+# Generate plans first (to see planning output)
+python /home/run_track_1.py --utterance_ids 1,106 --generate_steps_only True
+
+# Run the entire thing (to see trajectory output)
 python /home/run_track_1.py --utterance_ids 1,106
 
 # Keep the container alive
