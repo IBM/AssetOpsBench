@@ -287,7 +287,8 @@ This section shows how the generic categories from the [main guideline](utteranc
 
 The original ALM dataset (`docs/alm/alm_utterance.json`) contains 152 utterances with 6 base fields. This guideline recommends adding 3 additional fields for better organization and metadata tracking.
 
-### Base ALM Schema (6 fields - as in original data):
+
+
 1. **id** (integer): Unique identifier
 2. **text** (string): Natural language utterance
 3. **type** (string): AI agent identifier
@@ -295,7 +296,6 @@ The original ALM dataset (`docs/alm/alm_utterance.json`) contains 152 utterances
 5. **deterministic** (boolean): Single correct answer or not
 6. **characteristic_form** (string): Expected response description
 
-### Recommended Additional Fields (3 fields - proposed enhancements):
 7. **group** (string or array): RETROSPECTIVE, PREDICTIVE, PRESCRIPTIVE
 8. **entity** (string or array): Primary subject(s)
 9. **note** (string): Flexible metadata field
