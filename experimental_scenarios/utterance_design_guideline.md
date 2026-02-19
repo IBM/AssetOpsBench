@@ -554,4 +554,4 @@ Effective domain-agnostic utterance design requires:
 ## Case Studies
 
 For detailed examples of applying this guideline to specific domains, see:
-- [Industrial Asset Management Case Study](case_study_industrial_asset_management.md) - Partially accomplished example showing HVAC/Chiller systems
+- [Industrial Asset Management Case Study](case_study_industrial_asset_management.md) - Partially accomplished example showing industrial assement management for HVAC/Chiller systems
