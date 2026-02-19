@@ -1,4 +1,4 @@
-# Industrial Asset Management: Utterance Design Case Study (Partially Accomplished)
+# Industrial Asset Management: Utterance Design Case Study (Coming from AssetOpsBench)
 
 ## Overview
 

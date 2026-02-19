@@ -351,7 +351,7 @@ Complex requests requiring coordination of multiple operations in sequence.
   - Education: "Review student performance, identify at-risk students, and recommend support programs"
   - Manufacturing: "Collect quality data, detect issues, and recommend corrective actions"
 
-**Note**: These categories are not mutually exclusive. Some utterances may span multiple categories. The key is to choose the primary category that best describes the utterance's main intent. For domain-specific category examples, see the [Industrial Asset Management Case Study](utterance_design_guideline_industrial_asset_management_example.md).
+**Note**: These categories are not mutually exclusive. Some utterances may span multiple categories. The key is to choose the primary category that best describes the utterance's main intent. For domain-specific category examples, see the case studies below.
 
 ---
 
@@ -554,4 +554,31 @@ Effective domain-agnostic utterance design requires:
 ## Case Studies
 
 For detailed examples of applying this guideline to specific domains, see:
-- [Industrial Asset Management Case Study](case_study_industrial_asset_management.md) - Partially accomplished example showing industrial assement management for HVAC/Chiller systems
+
+### 1. Industrial Asset Management Case Study
+**File**: [case_study_industrial_asset_management.md](case_study_industrial_asset_management.md)
+**Domain**: Building automation and HVAC systems
+**Focus**: Chiller and AHU equipment monitoring, predictive maintenance
+**Dataset**: 152 utterances evolved incrementally with SME input
+**Status**: Comprehensive production example showing real-world development process
+
+**Key Highlights**:
+- Demonstrates incremental development with domain experts
+- Shows evolution from initial requirements to comprehensive coverage
+- Heavily weighted toward retrospective queries (77/152) reflecting actual usage patterns
+- Includes detailed coverage analysis and SME contribution tracking
+
+### 2. Wind Turbine Operations Case Study
+**File**: [case_study_wind_turbine.md](case_study_wind_turbine.md)
+**Domain**: Renewable energy and wind power generation
+**Focus**: Wind turbine monitoring, power forecasting, maintenance optimization
+**Dataset**: 30 utterances designed complete from the start
+**Status**: Complete demonstration example showing balanced framework application
+
+**Key Highlights**:
+- Demonstrates clean-slate application of the guideline to a new domain
+- Perfectly balanced distribution (10 retrospective, 10 predictive, 10 prescriptive)
+- Includes rigorous completeness framework with validation criteria
+- Shows how to create a complete case study efficiently using the guideline
+
+**Comparison**: The two case studies complement each other - Industrial Asset Management shows organic growth in a real project, while Wind Turbine demonstrates planned, balanced design from inception. Both validate the guideline's cross-domain applicability.
