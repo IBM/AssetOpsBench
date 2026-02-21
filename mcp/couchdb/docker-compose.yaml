@@ -1,0 +1,22 @@
+services:
+  couchdb:
+    image: couchdb:3.3
+    environment:
+      COUCHDB_PASSWORD: password
+      COUCHDB_USERNAME: admin
+      COUCHDB_DBNAME: chiller
+    ports:
+      - "5984:5984"
+    volumes:
+      - couchdb-data:/opt/couchdb/data
+      - ./couchdb_setup.sh:/opt/couchdb/etc/couchdb_setup.sh
+      - ./sample_data:/sample_data
+    command: ["sh", "/opt/couchdb/etc/couchdb_setup.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5984/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  couchdb-data:
