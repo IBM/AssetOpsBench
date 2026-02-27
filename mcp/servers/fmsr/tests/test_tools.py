@@ -50,7 +50,7 @@ class TestGetFailureModes:
         data = await call_tool(mcp, "get_failure_modes", {"asset_name": "Pump"})
         assert "failure_modes" in data
         assert data["failure_modes"] == ["Fan Failure", "Belt Wear"]
-        mock_asset2fm_chain.invoke.assert_called_once_with({"asset_name": "Pump"})
+        mock_asset2fm_chain.assert_called_once_with("Pump")
 
     @requires_watsonx
     @pytest.mark.anyio

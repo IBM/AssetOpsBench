@@ -25,23 +25,19 @@ def no_llm():
 
 @pytest.fixture
 def mock_relevancy_chain():
-    """Patch _relevancy_chain so it always returns 'Yes' without calling WatsonX."""
-    mock = MagicMock()
-    mock.batch.return_value = [
-        {"answer": "Yes", "reason": "Relevant sensor", "temporal_behavior": "Increases"}
-    ] * 100
-    with patch("servers.fmsr.main._relevancy_chain", mock):
+    """Patch _call_relevancy so it always returns 'Yes' without calling the LLM."""
+    mock = MagicMock(
+        return_value={"answer": "Yes", "reason": "Relevant sensor", "temporal_behavior": "Increases"}
+    )
+    with patch("servers.fmsr.main._call_relevancy", mock):
         with patch("servers.fmsr.main._llm_available", True):
             yield mock
 
 
 @pytest.fixture
 def mock_asset2fm_chain():
-    """Patch _asset2fm_chain to return a fixed failure mode list."""
-    mock = MagicMock()
-    mock.invoke.return_value = ["Fan Failure", "Belt Wear"]
-    with patch("servers.fmsr.main._asset2fm_chain", mock):
+    """Patch _call_asset2fm to return a fixed failure mode list."""
+    mock = MagicMock(return_value=["Fan Failure", "Belt Wear"])
+    with patch("servers.fmsr.main._call_asset2fm", mock):
         with patch("servers.fmsr.main._llm_available", True):
             yield mock
-
-

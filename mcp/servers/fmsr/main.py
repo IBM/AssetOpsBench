@@ -7,6 +7,10 @@ Exposes two tools:
 For chillers and AHUs get_failure_modes returns a curated hardcoded list.
 For any other asset type the LLM is queried as a fallback.
 The mapping tool always calls the LLM to determine per-pair relevancy.
+
+LLM backend is configured via the FMSR_MODEL_ID environment variable
+(default: ``watsonx/meta-llama/llama-3-3-70b-instruct``).  Any model string
+supported by litellm works — the provider is encoded in the prefix.
 """
 
 from __future__ import annotations
@@ -14,21 +18,11 @@ from __future__ import annotations
 import logging
 import os
 import re
-import warnings
 from pathlib import Path
 from typing import Dict, List, Union
 
 import yaml
-
-warnings.filterwarnings(
-    "ignore",
-    message="Core Pydantic V1 functionality",
-    category=UserWarning,
-)
-
 from dotenv import load_dotenv
-from langchain_core.output_parsers import JsonOutputParser, NumberedListOutputParser
-from langchain_core.prompts import ChatPromptTemplate
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
@@ -46,35 +40,16 @@ with _FAILURE_MODES_FILE.open() as _f:
     _ASSET_FAILURE_MODES: dict[str, list[str]] = yaml.safe_load(_f)
 
 
-# ── Output parsers ────────────────────────────────────────────────────────────
+# ── Prompt templates ──────────────────────────────────────────────────────────
 
-class _RelevancyParser(JsonOutputParser):
-    """Parses a 3-line LLM response into {answer, reason, temporal_behavior}."""
-
-    def parse_result(self, result, *, partial: bool = False):
-        text = result[0].text.strip()
-        lines = [ln for ln in text.splitlines() if ln.strip()]
-        if lines and lines[0].lower().startswith("yes"):
-            answer = "Yes"
-        elif lines and lines[0].lower().startswith("no"):
-            answer = "No"
-        else:
-            answer = "Unknown"
-        reason = lines[1] if len(lines) >= 2 else "Unknown"
-        temporal = lines[2] if (answer == "Yes" and len(lines) >= 3) else "Unknown"
-        return {"answer": answer, "reason": reason, "temporal_behavior": temporal}
-
-
-# ── Prompts ───────────────────────────────────────────────────────────────────
-
-_asset2fm_prompt = ChatPromptTemplate.from_template(
+_ASSET2FM_PROMPT = (
     "What are different failure modes for asset {asset_name}?\n"
     "Your response should be a numbered list with each failure mode on a new line. "
     "Please only list the failure mode name.\n"
     "For example: \n\n1. foo\n\n2. bar\n\n3. baz"
 )
 
-_relevancy_prompt = ChatPromptTemplate.from_template(
+_RELEVANCY_PROMPT = (
     "For the asset {asset_name}, if the failure {failure_mode} occurs, "
     "can sensor {sensor} help monitor or detect the failure for {asset_name}?\n"
     "Provide the answer in the first line and reason in the second line. "
@@ -83,40 +58,88 @@ _relevancy_prompt = ChatPromptTemplate.from_template(
 )
 
 
-# ── LLM + chains (lazy init; graceful degradation if creds are absent) ────────
+# ── Output parsers ────────────────────────────────────────────────────────────
 
-def _build_chains():
-    # ibm_watsonx_ai's StrEnum subclass passes member args to super().__init__(),
-    # which Python 3.14's object.__init__ rejects. Patch before the full import
-    # chain reaches ibm_watsonx_ai.utils.autoai.enums where the class is defined.
-    import sys
-    if "ibm_watsonx_ai.utils.autoai.enums" not in sys.modules:
-        import ibm_watsonx_ai.utils.utils as _wx_utils
-        _wx_utils.StrEnum.__init__ = lambda self, *a, **k: None
+def _parse_numbered_list(text: str) -> list[str]:
+    """Parse a numbered list response into a plain list of strings."""
+    items = []
+    for line in text.splitlines():
+        m = re.match(r"^\d+[\.\)]\s*(.+)", line.strip())
+        if m:
+            items.append(m.group(1).strip())
+    return items
 
-    from langchain_ibm import ChatWatsonx
 
-    llm = ChatWatsonx(
-        model_id="meta-llama/llama-3-3-70b-instruct",
-        url=os.environ["WATSONX_URL"],
-        project_id=os.environ["WATSONX_PROJECT_ID"],
-        api_key=os.environ["WATSONX_APIKEY"],
-        params={"max_tokens": 10000, "temperature": 0.0},
-    )
-    llm_with_retry = llm.with_retry(stop_after_attempt=3)
-    return (
-        _asset2fm_prompt | llm_with_retry | NumberedListOutputParser(),
-        _relevancy_prompt | llm | _RelevancyParser(),
-    )
+def _parse_relevancy(text: str) -> dict:
+    """Parse a 3-line relevancy response into {answer, reason, temporal_behavior}."""
+    lines = [ln for ln in text.strip().splitlines() if ln.strip()]
+    if lines and lines[0].lower().startswith("yes"):
+        answer = "Yes"
+    elif lines and lines[0].lower().startswith("no"):
+        answer = "No"
+    else:
+        answer = "Unknown"
+    reason = lines[1] if len(lines) >= 2 else "Unknown"
+    temporal = lines[2] if (answer == "Yes" and len(lines) >= 3) else "Unknown"
+    return {"answer": answer, "reason": reason, "temporal_behavior": temporal}
+
+
+# ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
+
+_DEFAULT_MODEL_ID = "watsonx/meta-llama/llama-3-3-70b-instruct"
+_MAX_RETRIES = 3
+
+
+def _build_llm():
+    from llm import LiteLLMBackend
+
+    model_id = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
+    if model_id.startswith("watsonx/"):
+        missing = [v for v in ("WATSONX_APIKEY", "WATSONX_PROJECT_ID") if not os.environ.get(v)]
+        if missing:
+            raise RuntimeError(f"Missing env vars for WatsonX: {missing}")
+    else:
+        missing = [v for v in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(v)]
+        if missing:
+            raise RuntimeError(f"Missing env vars for LiteLLM: {missing}")
+    return LiteLLMBackend(model_id)
 
 
 try:
-    _asset2fm_chain, _relevancy_chain = _build_chains()
+    _llm = _build_llm()
     _llm_available = True
 except Exception as _e:
-    logger.error("WatsonX LLM unavailable: %s", _e)
-    _asset2fm_chain = _relevancy_chain = None
+    logger.warning("LLM unavailable (FMSR will use curated data only): %s", _e)
+    _llm = None
     _llm_available = False
+
+
+# ── LLM call helpers with retry ───────────────────────────────────────────────
+
+def _call_asset2fm(asset_name: str) -> list[str]:
+    """Query the LLM for failure modes of an asset. Retries up to _MAX_RETRIES times."""
+    prompt = _ASSET2FM_PROMPT.format(asset_name=asset_name)
+    last_exc: Exception | None = None
+    for _ in range(_MAX_RETRIES):
+        try:
+            return _parse_numbered_list(_llm.generate(prompt))
+        except Exception as exc:
+            last_exc = exc
+    raise last_exc
+
+
+def _call_relevancy(asset_name: str, failure_mode: str, sensor: str) -> dict:
+    """Query the LLM for FM↔sensor relevancy. Retries up to _MAX_RETRIES times."""
+    prompt = _RELEVANCY_PROMPT.format(
+        asset_name=asset_name, failure_mode=failure_mode, sensor=sensor
+    )
+    last_exc: Exception | None = None
+    for _ in range(_MAX_RETRIES):
+        try:
+            return _parse_relevancy(_llm.generate(prompt))
+        except Exception as exc:
+            last_exc = exc
+    raise last_exc
 
 
 # ── Result models ─────────────────────────────────────────────────────────────
@@ -175,10 +198,10 @@ def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]
         return ErrorResult(error="LLM unavailable and asset not in local database")
 
     try:
-        result = _asset2fm_chain.invoke({"asset_name": asset_name})
+        result = _call_asset2fm(asset_name)
         return FailureModesResult(asset_name=asset_name, failure_modes=result)
     except Exception as exc:
-        logger.error("asset2fm_chain failed: %s", exc)
+        logger.error("_call_asset2fm failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
@@ -205,34 +228,29 @@ def get_failure_mode_sensor_mapping(
     if not _llm_available:
         return ErrorResult(error="LLM unavailable")
 
-    batches = [
-        {"asset_name": asset_name, "failure_mode": fm, "sensor": s}
-        for s in sensors
-        for fm in failure_modes
-    ]
-
-    try:
-        generations = _relevancy_chain.batch(batches, config={"max_concurrency": 1})
-    except Exception as exc:
-        logger.error("relevancy_chain.batch failed: %s", exc)
-        return ErrorResult(error=str(exc))
-
     full_relevancy: List[RelevancyEntry] = []
     fm2sensor: Dict[str, List[str]] = {}
     sensor2fm: Dict[str, List[str]] = {}
-    for batch, gen in zip(batches, generations):
-        entry = RelevancyEntry(
-            asset_name=batch["asset_name"],
-            failure_mode=batch["failure_mode"],
-            sensor=batch["sensor"],
-            relevancy_answer=gen["answer"],
-            relevancy_reason=gen["reason"],
-            temporal_behavior=gen["temporal_behavior"],
-        )
-        full_relevancy.append(entry)
-        if "yes" in gen["answer"].lower():
-            fm2sensor.setdefault(batch["failure_mode"], []).append(batch["sensor"])
-            sensor2fm.setdefault(batch["sensor"], []).append(batch["failure_mode"])
+
+    try:
+        for s in sensors:
+            for fm in failure_modes:
+                gen = _call_relevancy(asset_name, fm, s)
+                entry = RelevancyEntry(
+                    asset_name=asset_name,
+                    failure_mode=fm,
+                    sensor=s,
+                    relevancy_answer=gen["answer"],
+                    relevancy_reason=gen["reason"],
+                    temporal_behavior=gen["temporal_behavior"],
+                )
+                full_relevancy.append(entry)
+                if "yes" in gen["answer"].lower():
+                    fm2sensor.setdefault(fm, []).append(s)
+                    sensor2fm.setdefault(s, []).append(fm)
+    except Exception as exc:
+        logger.error("_call_relevancy failed: %s", exc)
+        return ErrorResult(error=str(exc))
 
     return FailureModeSensorMappingResult(
         metadata=MappingMetadata(
