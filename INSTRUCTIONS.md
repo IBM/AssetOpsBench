@@ -15,6 +15,7 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [Plan-Execute Runner](#plan-execute-runner)
   - [How it works](#how-it-works)
   - [CLI](#cli)
+  - [End-to-end example](#end-to-end-example)
   - [Python API](#python-api)
   - [Bring your own LLM](#bring-your-own-llm)
   - [Add more MCP servers](#add-more-mcp-servers)
@@ -28,6 +29,12 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 
 - **Python 3.14+** — required by `pyproject.toml`
 - **[uv](https://docs.astral.sh/uv/)** — dependency and environment manager
+
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh   # macOS / Linux
+  # or: brew install uv
+  ```
+
 - **Docker** — for running CouchDB (IoT data store)
 
 ## Quick Start
@@ -38,6 +45,14 @@ Run from the **repo root**:
 
 ```bash
 uv sync
+```
+
+`uv sync` creates a virtual environment at `.venv/`, installs all dependencies, and registers the CLI entry points (`plan-execute`, `*-mcp-server`). You can either prefix commands with `uv run` (no activation needed) or activate the venv once for your shell session:
+
+```bash
+source .venv/bin/activate   # macOS / Linux
+# then use commands directly, e.g.:
+plan-execute "What assets are at site MAIN?"
 ```
 
 ### 2. Configure environment
@@ -174,7 +189,7 @@ PlanExecuteRunner.run(question)
 After `uv sync`, the `plan-execute` command is available:
 
 ```bash
-plan-execute "What assets are available at site MAIN?"
+uv run plan-execute "What assets are available at site MAIN?"
 ```
 
 Flags:
@@ -182,7 +197,7 @@ Flags:
 | Flag | Description |
 |---|---|
 | `--model-id MODEL_ID` | litellm model string with provider prefix (default: `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8`) |
-| `--server NAME=PATH` | Override MCP servers with `NAME=PATH` pairs (repeatable) |
+| `--server NAME=SPEC` | Override MCP servers with `NAME=SPEC` pairs (repeatable); SPEC is an entry-point name or path |
 | `--show-plan` | Print the generated plan before execution |
 | `--show-history` | Print each step result after execution |
 | `--json` | Output answer + plan + history as JSON |
@@ -198,25 +213,25 @@ Examples:
 
 ```bash
 # WatsonX — default model
-plan-execute "What assets are at site MAIN?"
+uv run plan-execute "What assets are at site MAIN?"
 
 # WatsonX — different model, inspect the plan
-plan-execute --model-id watsonx/ibm/granite-3-3-8b-instruct --show-plan "List sensors for asset CH-1"
+uv run plan-execute --model-id watsonx/ibm/granite-3-3-8b-instruct --show-plan "List sensors for asset CH-1"
 
 # LiteLLM proxy
-plan-execute --model-id litellm_proxy/GCP/claude-4-sonnet "What are the failure modes for a chiller?"
+uv run plan-execute --model-id litellm_proxy/GCP/claude-4-sonnet "What are the failure modes for a chiller?"
 
 # Machine-readable output
-plan-execute --show-history --json "How many observations exist for CH-1?" | jq .answer
+uv run plan-execute --show-history --json "How many observations exist for CH-1?" | jq .answer
 ```
 
-### Three-server end-to-end example
+### End-to-end example
 
 All four servers (IoTAgent, Utilities, FMSRAgent, TSFMAgent) are registered by default.
-Run a question that exercises all three with independent parallel steps:
+Run a question that exercises three of them with independent parallel steps:
 
 ```bash
-plan-execute --show-plan --show-history \
+uv run plan-execute --show-plan --show-history \
   "What is the current date and time? Also list assets at site MAIN. Also get failure modes for a chiller."
 ```
 
