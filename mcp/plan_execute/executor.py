@@ -25,11 +25,16 @@ from .models import Plan, PlanStep, StepResult
 _log = logging.getLogger(__name__)
 
 _MCP_ROOT = Path(__file__).parent.parent
+_REPO_ROOT = _MCP_ROOT.parent
 
-DEFAULT_SERVER_PATHS: dict[str, Path] = {
-    "IoTAgent": _MCP_ROOT / "servers" / "iot" / "main.py",
-    "Utilities": _MCP_ROOT / "servers" / "utilities" / "main.py",
-    "FMSRAgent": _MCP_ROOT / "servers" / "fmsr" / "main.py",
+# Maps agent names to either a uv entry-point name (str) or a script Path.
+# Entry-point names are invoked as ``uv run <name>``; Paths fall back to
+# ``python -m module.path`` (supports relative imports).
+DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
+    "IoTAgent": "iot-mcp-server",
+    "Utilities": "utilities-mcp-server",
+    "FMSRAgent": "fmsr-mcp-server",
+    "TSFMAgent": "tsfm-mcp-server",
 }
 
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
@@ -58,7 +63,7 @@ class Executor:
     def __init__(
         self,
         llm: LLMBackend,
-        server_paths: dict[str, Path] | None = None,
+        server_paths: dict[str, Path | str] | None = None,
     ) -> None:
         self._llm = llm
         self._server_paths = DEFAULT_SERVER_PATHS if server_paths is None else server_paths
@@ -261,12 +266,39 @@ def _parse_json(raw: str) -> dict:
 # ── MCP protocol helpers ──────────────────────────────────────────────────────
 
 
-async def _list_tools(server_path: Path) -> list[dict]:
+def _make_stdio_params(server: Path | str) -> "StdioServerParameters":
+    """Build StdioServerParameters for a server spec.
+
+    - str  → entry-point name; invoked as ``uv run <name>`` from the repo root.
+    - Path → invoked as ``python -m module.path`` when under the repo root
+             (supports relative imports), or directly otherwise.
+    """
+    from mcp import StdioServerParameters
+
+    if isinstance(server, str):
+        return StdioServerParameters(
+            command="uv",
+            args=["run", server],
+            cwd=str(_REPO_ROOT),
+        )
+    try:
+        rel = server.relative_to(_REPO_ROOT)
+        module = str(rel.with_suffix("")).replace("/", ".").replace("\\", ".")
+        return StdioServerParameters(
+            command="python",
+            args=["-m", module],
+            cwd=str(_REPO_ROOT),
+        )
+    except ValueError:
+        return StdioServerParameters(command="python", args=[str(server)])
+
+
+async def _list_tools(server_path: Path | str) -> list[dict]:
     """Connect to an MCP server via stdio and list its tools with parameter info."""
-    from mcp import ClientSession, StdioServerParameters
+    from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
-    params = StdioServerParameters(command="python", args=[str(server_path)])
+    params = _make_stdio_params(server_path)
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -292,12 +324,12 @@ async def _list_tools(server_path: Path) -> list[dict]:
             return tools
 
 
-async def _call_tool(server_path: Path, tool_name: str, args: dict) -> str:
+async def _call_tool(server_path: Path | str, tool_name: str, args: dict) -> str:
     """Connect to an MCP server via stdio and call a tool."""
-    from mcp import ClientSession, StdioServerParameters
+    from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
-    params = StdioServerParameters(command="python", args=[str(server_path)])
+    params = _make_stdio_params(server_path)
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()

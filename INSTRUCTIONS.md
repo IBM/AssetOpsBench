@@ -67,10 +67,10 @@ curl -X GET http://localhost:5984/
 Use `uv run` to start the MCP servers (paths relative to repo root):
 
 ```bash
-uv run python mcp/servers/utilities/main.py
-uv run python mcp/servers/iot/main.py
-uv run python mcp/servers/fmsr/main.py
-uv run python mcp/servers/tsfm/main.py
+uv run utilities-mcp-server
+uv run iot-mcp-server
+uv run fmsr-mcp-server
+uv run tsfm-mcp-server
 ```
 
 ---
@@ -212,7 +212,7 @@ plan-execute --show-history --json "How many observations exist for CH-1?" | jq 
 
 ### Three-server end-to-end example
 
-All three servers (IoTAgent, Utilities, FMSRAgent) are registered by default.
+All four servers (IoTAgent, Utilities, FMSRAgent, TSFMAgent) are registered by default.
 Run a question that exercises all three with independent parallel steps:
 
 ```bash
@@ -282,16 +282,15 @@ runner = PlanExecuteRunner(llm=MyLLM())
 Pass `server_paths` to register additional servers. Keys must match the agent names the planner assigns steps to:
 
 ```python
-from pathlib import Path
 from plan_execute import PlanExecuteRunner
 
 runner = PlanExecuteRunner(
     llm=my_llm,
     server_paths={
-        "IoTAgent":  Path("mcp/servers/iot/main.py"),
-        "Utilities": Path("mcp/servers/utilities/main.py"),
-        "FMSRAgent": Path("mcp/servers/fmsr/main.py"),
-        "TSFMAgent": Path("mcp/servers/tsfm/main.py"),
+        "IoTAgent":  "iot-mcp-server",
+        "Utilities": "utilities-mcp-server",
+        "FMSRAgent": "fmsr-mcp-server",
+        "TSFMAgent": "tsfm-mcp-server",
     },
 )
 ```
@@ -309,23 +308,19 @@ Add the following to your Claude Desktop `claude_desktop_config.json`:
   "mcpServers": {
     "utilities": {
       "command": "/path/to/uv",
-      "args": [
-        "run",
-        "--project",
-        "/path/to/AssetOpsBench",
-        "python",
-        "/path/to/AssetOpsBench/mcp/servers/utilities/main.py"
-      ]
+      "args": ["run", "--project", "/path/to/AssetOpsBench", "utilities-mcp-server"]
     },
     "IoTAgent": {
       "command": "/path/to/uv",
-      "args": [
-        "run",
-        "--project",
-        "/path/to/AssetOpsBench",
-        "python",
-        "/path/to/AssetOpsBench/mcp/servers/iot/main.py"
-      ]
+      "args": ["run", "--project", "/path/to/AssetOpsBench", "iot-mcp-server"]
+    },
+    "FMSRAgent": {
+      "command": "/path/to/uv",
+      "args": ["run", "--project", "/path/to/AssetOpsBench", "fmsr-mcp-server"]
+    },
+    "TSFMAgent": {
+      "command": "/path/to/uv",
+      "args": ["run", "--project", "/path/to/AssetOpsBench", "tsfm-mcp-server"]
     }
   }
 }

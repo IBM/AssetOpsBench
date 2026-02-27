@@ -51,15 +51,16 @@ class PlanExecuteRunner:
 
     Args:
         llm: LLM backend used for planning, tool selection, and summarisation.
-        server_paths: Override MCP server script paths.  Keys must match the
-                      agent names the planner will assign steps to.  Defaults
-                      to IoTAgent and Utilities servers in mcp/servers/.
+        server_paths: Override MCP server specs.  Keys must match the agent
+                      names the planner will assign steps to.  Values are
+                      either a uv entry-point name (str) or a Path to a
+                      script file.  Defaults to all four registered servers.
     """
 
     def __init__(
         self,
         llm: LLMBackend,
-        server_paths: dict[str, Path] | None = None,
+        server_paths: dict[str, Path | str] | None = None,
     ) -> None:
         self._llm = llm
         self._planner = Planner(llm)
