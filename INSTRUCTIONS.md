@@ -10,6 +10,7 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [MCP Servers](#mcp-servers)
   - [IoTAgent](#iotagent)
   - [Utilities](#utilities)
+  - [Sandbox](#sandbox)
   - [FMSRAgent](#fmsragent)
   - [TSFMAgent](#tsfmagent)
 - [Plan-Execute Runner](#plan-execute-runner)
@@ -112,6 +113,7 @@ uv run tsfm-mcp-server
 ### IoTAgent
 
 **Path:** `mcp/servers/iot/main.py`
+
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_DBNAME`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`)
 
 | Tool | Arguments | Description |
@@ -124,6 +126,7 @@ uv run tsfm-mcp-server
 ### Utilities
 
 **Path:** `mcp/servers/utilities/main.py`
+
 **Requires:** nothing (no external services)
 
 | Tool | Arguments | Description |
@@ -132,9 +135,21 @@ uv run tsfm-mcp-server
 | `current_date_time` | — | Return the current UTC date and time as JSON |
 | `current_time_english` | — | Return the current UTC time as a human-readable string |
 
+### Sandbox
+
+**Path:** `mcp/servers/sandbox/main.py`
+
+**Requires:** Docker or Podman (container runtime auto-detected)
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `execute_python_code` | `code`, `requirements?`, `input_files?`, `timeout?`, `output_files?` | Execute arbitrary Python code in an isolated container with no network access, limited CPU/memory, and optional pip package installation |
+| `execute_python_script` | `script_content`, `input_data?`, `requirements?`, `timeout?` | Simplified interface for scripts that read from `data.json` and write to `output.json` |
+
 ### FMSRAgent
 
 **Path:** `mcp/servers/fmsr/main.py`
+
 **Requires:** `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` for unknown assets; curated lists for `chiller` and `ahu` work without credentials.
 **Failure-mode data:** `mcp/servers/fmsr/failure_modes.yaml` (edit to add/change asset entries)
 
@@ -146,7 +161,9 @@ uv run tsfm-mcp-server
 ### TSFMAgent
 
 **Path:** `mcp/servers/tsfm/main.py`
+
 **Requires:** `tsfm_public` (IBM Granite TSFM), `transformers`, `torch` for ML tools — imported lazily; static tools work without them.
+
 **Model checkpoints:** resolved relative to `PATH_TO_MODELS_DIR` (default: `mcp/servers/tsfm/artifacts/output/tuned_models`)
 
 | Tool | Arguments | Description |
@@ -350,6 +367,7 @@ uv run pytest mcp/ -v
 ```
 
 Integration tests are auto-skipped when the required service is not available:
+
 - IoT integration tests require `COUCHDB_URL` (set in `.env`)
 - FMSR integration tests require `WATSONX_APIKEY` (set in `.env`)
 - TSFM integration tests require `PATH_TO_MODELS_DIR` and `PATH_TO_DATASETS_DIR` (set in `.env`)

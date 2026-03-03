@@ -1,0 +1,18 @@
+# Python Sandbox Docker Image
+# Provides a secure, isolated environment for executing arbitrary Python code
+
+FROM python:3.13-slim
+
+COPY requirements.txt /tmp
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
+
+RUN useradd -m -u 1000 -d /sandbox -s /bin/bash sandbox
+USER sandbox
+WORKDIR /sandbox
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Default command (will be overridden)
+CMD ["python", "--version"]
