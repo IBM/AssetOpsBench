@@ -1,6 +1,6 @@
 """Tests for Plan and StepResult data models."""
 
-from plan_execute.models import Plan, PlanStep, StepResult
+from workflow.models import Plan, PlanStep, StepResult
 
 
 def _step(n: int, deps: list[int] | None = None) -> PlanStep:

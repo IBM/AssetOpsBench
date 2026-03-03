@@ -1,7 +1,7 @@
 """Tests for the Planner and parse_plan()."""
 
-from plan_execute.executor import _has_placeholders
-from plan_execute.planner import Planner, parse_plan
+from workflow.executor import _has_placeholders
+from workflow.planner import Planner, parse_plan
 
 _TWO_STEP = """\
 #Task1: List all available IoT sites

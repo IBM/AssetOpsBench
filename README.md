@@ -144,7 +144,7 @@ Explore all scenarios [HF-Dataset](https://huggingface.co/datasets/ibm-research/
 - **[AgentHive](https://github.com/IBM/AssetOpsBench/tree/main/src/agent_hive)**: plan-and-execute sequential workflow
 
 ### MCP Environment
-The `mcp/` directory contains MCP servers and a plan-execute runner built on the [Model Context Protocol](https://modelcontextprotocol.io/).
+The `src/` directory contains MCP servers and a plan-execute runner built on the [Model Context Protocol](https://modelcontextprotocol.io/).
 See **[INSTRUCTIONS.md](./INSTRUCTIONS.md)** for setup, usage, and testing.
 
 ---

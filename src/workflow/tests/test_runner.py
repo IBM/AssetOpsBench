@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from plan_execute.executor import (
+from workflow.executor import (
     Executor,
     _has_placeholders,
     _parse_json,
@@ -15,8 +15,8 @@ from plan_execute.executor import (
     _resolve_args,
     _resolve_args_with_llm,
 )
-from plan_execute.models import Plan, PlanStep, StepResult
-from plan_execute.runner import PlanExecuteRunner
+from workflow.models import Plan, PlanStep, StepResult
+from workflow.runner import PlanExecuteRunner
 
 # ── shared plan strings ───────────────────────────────────────────────────────
 
@@ -49,9 +49,9 @@ _TOOL_RESPONSE = json.dumps({"sites": ["MAIN"]})
 
 def _patch_mcp(tool_response: str = _TOOL_RESPONSE):
     return (
-        patch("plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
         patch(
-            "plan_execute.executor._call_tool", new=AsyncMock(return_value=tool_response)
+            "workflow.executor._call_tool", new=AsyncMock(return_value=tool_response)
         ),
     )
 
@@ -161,7 +161,7 @@ async def test_executor_get_agent_descriptions(mock_llm):
     executor = Executor(llm, server_paths={"TestServer": None})
 
     with patch(
-        "plan_execute.executor._list_tools",
+        "workflow.executor._list_tools",
         new=AsyncMock(
             return_value=[{"name": "foo", "description": "does foo", "parameters": []}]
         ),
@@ -195,8 +195,8 @@ async def test_executor_resolves_placeholder_via_llm(mock_llm):
 
     call_mock = AsyncMock(side_effect=[site_resp, sensor_resp])
     with (
-        patch("plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("plan_execute.executor._call_tool", new=call_mock),
+        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("workflow.executor._call_tool", new=call_mock),
     ):
         results = await executor.execute_plan(plan, "Q")
 
@@ -246,8 +246,8 @@ async def test_pipeline_resolves_placeholder_from_planner_output(sequential_llm)
     call_mock = AsyncMock(side_effect=[site_resp, asset_resp])
 
     with (
-        patch("plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("plan_execute.executor._call_tool", new=call_mock),
+        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("workflow.executor._call_tool", new=call_mock),
     ):
         result = await PlanExecuteRunner(llm).run("List all assets at site MAIN")
 
@@ -269,8 +269,8 @@ async def test_executor_no_placeholder_skips_llm(mock_llm):
     plan = Plan(steps=[_make_step(1, tool="sites", tool_args={})], raw="")
     call_mock = AsyncMock(return_value=_TOOL_RESPONSE)
     with (
-        patch("plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("plan_execute.executor._call_tool", new=call_mock),
+        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("workflow.executor._call_tool", new=call_mock),
     ):
         await executor.execute_plan(plan, "Q")
 
