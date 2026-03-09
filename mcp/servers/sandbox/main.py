@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Union
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
+
 from servers.sandbox.container_runtime import (ContainerRuntime,
                                                get_container_runtime)
 
@@ -176,6 +177,17 @@ def execute_python_code(
     - Isolated filesystem
     - Restricted process capabilities
 
+    Pre-installed Libraries:
+        The container comes with the following libraries pre-installed:
+        - matplotlib==3.9.3: Plotting and visualization
+        - numpy==2.2.1: Numerical computing
+        - pandas==2.2.3: Data manipulation and analysis
+        - pyarrow==18.1.0: Columnar data format support
+        - pydantic==2.10.5: Data validation
+        - pympler==1.1: Memory profiling
+        - scikit-learn==1.6.1: Machine learning
+        - seaborn==0.13.2: Statistical data visualization
+
     Args:
         code: Python code to execute (as a string)
         requirements: Optional list of pip package names to install before execution
@@ -226,6 +238,17 @@ def execute_python_script(
 
     This is a simplified interface for executing Python scripts that read from
     stdin or a data.json file and write results to output.json.
+
+    Pre-installed Libraries:
+        The container comes with the following libraries pre-installed:
+        - matplotlib==3.9.3: Plotting and visualization
+        - numpy==2.2.1: Numerical computing
+        - pandas==2.2.3: Data manipulation and analysis
+        - pyarrow==18.1.0: Columnar data format support
+        - pydantic==2.10.5: Data validation
+        - pympler==1.1: Memory profiling
+        - scikit-learn==1.6.1: Machine learning
+        - seaborn==0.13.2: Statistical data visualization
 
     Args:
         script_content: The Python script code to execute
