@@ -56,5 +56,3 @@ def mock_runtime_with_timeout():
     with patch("servers.sandbox.main._get_runtime", return_value=mock):
         with patch("servers.sandbox.main._ensure_container_image"):
             yield mock
-
-# Made with Bob
