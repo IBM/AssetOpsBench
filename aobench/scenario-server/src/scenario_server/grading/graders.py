@@ -33,7 +33,7 @@ def numeric_match(actual: float, expected: float, tolerance: float = 1e-6) -> bo
         a = float(actual)
         e = float(expected)
 
-        return math.isclose(a, e)
+        return math.isclose(a, e, rel_tol=tolerance)
     except (ValueError, TypeError) as e:
         logger.exception(f"failed to parse: {e=}")
         return False
