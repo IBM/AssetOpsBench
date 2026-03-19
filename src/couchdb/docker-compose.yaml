@@ -1,16 +1,18 @@
 services:
   couchdb:
-    image: couchdb:3.3
+    image: couchdb:3.5
     environment:
-      COUCHDB_PASSWORD: password
       COUCHDB_USERNAME: admin
-      COUCHDB_DBNAME: chiller
+      COUCHDB_PASSWORD: password
+      IOT_DBNAME: chiller
+      WO_DBNAME: workorder
     ports:
       - "5984:5984"
     volumes:
       - couchdb-data:/opt/couchdb/data
       - ./couchdb_setup.sh:/opt/couchdb/etc/couchdb_setup.sh
       - ./sample_data:/sample_data
+      - ./:/couchdb
     command: ["sh", "/opt/couchdb/etc/couchdb_setup.sh"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5984/"]

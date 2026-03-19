@@ -17,7 +17,7 @@ _log_level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), lo
 logging.basicConfig(level=_log_level)
 logger = logging.getLogger("utilities-mcp-server")
 
-mcp = FastMCP("Utilities")
+mcp = FastMCP("utilities")
 
 
 class DateTimeResult(BaseModel):

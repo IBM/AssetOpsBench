@@ -156,7 +156,7 @@ async def _run(args: argparse.Namespace) -> None:
                 {
                     "step": s.step_number,
                     "task": s.task,
-                    "agent": s.agent,
+                    "server": s.server,
                     "tool": s.tool,
                     "tool_args": s.tool_args,
                     "dependencies": s.dependencies,
@@ -168,7 +168,7 @@ async def _run(args: argparse.Namespace) -> None:
                 {
                     "step": r.step_number,
                     "task": r.task,
-                    "agent": r.agent,
+                    "server": r.server,
                     "tool": r.tool,
                     "tool_args": r.tool_args,
                     "response": r.response,
@@ -185,7 +185,7 @@ async def _run(args: argparse.Namespace) -> None:
         _print_section("Plan")
         for step in result.plan.steps:
             deps = ", ".join(f"#{d}" for d in step.dependencies) or "none"
-            print(f"  [{step.step_number}] {step.agent}: {step.task}")
+            print(f"  [{step.step_number}] {step.server}: {step.task}")
             print(f"       tool: {step.tool}  args: {step.tool_args}")
             print(f"       deps={deps} | expected: {step.expected_output}")
 
@@ -193,7 +193,7 @@ async def _run(args: argparse.Namespace) -> None:
         _print_section("Execution History")
         for r in result.history:
             status = "OK " if r.success else "ERR"
-            print(f"  [{status}] Step {r.step_number} ({r.agent}): {r.task}")
+            print(f"  [{status}] Step {r.step_number} ({r.server}): {r.task}")
             if r.tool and r.tool.lower() not in ("none", "null", ""):
                 print(f"       tool: {r.tool}  args: {r.tool_args}")
             detail = r.response if r.success else f"Error: {r.error}"

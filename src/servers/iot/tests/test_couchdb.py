@@ -13,11 +13,11 @@ load_dotenv()
 
 COUCHDB_URL = os.environ.get("COUCHDB_URL", "")
 COUCHDB_HOST = COUCHDB_URL.replace("http://", "").replace("https://", "")
-COUCHDB_USER = os.environ.get("COUCHDB_USERNAME", "")
-COUCHDB_PASS = os.environ.get("COUCHDB_PASSWORD", "")
-COUCHDB_DBNAME = os.environ.get("COUCHDB_DBNAME", "")
+COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME", "")
+COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD", "")
+COUCHDB_DBNAME = os.environ.get("IOT_DBNAME", "")
 
-FULL_URL = f"http://{COUCHDB_USER}:{COUCHDB_PASS}@{COUCHDB_HOST}"
+FULL_URL = f"http://{COUCHDB_USERNAME}:{COUCHDB_PASSWORD}@{COUCHDB_HOST}"
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def couchdb_client():
 @requires_couchdb
 class TestCouchDBInfrastructure:
     def test_connection(self):
-        resp = requests.get(f"http://{COUCHDB_HOST}", auth=(COUCHDB_USER, COUCHDB_PASS))
+        resp = requests.get(f"http://{COUCHDB_HOST}", auth=(COUCHDB_USERNAME, COUCHDB_PASSWORD))
         assert resp.status_code == 200
 
         client = couchdb3.Server(FULL_URL)

@@ -146,11 +146,10 @@ class PostGresGradingStorage(DeferredGradingStorage):
 
         return result_str
 
-    def _result_unpack(self, result_str: str) -> SubmissionResult | None:
+    def _result_unpack(self, result_str: str) -> SubmissionResult:
         result_obj = json.loads(result_str)
         result = result_obj["result"]
-
-        return result
+        return SubmissionResult(**result)
 
     async def _connect(self):
         self.pool = await asyncpg.create_pool(self.database_url)
@@ -191,7 +190,7 @@ class PostGresGradingStorage(DeferredGradingStorage):
             if row is None:
                 raise KeyError(f"{grading_id} not found")
 
-            result: SubmissionResult | None = self._result_unpack(row["result"])
+            result: SubmissionResult = self._result_unpack(row["result"])
 
             return DeferredGradingResult(
                 result=result,

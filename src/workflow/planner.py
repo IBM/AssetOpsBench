@@ -16,10 +16,10 @@ _PLAN_PROMPT = """\
 You are a planning assistant for industrial asset operations and maintenance.
 
 Decompose the question below into a sequence of subtasks. For each subtask,
-assign an agent and select the exact tool to call with its arguments.
+assign a server and select the exact tool to call with its arguments.
 
-Available agents and tools:
-{agents}
+Available servers and tools:
+{servers}
 
 For argument values that can only be known from a prior step's result,
 use the placeholder {{step_N}} (e.g., {{step_1}}) as the value.
@@ -27,21 +27,21 @@ use the placeholder {{step_N}} (e.g., {{step_1}}) as the value.
 Output format — one block per step, exactly:
 
 #Task1: <task description>
-#Agent1: <exact agent name>
+#Server1: <exact server name>
 #Tool1: <exact tool name, or "none" if no tool call is needed>
 #Args1: <JSON object of tool arguments, e.g. {{"site_name": "MAIN"}}>
 #Dependency1: None
 #ExpectedOutput1: <what this step should produce>
 
 #Task2: <task description>
-#Agent2: <exact agent name>
+#Server2: <exact server name>
 #Tool2: <exact tool name>
 #Args2: {{"site_name": "MAIN", "asset_id": "{{step_1}}"}}
 #Dependency2: #S1
 #ExpectedOutput2: <what this step should produce>
 
 Rules:
-- Agent and tool names must exactly match those listed above.
+- Server and tool names must exactly match those listed above.
 - #Args must be a valid JSON object on a single line.
 - Use {{step_N}} as a placeholder when an argument depends on step N's result.
 - Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
@@ -53,7 +53,7 @@ Plan:
 """
 
 _TASK_RE = re.compile(r"#Task(\d+):\s*(.+)")
-_AGENT_RE = re.compile(r"#Agent(\d+):\s*(.+)")
+_SERVER_RE = re.compile(r"#Server(\d+):\s*(.+)")
 _TOOL_RE = re.compile(r"#Tool(\d+):\s*(.+)")
 _ARGS_RE = re.compile(r"#Args(\d+):\s*(.+)")
 _DEP_RE = re.compile(r"#Dependency(\d+):\s*(.+)")
@@ -64,7 +64,7 @@ _DEP_NUM_RE = re.compile(r"#S(\d+)")
 def parse_plan(raw: str) -> Plan:
     """Parse an LLM-generated plan string into a Plan object."""
     tasks = {int(m.group(1)): m.group(2).strip() for m in _TASK_RE.finditer(raw)}
-    agents = {int(m.group(1)): m.group(2).strip() for m in _AGENT_RE.finditer(raw)}
+    servers = {int(m.group(1)): m.group(2).strip() for m in _SERVER_RE.finditer(raw)}
     tools = {int(m.group(1)): m.group(2).strip() for m in _TOOL_RE.finditer(raw)}
     deps_raw = {int(m.group(1)): m.group(2).strip() for m in _DEP_RE.finditer(raw)}
     outputs = {int(m.group(1)): m.group(2).strip() for m in _OUTPUT_RE.finditer(raw)}
@@ -81,7 +81,7 @@ def parse_plan(raw: str) -> Plan:
         PlanStep(
             step_number=n,
             task=tasks[n],
-            agent=agents.get(n, ""),
+            server=servers.get(n, ""),
             tool=tools.get(n, ""),
             tool_args=args.get(n, {}),
             dependencies=(
@@ -105,20 +105,20 @@ class Planner:
     def generate_plan(
         self,
         question: str,
-        agent_descriptions: dict[str, str],
+        server_descriptions: dict[str, str],
     ) -> Plan:
-        """Generate a plan for a question given available agents and their tools.
+        """Generate a plan for a question given available servers and their tools.
 
         Args:
             question: The user question to answer.
-            agent_descriptions: Mapping of agent_name -> formatted tool signatures.
+            server_descriptions: Mapping of server_name -> formatted tool signatures.
 
         Returns:
             A Plan where each PlanStep includes the tool to call and its arguments.
         """
-        agents_text = "\n\n".join(
-            f"{name}:\n{desc}" for name, desc in agent_descriptions.items()
+        servers_text = "\n\n".join(
+            f"{name}:\n{desc}" for name, desc in server_descriptions.items()
         )
-        prompt = _PLAN_PROMPT.format(agents=agents_text, question=question)
+        prompt = _PLAN_PROMPT.format(servers=servers_text, question=question)
         raw = self._llm.generate(prompt)
         return parse_plan(raw)

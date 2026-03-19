@@ -31,13 +31,26 @@ _REPO_ROOT = _MCP_ROOT.parent
 # Entry-point names are invoked as ``uv run <name>``; Paths fall back to
 # ``python -m module.path`` (supports relative imports).
 DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
-    "IoTAgent": "iot-mcp-server",
-    "Utilities": "utilities-mcp-server",
-    "FMSRAgent": "fmsr-mcp-server",
-    "TSFMAgent": "tsfm-mcp-server",
+    "iot": "iot-mcp-server",
+    "utilities": "utilities-mcp-server",
+    "fmsr": "fmsr-mcp-server",
+    "tsfm": "tsfm-mcp-server",
+    "wo": "wo-mcp-server",
 }
 
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
+
+_DERIVE_VALUE_PROMPT = """\
+You are extracting a value from prior step results for a plan step.
+
+Task: {task}
+Expected output: {expected_output}
+
+Results from prior steps:
+{context}
+
+Provide exactly the value requested — no explanation, just the value itself.
+"""
 
 _ARG_RESOLUTION_PROMPT = """\
 You are resolving tool argument values for one step in a multi-step plan.
@@ -68,7 +81,7 @@ class Executor:
         self._llm = llm
         self._server_paths = DEFAULT_SERVER_PATHS if server_paths is None else server_paths
 
-    async def get_agent_descriptions(self) -> dict[str, str]:
+    async def get_server_descriptions(self) -> dict[str, str]:
         """Query each registered MCP server and return formatted tool signatures."""
         descriptions: dict[str, str] = {}
         for name, path in self._server_paths.items():
@@ -95,7 +108,7 @@ class Executor:
         for step in ordered:
             _log.info(
                 "Step %d/%d [%s]: %s",
-                step.step_number, total, step.agent, step.task,
+                step.step_number, total, step.server, step.task,
             )
             result = await self.execute_step(step, context, question)
             if result.success:
@@ -115,30 +128,46 @@ class Executor:
         """Execute a single plan step.
 
         1. Resolve the MCP server assigned to this step.
-        2. If no tool is specified, return expected_output directly.
+        2. If no tool is specified and the step has dependencies, call the LLM to
+           derive the value from prior step results.  If no dependencies, return
+           expected_output directly.
         3. If tool_args contain {{step_N}} placeholders, call the LLM to resolve
            them from prior step results.
         4. Call the tool and return its result.
         """
-        server_path = self._server_paths.get(step.agent)
+        server_path = self._server_paths.get(step.server)
         if server_path is None:
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
-                agent=step.agent,
+                server=step.server,
                 response="",
                 error=(
-                    f"Unknown agent '{step.agent}'. "
-                    f"Registered agents: {list(self._server_paths)}"
+                    f"Unknown server '{step.server}'. "
+                    f"Registered servers: {list(self._server_paths)}"
                 ),
             )
 
         if not step.tool or step.tool.lower() in ("none", "null"):
+            if step.dependencies and any(d in context for d in step.dependencies):
+                context_text = "\n".join(
+                    f"Step {n}: {context[n].response}"
+                    for n in sorted(step.dependencies)
+                    if n in context
+                )
+                prompt = _DERIVE_VALUE_PROMPT.format(
+                    task=step.task,
+                    expected_output=step.expected_output,
+                    context=context_text,
+                )
+                response = self._llm.generate(prompt).strip()
+            else:
+                response = step.expected_output
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
-                agent=step.agent,
-                response=step.expected_output,
+                server=step.server,
+                response=response,
                 tool=step.tool,
                 tool_args=step.tool_args,
             )
@@ -159,7 +188,7 @@ class Executor:
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
-                agent=step.agent,
+                server=step.server,
                 response=response,
                 tool=step.tool,
                 tool_args=resolved_args,
@@ -168,7 +197,7 @@ class Executor:
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
-                agent=step.agent,
+                server=step.server,
                 response="",
                 error=str(exc),
                 tool=step.tool,
