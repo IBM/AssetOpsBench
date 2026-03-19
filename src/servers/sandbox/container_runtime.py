@@ -1,6 +1,7 @@
 """Container runtime abstraction layer.
 
-Provides a unified interface for both Docker and Podman container runtimes.
+Provides a unified interface for Docker and Podman container runtimes,
+enabling secure Python code execution in isolated containers.
 """
 
 from __future__ import annotations
@@ -17,16 +18,33 @@ logger = logging.getLogger("sandbox-mcp-server")
 
 
 class ContainerRuntime(ABC):
-    """Abstract base class for container runtime implementations."""
+    """Abstract base class for container runtime implementations.
+    
+    Defines the interface for Docker and Podman runtime implementations,
+    providing methods for image management and container execution.
+    """
 
     @abstractmethod
     def from_env(self) -> Any:
-        """Create a client from environment variables."""
+        """Initialize runtime client from environment variables.
+        
+        Returns:
+            Initialized runtime instance.
+        """
         pass
 
     @abstractmethod
     def ensure_image(self, image_name: str, dockerfile_path: Path) -> None:
-        """Ensure the container image exists, build if necessary."""
+        """Verify container image exists, building it if necessary.
+        
+        Args:
+            image_name: Name and tag of the container image.
+            dockerfile_path: Path to the Containerfile/Dockerfile.
+            
+        Raises:
+            FileNotFoundError: If Containerfile doesn't exist.
+            RuntimeError: If image build fails.
+        """
         pass
 
     @abstractmethod
@@ -41,44 +59,86 @@ class ContainerRuntime(ABC):
         cpu_quota: int,
         timeout: int,
     ) -> Tuple[int, str, str]:
-        """Run a container and return exit code, stdout, stderr."""
+        """Execute code in an isolated container with resource limits.
+        
+        Args:
+            image: Container image name and tag.
+            command: Command to execute in the container.
+            volumes: Volume mounts mapping host paths to container paths.
+            working_dir: Working directory inside the container.
+            network_mode: Network isolation mode (typically "none").
+            mem_limit: Memory limit (e.g., "512m").
+            cpu_quota: CPU quota in microseconds per 100ms period.
+            timeout: Maximum execution time in seconds.
+            
+        Returns:
+            Tuple of (exit_code, stdout, stderr).
+            
+        Raises:
+            subprocess.TimeoutExpired: If execution exceeds timeout.
+            RuntimeError: If container execution fails.
+        """
         pass
 
     @abstractmethod
     def close(self) -> None:
-        """Close the client connection."""
+        """Release runtime client resources."""
         pass
 
 
 class DockerRuntime(ContainerRuntime):
-    """Docker container runtime implementation."""
+    """Docker container runtime implementation using Docker Python SDK."""
 
     def __init__(self):
         self.client: Any = None
 
     def from_env(self) -> DockerRuntime:
-        """Create a Docker client from environment variables."""
+        """Initialize Docker client from environment variables.
+        
+        Returns:
+            Self with initialized Docker client.
+        """
         import docker
 
         self.client = docker.from_env()
         return self
 
     def ensure_image(self, image_name: str, dockerfile_path: Path) -> None:
-        """Ensure the Docker image exists, build if necessary."""
+        """Verify Docker image exists, building if necessary.
+        
+        Args:
+            image_name: Name and tag of the Docker image.
+            dockerfile_path: Path to the Containerfile/Dockerfile.
+            
+        Raises:
+            FileNotFoundError: If Containerfile doesn't exist.
+        """
         from docker.errors import ImageNotFound
 
         try:
             self.client.images.get(image_name)
             logger.info(f"Docker image {image_name} already exists")
         except ImageNotFound:
-            logger.info(f"Building Docker image {image_name}...")
-            if not dockerfile_path.exists():
-                raise FileNotFoundError(f"Dockerfile not found at {dockerfile_path}")
+            self._build_image(image_name, dockerfile_path)
 
-            image, build_logs = self.client.images.build(
-                path=str(dockerfile_path.parent), tag=image_name, rm=True, forcerm=True
-            )
-            logger.info(f"Successfully built Docker image {image_name}")
+    def _build_image(self, image_name: str, dockerfile_path: Path) -> None:
+        """Build Docker image from Containerfile.
+        
+        Args:
+            image_name: Name and tag for the built image.
+            dockerfile_path: Path to the Containerfile/Dockerfile.
+            
+        Raises:
+            FileNotFoundError: If Containerfile doesn't exist.
+        """
+        logger.info(f"Building Docker image {image_name}...")
+        if not dockerfile_path.exists():
+            raise FileNotFoundError(f"Dockerfile not found at {dockerfile_path}")
+
+        self.client.images.build(
+            path=str(dockerfile_path.parent), tag=image_name, rm=True, forcerm=True
+        )
+        logger.info(f"Successfully built Docker image {image_name}")
 
     def run_container(
         self,
@@ -91,7 +151,21 @@ class DockerRuntime(ContainerRuntime):
         cpu_quota: int,
         timeout: int,
     ) -> Tuple[int, str, str]:
-        """Run a Docker container and return exit code, stdout, stderr."""
+        """Execute code in a Docker container with resource limits.
+        
+        Args:
+            image: Docker image name and tag.
+            command: Command to execute in the container.
+            volumes: Volume mounts mapping host paths to container paths.
+            working_dir: Working directory inside the container.
+            network_mode: Network isolation mode.
+            mem_limit: Memory limit string.
+            cpu_quota: CPU quota in microseconds.
+            timeout: Maximum execution time in seconds.
+            
+        Returns:
+            Tuple of (exit_code, stdout, stderr).
+        """
         container = self.client.containers.create(
             image,
             command=command,
@@ -115,26 +189,43 @@ class DockerRuntime(ContainerRuntime):
             container.remove()
 
     def close(self) -> None:
-        """Close the Docker client connection."""
+        """Release Docker client resources."""
         if self.client:
             self.client.close()
 
 
 class PodmanRuntime(ContainerRuntime):
-    """Podman container runtime implementation using CLI."""
+    """Podman container runtime implementation using CLI commands.
+    
+    Uses subprocess to execute Podman CLI commands for container operations.
+    Suitable for rootless container execution without requiring a daemon.
+    """
 
     def __init__(self):
         self.podman_cmd: str = ""
 
     def from_env(self) -> PodmanRuntime:
-        """Initialize Podman runtime."""
-        # Check if podman is available
+        """Initialize Podman runtime by verifying CLI availability.
+        
+        Returns:
+            Self with initialized Podman command path.
+            
+        Raises:
+            RuntimeError: If Podman is not found or not functional.
+        """
         podman_path = shutil.which("podman")
         if not podman_path:
             raise RuntimeError("Podman executable not found in PATH")
         self.podman_cmd = podman_path
+        self._verify_podman()
+        return self
 
-        # Verify podman is working
+    def _verify_podman(self) -> None:
+        """Verify Podman is functional by checking version.
+        
+        Raises:
+            RuntimeError: If Podman version check fails or times out.
+        """
         try:
             result = subprocess.run(
                 [self.podman_cmd, "version"], capture_output=True, text=True, timeout=5
@@ -145,26 +236,53 @@ class PodmanRuntime(ContainerRuntime):
         except subprocess.TimeoutExpired:
             raise RuntimeError("Podman version check timed out")
 
-        return self
-
     def ensure_image(self, image_name: str, dockerfile_path: Path) -> None:
-        """Ensure the Podman image exists, build if necessary."""
-        # Check if image exists
+        """Verify Podman image exists, building if necessary.
+        
+        Args:
+            image_name: Name and tag of the Podman image.
+            dockerfile_path: Path to the Containerfile/Dockerfile.
+            
+        Raises:
+            FileNotFoundError: If Containerfile doesn't exist.
+            RuntimeError: If image build fails.
+        """
+        if self._image_exists(image_name):
+            logger.info(f"Podman image {image_name} already exists")
+            return
+        self._build_image(image_name, dockerfile_path)
+
+    def _image_exists(self, image_name: str) -> bool:
+        """Check if Podman image exists.
+        
+        Args:
+            image_name: Name and tag of the image to check.
+            
+        Returns:
+            True if image exists, False otherwise.
+        """
         result = subprocess.run(
             [self.podman_cmd, "image", "exists", image_name],
             capture_output=True,
             text=True,
         )
+        return result.returncode == 0
 
-        if result.returncode == 0:
-            logger.info(f"Podman image {image_name} already exists")
-            return
-
+    def _build_image(self, image_name: str, dockerfile_path: Path) -> None:
+        """Build Podman image from Containerfile.
+        
+        Args:
+            image_name: Name and tag for the built image.
+            dockerfile_path: Path to the Containerfile/Dockerfile.
+            
+        Raises:
+            FileNotFoundError: If Containerfile doesn't exist.
+            RuntimeError: If build fails.
+        """
         logger.info(f"Building Podman image {image_name}...")
         if not dockerfile_path.exists():
             raise FileNotFoundError(f"Dockerfile not found at {dockerfile_path}")
 
-        # Build the image
         build_result = subprocess.run(
             [
                 self.podman_cmd,
@@ -177,13 +295,29 @@ class PodmanRuntime(ContainerRuntime):
             ],
             capture_output=True,
             text=True,
-            timeout=300,  # 5 minute timeout for build
+            timeout=300,
         )
 
         if build_result.returncode != 0:
             raise RuntimeError(f"Failed to build Podman image: {build_result.stderr}")
 
         logger.info(f"Successfully built Podman image {image_name}")
+
+    def _build_volume_args(self, volumes: Dict[str, Dict[str, str]]) -> List[str]:
+        """Build volume mount arguments for Podman CLI.
+        
+        Args:
+            volumes: Volume mounts mapping host paths to container paths.
+            
+        Returns:
+            List of volume arguments for Podman CLI.
+        """
+        volume_args = []
+        for host_path, mount_info in volumes.items():
+            bind_path = mount_info["bind"]
+            mode = mount_info.get("mode", "rw")
+            volume_args.extend(["-v", f"{host_path}:{bind_path}:{mode}"])
+        return volume_args
 
     def run_container(
         self,
@@ -196,49 +330,45 @@ class PodmanRuntime(ContainerRuntime):
         cpu_quota: int,
         timeout: int,
     ) -> Tuple[int, str, str]:
-        """Run a Podman container and return exit code, stdout, stderr."""
-        # Build volume mounts
-        volume_args = []
-        for host_path, mount_info in volumes.items():
-            bind_path = mount_info["bind"]
-            mode = mount_info.get("mode", "rw")
-            volume_args.extend(["-v", f"{host_path}:{bind_path}:{mode}"])
-
-        # Convert CPU quota to CPU shares for Podman
-        # Docker cpu_quota is in microseconds per 100ms period
-        # Podman uses --cpus which is a decimal (e.g., 0.5 for 50%)
+        """Execute code in a Podman container with resource limits.
+        
+        Args:
+            image: Podman image name and tag.
+            command: Command to execute in the container.
+            volumes: Volume mounts mapping host paths to container paths.
+            working_dir: Working directory inside the container.
+            network_mode: Network isolation mode.
+            mem_limit: Memory limit string.
+            cpu_quota: CPU quota in microseconds (converted to --cpus decimal).
+            timeout: Maximum execution time in seconds.
+            
+        Returns:
+            Tuple of (exit_code, stdout, stderr).
+            
+        Raises:
+            subprocess.TimeoutExpired: If execution exceeds timeout.
+        """
+        volume_args = self._build_volume_args(volumes)
         cpu_limit = cpu_quota / 100000.0
 
-        # Build the run command
-        run_cmd = (
-            [
-                self.podman_cmd,
-                "run",
-                "--rm",  # Auto-remove container after execution
-                "-w",
-                working_dir,
-                "--network",
-                network_mode,
-                "--memory",
-                mem_limit,
-                "--cpus",
-                str(cpu_limit),
-            ]
-            + volume_args
-            + [image]
-            + command
-        )
+        run_cmd = [
+            self.podman_cmd,
+            "run",
+            "--rm",
+            "-w", working_dir,
+            "--network", network_mode,
+            "--memory", mem_limit,
+            "--cpus", str(cpu_limit),
+        ] + volume_args + [image] + command
 
         logger.debug(f"Running Podman command: {' '.join(run_cmd)}")
 
-        # Run the container
         try:
             result = subprocess.run(
                 run_cmd, capture_output=True, text=True, timeout=timeout
             )
             return result.returncode, result.stdout, result.stderr
         except subprocess.TimeoutExpired as e:
-            # Container timed out, try to clean up
             logger.warning(f"Container execution timed out after {timeout}s")
             stdout = e.stdout.decode("utf-8") if e.stdout else ""
             stderr = e.stderr.decode("utf-8") if e.stderr else ""
@@ -246,51 +376,34 @@ class PodmanRuntime(ContainerRuntime):
             return -1, stdout, stderr
 
     def close(self) -> None:
-        """Close the Podman runtime (no-op for CLI)."""
+        """Release Podman runtime resources (no-op for CLI-based runtime)."""
         pass
 
 
 def detect_container_runtime() -> str:
-    """Detect which container runtime is available.
+    """Detect available container runtime (Docker or Podman).
+    
+    Checks CONTAINER_RUNTIME environment variable first, then auto-detects
+    by attempting to connect to Docker, falling back to Podman if unavailable.
 
     Returns:
-        "docker" or "podman" based on what's available
+        Runtime identifier: "docker" or "podman".
 
     Raises:
-        RuntimeError: If neither Docker nor Podman is available
+        RuntimeError: If neither Docker nor Podman is available.
     """
-    # Check environment variable first
     runtime_env = os.environ.get("CONTAINER_RUNTIME", "").lower()
     if runtime_env in ("docker", "podman"):
-        logger.info(
-            f"Using container runtime from CONTAINER_RUNTIME env: {runtime_env}"
-        )
+        logger.info(f"Using container runtime from CONTAINER_RUNTIME env: {runtime_env}")
         return runtime_env
 
-    # Try Docker first
-    try:
-        import docker
-
-        client = docker.from_env()
-        client.ping()
-        client.close()
+    if _is_docker_available():
         logger.info("Detected Docker as container runtime")
         return "docker"
-    except Exception as e:
-        logger.debug(f"Docker not available: {e}")
 
-    # Try Podman
-    podman_cmd = shutil.which("podman")
-    if podman_cmd:
-        try:
-            result = subprocess.run(
-                [podman_cmd, "version"], capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                logger.info("Detected Podman as container runtime")
-                return "podman"
-        except Exception as e:
-            logger.debug(f"Podman not available: {e}")
+    if _is_podman_available():
+        logger.info("Detected Podman as container runtime")
+        return "podman"
 
     raise RuntimeError(
         "Neither Docker nor Podman is available. "
@@ -299,11 +412,53 @@ def detect_container_runtime() -> str:
     )
 
 
+def _is_docker_available() -> bool:
+    """Check if Docker is available and functional.
+    
+    Returns:
+        True if Docker is available, False otherwise.
+    """
+    try:
+        import docker
+        client = docker.from_env()
+        client.ping()
+        client.close()
+        return True
+    except Exception as e:
+        logger.debug(f"Docker not available: {e}")
+        return False
+
+
+def _is_podman_available() -> bool:
+    """Check if Podman is available and functional.
+    
+    Returns:
+        True if Podman is available, False otherwise.
+    """
+    podman_cmd = shutil.which("podman")
+    if not podman_cmd:
+        return False
+    
+    try:
+        result = subprocess.run(
+            [podman_cmd, "version"], capture_output=True, text=True, timeout=5
+        )
+        return result.returncode == 0
+    except Exception as e:
+        logger.debug(f"Podman not available: {e}")
+        return False
+
+
 def get_container_runtime() -> ContainerRuntime:
-    """Get the appropriate container runtime based on what's available.
+    """Initialize and return the appropriate container runtime.
+    
+    Detects available runtime (Docker or Podman) and returns an initialized instance.
 
     Returns:
-        ContainerRuntime instance (DockerRuntime or PodmanRuntime)
+        Initialized ContainerRuntime instance (DockerRuntime or PodmanRuntime).
+        
+    Raises:
+        RuntimeError: If no container runtime is available or unknown runtime detected.
     """
     runtime_type = detect_container_runtime()
 

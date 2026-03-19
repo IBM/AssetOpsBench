@@ -54,17 +54,53 @@ Run the server:
 python main.py
 ```
 
-The server exposes two tools:
+The server exposes three tools:
 
-#### 1. `execute_python_code`
+#### 1. `execute_python_file`
+
+Execute a Python file from your workspace by copying it into the container.
+
+**Parameters:**
+
+- `file_path` (str, required): Path to Python file relative to workspace directory
+- `requirements` (list[str], optional): Pip packages to install
+- `input_files` (dict[str, str], optional): Input files as filename -> content mapping
+- `timeout` (int, optional): Execution timeout in seconds (default: 60)
+- `output_files` (list[str], optional): Output filenames to retrieve
+
+**Example:**
+
+```python
+{
+    "file_path": "scripts/analysis.py",
+    "requirements": ["pandas", "numpy"],
+    "input_files": {"data.csv": "col1,col2\n1,2\n3,4"},
+    "output_files": ["results.json"],
+    "timeout": 120
+}
+```
+
+#### 2. `execute_python_code`
 
 Execute arbitrary Python code with full control over the environment.
+
+**Pre-installed Libraries:**
+
+- matplotlib==3.9.3: Plotting and visualization
+- numpy==2.2.1: Numerical computing
+- pandas==2.2.3: Data manipulation and analysis
+- pyarrow==18.1.0: Columnar data format support
+- pydantic==2.10.5: Data validation
+- pympler==1.1: Memory profiling
+- scikit-learn==1.6.1: Machine learning
+- seaborn==0.13.2: Statistical data visualization
 
 **Parameters:**
 
 - `code` (str, required): Python code to execute
 - `requirements` (list[str], optional): Pip packages to install
 - `input_files` (dict[str, str], optional): Input files as filename -> content mapping
+- `input_file_paths` (dict[str, str], optional): Input files as destination -> source path mappings from workspace
 - `timeout` (int, optional): Execution timeout in seconds (default: 60)
 - `output_files` (list[str], optional): Output filenames to retrieve
 
@@ -78,14 +114,35 @@ Execute arbitrary Python code with full control over the environment.
 }
 ```
 
-#### 2. `execute_python_script`
+**Example with workspace files:**
+
+```python
+{
+    "code": "import pandas as pd\ndf = pd.read_csv('data.csv')\nprint(df.head())",
+    "input_file_paths": {"data.csv": "datasets/mydata.csv"}
+}
+```
+
+#### 3. `execute_python_script`
 
 Simplified interface for scripts that read from `data.json` and write to `output.json`.
+
+**Pre-installed Libraries:**
+
+- matplotlib==3.9.3: Plotting and visualization
+- numpy==2.2.1: Numerical computing
+- pandas==2.2.3: Data manipulation and analysis
+- pyarrow==18.1.0: Columnar data format support
+- pydantic==2.10.5: Data validation
+- pympler==1.1: Memory profiling
+- scikit-learn==1.6.1: Machine learning
+- seaborn==0.13.2: Statistical data visualization
 
 **Parameters:**
 
 - `script_content` (str, required): Python script code
 - `input_data` (str, optional): JSON string saved as data.json
+- `input_file_paths` (dict[str, str], optional): Input files as destination -> source path mappings from workspace
 - `requirements` (list[str], optional): Pip packages to install
 - `timeout` (int, optional): Execution timeout in seconds (default: 60)
 
@@ -95,6 +152,15 @@ Simplified interface for scripts that read from `data.json` and write to `output
 {
     "script_content": "import json\nwith open('data.json') as f:\n    data = json.load(f)\nresult = {'count': len(data)}\nwith open('output.json', 'w') as f:\n    json.dump(result, f)",
     "input_data": "{\"items\": [1, 2, 3]}"
+}
+```
+
+**Example with workspace files:**
+
+```python
+{
+    "script_content": "import pandas as pd\ndf = pd.read_csv('data.csv')\nresult = df.describe().to_json()\nwith open('output.json', 'w') as f:\n    f.write(result)",
+    "input_file_paths": {"data.csv": "datasets/mydata.csv"}
 }
 ```
 

@@ -13,6 +13,167 @@ from servers.sandbox.main import mcp
 from .conftest import call_tool, requires_container
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# execute_python_file
+# ---------------------------------------------------------------------------
+
+
+class TestExecutePythonFile:
+    @pytest.mark.anyio
+    async def test_simple_file(self, mock_runtime, tmp_path):
+        """Test execution of a simple Python file."""
+        # Create a test Python file
+        test_file = tmp_path / "test_script.py"
+        test_file.write_text("print('Hello from file!')")
+        
+        data = await call_tool(
+            mcp,
+            "execute_python_file",
+            {"file_path": str(test_file)}
+        )
+        assert data["success"] is True
+        assert data["exit_code"] == 0
+        # Verify the container was called with the correct script name
+        call_args = mock_runtime.run_container.call_args
+        assert call_args.kwargs["command"] == ["python", "/workspace/test_script.py"]
+
+    @pytest.mark.anyio
+    async def test_file_with_requirements(self, mock_runtime, tmp_path):
+        """Test file execution with package requirements."""
+        test_file = tmp_path / "pandas_script.py"
+        test_file.write_text("import pandas as pd\nprint('pandas imported')")
+        
+        data = await call_tool(
+            mcp,
+            "execute_python_file",
+            {
+                "file_path": str(test_file),
+                "requirements": ["pandas"]
+            }
+        )
+        assert data["success"] is True
+        mock_runtime.run_container.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_file_with_input_files(self, mock_runtime, tmp_path):
+        """Test file execution with input files."""
+        test_file = tmp_path / "read_file.py"
+        test_file.write_text("""
+with open('input.txt', 'r') as f:
+    content = f.read()
+print(f'Read: {content}')
+""")
+        
+        data = await call_tool(
+            mcp,
+            "execute_python_file",
+            {
+                "file_path": str(test_file),
+                "input_files": {"input.txt": "test data"}
+            }
+        )
+        assert data["success"] is True
+        # Verify the container was called
+        mock_runtime.run_container.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_file_with_output_files(self, mock_runtime, tmp_path):
+        """Test file execution with output file retrieval."""
+        test_file = tmp_path / "write_file.py"
+        test_file.write_text("""
+with open('output.txt', 'w') as f:
+    f.write('result data')
+print('File written')
+""")
+        
+        # Create the output file in the temp directory for the mock to find
+        output_file = tmp_path / "output.txt"
+        output_file.write_text("result data")
+        
+        data = await call_tool(
+            mcp,
+            "execute_python_file",
+            {
+                "file_path": str(test_file),
+                "output_files": ["output.txt"]
+            }
+        )
+        assert data["success"] is True
+        # With mocked runtime, output files won't be created, so just verify call
+        mock_runtime.run_container.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_file_not_found(self, mock_runtime):
+        """Test error handling for non-existent file."""
+        data = await call_tool(
+            mcp,
+            "execute_python_file",
+            {"file_path": "nonexistent/script.py"}
+        )
+        assert "error" in data
+        assert "not found" in data["error"].lower()
+
+    @pytest.mark.anyio
+    async def test_custom_timeout(self, mock_runtime, tmp_path):
+        """Test file execution with custom timeout."""
+        test_file = tmp_path / "timeout_script.py"
+        test_file.write_text("print('quick')")
+        
+        data = await call_tool(
+            mcp,
+            "execute_python_file",
+            {
+                "file_path": str(test_file),
+                "timeout": 120
+            }
+        )
+        assert data["success"] is True
+        call_args = mock_runtime.run_container.call_args
+        assert call_args.kwargs["timeout"] == 120
+
+    @pytest.mark.anyio
+    @requires_container
+    async def test_integration_simple_file(self, tmp_path):
+        """Integration test: Execute a simple Python file."""
+        test_file = tmp_path / "hello.py"
+        test_file.write_text("print('Integration test!')")
+        
+        data = await call_tool(
+            mcp,
+            "execute_python_file",
+            {"file_path": str(test_file)}
+        )
+        assert data["success"] is True
+        assert "Integration test!" in data["stdout"]
+
+    @pytest.mark.anyio
+    @requires_container
+    async def test_integration_file_with_pandas(self, tmp_path):
+        """Integration test: Execute file with pandas."""
+        test_file = tmp_path / "pandas_test.py"
+        test_file.write_text("""
+import pandas as pd
+df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]})
+print(df.to_string())
+""")
+        
+        data = await call_tool(
+            mcp,
+            "execute_python_file",
+            {
+                "file_path": str(test_file),
+                "requirements": ["pandas"]
+            }
+        )
+        assert data["success"] is True
+        assert "1" in data["stdout"]
+        assert "2" in data["stdout"]
+
+
+# ---------------------------------------------------------------------------
+# execute_python_code
+# ---------------------------------------------------------------------------
+
 # execute_python_code
 # ---------------------------------------------------------------------------
 
@@ -59,6 +220,71 @@ print(content)
             }
         )
         assert data["success"] is True
+
+    @pytest.mark.anyio
+    async def test_with_input_file_paths(self, mock_runtime, tmp_path):
+        """Test code execution with input files copied from workspace."""
+        # Create a test data file in workspace
+        data_file = tmp_path / "test_data.csv"
+        data_file.write_text("col1,col2\n1,2\n3,4")
+        
+        code = """
+import csv
+with open('data.csv', 'r') as f:
+    reader = csv.reader(f)
+    rows = list(reader)
+    print(f'Read {len(rows)} rows')
+"""
+        data = await call_tool(
+            mcp,
+            "execute_python_code",
+            {
+                "code": code,
+                "input_file_paths": {"data.csv": str(data_file)}
+            }
+        )
+        assert data["success"] is True
+
+    @pytest.mark.anyio
+    async def test_with_both_input_types(self, mock_runtime, tmp_path):
+        """Test code execution with both input_files and input_file_paths."""
+        # Create a test file in workspace
+        csv_file = tmp_path / "data.csv"
+        csv_file.write_text("a,b\n1,2")
+        
+        code = """
+# Read from copied file
+with open('data.csv', 'r') as f:
+    print(f'CSV: {f.read()}')
+# Read from string content
+with open('config.json', 'r') as f:
+    print(f'JSON: {f.read()}')
+"""
+        data = await call_tool(
+            mcp,
+            "execute_python_code",
+            {
+                "code": code,
+                "input_files": {"config.json": '{"key": "value"}'},
+                "input_file_paths": {"data.csv": str(csv_file)}
+            }
+        )
+        assert data["success"] is True
+
+    @pytest.mark.anyio
+    async def test_input_file_path_not_found(self, mock_runtime):
+        """Test error handling when input file path doesn't exist."""
+        code = "print('test')"
+        data = await call_tool(
+            mcp,
+            "execute_python_code",
+            {
+                "code": code,
+                "input_file_paths": {"data.csv": "nonexistent/file.csv"}
+            }
+        )
+        assert "error" in data
+        assert "not found" in data["error"].lower()
 
     @pytest.mark.anyio
     async def test_with_output_files(self, mock_runtime):
@@ -258,6 +484,53 @@ with open('output.json', 'w') as f:
             mcp,
             "execute_python_script",
             {"script_content": script, "requirements": ["requests"]}
+        )
+        assert data["success"] is True
+
+    @pytest.mark.anyio
+    async def test_with_input_file_paths(self, mock_runtime, tmp_path):
+        """Test script execution with input files copied from workspace."""
+        # Create a test data file in workspace
+        data_file = tmp_path / "dataset.csv"
+        data_file.write_text("name,value\ntest,123")
+        
+        script = """
+import csv
+with open('dataset.csv', 'r') as f:
+    reader = csv.reader(f)
+    rows = list(reader)
+    print(f'Loaded {len(rows)} rows')
+"""
+        data = await call_tool(
+            mcp,
+            "execute_python_script",
+            {
+                "script_content": script,
+                "input_file_paths": {"dataset.csv": str(data_file)}
+            }
+        )
+        assert data["success"] is True
+
+    @pytest.mark.anyio
+    async def test_with_input_file_paths_only(self, mock_runtime, tmp_path):
+        """Test script with input_file_paths (without input_data to avoid JSON parsing issues in test)."""
+        # Create a CSV file
+        csv_file = tmp_path / "extra.csv"
+        csv_file.write_text("col1,col2\n10,20")
+        
+        script = """
+# Read CSV file
+with open('extra.csv', 'r') as f:
+    csv_data = f.read()
+    print(f"CSV: {csv_data}")
+"""
+        data = await call_tool(
+            mcp,
+            "execute_python_script",
+            {
+                "script_content": script,
+                "input_file_paths": {"extra.csv": str(csv_file)}
+            }
         )
         assert data["success"] is True
 

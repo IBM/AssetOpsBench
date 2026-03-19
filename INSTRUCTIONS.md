@@ -82,6 +82,7 @@ Use `uv run` to start the MCP servers (paths relative to repo root):
 
 ```bash
 uv run utilities-mcp-server
+uv run sandbox-mcp-server
 uv run iot-mcp-server
 uv run fmsr-mcp-server
 uv run tsfm-mcp-server
@@ -135,14 +136,17 @@ uv run tsfm-mcp-server
 
 ### Sandbox
 
-**Path:** `mcp/servers/sandbox/main.py`
+**Path:** `src/servers/sandbox/main.py`
 
 **Requires:** Docker or Podman (container runtime auto-detected)
 
+**Pre-installed Libraries:** matplotlib 3.9.3, numpy 2.2.1, pandas 2.2.3, pyarrow 18.1.0, pydantic 2.10.5, pympler 1.1, scikit-learn 1.6.1, seaborn 0.13.2
+
 | Tool | Arguments | Description |
 |---|---|---|
-| `execute_python_code` | `code`, `requirements?`, `input_files?`, `timeout?`, `output_files?` | Execute arbitrary Python code in an isolated container with no network access, limited CPU/memory, and optional pip package installation |
-| `execute_python_script` | `script_content`, `input_data?`, `requirements?`, `timeout?` | Simplified interface for scripts that read from `data.json` and write to `output.json` |
+| `execute_python_file` | `file_path`, `requirements?`, `input_files?`, `timeout?`, `output_files?` | Execute a Python file from workspace in an isolated container by copying it into the container |
+| `execute_python_code` | `code`, `requirements?`, `input_files?`, `input_file_paths?`, `timeout?`, `output_files?` | Execute arbitrary Python code in an isolated container with no network access, limited CPU/memory, and optional pip package installation. Supports both string content and workspace file paths as inputs |
+| `execute_python_script` | `script_content`, `input_data?`, `input_file_paths?`, `requirements?`, `timeout?` | Simplified interface for scripts that read from `data.json` and write to `output.json`. Supports workspace file paths as inputs |
 
 ### FMSRAgent
 
@@ -314,6 +318,7 @@ runner = PlanExecuteRunner(
     server_paths={
         "IoTAgent":  "iot-mcp-server",
         "Utilities": "utilities-mcp-server",
+        "Sandbox": "sandbox-mcp-server",
         "FMSRAgent": "fmsr-mcp-server",
         "TSFMAgent": "tsfm-mcp-server",
     },
@@ -334,6 +339,10 @@ Add the following to your Claude Desktop `claude_desktop_config.json`:
     "utilities": {
       "command": "/path/to/uv",
       "args": ["run", "--project", "/path/to/AssetOpsBench", "utilities-mcp-server"]
+    },
+    "sandbox": {
+      "command": "/path/to/uv",
+      "args": ["run", "--project", "/path/to/AssetOpsBench", "sandbox-mcp-server"]
     },
     "IoTAgent": {
       "command": "/path/to/uv",
@@ -378,6 +387,7 @@ uv run pytest src/ -v -k "not integration"
 ```bash
 uv run pytest src/servers/iot/tests/test_tools.py -k "not integration"
 uv run pytest src/servers/utilities/tests/
+uv run pytest src/servers/sandbox/tests/
 uv run pytest src/servers/fmsr/tests/ -k "not integration"
 uv run pytest src/servers/tsfm/tests/ -k "not integration"
 uv run pytest src/workflow/tests/
@@ -399,18 +409,18 @@ uv run pytest src/ -v
 │                     workflow/                        │
 │                                                      │
 │  PlanExecuteRunner.run(question)                     │
-│  ┌────────────┐   ┌────────────┐   ┌──────────────┐ │
-│  │  Planner   │ → │  Executor  │ → │  Summariser  │ │
-│  │            │   │            │   │              │ │
-│  │ LLM breaks │   │ Routes each│   │ LLM combines │ │
-│  │ question   │   │ step to the│   │ step results │ │
-│  │ into steps │   │ right MCP  │   │ into answer  │ │
-│  └────────────┘   │ server via │   └──────────────┘ │
+│  ┌────────────┐   ┌────────────┐   ┌──────────────┐  │
+│  │  Planner   │ → │  Executor  │ → │  Summariser  │  │
+│  │            │   │            │   │              │  │
+│  │ LLM breaks │   │ Routes each│   │ LLM combines │  │
+│  │ question   │   │ step to the│   │ step results │  │
+│  │ into steps │   │ right MCP  │   │ into answer  │  │
+│  └────────────┘   │ server via │   └──────────────┘  │
 │                   │ stdio      │                     │
 └───────────────────┼────────────┼─────────────────────┘
                     │ MCP protocol (stdio)
-         ┌──────────┼──────────┬──────────┐
-         ▼          ▼          ▼          ▼
-      IoTAgent   Utilities   FMSRAgent  TSFMAgent
-      (tools)    (tools)     (tools)    (tools)
+         ┌──────────┼──────────┬──────────┬───────────┐
+         ▼          ▼          ▼          ▼           ▼
+      IoTAgent   Utilities   FMSRAgent  TSFMAgent   Sandbox
+      (tools)    (tools)     (tools)    (tools)     (tools)
 ```
