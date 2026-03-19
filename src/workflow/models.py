@@ -12,7 +12,7 @@ class PlanStep:
 
     step_number: int
     task: str
-    agent: str
+    server: str
     tool: str
     tool_args: dict
     dependencies: list[int]
@@ -56,7 +56,7 @@ class StepResult:
 
     step_number: int
     task: str
-    agent: str
+    server: str
     response: str
     error: Optional[str] = None
     tool: str = ""

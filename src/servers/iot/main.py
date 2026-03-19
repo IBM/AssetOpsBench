@@ -17,21 +17,21 @@ logger = logging.getLogger("iot-mcp-server")
 
 # Configuration from environment
 COUCHDB_URL = os.environ.get("COUCHDB_URL")
-COUCHDB_DBNAME = os.environ.get("COUCHDB_DBNAME")
-COUCHDB_USER = os.environ.get("COUCHDB_USERNAME")
+COUCHDB_DBNAME = os.environ.get("IOT_DBNAME")
+COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD")
 
 # Initialize CouchDB
 try:
     db = couchdb3.Database(
-        COUCHDB_DBNAME, url=COUCHDB_URL, user=COUCHDB_USER, password=COUCHDB_PASSWORD
+        COUCHDB_DBNAME, url=COUCHDB_URL, user=COUCHDB_USERNAME, password=COUCHDB_PASSWORD
     )
     logger.info(f"Connected to CouchDB: {COUCHDB_DBNAME}")
 except Exception as e:
     logger.error(f"Failed to connect to CouchDB: {e}")
     db = None
 
-mcp = FastMCP("IoTAgent")
+mcp = FastMCP("iot")
 
 # Static site as per original requirement
 SITES = ["MAIN"]
@@ -156,21 +156,24 @@ def history(
     site_name: str, asset_id: str, start: str, final: Optional[str] = None
 ) -> Union[HistoryResult, ErrorResult]:
     """Returns a list of historical sensor values for the specified asset(s) at a site within a given time range (start to final)."""
-    if not db:
-        return ErrorResult(error="CouchDB not connected")
-
     try:
-        selector = {
-            "asset_id": asset_id,
-            "timestamp": {"$gte": datetime.fromisoformat(start).isoformat()},
-        }
-
+        start_iso = datetime.fromisoformat(start).isoformat()
         if final:
-            selector["timestamp"]["$lt"] = datetime.fromisoformat(final).isoformat()
+            datetime.fromisoformat(final)
             if start >= final:
                 return ErrorResult(error="start >= final")
     except ValueError as e:
         return ErrorResult(error=f"Invalid date format: {e}")
+
+    if not db:
+        return ErrorResult(error="CouchDB not connected")
+
+    selector = {
+        "asset_id": asset_id,
+        "timestamp": {"$gte": start_iso},
+    }
+    if final:
+        selector["timestamp"]["$lt"] = datetime.fromisoformat(final).isoformat()
 
     logger.info(f"Querying CouchDB with selector: {selector}")
     try:

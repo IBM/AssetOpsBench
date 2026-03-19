@@ -7,7 +7,7 @@ def _step(n: int, deps: list[int] | None = None) -> PlanStep:
     return PlanStep(
         step_number=n,
         task=f"Task {n}",
-        agent="IoTAgent",
+        server="iot",
         tool="sites",
         tool_args={},
         dependencies=deps or [],
@@ -73,9 +73,9 @@ class TestPlanGetStep:
 
 class TestStepResult:
     def test_success_when_no_error(self):
-        r = StepResult(step_number=1, task="t", agent="a", response="ok")
+        r = StepResult(step_number=1, task="t", server="a", response="ok")
         assert r.success is True
 
     def test_failure_when_error_set(self):
-        r = StepResult(step_number=1, task="t", agent="a", response="", error="oops")
+        r = StepResult(step_number=1, task="t", server="a", response="", error="oops")
         assert r.success is False

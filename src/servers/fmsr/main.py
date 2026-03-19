@@ -177,7 +177,7 @@ class FailureModeSensorMappingResult(BaseModel):
 
 # ── FastMCP server ────────────────────────────────────────────────────────────
 
-mcp = FastMCP("FMSRAgent")
+mcp = FastMCP("fmsr")
 
 
 @mcp.tool()

@@ -8,11 +8,12 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
 - [MCP Servers](#mcp-servers)
-  - [IoTAgent](#iotagent)
-  - [Utilities](#utilities)
-  - [Sandbox](#sandbox)
-  - [FMSRAgent](#fmsragent)
-  - [TSFMAgent](#tsfmagent)
+  - [iot](#iot)
+  - [utilities](#utilities)
+  - [fmsr](#fmsr)
+  - [tsfm](#tsfm)
+  - [wo](#wo)
+  - [sandbox](#sandbox)
 - [Plan-Execute Runner](#plan-execute-runner)
   - [How it works](#how-it-works)
   - [CLI](#cli)
@@ -76,9 +77,11 @@ Verify CouchDB is running:
 curl -X GET http://localhost:5984/
 ```
 
-### 4. Run servers locally
+### 4. Run servers
 
-Use `uv run` to start the MCP servers (paths relative to repo root):
+> **Note:** MCP servers use stdio transport — they are spawned on-demand by clients (Claude Desktop, `plan-execute`) and exit when the client disconnects. They are not long-running daemons.
+
+To start a server manually for testing:
 
 ```bash
 uv run utilities-mcp-server
@@ -86,6 +89,7 @@ uv run sandbox-mcp-server
 uv run iot-mcp-server
 uv run fmsr-mcp-server
 uv run tsfm-mcp-server
+uv run wo-mcp-server
 ```
 
 ---
@@ -94,10 +98,11 @@ uv run tsfm-mcp-server
 
 | Variable | Required | Description |
 |---|---|---|
-| `COUCHDB_URL` | IoT server | CouchDB connection URL, e.g. `http://localhost:5984` |
-| `COUCHDB_DBNAME` | IoT server | Database name (default fixture: `chiller`) |
-| `COUCHDB_USERNAME` | IoT server | CouchDB admin username |
-| `COUCHDB_PASSWORD` | IoT server | CouchDB admin password |
+| `COUCHDB_URL` | IoT + WO servers | CouchDB connection URL, e.g. `http://localhost:5984` |
+| `COUCHDB_USERNAME` | IoT + WO servers | CouchDB admin username |
+| `COUCHDB_PASSWORD` | IoT + WO servers | CouchDB admin password |
+| `IOT_DBNAME` | IoT server | IoT sensor database name (default: `chiller`) |
+| `WO_DBNAME` | WO server | Work order database name (default: `workorder`) |
 | `WATSONX_APIKEY` | `--platform watsonx` | IBM WatsonX API key |
 | `WATSONX_PROJECT_ID` | `--platform watsonx` | IBM WatsonX project ID |
 | `WATSONX_URL` | `--platform watsonx` | WatsonX endpoint (optional; defaults to `https://us-south.ml.cloud.ibm.com`) |
@@ -111,10 +116,10 @@ uv run tsfm-mcp-server
 
 ## MCP Servers
 
-### IoTAgent
+### iot
 
 **Path:** `src/servers/iot/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_DBNAME`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`)
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `IOT_DBNAME`)
 
 | Tool | Arguments | Description |
 |---|---|---|
@@ -123,7 +128,7 @@ uv run tsfm-mcp-server
 | `sensors` | `site_name`, `asset_id` | List sensor names for an asset |
 | `history` | `site_name`, `asset_id`, `start`, `final?` | Fetch historical sensor readings for a time range (ISO 8601 timestamps) |
 
-### Utilities
+### utilities
 
 **Path:** `src/servers/utilities/main.py`
 **Requires:** nothing (no external services)
@@ -148,7 +153,7 @@ uv run tsfm-mcp-server
 | `execute_python_code` | `code`, `requirements?`, `input_files?`, `input_file_paths?`, `timeout?`, `output_files?` | Execute arbitrary Python code in an isolated container with no network access, limited CPU/memory, and optional pip package installation. Supports both string content and workspace file paths as inputs |
 | `execute_python_script` | `script_content`, `input_data?`, `input_file_paths?`, `requirements?`, `timeout?` | Simplified interface for scripts that read from `data.json` and write to `output.json`. Supports workspace file paths as inputs |
 
-### FMSRAgent
+### fmsr
 
 **Path:** `src/servers/fmsr/main.py`
 **Requires:** `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` for unknown assets; curated lists for `chiller` and `ahu` work without credentials.
@@ -159,7 +164,24 @@ uv run tsfm-mcp-server
 | `get_failure_modes` | `asset_name` | Return known failure modes for an asset. Uses a curated YAML list for chillers and AHUs; falls back to the LLM for other types. |
 | `get_failure_mode_sensor_mapping` | `asset_name`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns bidirectional `fm→sensors` and `sensor→fms` maps plus full per-pair details. |
 
-### TSFMAgent
+### wo
+
+**Path:** `src/servers/wo/main.py`
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`)
+**Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on first start)
+
+| Tool | Arguments | Description |
+|---|---|---|
+| `get_work_orders` | `equipment_id`, `start_date?`, `end_date?` | Retrieve all work orders for an equipment within an optional date range |
+| `get_preventive_work_orders` | `equipment_id`, `start_date?`, `end_date?` | Retrieve only preventive (PM) work orders |
+| `get_corrective_work_orders` | `equipment_id`, `start_date?`, `end_date?` | Retrieve only corrective (CM) work orders |
+| `get_events` | `equipment_id`, `start_date?`, `end_date?` | Retrieve all events (work orders, alerts, anomalies) |
+| `get_failure_codes` | — | List all failure codes with categories and descriptions |
+| `get_work_order_distribution` | `equipment_id`, `start_date?`, `end_date?` | Count work orders per (primary, secondary) failure code pair, sorted by frequency |
+| `predict_next_work_order` | `equipment_id`, `start_date?`, `end_date?` | Predict next work order type via Markov transition matrix built from historical sequence |
+| `analyze_alert_to_failure` | `equipment_id`, `rule_id`, `start_date?`, `end_date?` | Probability that an alert rule leads to a work order; average hours to maintenance |
+
+### tsfm
 
 **Path:** `src/servers/tsfm/main.py`
 **Requires:** `tsfm_public` (IBM Granite TSFM), `transformers`, `torch` for ML tools — imported lazily; static tools work without them.
@@ -206,6 +228,8 @@ After `uv sync`, the `plan-execute` command is available:
 uv run plan-execute "What assets are available at site MAIN?"
 ```
 
+> **Note:** `plan-execute` spawns MCP servers on-demand for each query — you do **not** need to start them manually first. Servers are launched as subprocesses, used, then exit automatically.
+
 Flags:
 
 | Flag | Description |
@@ -239,10 +263,32 @@ uv run plan-execute --model-id litellm_proxy/GCP/claude-4-sonnet "What are the f
 uv run plan-execute --show-history --json "How many observations exist for CH-1?" | jq .answer
 ```
 
-### End-to-end example
+### End-to-end examples
 
-All four servers (IoTAgent, Utilities, FMSRAgent, TSFMAgent) are registered by default.
-Run a question that exercises three of them with independent parallel steps:
+All five servers (iot, utilities, fmsr, tsfm, wo) are registered by default.
+
+#### Work order queries (requires CouchDB + populated `workorder` db)
+
+Equipment IDs in the sample dataset: `CWC04014` (524 WOs), `CWC04013` (431 WOs), `CWC04009` (alert events).
+
+```bash
+# Work order count and most common failure code
+uv run plan-execute "How many work orders does equipment CWC04014 have, and what is the most common failure code?"
+
+# Preventive vs corrective split
+uv run plan-execute "For equipment CWC04013, how many preventive vs corrective work orders were completed?"
+
+# Alert-to-failure probability
+uv run plan-execute "What is the probability that alert rule RUL0018 on equipment CWC04009 leads to a work order, and how long does it typically take?"
+
+# Work order distribution + next prediction (multi-step)
+uv run plan-execute --show-plan --show-history \
+  "For equipment CWC04014, show the work order distribution and predict the next maintenance type"
+```
+
+#### Multi-server parallel query
+
+Run a question that exercises three servers with independent parallel steps:
 
 ```bash
 uv run plan-execute --show-plan --show-history \
@@ -252,21 +298,21 @@ uv run plan-execute --show-plan --show-history \
 Expected plan (3 parallel steps, no dependencies):
 
 ```
-[1] Utilities  : current_date_time()
-[2] IoTAgent   : assets(site_name="MAIN")
-[3] FMSRAgent  : get_failure_modes(asset_name="chiller")
+[1] utilities  : current_date_time()
+[2] iot        : assets(site_name="MAIN")
+[3] fmsr       : get_failure_modes(asset_name="chiller")
 ```
 
 Expected execution output (trimmed):
 
 ```
-[OK] Step 1 (Utilities)
+[OK] Step 1 (utilities)
      {"currentDateTime": "2026-02-20T17:28:39Z", "currentDateTimeDescription": "Today's date is 2026-02-20 and time is 17:28:39."}
 
-[OK] Step 2 (IoTAgent)
+[OK] Step 2 (iot)
      {"site_name": "MAIN", "total_assets": 1, "assets": ["Chiller 6"], "message": "found 1 assets for site_name MAIN."}
 
-[OK] Step 3 (FMSRAgent)
+[OK] Step 3 (fmsr)
      {"asset_name": "chiller", "failure_modes": ["Compressor Overheating: Failed due to Normal wear, overheating", ...]}
 ```
 
@@ -308,7 +354,7 @@ runner = PlanExecuteRunner(llm=MyLLM())
 
 ### Add more MCP servers
 
-Pass `server_paths` to register additional servers. Keys must match the agent names the planner assigns steps to:
+Pass `server_paths` to register additional servers. Keys must match the server names the planner assigns steps to:
 
 ```python
 from workflow import PlanExecuteRunner
@@ -316,11 +362,11 @@ from workflow import PlanExecuteRunner
 runner = PlanExecuteRunner(
     llm=my_llm,
     server_paths={
-        "IoTAgent":  "iot-mcp-server",
-        "Utilities": "utilities-mcp-server",
-        "Sandbox": "sandbox-mcp-server",
-        "FMSRAgent": "fmsr-mcp-server",
-        "TSFMAgent": "tsfm-mcp-server",
+        "iot":       "iot-mcp-server",
+        "utilities": "utilities-mcp-server",
+        "sandbox": "sandbox-mcp-server",
+        "fmsr":      "fmsr-mcp-server",
+        "tsfm":      "tsfm-mcp-server",
     },
 )
 ```
@@ -344,17 +390,21 @@ Add the following to your Claude Desktop `claude_desktop_config.json`:
       "command": "/path/to/uv",
       "args": ["run", "--project", "/path/to/AssetOpsBench", "sandbox-mcp-server"]
     },
-    "IoTAgent": {
+    "iot": {
       "command": "/path/to/uv",
       "args": ["run", "--project", "/path/to/AssetOpsBench", "iot-mcp-server"]
     },
-    "FMSRAgent": {
+    "fmsr": {
       "command": "/path/to/uv",
       "args": ["run", "--project", "/path/to/AssetOpsBench", "fmsr-mcp-server"]
     },
-    "TSFMAgent": {
+    "tsfm": {
       "command": "/path/to/uv",
       "args": ["run", "--project", "/path/to/AssetOpsBench", "tsfm-mcp-server"]
+    },
+    "wo": {
+      "command": "/path/to/uv",
+      "args": ["run", "--project", "/path/to/AssetOpsBench", "wo-mcp-server"]
     }
   }
 }
@@ -373,6 +423,7 @@ uv run pytest src/ -v
 Integration tests are auto-skipped when the required service is not available:
 
 - IoT integration tests require `COUCHDB_URL` (set in `.env`)
+- Work order integration tests require `COUCHDB_URL` (set in `.env`)
 - FMSR integration tests require `WATSONX_APIKEY` (set in `.env`)
 - TSFM integration tests require `PATH_TO_MODELS_DIR` and `PATH_TO_DATASETS_DIR` (set in `.env`)
 
@@ -390,7 +441,15 @@ uv run pytest src/servers/utilities/tests/
 uv run pytest src/servers/sandbox/tests/
 uv run pytest src/servers/fmsr/tests/ -k "not integration"
 uv run pytest src/servers/tsfm/tests/ -k "not integration"
+uv run pytest src/servers/wo/tests/test_tools.py -k "not integration"
 uv run pytest src/workflow/tests/
+```
+
+### Work order integration tests (requires CouchDB + populated `workorder` db)
+
+```bash
+docker compose -f src/couchdb/docker-compose.yaml up -d
+uv run pytest src/servers/wo/tests/test_integration.py -v
 ```
 
 ### Integration tests (requires CouchDB + WatsonX)
@@ -419,8 +478,8 @@ uv run pytest src/ -v
 │                   │ stdio      │                     │
 └───────────────────┼────────────┼─────────────────────┘
                     │ MCP protocol (stdio)
-         ┌──────────┼──────────┬──────────┬───────────┐
-         ▼          ▼          ▼          ▼           ▼
-      IoTAgent   Utilities   FMSRAgent  TSFMAgent   Sandbox
-      (tools)    (tools)     (tools)    (tools)     (tools)
+         ┌──────────┼──────────┬──────────┬──────┬─────────┐
+         ▼          ▼          ▼          ▼      ▼         ▼
+        iot     utilities    fmsr       tsfm    wo      sandbox
+      (tools)    (tools)    (tools)   (tools) (tools)   (tools)
 ```

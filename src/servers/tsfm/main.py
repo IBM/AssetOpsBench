@@ -107,7 +107,7 @@ def _tsad_output_to_df(output: dict) -> pd.DataFrame:
 
 # ── FastMCP server ────────────────────────────────────────────────────────────
 
-mcp = FastMCP("TSFMAgent")
+mcp = FastMCP("tsfm")
 
 
 # ── Static tools ──────────────────────────────────────────────────────────────
