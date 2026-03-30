@@ -1,0 +1,17 @@
+FROM ghcr.io/astral-sh/uv:python3.13-trixie-slim
+
+RUN apt update && apt install  -y  git
+
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+ENV UV_TOOL_BIN_DIR=/usr/local/bin
+
+COPY . /app
+RUN uv sync --no-install-project --no-dev
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+ENTRYPOINT ["uv", "run"]
+CMD ["uvicorn", "serve:app"]
