@@ -122,7 +122,7 @@ async def test_orchestrator_unknown_server_recorded_as_error(sequential_llm):
 
 @pytest.mark.anyio
 async def test_orchestrator_no_tool_returns_expected_output(sequential_llm):
-    """A step with tool=none and no dependencies returns expected_output directly."""
+    """A step with tool=none returns expected_output directly (no MCP call)."""
     plan_with_no_tool = (
         "#Task1: Answer from context\n"
         "#Server1: iot\n"
@@ -137,34 +137,6 @@ async def test_orchestrator_no_tool_returns_expected_output(sequential_llm):
 
     assert result.history[0].response == "42"
     assert result.history[0].success is True
-
-
-@pytest.mark.anyio
-async def test_executor_no_tool_with_dependency_derives_value(mock_llm):
-    """A no-tool step with a dependency calls the LLM to derive its response."""
-    from pathlib import Path
-
-    derived = "Chiller 6"
-    llm = mock_llm(derived)
-    executor = Executor(llm, server_paths={"iot": Path("/fake/server.py")})
-
-    plan = Plan(
-        steps=[
-            _make_step(1, tool="assets", tool_args={"site_name": "MAIN"}),
-            _make_step(2, tool="none", tool_args={}, deps=[1]),
-        ],
-        raw="",
-    )
-    assets_resp = '{"assets": ["Chiller 6"]}'
-    call_mock = AsyncMock(return_value=assets_resp)
-    with (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("workflow.executor._call_tool", new=call_mock),
-    ):
-        results = await executor.execute_plan(plan, "Q")
-
-    assert results[1].response == derived
-    assert results[1].success is True
 
 
 # ── executor unit tests ───────────────────────────────────────────────────────

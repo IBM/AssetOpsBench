@@ -5,7 +5,7 @@ COUCHDB_USERNAME=${COUCHDB_USERNAME}
 COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
 COUCHDB_DBNAME=${COUCHDB_DBNAME}
 COUCHDB_URL="http://${COUCHDB_USERNAME}:${COUCHDB_PASSWORD}@127.0.0.1:5984"
-INPUT_FILE="/sample_data/chiller6_june2020_sensordata_couchdb.json"
+INPUT_FILE="/sample_data/iot/chiller6_june2020_sensordata_couchdb.json"
 OUTPUT_FILE="/sample_data/bulk_docs.json"
 
 # Convert the JSON file into a coudb bulk insertable JSON file

@@ -36,21 +36,10 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "fmsr": "fmsr-mcp-server",
     "tsfm": "tsfm-mcp-server",
     "wo": "wo-mcp-server",
+    "vibration": "vibration-mcp-server",
 }
 
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
-
-_DERIVE_VALUE_PROMPT = """\
-You are extracting a value from prior step results for a plan step.
-
-Task: {task}
-Expected output: {expected_output}
-
-Results from prior steps:
-{context}
-
-Provide exactly the value requested — no explanation, just the value itself.
-"""
 
 _ARG_RESOLUTION_PROMPT = """\
 You are resolving tool argument values for one step in a multi-step plan.
@@ -128,9 +117,7 @@ class Executor:
         """Execute a single plan step.
 
         1. Resolve the MCP server assigned to this step.
-        2. If no tool is specified and the step has dependencies, call the LLM to
-           derive the value from prior step results.  If no dependencies, return
-           expected_output directly.
+        2. If no tool is specified, return expected_output directly.
         3. If tool_args contain {{step_N}} placeholders, call the LLM to resolve
            them from prior step results.
         4. Call the tool and return its result.
@@ -149,25 +136,11 @@ class Executor:
             )
 
         if not step.tool or step.tool.lower() in ("none", "null"):
-            if step.dependencies and any(d in context for d in step.dependencies):
-                context_text = "\n".join(
-                    f"Step {n}: {context[n].response}"
-                    for n in sorted(step.dependencies)
-                    if n in context
-                )
-                prompt = _DERIVE_VALUE_PROMPT.format(
-                    task=step.task,
-                    expected_output=step.expected_output,
-                    context=context_text,
-                )
-                response = self._llm.generate(prompt).strip()
-            else:
-                response = step.expected_output
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
                 server=step.server,
-                response=response,
+                response=step.expected_output,
                 tool=step.tool,
                 tool_args=step.tool_args,
             )

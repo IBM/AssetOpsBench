@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 _SCRIPT_DIR = os.path.dirname(__file__)
 _DEFAULT_DATA_FILE = os.path.join(
-    _SCRIPT_DIR, "sample_data", "chiller6_june2020_sensordata_couchdb.json"
+    _SCRIPT_DIR, "sample_data", "iot", "chiller6_june2020_sensordata_couchdb.json"
 )
 
 COUCHDB_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")
@@ -58,7 +58,8 @@ def _db_url(db: str, *parts: str) -> str:
     return "/".join([COUCHDB_URL.rstrip("/"), db] + list(parts))
 
 
-def _ensure_db(db_name: str, drop: bool) -> None:
+def _ensure_db(db_name: str, drop: bool) -> bool:
+    """Return True if the database was freshly created (data should be loaded), False if it already existed."""
     url = _db_url(db_name)
     resp = requests.head(url, auth=_AUTH, timeout=10)
     if resp.status_code == 200:
@@ -66,10 +67,11 @@ def _ensure_db(db_name: str, drop: bool) -> None:
             logger.info("Dropping existing database '%s'…", db_name)
             requests.delete(url, auth=_AUTH, timeout=10).raise_for_status()
         else:
-            logger.info("Database '%s' already exists — skipping creation.", db_name)
-            return
+            logger.info("Database '%s' already exists — skipping.", db_name)
+            return False
     logger.info("Creating database '%s'…", db_name)
     requests.put(url, auth=_AUTH, timeout=10).raise_for_status()
+    return True
 
 
 def _create_indexes(db_name: str) -> None:
@@ -128,9 +130,10 @@ def main() -> None:
 
     logger.info("Loaded %d documents from '%s'", len(docs), args.data_file)
 
-    _ensure_db(args.db, drop=args.drop)
-    _bulk_insert(args.db, docs)
-    _create_indexes(args.db)
+    created = _ensure_db(args.db, drop=args.drop)
+    if created:
+        _bulk_insert(args.db, docs)
+        _create_indexes(args.db)
     logger.info("Done. Database '%s' is ready.", args.db)
 
 

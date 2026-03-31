@@ -11,7 +11,7 @@
 **📘 Tutorials:** Learn more from our detailed guides —  
 [ReActXen IoT Agent (EMNLP 2025)](https://github.com/IBM/ReActXen/blob/main/docs/tutorial/ReActXen_IoT_Agent_EMNLP_2025.pdf) | 
 [FailureSensorIQ (NeurIPS 2025)](https://github.com/IBM/FailureSensorIQ) |
-[AssetOpsBench Lab (AAAI 2026)](https://ibm.github.io/AssetOpsBench/aaai_website/) |
+[AssetOpsBench Lab (AAAI 2026)](https://ibm.github.io/AssetOpsBench/aaaiwebsite/) |
 [Spiral (AAAI 2026)](https://github.com/IBM/SPIRAL) |
 [AssetOpsBench Technical Material](./docs/tutorial/AssetOpsBench_Technical_Material.pdf)
 
@@ -72,7 +72,7 @@ We are expanding **AssetOpsBench** to cover a broader range of industrial challe
 [![Code](https://img.shields.io/badge/Code-IBM%2FSPIRAL-blue?logo=github)](https://github.com/IBM/SPIRAL)
 
 - 🎯 **AAAI-2026 Lab:** **From Inception to Productization: Hands-on Lab for the Lifecycle of Multimodal Agentic AI in Industry 4.0**  
-[![Website](https://img.shields.io/badge/Website-Agents_for_Industry_4.0_Applications-brightgreen)](https://ibm.github.io/AssetOpsBench/aaai_website/)
+[![Website](https://img.shields.io/badge/Website-Agents_for_Industry_4.0_Applications-brightgreen)](https://ibm.github.io/AssetOpsBench/aaaiwebsite/)
 ![Authors](https://img.shields.io/badge/Authors-Chathurangi_Shyalika,_Saumya_Ahuja,_Shuxin_Lin,_Ruwan_Wickramarachchi,_Dhaval_Patel,_Amit_Sheth-lightgrey)
 [![AAAI 2026 Slides](https://img.shields.io/badge/AAAI-Slides-red)](https://drive.google.com/file/d/16GaYxBQ2FsVqKpkKOU0PI_ZCTCsowenF/view?usp=sharing)
 
