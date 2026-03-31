@@ -32,7 +32,7 @@ We are expanding **AssetOpsBench** to cover a broader range of industrial challe
 
 **How to contribute:**
 1.  **Define** your scenario following our [Utterance Guideline](docs/guideline/utterance_design_guideline.md), 
-[Ground Truth Guideline](docs/guideline/ground_truth_creation_best_practice.md)
+[Ground Truth Guideline](docs/guideline/ground_truth_design_guideline.md)
 
 1.  **Explore** the [Hugging Face dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) as examples.
 3.  **Submit** a Pull Request or open an [Issue](https://github.com/IBM/AssetOpsBench/issues) with the tag `new-scenario`.
