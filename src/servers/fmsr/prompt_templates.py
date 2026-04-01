@@ -1,3 +1,5 @@
+"""Prompt templates for transformer diagnostics and assessment."""
+
 _INTERPRET_DGA_PROMPT = (
     "You are a transformer diagnostic expert. Analyse the following "
     "dissolved gas analysis (DGA) readings for asset {asset_name} "

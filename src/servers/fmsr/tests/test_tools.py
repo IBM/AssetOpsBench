@@ -355,6 +355,8 @@ class TestInterpretDGA:
         })
         assert "fault_type" in data
         assert isinstance(data["r1"], float)
+        assert isinstance(data["r2"], float)
+        assert isinstance(data["r3"], float)
         assert isinstance(data["confidence"], str)
         mock_dga_chain.assert_called_once()
 
@@ -411,6 +413,7 @@ class TestAssessWindingTemperature:
         assert "thermal_status" in data
         assert isinstance(data["ageing_rate"], float)
         assert isinstance(data["alarm_active"], bool)
+        assert isinstance(data["trip_active"], bool)
         mock_winding_chain.assert_called_once()
 
     @requires_watsonx
@@ -465,6 +468,7 @@ class TestAssessLoadProfile:
         })
         assert "load_mva" in data
         assert isinstance(data["load_factor_pct"], float)
+        assert isinstance(data["current_imbalance_pct"], float)
         assert isinstance(data["neutral_current_flag"], bool)
         mock_load_chain.assert_called_once()
 

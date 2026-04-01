@@ -681,7 +681,22 @@ def interpret_dga(
     ethylene: float,
     ethane: float,
 ) -> Union[DGAInterpretationResult, ErrorResult]:
+    """Interprets dissolved gas analysis (DGA) readings for a transformer
+    using the IEC 60599 Rogers Ratio method to classify the fault type.
 
+    Args:
+        asset_name:  Name of the transformer asset (e.g. 'Transformer 1').
+        hydrogen:    Dissolved hydrogen (H2) concentration in oil (ppm).
+        methane:     Dissolved methane (CH4) concentration in oil (ppm).
+        acetylene:   Dissolved acetylene (C2H2) concentration in oil (ppm).
+        ethylene:    Dissolved ethylene (C2H4) concentration in oil (ppm).
+        ethane:      Dissolved ethane (C2H6) concentration in oil (ppm).
+
+    Returns:
+        DGAInterpretationResult with fault type, Rogers Ratios, IEC code
+        combination, confidence, reasoning, and recommended action.
+        ErrorResult if the LLM is unavailable or all retries fail.
+    """
     if not asset_name:
         return ErrorResult(error="asset_name is required")
 
@@ -708,7 +723,24 @@ def assess_winding_temperature(
     oti_a: int,
     oti_t: int,
 ) -> Union[WindingTemperatureResult, ErrorResult]:
+    """Assesses the thermal condition of a transformer winding using the
+    IEC 60076-7 thermal model. Computes hot-spot rise, insulation ageing
+    rate, and thermal risk level.
 
+    Args:
+        asset_name:  Name of the transformer asset (e.g. 'Transformer 1').
+        wti:         Winding Temperature Indicator reading (degrees C).
+        oti:         Oil Temperature Indicator reading (degrees C).
+        ati:         Ambient Temperature Indicator reading (degrees C).
+        oti_a:       Oil Temperature Alarm flag (0 or 1).
+        oti_t:       Oil Temperature Trip flag (0 or 1).
+
+    Returns:
+        WindingTemperatureResult with thermal status, hot-spot rise, ageing
+        rate, alarm and trip flag status, risk level, reasoning, and
+        recommended action.
+        ErrorResult if the LLM is unavailable or all retries fail.
+    """
     if not asset_name:
         return ErrorResult(error="asset_name is required")
 
@@ -741,7 +773,29 @@ def assess_load_profile(
     inut: float,
     rated_mva: float,
 ) -> Union[LoadProfileResult, ErrorResult]:
+    """Assesses the electrical loading condition of a transformer using
+    IEC 60076-7 guidelines.
 
+    Args:
+        asset_name:  Name of the transformer asset (e.g. 'Transformer 1').
+        vl1:         Phase 1 line-to-neutral voltage (V).
+        vl2:         Phase 2 line-to-neutral voltage (V).
+        vl3:         Phase 3 line-to-neutral voltage (V).
+        il1:         Phase 1 line current (A).
+        il2:         Phase 2 line current (A).
+        il3:         Phase 3 line current (A).
+        vl12:        Line-to-line voltage between Phase 1 and Phase 2 (V).
+        vl23:        Line-to-line voltage between Phase 2 and Phase 3 (V).
+        vl31:        Line-to-line voltage between Phase 3 and Phase 1 (V).
+        inut:        Neutral current (A).
+        rated_mva:   Transformer rated capacity (MVA).
+
+    Returns:
+        LoadProfileResult with derived load MVA, load factor percentage,
+        loading status, current imbalance percentage, neutral current flag,
+        reasoning, and recommended action.
+        ErrorResult if the LLM is unavailable or all retries fail.
+    """
     if not asset_name:
         return ErrorResult(error="asset_name is required")
 
@@ -790,7 +844,12 @@ def predict_health_index(
     dielectric_rigidity: float,
     water_content: float,
 ) -> Union[HealthIndexResult, ErrorResult]:
-    """Predicts a health index for a transformer asset based on DGA and other sensor readings."""
+    """Predicts a health index for a transformer asset based on DGA and other sensor readings.
+
+    Returns:
+        HealthIndexResult with a health index score (0-100) and condition category.
+        ErrorResult if the LLM is unavailable or all retries fail.
+    """
 
     if not asset_name:
         return ErrorResult(error="asset_name is required")
