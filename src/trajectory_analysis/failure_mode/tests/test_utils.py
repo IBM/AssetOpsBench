@@ -111,10 +111,14 @@ class TestGetLlmAnswerFromJson:
         # Verify LLM was called
         assert mock_llm.generate.called
         call_args = mock_llm.generate.call_args
-        assert call_args[1]["temperature"] == 0.0
+        assert call_args.kwargs["temperature"] == 0.0
 
         # Verify prompt contains trajectory information
-        prompt = call_args[0][0]
+        prompt = (
+            call_args.kwargs["prompt"]
+            if "prompt" in call_args.kwargs
+            else call_args.args[0]
+        )
         assert "What is the weather?" in prompt
         assert "Check weather API" in prompt
         assert "WeatherAgent" in prompt
@@ -130,7 +134,12 @@ class TestGetLlmAnswerFromJson:
 
         # Should still call LLM with formatted prompt
         assert mock_llm.generate.called
-        prompt = mock_llm.generate.call_args[0][0]
+        call_args = mock_llm.generate.call_args
+        prompt = (
+            call_args.kwargs["prompt"]
+            if "prompt" in call_args.kwargs
+            else call_args.args[0]
+        )
         assert "Test question" in prompt
         assert "[No final answer provided]" in prompt
 
@@ -158,7 +167,12 @@ class TestGetLlmAnswerFromJson:
 
         result = get_llm_answer_from_json(data, mock_llm, temperature=0.5)
 
-        prompt = mock_llm.generate.call_args[0][0]
+        call_args = mock_llm.generate.call_args
+        prompt = (
+            call_args.kwargs["prompt"]
+            if "prompt" in call_args.kwargs
+            else call_args.args[0]
+        )
         assert "Thought 1: Step 1" in prompt
         assert "Action 1: Agent1" in prompt
         assert "Observation 1: Response 1" in prompt
@@ -167,7 +181,7 @@ class TestGetLlmAnswerFromJson:
         assert "Answer: Final result" in prompt
 
         # Verify temperature was passed
-        assert mock_llm.generate.call_args[1]["temperature"] == 0.5
+        assert call_args.kwargs["temperature"] == 0.5
 
     def test_get_llm_answer_missing_fields(self):
         """Test handling of missing fields in trajectory steps."""
@@ -185,7 +199,12 @@ class TestGetLlmAnswerFromJson:
 
         result = get_llm_answer_from_json(data, mock_llm)
 
-        prompt = mock_llm.generate.call_args[0][0]
+        call_args = mock_llm.generate.call_args
+        prompt = (
+            call_args.kwargs["prompt"]
+            if "prompt" in call_args.kwargs
+            else call_args.args[0]
+        )
         assert "[No thought]" in prompt
         assert "[No action]" in prompt
         assert "[No observation]" in prompt
@@ -213,7 +232,8 @@ class TestGetLlmAnswerFromJson:
         get_llm_answer_from_json(data, mock_llm)
 
         # Default temperature should be 0.0
-        assert mock_llm.generate.call_args[1]["temperature"] == 0.0
+        call_args = mock_llm.generate.call_args
+        assert call_args.kwargs["temperature"] == 0.0
 
 
 class TestIntegration:
