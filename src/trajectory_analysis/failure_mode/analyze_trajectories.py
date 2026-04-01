@@ -13,8 +13,16 @@ This script uses `uv` for dependency management and execution.
 Supports both simple detection (Phase 2) and complete analysis with clustering (Phase 3).
 
 Usage:
-    # Simple detection only (default)
+    # Simple detection with default model (LiteLLM Claude)
     uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py
+
+    # Use WatsonX Llama model
+    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+        --model-id watsonx/meta-llama/llama-3-3-70b-instruct
+
+    # Use specific LiteLLM proxy model
+    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+        --model-id litellm_proxy/aws/claude-sonnet-4-6
 
     # With clustering enabled
     uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py --cluster
@@ -22,10 +30,10 @@ Usage:
     # Complete example with all options
     uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py \
         --path ./data \
+        --model-id litellm_proxy/Azure/gpt-5-2025-08-07 \
         --cluster \
         --num-clusters 5 \
-        --temperature 0.7 \
-        --model claude
+        --temperature 0.7
 
 Or make it executable and run directly:
     chmod +x src/trajectory_analysis/failure_mode/analyze_trajectories.py
@@ -95,11 +103,11 @@ Examples:
 
     parser.add_argument(
         "-m",
-        "--model",
+        "--model-id",
         type=str,
-        choices=["claude", "llama", "granite"],
-        default="claude",
-        help="LLM model to use (default: claude)",
+        default=None,
+        help="Full model ID (e.g., 'litellm_proxy/aws/claude-sonnet-4-6' or 'watsonx/meta-llama/llama-3-3-70b-instruct'). "
+        "If not specified, uses litellm_proxy/aws/claude-sonnet-4-6 (LiteLLM) or watsonx/meta-llama/llama-3-3-70b-instruct (WatsonX)",
     )
 
     parser.add_argument(
@@ -176,25 +184,33 @@ def main():
     print(f"📂 Output directory: {output_dir}")
 
     print("\n🚀 Starting failure mode analysis...")
-    print("   (This will use Claude Sonnet 4.6 (AWS) by default)")
-    print("   (Make sure .env file has LITELLM_API_KEY and LITELLM_BASE_URL)")
 
     try:
-        # Configure LLM backend based on model choice
-        llm_backend = None  # None = use default Claude 4 Sonnet
+        from src.llm.litellm import LiteLLMBackend
 
-        if args.model == "llama":
-            from src.llm.litellm import LiteLLMBackend
+        # Configure LLM backend based on model-id
+        if args.model_id:
+            # User specified a model ID
+            model_id = args.model_id
+            llm_backend = LiteLLMBackend(model_id)
 
-            llm_backend = LiteLLMBackend("watsonx/meta-llama/llama-3-3-70b-instruct")
-            print("   Using Llama 3.3 70B")
-        elif args.model == "granite":
-            from src.llm.litellm import LiteLLMBackend
-
-            llm_backend = LiteLLMBackend("watsonx/ibm/granite-13b-instruct-v2")
-            print("   Using Granite")
+            # Determine which credentials are needed
+            if model_id.startswith("watsonx/"):
+                print(f"   Using WatsonX model: {model_id}")
+                print("   (Make sure .env has WATSONX_APIKEY and WATSONX_PROJECT_ID)")
+            elif model_id.startswith("litellm_proxy/"):
+                print(f"   Using LiteLLM proxy model: {model_id}")
+                print("   (Make sure .env has LITELLM_API_KEY and LITELLM_BASE_URL)")
+            else:
+                print(f"   Using model: {model_id}")
         else:
-            print("   Using Claude 3.7 Sonnet (GCP) (default)")
+            # No model specified - use default (None = Claude 4 Sonnet in generator.py)
+            llm_backend = None
+            print("   Using default: litellm_proxy/aws/claude-sonnet-4-6 (LiteLLM)")
+            print("   (Make sure .env has LITELLM_API_KEY and LITELLM_BASE_URL)")
+            print(
+                "   Alternative: Use --model-id watsonx/meta-llama/llama-3-3-70b-instruct for WatsonX"
+            )
 
         # Run the pipeline (with or without clustering)
         if args.cluster:
