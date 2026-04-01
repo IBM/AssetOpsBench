@@ -176,7 +176,7 @@ def main():
     print(f"📂 Output directory: {output_dir}")
 
     print("\n🚀 Starting failure mode analysis...")
-    print("   (This will use Claude 4 Sonnet by default)")
+    print("   (This will use Claude Sonnet 4.6 (AWS) by default)")
     print("   (Make sure .env file has LITELLM_API_KEY and LITELLM_BASE_URL)")
 
     try:
@@ -194,7 +194,7 @@ def main():
             llm_backend = LiteLLMBackend("watsonx/ibm/granite-13b-instruct-v2")
             print("   Using Granite")
         else:
-            print("   Using Claude 4 Sonnet (default)")
+            print("   Using Claude 3.7 Sonnet (GCP) (default)")
 
         # Run the pipeline (with or without clustering)
         if args.cluster:
