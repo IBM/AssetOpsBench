@@ -62,7 +62,7 @@ def process_trajectories(
     traj_root_base: str = ".",
     llm_backend: Optional[LLMBackend] = None,
     temperature: float = 0.0,
-    out_dir: str = "processed_trajectories",
+    out_dir: str = "./src/trajectory_analysis/failure_mode/processed_trajectories",
 ) -> Dict[str, Any]:
     """
     Process trajectories using LLM and save per-timestamp + combined pickles.
