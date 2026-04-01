@@ -172,20 +172,30 @@ def process_trajectories(
 
         counter += 1
 
-    df_file_path = f"{out_dir}/{timestamp}_m{model_id}_db.pkl"
-    df.to_pickle(df_file_path)
-    per_timestamp_paths.append(df_file_path)
+    # Save per-timestamp results in both pickle and CSV formats
+    df_pkl_path = f"{out_dir}/{timestamp}_m{model_id}_db.pkl"
+    df_csv_path = f"{out_dir}/{timestamp}_m{model_id}_db.csv"
+    df.to_pickle(df_pkl_path)
+    df.to_csv(df_csv_path, index=False)
+    per_timestamp_paths.append(df_pkl_path)
     all_dfs.append(df)
-    print(f"  Saved {df_file_path} with {len(df)} rows")
+    print(f"  Saved {df_pkl_path} with {len(df)} rows")
+    print(f"  Saved {df_csv_path} with {len(df)} rows")
 
+    # Save combined results in both pickle and CSV formats
     combined_df = pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
-    combined_file_path = f"{out_dir}/combined_m{model_id}_db.pkl"
-    combined_df.to_pickle(combined_file_path)
-    print(f"\nSaved combined DataFrame: {combined_file_path} ({len(combined_df)} rows)")
+    combined_pkl_path = f"{out_dir}/combined_m{model_id}_db.pkl"
+    combined_csv_path = f"{out_dir}/combined_m{model_id}_db.csv"
+    combined_df.to_pickle(combined_pkl_path)
+    combined_df.to_csv(combined_csv_path, index=False)
+    print(f"\nSaved combined DataFrame:")
+    print(f"  Pickle: {combined_pkl_path} ({len(combined_df)} rows)")
+    print(f"  CSV: {combined_csv_path} ({len(combined_df)} rows)")
 
     return {
         "per_timestamp_paths": per_timestamp_paths,
-        "combined_path": combined_file_path,
+        "combined_path": combined_pkl_path,
+        "combined_csv_path": combined_csv_path,
         "combined_df": combined_df,
     }
 

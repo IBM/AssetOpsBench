@@ -9,8 +9,7 @@ from typing import Optional
 from src.llm.base import LLMBackend
 from src.llm.litellm import LiteLLMBackend
 from .generator import process_trajectories
-
-# from .reducer import failure_mode_reduction  # TODO: Migrate in Phase 3
+from .reducer import failure_mode_reduction
 
 
 def run_failure_mode_pipeline(
@@ -67,16 +66,14 @@ def run_failure_mode_pipeline(
     print(gen["combined_df"].head())
 
     # Step 2: reduce/cluster using the combined pickle from Step 1
-    # TODO: Uncomment when failure_mode_reduction is migrated in Phase 3
-    # red = failure_mode_reduction(
-    #     combined_pickle_path=gen["combined_path"],
-    #     out_dir=summary_dir,
-    #     model_name=model_name,
-    #     k=k,
-    # )
-    # print("Chosen K:", red["k"])
-    # print("Paths:", red["paths"])
-    # print(red["df_clustered"].head())
+    red = failure_mode_reduction(
+        combined_pickle_path=gen["combined_path"],
+        out_dir=summary_dir,
+        model_name=model_name,
+        k=k,
+    )
+    print("Chosen K:", red["k"])
+    print("Paths:", red["paths"])
+    print(red["df_clustered"].head())
 
-    # Return generation results (reduction will be added in Phase 3)
-    return {"generation": gen}  # , "reduction": red}
+    return {"generation": gen, "reduction": red}

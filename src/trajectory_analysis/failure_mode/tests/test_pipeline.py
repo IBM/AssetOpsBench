@@ -6,15 +6,18 @@ Tests the high-level pipeline orchestration in pipeline.py.
 import pytest
 import tempfile
 from unittest.mock import Mock, patch, MagicMock
-from src.trajectory_analysis.failure_mode.pipeline import run_failure_mode_pipeline
+from src.trajectory_analysis.failure_mode.core.pipeline import run_failure_mode_pipeline
 
 
 class TestRunFailureModePipeline:
     """Test the main pipeline function."""
 
-    @patch("src.trajectory_analysis.failure_mode.pipeline.process_trajectories")
-    @patch("src.trajectory_analysis.failure_mode.pipeline.LiteLLMBackend")
-    def test_pipeline_with_default_llm(self, mock_litellm, mock_process):
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.LiteLLMBackend")
+    def test_pipeline_with_default_llm(
+        self, mock_litellm, mock_process, mock_reduction
+    ):
         """Test pipeline uses default Claude 4 Sonnet when no LLM provided."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Mock the LLM backend
@@ -41,8 +44,9 @@ class TestRunFailureModePipeline:
             assert call_kwargs["llm_backend"] == mock_llm_instance
             assert call_kwargs["traj_root_base"] == tmpdir
 
-    @patch("src.trajectory_analysis.failure_mode.pipeline.process_trajectories")
-    def test_pipeline_with_custom_llm(self, mock_process):
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    def test_pipeline_with_custom_llm(self, mock_process, mock_reduction):
         """Test pipeline with custom LLM backend."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create custom LLM mock
@@ -62,8 +66,9 @@ class TestRunFailureModePipeline:
             call_kwargs = mock_process.call_args[1]
             assert call_kwargs["llm_backend"] == custom_llm
 
-    @patch("src.trajectory_analysis.failure_mode.pipeline.process_trajectories")
-    def test_pipeline_with_temperature(self, mock_process):
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    def test_pipeline_with_temperature(self, mock_process, mock_reduction):
         """Test pipeline passes temperature parameter."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_llm = Mock()
@@ -82,8 +87,9 @@ class TestRunFailureModePipeline:
             call_kwargs = mock_process.call_args[1]
             assert call_kwargs["temperature"] == 0.8
 
-    @patch("src.trajectory_analysis.failure_mode.pipeline.process_trajectories")
-    def test_pipeline_with_timestamps(self, mock_process):
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    def test_pipeline_with_timestamps(self, mock_process, mock_reduction):
         """Test pipeline with custom timestamps."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_llm = Mock()
@@ -103,8 +109,9 @@ class TestRunFailureModePipeline:
             call_kwargs = mock_process.call_args[1]
             assert call_kwargs["timestamps"] == timestamps
 
-    @patch("src.trajectory_analysis.failure_mode.pipeline.process_trajectories")
-    def test_pipeline_returns_generation_results(self, mock_process):
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    def test_pipeline_returns_generation_results(self, mock_process, mock_reduction):
         """Test pipeline returns generation results."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_llm = Mock()
@@ -126,8 +133,9 @@ class TestRunFailureModePipeline:
             assert result["generation"] == expected_gen_result
             assert result["generation"]["combined_df"] == mock_df
 
-    @patch("src.trajectory_analysis.failure_mode.pipeline.process_trajectories")
-    def test_pipeline_with_all_parameters(self, mock_process):
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    def test_pipeline_with_all_parameters(self, mock_process, mock_reduction):
         """Test pipeline with all optional parameters."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_llm = Mock()
@@ -155,9 +163,12 @@ class TestRunFailureModePipeline:
             assert call_kwargs["temperature"] == 0.5
             assert call_kwargs["timestamps"] == ["2024-01"]
 
-    @patch("src.trajectory_analysis.failure_mode.pipeline.process_trajectories")
-    @patch("src.trajectory_analysis.failure_mode.pipeline.LiteLLMBackend")
-    def test_pipeline_default_temperature(self, mock_litellm, mock_process):
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.LiteLLMBackend")
+    def test_pipeline_default_temperature(
+        self, mock_litellm, mock_process, mock_reduction
+    ):
         """Test pipeline uses default temperature of 0.0."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_llm_instance = Mock()
@@ -182,8 +193,9 @@ class TestRunFailureModePipeline:
 class TestPipelineIntegration:
     """Integration tests for the complete pipeline."""
 
-    @patch("src.trajectory_analysis.failure_mode.pipeline.process_trajectories")
-    def test_pipeline_end_to_end_mock(self, mock_process):
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    def test_pipeline_end_to_end_mock(self, mock_process, mock_reduction):
         """Test complete pipeline flow with mocked components."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create mock LLM
