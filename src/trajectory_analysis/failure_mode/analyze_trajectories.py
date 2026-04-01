@@ -10,29 +10,42 @@
 Command-line script to run failure mode analysis on agent trajectories.
 
 This script uses `uv` for dependency management and execution.
+Supports both simple detection (Phase 2) and complete analysis with clustering (Phase 3).
 
 Usage:
-    # Use default path (sample_trajectories in failure_mode folder)
+    # Simple detection only (default)
     uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py
 
-    # Specify custom path
-    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py --path /path/to/trajectories
+    # With clustering enabled
+    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py --cluster
 
-    # With temperature control
-    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py --path ./data --temperature 0.7
+    # Complete example with all options
+    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+        --path ./data \
+        --cluster \
+        --num-clusters 5 \
+        --temperature 0.7 \
+        --model claude
 
 Or make it executable and run directly:
     chmod +x src/trajectory_analysis/failure_mode/analyze_trajectories.py
-    ./src/trajectory_analysis/failure_mode/analyze_trajectories.py --path ./my_data
+    ./src/trajectory_analysis/failure_mode/analyze_trajectories.py --cluster
 
 Traditional Python usage (if uv not available):
-    python src/trajectory_analysis/failure_mode/analyze_trajectories.py
+    python src/trajectory_analysis/failure_mode/analyze_trajectories.py --cluster
 """
 
 import sys
 import argparse
 from pathlib import Path
-from src.trajectory_analysis.failure_mode import run_failure_mode_pipeline
+
+# Support both direct script execution and module execution
+try:
+    from src.trajectory_analysis.failure_mode.core import run_failure_mode_pipeline
+except ModuleNotFoundError:
+    # When run as a script, add parent directory to path
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
+    from src.trajectory_analysis.failure_mode.core import run_failure_mode_pipeline
 
 
 def parse_args():
@@ -89,6 +102,27 @@ Examples:
         help="LLM model to use (default: claude)",
     )
 
+    parser.add_argument(
+        "--cluster",
+        action="store_true",
+        help="Enable clustering of additional failure modes (Phase 3)",
+    )
+
+    parser.add_argument(
+        "-k",
+        "--num-clusters",
+        type=int,
+        default=None,
+        help="Fixed number of clusters (default: auto-select using silhouette score)",
+    )
+
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default="all-MiniLM-L6-v2",
+        help="Sentence transformer model for clustering (default: all-MiniLM-L6-v2)",
+    )
+
     return parser.parse_args()
 
 
@@ -126,14 +160,16 @@ def main():
         )
         sys.exit(1)
 
-    # Check for JSON files
-    json_files = list(Path(trajectory_dir).glob("*.json"))
-    if not json_files:
-        print(f"\n❌ Error: No JSON files found in '{trajectory_dir}'")
+    # Check if directory has files (JSON validation happens in _load_all_json_files)
+    all_files = list(Path(trajectory_dir).rglob("*"))
+    file_count = len([f for f in all_files if f.is_file()])
+
+    if file_count == 0:
+        print(f"\n❌ Error: No files found in '{trajectory_dir}'")
         sys.exit(1)
 
     print(f"\n📁 Trajectory directory: {trajectory_dir}")
-    print(f"📄 Found {len(json_files)} JSON files")
+    print(f"📄 Found {file_count} files (will attempt to parse as JSON)")
 
     # Create output directory
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -160,22 +196,43 @@ def main():
         else:
             print("   Using Claude 4 Sonnet (default)")
 
-        # Run the pipeline
-        results = run_failure_mode_pipeline(
-            traj_root_base=trajectory_dir,
-            llm_backend=llm_backend,
-            temperature=temperature,
-        )
+        # Run the pipeline (with or without clustering)
+        if args.cluster:
+            print("\n🔄 Clustering enabled - running complete pipeline...")
+            results = run_failure_mode_pipeline(
+                traj_root_base=trajectory_dir,
+                llm_backend=llm_backend,
+                temperature=temperature,
+                summary_dir=f"{output_dir}/summary",
+                model_name=args.embedding_model,
+                k=args.num_clusters,
+            )
+            # Get results
+            df = results["generation"]["combined_df"]
+            combined_path = results["generation"]["combined_path"]
+            has_clustering = True
+        else:
+            print("\n🔍 Detection only - skipping clustering...")
+            from src.trajectory_analysis.failure_mode.core import process_trajectories
 
-        # Get results
-        df = results["generation"]["combined_df"]
-        combined_path = results["generation"]["combined_path"]
+            gen_results = process_trajectories(
+                traj_root_base=trajectory_dir,
+                llm_backend=llm_backend,
+                temperature=temperature,
+                out_dir=output_dir,
+            )
+            df = gen_results["combined_df"]
+            combined_path = gen_results["combined_path"]
+            results = {"generation": gen_results}
+            has_clustering = False
 
         print("\n" + "=" * 60)
         print("✅ Analysis Complete!")
         print("=" * 60)
         print(f"\n📊 Processed {len(df)} trajectories")
-        print(f"💾 Results saved to: {combined_path}")
+        print(f"💾 Results saved to:")
+        print(f"   - Pickle: {combined_path}")
+        print(f"   - CSV: {combined_path.replace('.pkl', '.csv')}")
 
         # Show failure mode summary
         print("\n📋 Failure Mode Summary:")
@@ -208,12 +265,28 @@ def main():
                         f"   - Trajectory {row['ut_id']}: {row['addi_fm_cnt']} additional modes"
                     )
 
+        # Show clustering results if enabled
+        if has_clustering and "reduction" in results:
+            red = results["reduction"]
+            print(f"\n📊 Clustering Results:")
+            print(f"   Created {red['k']} clusters")
+            print(f"   Output files:")
+            for key, path in red["paths"].items():
+                if path:
+                    print(f"   - {key}: {path}")
+
         print("\n" + "=" * 60)
         print("💡 Next Steps:")
         print("=" * 60)
         print(f"1. Load results: df = pd.read_pickle('{combined_path}')")
         print("2. Analyze: df.describe(), df.head()")
         print("3. Filter: df[df['1.1 Disobey Task Specification'] == True]")
+        if has_clustering:
+            print(
+                "4. View clusters: pd.read_csv('summary/additional_fm_clustered.csv')"
+            )
+        else:
+            print("4. Enable clustering: add --cluster flag")
         print("\n")
 
         return 0
