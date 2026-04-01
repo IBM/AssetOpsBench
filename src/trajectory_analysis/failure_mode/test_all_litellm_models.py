@@ -1,43 +1,124 @@
 #!/usr/bin/env python3
 """
 Test all LiteLLM proxy models from the available models list.
-This tests all models shown in the proxy's error message.
+Dynamically fetches available models from the proxy.
 """
 
 import sys
 import subprocess
+import os
+import requests
+from collections import defaultdict
 
-# All models from the proxy's available models list
-# Organized by provider for clarity
-LITELLM_MODELS = {
-    "Claude (GCP)": [
-        "litellm_proxy/GCP/claude-3-7-sonnet",
-    ],
-    "Claude (AWS)": [
-        "litellm_proxy/aws/claude-sonnet-4-6",
-        "litellm_proxy/aws/claude-opus-4-6",
-        "litellm_proxy/aws/claude-3-5-haiku",
-    ],
-    "Gemini (GCP)": [
-        "litellm_proxy/GCP/gemini-2.0-flash-lite",
-        "litellm_proxy/GCP/gemini-2.5-flash-lite",
-        "litellm_proxy/gcp/gemini-3.1-pro-preview",
-        "litellm_proxy/gemini-2.5-pro",
-        "litellm_proxy/gemini-2.5-flash",
-    ],
-    "GPT (Azure)": [
-        "litellm_proxy/Azure/gpt-5-2025-08-07",
-        "litellm_proxy/Azure/gpt-5-mini-2025-08-07",
-        "litellm_proxy/Azure/gpt-5-nano-2025-08-07",
-        "litellm_proxy/Azure/gpt-5-chat-2025-08-07",
-        "litellm_proxy/Azure/gpt-4.1",
-        "litellm_proxy/Azure/gpt-4.1-mini",
-        "litellm_proxy/Azure/gpt-4.1-nano",
-        "litellm_proxy/Azure/o4-mini",
-        "litellm_proxy/azure/gpt-5.4",
-        "litellm_proxy/azure/gpt-5.3-chat",
-    ],
-}
+
+def get_available_models() -> dict[str, list[str]]:
+    """
+    Fetch available models from LiteLLM proxy and organize by provider.
+
+    Returns:
+        Dictionary mapping provider names to lists of model IDs
+    """
+    base_url = os.environ.get("LITELLM_BASE_URL")
+    api_key = os.environ.get("LITELLM_API_KEY")
+
+    if not base_url:
+        print("⚠️  LITELLM_BASE_URL not set, using fallback model list")
+        return get_fallback_models()
+
+    try:
+        # Query the /models endpoint
+        response = requests.get(
+            f"{base_url}/models",
+            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+            timeout=10,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        models = data.get("data", [])
+
+        if not models:
+            print("⚠️  No models returned from proxy, using fallback list")
+            return get_fallback_models()
+
+        # Organize models by provider
+        organized = defaultdict(list)
+
+        for model in models:
+            model_id = model.get("id", "")
+            if not model_id.startswith("litellm_proxy/"):
+                continue
+
+            # Extract provider from model ID
+            # Format: litellm_proxy/provider/model-name
+            parts = model_id.split("/")
+            if len(parts) >= 3:
+                provider = parts[1]
+
+                # Categorize by provider
+                if "claude" in model_id.lower():
+                    if provider.upper() == "AWS":
+                        key = "Claude (AWS)"
+                    else:
+                        key = f"Claude ({provider.upper()})"
+                elif "gemini" in model_id.lower():
+                    key = f"Gemini ({provider.upper()})"
+                elif "gpt" in model_id.lower() or "o4" in model_id.lower():
+                    key = f"GPT ({provider.upper()})"
+                else:
+                    key = f"Other ({provider.upper()})"
+
+                organized[key].append(model_id)
+
+        if not organized:
+            print("⚠️  No litellm_proxy models found, using fallback list")
+            return get_fallback_models()
+
+        print(f"✅ Fetched {sum(len(v) for v in organized.values())} models from proxy")
+        return dict(organized)
+
+    except Exception as e:
+        print(f"⚠️  Error fetching models from proxy: {e}")
+        print("   Using fallback model list")
+        return get_fallback_models()
+
+
+def get_fallback_models() -> dict[str, list[str]]:
+    """
+    Fallback model list if proxy query fails.
+
+    Returns:
+        Dictionary mapping provider names to lists of model IDs
+    """
+    return {
+        "Claude (GCP)": [
+            "litellm_proxy/GCP/claude-3-7-sonnet",
+        ],
+        "Claude (AWS)": [
+            "litellm_proxy/aws/claude-sonnet-4-6",
+            "litellm_proxy/aws/claude-opus-4-6",
+            "litellm_proxy/aws/claude-3-5-haiku",
+        ],
+        "Gemini (GCP)": [
+            "litellm_proxy/GCP/gemini-2.0-flash-lite",
+            "litellm_proxy/GCP/gemini-2.5-flash-lite",
+            "litellm_proxy/gcp/gemini-3.1-pro-preview",
+            "litellm_proxy/gemini-2.5-pro",
+            "litellm_proxy/gemini-2.5-flash",
+        ],
+        "GPT (Azure)": [
+            "litellm_proxy/Azure/gpt-5-2025-08-07",
+            "litellm_proxy/Azure/gpt-5-mini-2025-08-07",
+            "litellm_proxy/Azure/gpt-5-nano-2025-08-07",
+            "litellm_proxy/Azure/gpt-5-chat-2025-08-07",
+            "litellm_proxy/Azure/gpt-4.1",
+            "litellm_proxy/Azure/gpt-4.1-mini",
+            "litellm_proxy/Azure/gpt-4.1-nano",
+            "litellm_proxy/Azure/o4-mini",
+            "litellm_proxy/azure/gpt-5.4",
+            "litellm_proxy/azure/gpt-5.3-chat",
+        ],
+    }
 
 
 def test_model(model_id: str) -> tuple[str, bool, str]:
@@ -96,6 +177,9 @@ def main():
     print("Testing All Available LiteLLM Proxy Models")
     print("=" * 60)
 
+    # Dynamically fetch available models
+    LITELLM_MODELS = get_available_models()
+
     total_models = sum(len(models) for models in LITELLM_MODELS.values())
     print(f"\nFound {total_models} models across {len(LITELLM_MODELS)} providers\n")
 
@@ -130,9 +214,8 @@ def main():
         total = len(results)
         print(f"\n{provider}: {working}/{total} working")
         for model_id, success, message in results:
-            status = "✅" if success else "❌"
-            model_name = model_id.split("/")[-1]
-            print(f"  {status} {model_name}")
+            status = "✅ Connected" if success else "❌ Not Available"
+            print(f"  {status}: {model_id}")
 
     # Print overall summary
     print("\n" + "=" * 60)
@@ -141,6 +224,14 @@ def main():
     print(f"✅ Working: {len(working_models)}/{total_models}")
     print(f"❌ Failed:  {len(failed_models)}/{total_models}")
     print("=" * 60)
+
+    # Show failed models with error details
+    if failed_models:
+        print("\n❌ Failed Models:")
+        for model_id, _, message in failed_models:
+            error_info = message.replace("❌ ", "").replace("⏱️ ", "")
+            print(f"  • {model_id}")
+            print(f"    Error: {error_info}")
 
     if working_models:
         print("\n🎉 Working Models:")
