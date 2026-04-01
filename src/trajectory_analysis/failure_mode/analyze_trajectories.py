@@ -1,20 +1,32 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "pandas",
+#     "python-dotenv",
+# ]
+# ///
 """
-Example script to run failure mode analysis on trajectories.
+Command-line script to run failure mode analysis on agent trajectories.
+
+This script uses `uv` for dependency management and execution.
 
 Usage:
-    # Use default path (./test_data)
-    python src/trajectory_analysis/failure_mode/example.py
+    # Use default path (sample_trajectories in failure_mode folder)
+    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py
 
     # Specify custom path
-    python src/trajectory_analysis/failure_mode/example.py --path /path/to/trajectories
+    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py --path /path/to/trajectories
 
     # With temperature control
-    python src/trajectory_analysis/failure_mode/example.py --path ./data --temperature 0.7
+    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py --path ./data --temperature 0.7
 
-Or make it executable:
-    chmod +x src/trajectory_analysis/failure_mode/example.py
-    ./src/trajectory_analysis/failure_mode/example.py --path ./my_data
+Or make it executable and run directly:
+    chmod +x src/trajectory_analysis/failure_mode/analyze_trajectories.py
+    ./src/trajectory_analysis/failure_mode/analyze_trajectories.py --path ./my_data
+
+Traditional Python usage (if uv not available):
+    python src/trajectory_analysis/failure_mode/analyze_trajectories.py
 """
 
 import sys
@@ -48,16 +60,16 @@ Examples:
         "-p",
         "--path",
         type=str,
-        default="./test_data",
-        help="Path to directory containing trajectory JSON files (default: ./test_data)",
+        default="./src/trajectory_analysis/failure_mode/sample_trajectories",
+        help="Path to directory containing trajectory JSON files (default: ./src/trajectory_analysis/failure_mode/sample_trajectories)",
     )
 
     parser.add_argument(
         "-o",
         "--output",
         type=str,
-        default="./results",
-        help="Output directory for results (default: ./results)",
+        default="./src/trajectory_analysis/failure_mode/processed_trajectories",
+        help="Output directory for results (default: ./src/trajectory_analysis/failure_mode/processed_trajectories)",
     )
 
     parser.add_argument(
