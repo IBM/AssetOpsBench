@@ -83,9 +83,11 @@ def process_trajectories(
             - combined_path: Path to combined pickle file
             - combined_df: Combined pandas DataFrame with all results
     """
-    # Default to Claude 4 Sonnet if no backend provided
+    # Default to Claude Sonnet 4.6 (AWS) if no backend provided
+    # Note: GCP Claude models have configuration issues, AWS Claude works perfectly
+    # See litellm_models_report.md for full test results
     if llm_backend is None:
-        llm_backend = LiteLLMBackend("litellm_proxy/GCP/claude-4-sonnet")
+        llm_backend = LiteLLMBackend("litellm_proxy/aws/claude-sonnet-4-6")
 
     failure_mode_keys = [
         "1.1 Disobey Task Specification",
