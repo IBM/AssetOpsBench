@@ -11,7 +11,9 @@ load_dotenv()
 
 # Setup logging — default WARNING so stderr stays quiet when used as MCP server;
 # set LOG_LEVEL=INFO (or DEBUG) in the environment to see verbose output.
-_log_level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING)
+_log_level = getattr(
+    logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING
+)
 logging.basicConfig(level=_log_level)
 logger = logging.getLogger("iot-mcp-server")
 
@@ -24,7 +26,10 @@ COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD")
 # Initialize CouchDB
 try:
     db = couchdb3.Database(
-        COUCHDB_DBNAME, url=COUCHDB_URL, user=COUCHDB_USERNAME, password=COUCHDB_PASSWORD
+        COUCHDB_DBNAME,
+        url=COUCHDB_URL,
+        user=COUCHDB_USERNAME,
+        password=COUCHDB_PASSWORD,
     )
     logger.info(f"Connected to CouchDB: {COUCHDB_DBNAME}")
 except Exception as e:
@@ -128,7 +133,7 @@ def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
         site_name=site_name,
         total_assets=len(asset_list),
         assets=asset_list,
-        message=f"found {len(asset_list)} assets for site_name {site_name}.",
+        message=f"found {len(asset_list)} asset ids for site_name {site_name}: {', '.join(asset_list)}.",
     )
 
 
@@ -147,7 +152,7 @@ def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
         asset_id=asset_id,
         total_sensors=len(sensor_list),
         sensors=sensor_list,
-        message=f"found {len(sensor_list)} sensors for asset_id {asset_id} and site_name {site_name}.",
+        message=f"found {len(sensor_list)} sensors for asset_id {asset_id} and site_name {site_name}: {', '.join(sensor_list)}.",
     )
 
 
@@ -188,7 +193,7 @@ def history(
             start=start,
             final=final,
             observations=docs,
-            message=f"found {len(docs)} observations.",
+            message=f"found {len(docs)} observations for asset_id {asset_id} from {start} to {final or 'now'}.",
         )
     except Exception as e:
         logger.error(f"CouchDB query failed: {e}")

@@ -240,11 +240,12 @@ class TestGetVibrationData:
     async def test_fetch_integration(self):
         result = await call_tool(mcp, "get_vibration_data", {
             "site_name": "MAIN",
-            "asset_id": "Chiller 6",
-            "sensor_name": "Current",
-            "start": "2020-06-01T00:00:00",
+            "asset_id": "Motor_01",
+            "sensor_name": "Vibration_X",
+            "start": "2024-01-15T00:00:00",
         })
-        assert "error" not in result or "data_id" in result
+        assert "error" not in result
+        assert "data_id" in result
 
 
 # ---------------------------------------------------------------------------

@@ -6,44 +6,40 @@ so the executor needs no additional LLM calls — it calls the tool directly.
 
 from __future__ import annotations
 
-import json
+import logging
 import re
 
 from llm import LLMBackend
 from .models import Plan, PlanStep
 
+_log = logging.getLogger(__name__)
+
 _PLAN_PROMPT = """\
 You are a planning assistant for industrial asset operations and maintenance.
 
 Decompose the question below into a sequence of subtasks. For each subtask,
-assign a server and select the exact tool to call with its arguments.
+assign a server and select the exact tool to call. Do NOT include tool arguments —
+they will be resolved at execution time from the task description and prior results.
 
 Available servers and tools:
 {servers}
-
-For argument values that can only be known from a prior step's result,
-use the placeholder {{step_N}} (e.g., {{step_1}}) as the value.
 
 Output format — one block per step, exactly:
 
 #Task1: <task description>
 #Server1: <exact server name>
 #Tool1: <exact tool name, or "none" if no tool call is needed>
-#Args1: <JSON object of tool arguments, e.g. {{"site_name": "MAIN"}}>
 #Dependency1: None
 #ExpectedOutput1: <what this step should produce>
 
 #Task2: <task description>
 #Server2: <exact server name>
 #Tool2: <exact tool name>
-#Args2: {{"site_name": "MAIN", "asset_id": "{{step_1}}"}}
 #Dependency2: #S1
 #ExpectedOutput2: <what this step should produce>
 
 Rules:
 - Server and tool names must exactly match those listed above.
-- #Args must be a valid JSON object on a single line.
-- Use {{step_N}} as a placeholder when an argument depends on step N's result.
 - Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
 - Keep tasks specific and actionable.
 
@@ -55,7 +51,6 @@ Plan:
 _TASK_RE = re.compile(r"#Task(\d+):\s*(.+)")
 _SERVER_RE = re.compile(r"#Server(\d+):\s*(.+)")
 _TOOL_RE = re.compile(r"#Tool(\d+):\s*(.+)")
-_ARGS_RE = re.compile(r"#Args(\d+):\s*(.+)")
 _DEP_RE = re.compile(r"#Dependency(\d+):\s*(.+)")
 _OUTPUT_RE = re.compile(r"#ExpectedOutput(\d+):\s*(.+)")
 _DEP_NUM_RE = re.compile(r"#S(\d+)")
@@ -65,17 +60,14 @@ def parse_plan(raw: str) -> Plan:
     """Parse an LLM-generated plan string into a Plan object."""
     tasks = {int(m.group(1)): m.group(2).strip() for m in _TASK_RE.finditer(raw)}
     servers = {int(m.group(1)): m.group(2).strip() for m in _SERVER_RE.finditer(raw)}
-    tools = {int(m.group(1)): m.group(2).strip() for m in _TOOL_RE.finditer(raw)}
+    # Strip any trailing signature the LLM may copy from the server description
+    # format "tool_name(param: type)" — only the bare name is needed.
+    tools = {
+        int(m.group(1)): m.group(2).strip().split("(")[0].strip()
+        for m in _TOOL_RE.finditer(raw)
+    }
     deps_raw = {int(m.group(1)): m.group(2).strip() for m in _DEP_RE.finditer(raw)}
     outputs = {int(m.group(1)): m.group(2).strip() for m in _OUTPUT_RE.finditer(raw)}
-
-    args: dict[int, dict] = {}
-    for m in _ARGS_RE.finditer(raw):
-        n = int(m.group(1))
-        try:
-            args[n] = json.loads(m.group(2).strip())
-        except json.JSONDecodeError:
-            args[n] = {}
 
     steps = []
     for n in sorted(tasks):
@@ -102,7 +94,7 @@ def parse_plan(raw: str) -> Plan:
                 task=tasks[n],
                 server=servers.get(n, ""),
                 tool=tools.get(n, ""),
-                tool_args=args.get(n, {}),
+                tool_args={},
                 dependencies=dependencies,
                 expected_output=outputs.get(n, ""),
             )

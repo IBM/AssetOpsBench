@@ -1,14 +1,8 @@
 """MCP-based step executor for the plan-execute orchestrator.
 
-Each PlanStep contains the tool name and arguments decided by the planner.
-Argument values may contain {{step_N}} placeholders for values that can only
-be determined after a prior step runs.  When placeholders are detected the
-executor makes a targeted LLM call to resolve the concrete values from the
-prior step's result, then calls the tool.
-
-LLM call budget per question:
-  - Independent steps (no placeholders): 0 extra LLM calls — tool called directly.
-  - Dependent steps (has {{step_N}}):     1 LLM call to resolve args, then call tool.
+The planner produces steps with no pre-filled arguments. For every step that
+calls a tool the executor makes one LLM call to generate the concrete argument
+dict from the task description, original question, and prior step results.
 """
 
 from __future__ import annotations
@@ -42,21 +36,23 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
 
 _ARG_RESOLUTION_PROMPT = """\
-You are resolving tool argument values for one step in a multi-step plan.
+Generate the JSON arguments for the tool call below.
 
+Question: {question}
+Tool: {tool}
+Tool parameters: {tool_schema}
 Task: {task}
-Tool to call: {tool}
 
-Results from prior steps:
+Prior step results:
 {context}
 
-The following arguments need their values resolved from the context above:
-{unresolved}
+YOUR RESPONSE MUST BE A SINGLE RAW JSON OBJECT AND NOTHING ELSE.
+Do not write any explanation, reasoning, or prose — output only the JSON object.
+Use EXACTLY the parameter names listed in "Tool parameters" above.
+Use the task description and prior step results to determine the correct argument values.
+If a value comes from a list, use the first relevant element.
 
-Respond with a JSON object containing ONLY the resolved argument values.
-Example: {{"site_name": "MAIN", "asset_id": "CH-1"}}
-
-Response:"""
+JSON:"""
 
 
 class Executor:
@@ -68,7 +64,9 @@ class Executor:
         server_paths: dict[str, Path | str] | None = None,
     ) -> None:
         self._llm = llm
-        self._server_paths = DEFAULT_SERVER_PATHS if server_paths is None else server_paths
+        self._server_paths = (
+            DEFAULT_SERVER_PATHS if server_paths is None else server_paths
+        )
 
     async def get_server_descriptions(self) -> dict[str, str]:
         """Query each registered MCP server and return formatted tool signatures."""
@@ -92,14 +90,39 @@ class Executor:
         """Execute all plan steps in dependency order."""
         ordered = plan.resolved_order()
         total = len(ordered)
+
+        # Pre-fetch tool schemas for all servers referenced in the plan so that
+        # _resolve_args_with_llm can include exact parameter names in its prompt.
+        server_names = {step.server for step in ordered}
+        tool_schemas: dict[str, dict[str, str]] = {}  # server -> {tool_name -> sig}
+        for name in server_names:
+            path = self._server_paths.get(name)
+            if path is None:
+                continue
+            try:
+                tools = await _list_tools(path)
+                tool_schemas[name] = {
+                    t["name"]: ", ".join(
+                        f"{p['name']}: {p['type']}{'?' if not p['required'] else ''}"
+                        for p in t.get("parameters", [])
+                    )
+                    for t in tools
+                }
+            except Exception:  # noqa: BLE001
+                tool_schemas[name] = {}
+
         context: dict[int, StepResult] = {}
         results: list[StepResult] = []
         for step in ordered:
             _log.info(
                 "Step %d/%d [%s]: %s",
-                step.step_number, total, step.server, step.task,
+                step.step_number,
+                total,
+                step.server,
+                step.task,
             )
-            result = await self.execute_step(step, context, question)
+            schema = tool_schemas.get(step.server, {}).get(step.tool, "")
+            result = await self.execute_step(step, context, question, tool_schema=schema)
             if result.success:
                 _log.info("Step %d OK.", step.step_number)
             else:
@@ -113,13 +136,13 @@ class Executor:
         step: PlanStep,
         context: dict[int, StepResult],
         question: str,
+        tool_schema: str = "",
     ) -> StepResult:
         """Execute a single plan step.
 
         1. Resolve the MCP server assigned to this step.
         2. If no tool is specified, return expected_output directly.
-        3. If tool_args contain {{step_N}} placeholders, call the LLM to resolve
-           them from prior step results.
+        3. Call the LLM to generate tool arguments from the task and prior results.
         4. Call the tool and return its result.
         """
         server_path = self._server_paths.get(step.server)
@@ -146,16 +169,10 @@ class Executor:
             )
 
         try:
-            if _has_placeholders(step.tool_args):
-                _log.info(
-                    "Step %d has unresolved args — calling LLM to resolve.",
-                    step.step_number,
-                )
-                resolved_args = await _resolve_args_with_llm(
-                    step.task, step.tool, step.tool_args, context, self._llm
-                )
-            else:
-                resolved_args = step.tool_args
+            _log.info("Step %d: calling LLM to resolve args.", step.step_number)
+            resolved_args = await _resolve_args_with_llm(
+                question, step.task, step.tool, tool_schema, context, self._llm
+            )
 
             response = await _call_tool(server_path, step.tool, resolved_args)
             return StepResult(
@@ -181,68 +198,43 @@ class Executor:
 # ── arg resolution ────────────────────────────────────────────────────────────
 
 
-def _has_placeholders(args: dict) -> bool:
-    """Return True if any string arg value contains a {{step_N}} placeholder."""
-    return any(
-        isinstance(v, str) and _PLACEHOLDER_RE.search(v)
-        for v in args.values()
-    )
-
-
 async def _resolve_args_with_llm(
+    question: str,
     task: str,
     tool: str,
-    args: dict,
+    tool_schema: str,
     context: dict[int, StepResult],
     llm: LLMBackend,
 ) -> dict:
-    """Use the LLM to resolve {{step_N}} placeholders from prior step results.
-
-    Args that have no placeholders are passed through unchanged.
-    Args with placeholders are resolved by an LLM call using the referenced
-    step results as context.
-
-    Returns the fully resolved args dict.
-    """
-    known: dict = {}
-    unresolved: dict = {}
-    for key, val in args.items():
-        if isinstance(val, str) and _PLACEHOLDER_RE.search(val):
-            unresolved[key] = val
-        else:
-            known[key] = val
-
-    # Collect the step results referenced by any placeholder
-    referenced = {
-        int(m.group(1))
-        for val in unresolved.values()
-        for m in _PLACEHOLDER_RE.finditer(val)
-    }
+    """Generate tool arguments from the task description and prior step results."""
     context_text = "\n".join(
-        f"Step {n}: {context[n].response}"
-        for n in sorted(referenced)
-        if n in context
+        f"Step {n}: {r.response}" for n, r in sorted(context.items())
     )
-    unresolved_text = "\n".join(
-        f"  {k} (placeholder: {v})" for k, v in unresolved.items()
-    )
-
-    prompt = _ARG_RESOLUTION_PROMPT.format(
-        task=task,
-        tool=tool,
-        context=context_text or "(none)",
-        unresolved=unresolved_text,
+    prompt = (
+        _ARG_RESOLUTION_PROMPT
+        .replace("{question}", question)
+        .replace("{task}", task)
+        .replace("{tool}", tool)
+        .replace("{tool_schema}", tool_schema or "(unknown)")
+        .replace("{context}", context_text or "(none)")
     )
     raw = llm.generate(prompt)
+    resolved = _parse_json(raw)
+    if resolved is None:
+        _log.warning(
+            "Tool '%s': arg resolution returned no parseable JSON (response: %r…)",
+            tool, raw[:120],
+        )
+        return {}
+    return resolved
 
-    # Parse the LLM response as JSON
-    resolved_values = _parse_json(raw)
 
-    return {**known, **resolved_values}
+def _parse_json(raw: str) -> dict | None:
+    """Extract a JSON object from an LLM response, with markdown fence handling.
 
-
-def _parse_json(raw: str) -> dict:
-    """Extract a JSON object from an LLM response, with markdown fence handling."""
+    Returns the parsed dict, or None if no JSON object could be extracted.
+    An empty dict ``{}`` is a valid successful parse (e.g. for no-arg tools).
+    """
     text = raw.strip()
     if text.startswith("```"):
         lines = text.splitlines()
@@ -262,7 +254,8 @@ def _parse_json(raw: str) -> dict:
                 return result
         except json.JSONDecodeError:
             pass
-    return {}
+    _log.debug("_parse_json: could not extract a JSON object from: %r…", raw[:120])
+    return None
 
 
 # ── MCP protocol helpers ──────────────────────────────────────────────────────
@@ -318,11 +311,13 @@ async def _list_tools(server_path: Path | str) -> list[dict]:
                     }
                     for k, v in props.items()
                 ]
-                tools.append({
-                    "name": t.name,
-                    "description": t.description or "",
-                    "parameters": parameters,
-                })
+                tools.append(
+                    {
+                        "name": t.name,
+                        "description": t.description or "",
+                        "parameters": parameters,
+                    }
+                )
             return tools
 
 
@@ -349,9 +344,11 @@ def _resolve_args(args: dict, context: dict[int, StepResult]) -> dict:
     resolved = {}
     for key, val in args.items():
         if isinstance(val, str):
+
             def _sub(m: re.Match) -> str:
                 n = int(m.group(1))
                 return context[n].response if n in context else m.group(0)
+
             resolved[key] = _PLACEHOLDER_RE.sub(_sub, val)
         else:
             resolved[key] = val
