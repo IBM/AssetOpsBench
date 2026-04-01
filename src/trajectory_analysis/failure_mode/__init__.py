@@ -26,15 +26,19 @@ Example usage:
     )
 """
 
-# Note: Actual imports will be added in Phase 2 after refactoring
-# from .pipeline import run_failure_mode_pipeline
-# from .generator import process_trajectories
+# Phase 2 imports (LLM integration complete)
+from .pipeline import run_failure_mode_pipeline
+from .generator import process_trajectories
+
+# Phase 3 imports (to be added)
 # from .reducer import failure_mode_reduction
+# from .extractor import extract_failure_modes
+# from .visualizer import visualize_failure_modes
 
 __all__ = [
-    # "run_failure_mode_pipeline",
-    # "process_trajectories",
-    # "failure_mode_reduction",
+    "run_failure_mode_pipeline",
+    "process_trajectories",
+    # Phase 3 exports will be added here
 ]
 
 # Made with Bob
