@@ -13,12 +13,13 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
-from src.servers.fmsr.models import (
+from .models import (
     DGAInterpretationResult,
+    HealthIndexResult,
     WindingTemperatureResult,
     LoadProfileResult,
 )
-from src.servers.fmsr.prompt_templates import (
+from .prompt_templates import (
     _INTERPRET_DGA_PROMPT,
     _ASSESS_WINDING_PROMPT,
     _ASSESS_LOAD_PROMPT,
@@ -367,6 +368,43 @@ def _call_load(
             last_exc = exc
     raise last_exc
 
+
+def _call_predict_health_index(
+    hydrogen: float, oxygen: float, nitrogen: float,
+    methane: float, co: float, co2: float,
+    ethylene: float, ethane: float, acetylene: float,
+    dbds: float, power_factor: float, interfacial_v: float,
+    dielectric_rigidity: float, water_content: float,
+) -> float:
+    """Loads model and scalers from artifacts and predicts health index."""
+
+    import pickle
+    import numpy as np
+    from pathlib import Path
+
+    base_path = Path(__file__).parent / "artifacts"
+
+    # Load model
+    with (base_path / "health_index_model.pkl").open("rb") as f:
+        model = pickle.load(f)
+
+    # Load scaler
+    with (base_path / "health_index_scalers.pkl").open("rb") as f:
+        scaler_X = pickle.load(f)["scaler_X"]
+
+    # Prepare features
+    feature_values = np.array([[
+        hydrogen, oxygen, nitrogen, methane, co, co2,
+        ethylene, ethane, acetylene, dbds,
+        power_factor, interfacial_v, dielectric_rigidity, water_content
+    ]])
+
+    # Scale and predict
+    scaled = scaler_X.transform(feature_values)
+    score = model.predict(scaled)[0]
+
+    # Return score as percentage (0-100)
+    return float(score)
 
 
 # ── Result models ─────────────────────────────────────────────────────────────
@@ -731,6 +769,73 @@ def assess_load_profile(
         )
     except Exception as exc:
         logger.error("_call_load failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool()
+def predict_health_index(
+    asset_name: str,
+    hydrogen: float,
+    oxygen: float,
+    nitrogen: float,
+    methane: float,
+    co: float,
+    co2: float,
+    ethylene: float,
+    ethane: float,
+    acetylene: float,
+    dbds: float,
+    power_factor: float,
+    interfacial_v: float,
+    dielectric_rigidity: float,
+    water_content: float,
+) -> Union[HealthIndexResult, ErrorResult]:
+    """Predicts a health index for a transformer asset based on DGA and other sensor readings."""
+
+    if not asset_name:
+        return ErrorResult(error="asset_name is required")
+
+    if not _llm_available:
+        return ErrorResult(error="LLM unavailable")
+
+    try:
+        score = _call_predict_health_index(
+            hydrogen,
+            oxygen,
+            nitrogen,
+            methane,
+            co,
+            co2,
+            ethylene,
+            ethane,
+            acetylene,
+            dbds,
+            power_factor,
+            interfacial_v,
+            dielectric_rigidity,
+            water_content,
+        )
+
+        # Determine condition based on score
+        if score >= 85:
+            condition = "Very Good"
+        elif score >= 70:
+            condition = "Good"
+        elif score >= 50:
+            condition = "Fair"
+        elif score >= 30:
+            condition = "Poor"
+        else:
+            condition = "Very Poor"
+
+        return HealthIndexResult(
+            asset_name=asset_name,
+            health_index=score,
+            condition=condition,
+        )
+
+    except Exception as exc:
+        logger.error("_call_predict_health_index failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 

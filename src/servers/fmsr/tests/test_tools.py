@@ -481,3 +481,50 @@ class TestAssessLoadProfile:
         })
         assert "load_mva" in data
         assert len(data["reasoning"]) > 0
+
+
+class TestTransformerHealthIndexModel:
+    VALID_FEATURES = {
+        "hydrogen": 100,
+        "oxygen": 10,
+        "nitrogen": 200,
+        "methane": 50,
+        "co": 5,
+        "co2": 20,
+        "ethylene": 15,
+        "ethane": 8,
+        "acetylene": 3,
+        "dbds": 0.5,
+        "power_factor": 0.95,
+        "interfacial_v": 15,
+        "dielectric_rigidity": 30,
+        "water_content": 0.2,
+    }
+    @pytest.mark.anyio
+    async def test_missing_asset_name_returns_error(self):
+        data = await call_tool(mcp, "predict_health_index", {
+            "asset_name": "",
+            **self.VALID_FEATURES
+        })
+        assert "error" in data
+
+    @pytest.mark.anyio
+    async def test_llm_unavailable_returns_error(self, no_llm):
+        data = await call_tool(mcp, "predict_health_index", {
+            "asset_name": "Transformer1",
+            **self.VALID_FEATURES
+        })
+        assert "error" in data
+
+    @requires_watsonx
+    @pytest.mark.anyio
+    async def test_integration(self):
+        data = await call_tool(mcp, "predict_health_index", {
+            "asset_name": "Transformer1",
+            **self.VALID_FEATURES
+        })
+        assert "asset_name" in data
+        assert "health_index" in data
+        assert "condition" in data
+        assert data["asset_name"] == "Transformer1"
+        assert data["condition"] in ["Very Poor", "Poor", "Fair", "Good", "Very Good"]

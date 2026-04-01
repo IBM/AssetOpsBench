@@ -1,11 +1,13 @@
 from pydantic import BaseModel
 
 class HealthIndexResult(BaseModel):
+    """Represents the health index result for a transformer asset."""
     asset_name:    str
     health_index:  float
     condition:     str
 
 class DGAInterpretationResult(BaseModel):
+    """Represents the DGA interpretation result for a transformer asset."""
     asset_name:         str
     fault_type:         str
     r1:                 float
@@ -17,6 +19,7 @@ class DGAInterpretationResult(BaseModel):
     recommended_action: str
 
 class WindingTemperatureResult(BaseModel):
+    """Represents the winding temperature result for a transformer asset."""
     asset_name:         str
     thermal_status:     str
     hot_spot_rise_c:    float
@@ -28,6 +31,7 @@ class WindingTemperatureResult(BaseModel):
     recommended_action: str
 
 class LoadProfileResult(BaseModel):
+    """Represents the load profile result for a transformer asset."""
     asset_name:             str
     load_mva:               float
     load_factor_pct:        float
