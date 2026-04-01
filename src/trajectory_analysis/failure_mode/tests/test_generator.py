@@ -11,7 +11,7 @@ import os
 import pandas as pd
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
-from src.trajectory_analysis.failure_mode.generator import (
+from src.trajectory_analysis.failure_mode.core.generator import (
     process_trajectories,
     _load_all_json_files,
     _normalize_additional_failure_modes,
@@ -138,8 +138,10 @@ class TestLoadAllJsonFiles:
 class TestProcessTrajectories:
     """Test the main process_trajectories function."""
 
-    @patch("src.trajectory_analysis.failure_mode.generator.get_llm_answer_from_json")
-    @patch("src.trajectory_analysis.failure_mode.generator._load_all_json_files")
+    @patch(
+        "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"
+    )
+    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_basic(self, mock_load, mock_llm_answer):
         """Test basic trajectory processing."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -176,11 +178,11 @@ class TestProcessTrajectories:
 
             df = result["combined_df"]
             assert len(df) == 1
-            assert df.iloc[0]["1.1 Disobey Task Specification"] is True
-            assert df.iloc[0]["1.2 Disobey Role Specification"] is False
+            assert df.iloc[0]["1.1 Disobey Task Specification"] == True
+            assert df.iloc[0]["1.2 Disobey Role Specification"] == False
 
-    @patch("src.trajectory_analysis.failure_mode.generator.LiteLLMBackend")
-    @patch("src.trajectory_analysis.failure_mode.generator._load_all_json_files")
+    @patch("src.trajectory_analysis.failure_mode.core.generator.LiteLLMBackend")
+    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_default_llm(self, mock_load, mock_litellm):
         """Test that default LLM backend is created when none provided."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -197,8 +199,10 @@ class TestProcessTrajectories:
             # Verify default Claude 4 Sonnet was created
             mock_litellm.assert_called_once_with("litellm_proxy/GCP/claude-4-sonnet")
 
-    @patch("src.trajectory_analysis.failure_mode.generator.get_llm_answer_from_json")
-    @patch("src.trajectory_analysis.failure_mode.generator._load_all_json_files")
+    @patch(
+        "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"
+    )
+    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_with_temperature(self, mock_load, mock_llm_answer):
         """Test temperature parameter is passed through."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -218,8 +222,10 @@ class TestProcessTrajectories:
             call_args = mock_llm_answer.call_args
             assert call_args[1]["temperature"] == 0.7
 
-    @patch("src.trajectory_analysis.failure_mode.generator.get_llm_answer_from_json")
-    @patch("src.trajectory_analysis.failure_mode.generator._load_all_json_files")
+    @patch(
+        "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"
+    )
+    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_error_handling(self, mock_load, mock_llm_answer):
         """Test error handling during processing."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -245,8 +251,10 @@ class TestProcessTrajectories:
             # Only successful processing should be in results
             assert len(df) >= 0  # May have 0 or 1 depending on retry logic
 
-    @patch("src.trajectory_analysis.failure_mode.generator.get_llm_answer_from_json")
-    @patch("src.trajectory_analysis.failure_mode.generator._load_all_json_files")
+    @patch(
+        "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"
+    )
+    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_additional_failure_modes(
         self, mock_load, mock_llm_answer
     ):
@@ -280,7 +288,7 @@ class TestProcessTrajectories:
             out_dir = os.path.join(tmpdir, "new_output_dir")
 
             with patch(
-                "src.trajectory_analysis.failure_mode.generator._load_all_json_files"
+                "src.trajectory_analysis.failure_mode.core.generator._load_all_json_files"
             ) as mock_load:
                 mock_load.return_value = {}
                 mock_llm = Mock()
@@ -342,7 +350,7 @@ class TestIntegration:
             # Verify pickle file can be loaded
             df_loaded = pd.read_pickle(result["combined_path"])
             assert len(df_loaded) == 1
-            assert df_loaded.iloc[0]["2.1 Conversation Reset"] is True
+            assert df_loaded.iloc[0]["2.1 Conversation Reset"] == True
 
 
 # Made with Bob
