@@ -7,15 +7,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from workflow.executor import (
+from agent.executor import (
     Executor,
     _parse_json,
     _parse_tool_call,
     _resolve_args,
     _resolve_args_with_llm,
 )
-from workflow.models import Plan, PlanStep, StepResult
-from workflow.runner import PlanExecuteRunner
+from agent.models import Plan, PlanStep, StepResult
+from agent.runner import PlanExecuteRunner
 
 # ── shared plan strings ───────────────────────────────────────────────────────
 
@@ -50,9 +50,9 @@ _STEP2_ARGS = "{}"
 
 def _patch_mcp(tool_response: str = _TOOL_RESPONSE):
     return (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("agent.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
         patch(
-            "workflow.executor._call_tool", new=AsyncMock(return_value=tool_response)
+            "agent.executor._call_tool", new=AsyncMock(return_value=tool_response)
         ),
     )
 
@@ -174,7 +174,7 @@ async def test_executor_get_server_descriptions(mock_llm):
     executor = Executor(mock_llm(), server_paths={"TestServer": None})
 
     with patch(
-        "workflow.executor._list_tools",
+        "agent.executor._list_tools",
         new=AsyncMock(
             return_value=[{"name": "foo", "description": "does foo", "parameters": []}]
         ),
@@ -211,8 +211,8 @@ async def test_executor_step_result_carries_resolved_args(sequential_llm):
 
     step = _make_step(1, tool="assets")
     with (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("workflow.executor._call_tool", new=AsyncMock(return_value="{}")),
+        patch("agent.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("agent.executor._call_tool", new=AsyncMock(return_value="{}")),
     ):
         result = await executor.execute_step(step, {}, "List assets at MAIN")
 
@@ -229,8 +229,8 @@ async def test_executor_tool_call_exception_recorded_as_error(sequential_llm):
 
     step = _make_step(1, tool="sites")
     with (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("workflow.executor._call_tool", new=AsyncMock(side_effect=RuntimeError("timeout"))),
+        patch("agent.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("agent.executor._call_tool", new=AsyncMock(side_effect=RuntimeError("timeout"))),
     ):
         result = await executor.execute_step(step, {}, "Q")
 
@@ -261,8 +261,8 @@ async def test_executor_calls_llm_to_generate_args(sequential_llm):
         json.dumps({"sensors": ["temp"]}),
     ])
     with (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("workflow.executor._call_tool", new=call_mock),
+        patch("agent.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("agent.executor._call_tool", new=call_mock),
     ):
         results = await executor.execute_plan(plan, "Q")
 
@@ -290,8 +290,8 @@ async def test_executor_prior_step_results_in_llm_prompt():
     site_resp = json.dumps({"sites": ["MAIN"]})
     call_mock = AsyncMock(side_effect=[site_resp, '{"sensors": []}'])
     with (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("workflow.executor._call_tool", new=call_mock),
+        patch("agent.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("agent.executor._call_tool", new=call_mock),
     ):
         await executor.execute_plan(plan, "List sensors for CH-1")
 
@@ -309,8 +309,8 @@ async def test_executor_no_prior_context_shows_none_in_prompt():
 
     step = _make_step(1, tool="sites")
     with (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("workflow.executor._call_tool", new=AsyncMock(return_value="{}")),
+        patch("agent.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("agent.executor._call_tool", new=AsyncMock(return_value="{}")),
     ):
         await executor.execute_step(step, {}, "Q")
 
@@ -336,8 +336,8 @@ async def test_executor_context_accumulates_across_steps():
     resp1, resp2, resp3 = '{"sites":["MAIN"]}', '{"assets":["CH-1"]}', '{"sensors":[]}'
     call_mock = AsyncMock(side_effect=[resp1, resp2, resp3])
     with (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("workflow.executor._call_tool", new=call_mock),
+        patch("agent.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("agent.executor._call_tool", new=call_mock),
     ):
         await executor.execute_plan(plan, "Q")
 
@@ -370,8 +370,8 @@ async def test_pipeline_uses_llm_args_for_each_step(sequential_llm):
 
     call_mock = AsyncMock(side_effect=['{"sites": ["MAIN"]}', '{"assets": ["CH-1"]}'])
     with (
-        patch("workflow.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("workflow.executor._call_tool", new=call_mock),
+        patch("agent.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch("agent.executor._call_tool", new=call_mock),
     ):
         result = await PlanExecuteRunner(llm).run("List all assets at site MAIN")
 

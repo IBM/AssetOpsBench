@@ -213,7 +213,7 @@ uv run vibration-mcp-server
 
 ## Plan-Execute Runner
 
-`src/workflow/` is a custom MCP client that implements a **plan-and-execute** workflow over the MCP servers. It replaces AgentHive's bespoke orchestration with the standard MCP protocol.
+`src/agent/` is a custom MCP client that implements a **plan-and-execute** workflow over the MCP servers. It replaces AgentHive's bespoke orchestration with the standard MCP protocol.
 
 ### How it works
 
@@ -335,7 +335,7 @@ Expected execution output (trimmed):
 
 ```python
 import asyncio
-from workflow import PlanExecuteRunner
+from agent import PlanExecuteRunner
 from llm import LiteLLMBackend
 
 runner = PlanExecuteRunner(llm=LiteLLMBackend("watsonx/meta-llama/llama-3-3-70b-instruct"))
@@ -370,7 +370,7 @@ runner = PlanExecuteRunner(llm=MyLLM())
 Pass `server_paths` to register additional servers. Keys must match the server names the planner assigns steps to:
 
 ```python
-from workflow import PlanExecuteRunner
+from agent import PlanExecuteRunner
 
 runner = PlanExecuteRunner(
     llm=my_llm,
@@ -460,7 +460,7 @@ uv run pytest src/servers/utilities/tests/
 uv run pytest src/servers/fmsr/tests/ -k "not integration"
 uv run pytest src/servers/tsfm/tests/ -k "not integration"
 uv run pytest src/servers/wo/tests/test_tools.py -k "not integration"
-uv run pytest src/workflow/tests/
+uv run pytest src/agent/tests/
 ```
 
 ### Work order integration tests (requires CouchDB + populated `workorder` db)
@@ -483,7 +483,7 @@ uv run pytest src/ -v
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                     workflow/                        │
+│                     agent/                          │
 │                                                      │
 │  PlanExecuteRunner.run(question)                     │
 │  ┌────────────┐   ┌────────────┐   ┌──────────────┐ │

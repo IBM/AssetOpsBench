@@ -141,7 +141,7 @@ def _print_section(title: str) -> None:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    from workflow.runner import PlanExecuteRunner
+    from agent.runner import PlanExecuteRunner
 
     llm = _build_llm(args.model_id)
     server_paths = _parse_servers(args.servers)
