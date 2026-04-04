@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Run all scenarios from a utterance JSON file and report average latency per stage."""
 
+import argparse
 import json
 import subprocess
 import sys
 from pathlib import Path
 
 SCENARIOS_FILE = Path(__file__).parent.parent / "src/scenarios/local/vibration_utterance.json"
+DEFAULT_MODEL = "openai/Qwen/Qwen2.5-7B-Instruct"
 
 
-def run_scenario(text: str) -> dict | None:
+def run_scenario(text: str, model_id: str) -> dict | None:
     result = subprocess.run(
-        ["uv", "run", "plan-execute", "--json", text],
+        ["uv", "run", "plan-execute", "--model-id", model_id, "--json", text],
         capture_output=True,
         text=True,
         cwd=Path(__file__).parent.parent,
@@ -27,15 +29,22 @@ def run_scenario(text: str) -> dict | None:
 
 
 def main() -> None:
-    scenarios = json.loads(SCENARIOS_FILE.read_text())
-    print(f"Running {len(scenarios)} scenarios from {SCENARIOS_FILE.name}\n")
+    parser = argparse.ArgumentParser(description="Benchmark plan-execute latency over a scenario set.")
+    parser.add_argument("--model-id", default=DEFAULT_MODEL, help=f"LiteLLM model string (default: {DEFAULT_MODEL})")
+    parser.add_argument("--scenarios", default=str(SCENARIOS_FILE), help="Path to utterance JSON file")
+    args = parser.parse_args()
+
+    scenarios_path = Path(args.scenarios)
+    scenarios = json.loads(scenarios_path.read_text())
+    print(f"Model:     {args.model_id}")
+    print(f"Scenarios: {scenarios_path.name} ({len(scenarios)} total)\n")
 
     results = []
     for i, scenario in enumerate(scenarios, 1):
         text = scenario["text"]
         sid = scenario.get("id", i)
         print(f"[{i}/{len(scenarios)}] id={sid}: {text[:80]}")
-        output = run_scenario(text)
+        output = run_scenario(text, args.model_id)
         if output and "latency" in output:
             lat = output["latency"]
             results.append(lat)
