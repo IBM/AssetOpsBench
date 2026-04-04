@@ -13,6 +13,7 @@ an MCP-native implementation:
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from llm import LLMBackend
@@ -88,14 +89,20 @@ class PlanExecuteRunner:
 
         # 2. Plan
         _log.info("Planning...")
+        t_plan_start = time.perf_counter()
         plan = self._planner.generate_plan(question, server_descriptions)
-        _log.info("Plan has %d step(s).", len(plan.steps))
+        t_plan = time.perf_counter() - t_plan_start
+        _log.info("Plan has %d step(s). (%.3fs)", len(plan.steps), t_plan)
 
         # 3. Execute
+        t_execute_start = time.perf_counter()
         history = await self._executor.execute_plan(plan, question)
+        t_execute = time.perf_counter() - t_execute_start
+        _log.info("Execution done. (%.3fs)", t_execute)
 
         # 4. Summarise
         _log.info("Summarising...")
+        t_summarize_start = time.perf_counter()
         results_text = "\n\n".join(
             f"Step {r.step_number} — {r.task} (server: {r.server}):\n"
             + (r.response if r.success else f"ERROR: {r.error}")
@@ -104,10 +111,20 @@ class PlanExecuteRunner:
         answer = self._llm.generate(
             _SUMMARIZE_PROMPT.format(question=question, results=results_text)
         )
+        t_summarize = time.perf_counter() - t_summarize_start
+        _log.info("Summarization done. (%.3fs)", t_summarize)
+
+        _log.info(
+            "Latency breakdown — plan: %.3fs | execute: %.3fs | summarize: %.3fs | total: %.3fs",
+            t_plan, t_execute, t_summarize, t_plan + t_execute + t_summarize,
+        )
 
         return OrchestratorResult(
             question=question,
             answer=answer,
             plan=plan,
             history=history,
+            latency_plan=t_plan,
+            latency_execute=t_execute,
+            latency_summarize=t_summarize,
         )

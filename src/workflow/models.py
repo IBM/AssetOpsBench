@@ -75,3 +75,10 @@ class OrchestratorResult:
     answer: str
     plan: Plan
     history: list[StepResult]
+    latency_plan: float = 0.0
+    latency_execute: float = 0.0
+    latency_summarize: float = 0.0
+
+    @property
+    def latency_total(self) -> float:
+        return self.latency_plan + self.latency_execute + self.latency_summarize
