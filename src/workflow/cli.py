@@ -152,6 +152,12 @@ async def _run(args: argparse.Namespace) -> None:
         output = {
             "question": result.question,
             "answer": result.answer,
+            "latency": {
+                "plan": result.latency_plan,
+                "execute": result.latency_execute,
+                "summarize": result.latency_summarize,
+                "total": result.latency_total,
+            },
             "plan": [
                 {
                     "step": s.step_number,
