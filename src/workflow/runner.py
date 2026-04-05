@@ -62,9 +62,10 @@ class PlanExecuteRunner:
         self,
         llm: LLMBackend,
         server_paths: dict[str, Path | str] | None = None,
+        thinking: bool = False,
     ) -> None:
         self._llm = llm
-        self._planner = Planner(llm)
+        self._planner = Planner(llm, thinking=thinking)
         self._executor = Executor(llm, server_paths)
 
     async def run(self, question: str) -> OrchestratorResult:

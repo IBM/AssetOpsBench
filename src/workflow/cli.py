@@ -86,6 +86,11 @@ examples:
         help="Output the full result (answer, plan, history) as JSON.",
     )
     parser.add_argument(
+        "--thinking",
+        action="store_true",
+        help="Enable thinking mode by prepending <|think|> to the planning prompt.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Show INFO-level progress logs on stderr (default: WARNING+ only).",
@@ -145,7 +150,7 @@ async def _run(args: argparse.Namespace) -> None:
 
     llm = _build_llm(args.model_id)
     server_paths = _parse_servers(args.servers)
-    runner = PlanExecuteRunner(llm=llm, server_paths=server_paths)
+    runner = PlanExecuteRunner(llm=llm, server_paths=server_paths, thinking=args.thinking)
     result = await runner.run(args.question)
 
     if args.output_json:

@@ -99,8 +99,9 @@ def parse_plan(raw: str) -> Plan:
 class Planner:
     """Decomposes a question into a structured execution plan using an LLM."""
 
-    def __init__(self, llm: LLMBackend) -> None:
+    def __init__(self, llm: LLMBackend, thinking: bool = False) -> None:
         self._llm = llm
+        self._thinking = thinking
 
     def generate_plan(
         self,
@@ -120,5 +121,7 @@ class Planner:
             f"{name}:\n{desc}" for name, desc in server_descriptions.items()
         )
         prompt = _PLAN_PROMPT.format(servers=servers_text, question=question)
+        if self._thinking:
+            prompt = "<|think|>\n" + prompt
         raw = self._llm.generate(prompt)
         return parse_plan(raw)
