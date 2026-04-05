@@ -33,14 +33,19 @@ Question: {question}
 Expected outcome: {characteristic_form}
 Agent response: {answer}
 
-Evaluate the response on the following six dimensions.
+Evaluate the response on the following six dimensions. Use the expected outcome as the ground truth.
 
-1. task_completion: Did the agent complete the requested task?
-2. data_retrieval_accuracy: Was the correct data retrieved with correct parameters?
-3. generalized_result_verification: Is the result consistent with general domain knowledge?
-4. agent_sequence_correct: Were the steps executed in the correct logical order?
-5. clarity_and_justification: Is the response clear and well-justified?
-6. hallucinations: Did the agent hallucinate any facts not supported by the data?
+1. task_completion: Did the agent complete the requested task as described in the expected outcome? If the expected outcome says data exists and a result should be produced, but the agent says data is missing or unavailable, this is False.
+
+2. data_retrieval_accuracy: Was the correct data retrieved with the correct parameters (asset, location, time range, sensor)? If the agent failed to retrieve data that the expected outcome confirms should exist, this is False.
+
+3. generalized_result_verification: Does the agent's result match what the expected outcome says should have happened? If the expected outcome states that anomalies were detected, a forecast was produced, or specific data was found, but the agent reports failure or missing data, this is False.
+
+4. agent_sequence_correct: Were all required steps executed in the correct order as implied by the expected outcome? If the expected outcome specifies multiple steps (e.g., retrieve data, then run TSFM, then store results) and the agent skipped or failed any of them, this is False.
+
+5. clarity_and_justification: Is the response clearly written and does it justify its conclusions?
+
+6. hallucinations: Did the agent state facts that contradict the expected outcome or are not supported by the data? If the expected outcome confirms that data exists (e.g., 400+ records, anomalies detected) but the agent claims there is no data or the asset does not exist, this is True (hallucination occurred).
 
 Respond with a JSON object only, no explanation:
 {{"task_completion": true, "data_retrieval_accuracy": true, "generalized_result_verification": true, "agent_sequence_correct": true, "clarity_and_justification": true, "hallucinations": false}}
