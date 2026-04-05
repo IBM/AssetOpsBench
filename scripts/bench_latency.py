@@ -150,6 +150,7 @@ def main() -> None:
         text = scenario["text"]
         characteristic_form = scenario.get("characteristic_form", "")
         print(f"[{i}/{len(scenarios)}] id={sid}: {text}")
+        print(f"  expected: {characteristic_form}")
 
         latencies = []
         grade_result = None
