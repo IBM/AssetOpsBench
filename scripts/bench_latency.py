@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
-DEFAULT_MODEL = "openai/Qwen/Qwen2.5-7B-Instruct"
+DEFAULT_MODEL = "openai/Qwen/Qwen2.5-7B-Instruct"  # requires LITELLM_BASE_URL pointing to local vLLM
 NUM_RUNS = 5
 
 # ── LLM-as-judge prompt ───────────────────────────────────────────────────────
@@ -167,6 +167,7 @@ def main() -> None:
                 print(f"total={lat['total']:.2f}s", end="")
 
             if run == 1 and grade_result is None and output.get("answer"):
+                print(f"\n  answer: {output['answer'][:200]}")
                 print(" grading...", end=" ", flush=True)
                 grade_result = grade(text, characteristic_form, output["answer"])
                 status = "PASS" if grade_result["passed"] else "FAIL"
