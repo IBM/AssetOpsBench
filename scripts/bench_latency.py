@@ -149,7 +149,7 @@ def main() -> None:
         sid = scenario["id"]
         text = scenario["text"]
         characteristic_form = scenario.get("characteristic_form", "")
-        print(f"[{i}/{len(scenarios)}] id={sid}: {text[:80]}")
+        print(f"[{i}/{len(scenarios)}] id={sid}: {text}")
 
         latencies = []
         grade_result = None
@@ -167,7 +167,7 @@ def main() -> None:
                 print(f"total={lat['total']:.2f}s", end="")
 
             if run == 1 and grade_result is None and output.get("answer"):
-                print(f"\n  answer: {output['answer'][:200]}")
+                print(f"\n  answer: {output['answer']}")
                 print(" grading...", end=" ", flush=True)
                 grade_result = grade(text, characteristic_form, output["answer"])
                 status = "PASS" if grade_result["passed"] else "FAIL"
