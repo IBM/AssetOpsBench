@@ -123,15 +123,7 @@ def grade(question: str, characteristic_form: str, answer: str) -> dict:
     except json.JSONDecodeError:
         scores = {}
 
-    passed = (
-        scores.get("task_completion", False)
-        and scores.get("data_retrieval_accuracy", False)
-        and scores.get("generalized_result_verification", False)
-        and scores.get("agent_sequence_correct", False)
-        and scores.get("clarity_and_justification", False)
-        and not scores.get("hallucinations", True)
-    )
-    return {"scores": scores, "passed": passed}
+    return {"scores": scores}
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
@@ -176,8 +168,7 @@ def main() -> None:
                 print(f"\n  answer: {output['answer']}")
                 print(" grading...", end=" ", flush=True)
                 grade_result = grade(text, characteristic_form, output["answer"])
-                status = "PASS" if grade_result["passed"] else "FAIL"
-                print(f"[{status}]")
+                print(f"[graded]")
             else:
                 print()
 
@@ -208,16 +199,28 @@ def main() -> None:
     n = len(all_results)
     avg = {k: sum(r["latency_avg"][k] for r in all_results) / n
            for k in ("plan", "execute", "summarize", "total")}
-    passed = sum(1 for r in all_results if r["grade"] and r["grade"]["passed"])
+
+    dims = ["task_completion", "data_retrieval_accuracy", "generalized_result_verification",
+            "agent_sequence_correct", "clarity_and_justification", "hallucinations"]
+    graded = [r for r in all_results if r["grade"]]
+    ng = len(graded)
+    dim_scores = {
+        d: sum(1 for r in graded if r["grade"]["scores"].get(d, False)) / ng if ng else 0
+        for d in dims
+    }
 
     print(f"{'─' * 55}")
-    print(f"  Summary over {n} scenarios")
+    print(f"  Summary over {n} scenarios ({ng} graded)")
     print(f"{'─' * 55}")
     print(f"  Plan:       {avg['plan']:.3f}s  ({avg['plan']/avg['total']*100:.1f}%)")
     print(f"  Execute:    {avg['execute']:.3f}s  ({avg['execute']/avg['total']*100:.1f}%)")
     print(f"  Summarize:  {avg['summarize']:.3f}s  ({avg['summarize']/avg['total']*100:.1f}%)")
     print(f"  Total:      {avg['total']:.3f}s")
-    print(f"  Accuracy:   {passed}/{n} passed ({passed/n*100:.1f}%)")
+    print(f"  ── Accuracy per dimension ──")
+    for d, score in dim_scores.items():
+        # hallucinations: lower is better
+        label = f"{score*100:.0f}% hallucinated" if d == "hallucinations" else f"{score*100:.0f}% passed"
+        print(f"    {d}: {label}")
     print(f"{'─' * 55}")
 
     out_path = Path(__file__).parent / "bench_results.json"
@@ -225,7 +228,7 @@ def main() -> None:
         "model": args.model_id,
         "thinking": args.thinking,
         "runs_per_scenario": args.runs,
-        "summary": {**avg, "accuracy": f"{passed}/{n}"},
+        "summary": {**avg, "dim_scores": dim_scores},
         "scenarios": all_results,
     }, indent=2))
     print(f"\nFull results saved to {out_path}")
