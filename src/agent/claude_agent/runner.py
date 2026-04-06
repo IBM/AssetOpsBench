@@ -27,6 +27,24 @@ from ..runner import AgentRunner
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "claude-opus-4-6"
+_LITELLM_PREFIX = "litellm_proxy/"
+
+
+def _resolve_model(model_id: str) -> str:
+    """Strip the ``litellm_proxy/`` prefix from a model ID.
+
+    When routing through a LiteLLM proxy (``ANTHROPIC_BASE_URL`` set),
+    the model name passed to claude-agent-sdk must match the ``model_name``
+    in the LiteLLM config — without the provider prefix used by LiteLLMBackend.
+
+    Examples::
+
+        "litellm_proxy/aws/claude-opus-4-6"  ->  "aws/claude-opus-4-6"
+        "claude-opus-4-6"                    ->  "claude-opus-4-6"
+    """
+    if model_id.startswith(_LITELLM_PREFIX):
+        return model_id[len(_LITELLM_PREFIX):]
+    return model_id
 
 _SYSTEM_PROMPT = """\
 You are an industrial asset operations assistant with access to MCP tools for
@@ -83,7 +101,7 @@ class ClaudeAgentRunner(AgentRunner):
         permission_mode: str = "default",
     ) -> None:
         super().__init__(llm, server_paths)
-        self._model = model
+        self._model = _resolve_model(model)
         self._max_turns = max_turns
         self._permission_mode = permission_mode
         self._resolved_server_paths: dict[str, Path | str] = (

@@ -27,10 +27,15 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=f"""
 environment variables:
   ANTHROPIC_API_KEY     Anthropic API key (required)
+  ANTHROPIC_BASE_URL    Override API endpoint, e.g. a LiteLLM proxy URL
+                        (e.g. http://localhost:4000). When set, ANTHROPIC_API_KEY
+                        should be the LiteLLM key, and --model-id should match
+                        the model_name in your LiteLLM config.
 
 examples:
   claude-agent "What assets are at site MAIN?"
   claude-agent --model-id claude-opus-4-6 --max-turns 20 "List sensors on Chiller 6"
+  claude-agent --model-id litellm_proxy/aws/claude-opus-4-6 "What is the current time?"
   claude-agent --json "What is the current time?"
 """,
     )
