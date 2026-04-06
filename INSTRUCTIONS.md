@@ -21,6 +21,10 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
   - [Python API](#python-api)
   - [Bring your own LLM](#bring-your-own-llm)
   - [Add more MCP servers](#add-more-mcp-servers)
+- [Claude Agent Runner](#claude-agent-runner)
+  - [How it works](#how-it-works-1)
+  - [CLI](#cli-1)
+  - [Python API](#python-api-1)
 - [Connect to Claude Desktop](#connect-to-claude-desktop)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
@@ -389,6 +393,102 @@ runner = PlanExecuteRunner(
 
 ---
 
+## Claude Agent Runner
+
+`src/agent/claude_agent/` uses the **claude-agent-sdk** to drive the same MCP servers. Unlike `PlanExecuteRunner`, there is no explicit plan — the SDK's built-in agentic loop handles tool discovery, invocation, and multi-turn reasoning autonomously.
+
+### How it works
+
+```
+ClaudeAgentRunner.run(question)
+  │
+  └─ claude-agent-sdk query loop
+       • connects to each MCP server over stdio
+       • Claude decides which tools to call and in what order
+       • tool calls and results are handled internally by the SDK
+       • final answer is returned as ResultMessage
+```
+
+### CLI
+
+After `uv sync`, the `claude-agent` command is available:
+
+```bash
+uv run claude-agent "What sensors are on Chiller 6?"
+```
+
+Flags:
+
+| Flag                  | Description                                                                  |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `--model-id MODEL_ID` | Claude model ID (default: `claude-opus-4-6`)                                 |
+| `--max-turns N`       | Maximum agentic loop turns (default: 30)                                     |
+| `--show-history`      | Print each turn's text, tool calls, and token usage                          |
+| `--json`              | Output full trajectory (turns, tool calls, token counts) as JSON             |
+| `--verbose`           | Show INFO-level logs on stderr                                               |
+
+The `--model-id` prefix determines the backend:
+
+| Prefix           | Backend       | Required env vars                     |
+| ---------------- | ------------- | ------------------------------------- |
+| _(none)_         | Anthropic API | `LITELLM_API_KEY`                     |
+| `litellm_proxy/` | LiteLLM proxy | `LITELLM_API_KEY`, `LITELLM_BASE_URL` |
+
+Examples:
+
+```bash
+# Direct Anthropic API
+uv run claude-agent "What assets are at site MAIN?"
+
+# LiteLLM proxy
+uv run claude-agent --model-id litellm_proxy/aws/claude-opus-4-6 "What sensors are on Chiller 6?"
+
+# Show full trajectory (turns, tool calls, token usage)
+uv run claude-agent --show-history "What are the failure modes for a chiller?"
+
+# Machine-readable trajectory
+uv run claude-agent --json "What is the current time?" | jq .turns
+```
+
+### Python API
+
+```python
+import anyio
+from agent.claude_agent import ClaudeAgentRunner
+
+runner = ClaudeAgentRunner(model="litellm_proxy/aws/claude-opus-4-6")
+result = anyio.run(runner.run, "What sensors are on Chiller 6?")
+print(result.answer)
+```
+
+`AgentResult` fields:
+
+| Field     | Type         | Description                                    |
+| --------- | ------------ | ---------------------------------------------- |
+| `answer`  | `str`        | Final answer from the agent                    |
+| `history` | `Trajectory` | Full execution trace (turns, tool calls, tokens) |
+
+`Trajectory` fields:
+
+| Field                 | Type              | Description                          |
+| --------------------- | ----------------- | ------------------------------------ |
+| `turns`               | `list[TurnRecord]`| One record per assistant turn        |
+| `total_input_tokens`  | `int`             | Sum of input tokens across all turns |
+| `total_output_tokens` | `int`             | Sum of output tokens across all turns|
+| `all_tool_calls`      | `list[ToolCall]`  | Flat list of every tool call made    |
+
+Each `TurnRecord` has `index`, `text`, `tool_calls`, `input_tokens`, `output_tokens`.
+Each `ToolCall` has `name`, `input`, `id`.
+
+```python
+traj = result.history
+print(f"{traj.total_input_tokens} input / {traj.total_output_tokens} output tokens")
+for tc in traj.all_tool_calls:
+    print(f"  {tc.name}: {tc.input}")
+```
+
+---
+
 ## Connect to Claude Desktop
 
 Add the following to your Claude Desktop `claude_desktop_config.json`:
@@ -482,22 +582,27 @@ uv run pytest src/ -v
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                     agent/                          │
-│                                                      │
-│  PlanExecuteRunner.run(question)                     │
-│  ┌────────────┐   ┌────────────┐   ┌──────────────┐ │
-│  │  Planner   │ → │  Executor  │ → │  Summariser  │ │
-│  │            │   │            │   │              │ │
-│  │ LLM breaks │   │ Routes each│   │ LLM combines │ │
-│  │ question   │   │ step to the│   │ step results │ │
-│  │ into steps │   │ right MCP  │   │ into answer  │ │
-│  └────────────┘   │ server via │   └──────────────┘ │
-│                   │ stdio      │                     │
-└───────────────────┼────────────┼─────────────────────┘
-                    │ MCP protocol (stdio)
-         ┌──────────┼──────────┬──────────┬──────┬───────────┐
-         ▼          ▼          ▼          ▼      ▼           ▼
-        iot     utilities    fmsr       tsfm    wo      vibration
-      (tools)    (tools)    (tools)   (tools) (tools)    (tools)
+┌──────────────────────────────────────────────────────────────┐
+│                          agent/                              │
+│                                                              │
+│  PlanExecuteRunner.run(question)                             │
+│  ┌────────────┐   ┌────────────┐   ┌──────────────┐         │
+│  │  Planner   │ → │  Executor  │ → │  Summariser  │         │
+│  │ LLM breaks │   │ Routes each│   │ LLM combines │         │
+│  │ question   │   │ step to MCP│   │ step results │         │
+│  │ into steps │   │ via stdio  │   │ into answer  │         │
+│  └────────────┘   └────────────┘   └──────────────┘         │
+│                                                              │
+│  ClaudeAgentRunner.run(question)                             │
+│  ┌─────────────────────────────────────────┐                 │
+│  │  claude-agent-sdk agentic loop          │                 │
+│  │  Claude decides tools + order autonomously               │
+│  │  Trajectory (turns, tool calls, tokens) collected        │
+│  └─────────────────────────────────────────┘                 │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ MCP protocol (stdio)
+         ┌─────────────────┼───────────┬──────────┬──────┬───────────┐
+         ▼                 ▼           ▼          ▼      ▼           ▼
+        iot           utilities      fmsr       tsfm    wo      vibration
+      (tools)          (tools)      (tools)   (tools) (tools)    (tools)
 ```
