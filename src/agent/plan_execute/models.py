@@ -65,3 +65,13 @@ class StepResult:
     @property
     def success(self) -> bool:
         return self.error is None
+
+
+@dataclass
+class AgentResult:
+    """Final result returned by any AgentRunner."""
+
+    question: str
+    answer: str
+    plan: Plan
+    history: list[StepResult]

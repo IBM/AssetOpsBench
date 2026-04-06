@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agent.claude_agent.runner import ClaudeAgentRunner, _build_mcp_servers
-from agent.plan_execute.models import StepResult
+from agent.plan_execute.models import AgentResult, StepResult
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +78,7 @@ async def test_run_returns_orchestrator_result():
         runner = ClaudeAgentRunner(server_paths={"iot": "iot-mcp-server"})
         result = await runner.run("How many sensors are there?")
 
+    assert isinstance(result, AgentResult)
     assert result.question == "How many sensors are there?"
     assert result.answer == "42 sensors found"
     assert len(result.plan.steps) == 0

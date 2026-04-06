@@ -18,8 +18,8 @@ from pathlib import Path
 from llm import LLMBackend
 
 from .executor import Executor
+from .models import AgentResult
 from .planner import Planner
-from ..models import OrchestratorResult
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class PlanExecuteRunner(AgentRunner):
         self._planner = Planner(llm)
         self._executor = Executor(llm, server_paths)
 
-    async def run(self, question: str) -> OrchestratorResult:
+    async def run(self, question: str) -> AgentResult:
         """Run the full plan-execute loop for a question.
 
         Steps:
@@ -80,7 +80,7 @@ class PlanExecuteRunner(AgentRunner):
             question: The user question to answer.
 
         Returns:
-            OrchestratorResult with the final answer, the generated plan, and
+            AgentResult with the final answer, the generated plan, and
             the per-step execution history.
         """
         # 1. Discover
@@ -106,7 +106,7 @@ class PlanExecuteRunner(AgentRunner):
             _SUMMARIZE_PROMPT.format(question=question, results=results_text)
         )
 
-        return OrchestratorResult(
+        return AgentResult(
             question=question,
             answer=answer,
             plan=plan,
