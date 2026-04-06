@@ -14,14 +14,14 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
   - [tsfm](#tsfm)
   - [wo](#wo)
   - [vibration](#vibration)
-- [Plan-Execute Runner](#plan-execute-runner)
+- [Plan-Execute Agent](#plan-execute-agent)
   - [How it works](#how-it-works)
   - [CLI](#cli)
   - [End-to-end example](#end-to-end-example)
   - [Python API](#python-api)
   - [Bring your own LLM](#bring-your-own-llm)
   - [Add more MCP servers](#add-more-mcp-servers)
-- [Claude Agent Runner](#claude-agent-runner)
+- [Claude Agent](#claude-agent)
   - [How it works](#how-it-works-1)
   - [CLI](#cli-1)
   - [Python API](#python-api-1)
@@ -215,7 +215,7 @@ uv run vibration-mcp-server
 
 ---
 
-## Plan-Execute Runner
+## Plan-Execute Agent
 
 `src/agent/` is a custom MCP client that implements a **plan-and-execute** workflow over the MCP servers. It replaces AgentHive's bespoke orchestration with the standard MCP protocol.
 
@@ -393,7 +393,7 @@ runner = PlanExecuteRunner(
 
 ---
 
-## Claude Agent Runner
+## Claude Agent
 
 `src/agent/claude_agent/` uses the **claude-agent-sdk** to drive the same MCP servers. Unlike `PlanExecuteRunner`, there is no explicit plan — the SDK's built-in agentic loop handles tool discovery, invocation, and multi-turn reasoning autonomously.
 
