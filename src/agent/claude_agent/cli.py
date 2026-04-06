@@ -2,7 +2,7 @@
 
 Usage:
     claude-agent "What sensors are on Chiller 6?"
-    claude-agent --model claude-opus-4-6 --max-turns 20 "List failure modes for pumps"
+    claude-agent --model-id claude-opus-4-6 --max-turns 20 "List failure modes for pumps"
     claude-agent --json "What is the current time?"
 """
 
@@ -30,13 +30,13 @@ environment variables:
 
 examples:
   claude-agent "What assets are at site MAIN?"
-  claude-agent --model claude-opus-4-6 --max-turns 20 "List sensors on Chiller 6"
+  claude-agent --model-id claude-opus-4-6 --max-turns 20 "List sensors on Chiller 6"
   claude-agent --json "What is the current time?"
 """,
     )
     parser.add_argument("question", help="The question to answer.")
     parser.add_argument(
-        "--model",
+        "--model-id",
         default=_DEFAULT_MODEL,
         metavar="MODEL_ID",
         help=f"Claude model ID (default: {_DEFAULT_MODEL}).",
@@ -74,7 +74,7 @@ def _setup_logging(verbose: bool) -> None:
 async def _run(args: argparse.Namespace) -> None:
     from agent.claude_agent.runner import ClaudeAgentRunner
 
-    runner = ClaudeAgentRunner(model=args.model, max_turns=args.max_turns)
+    runner = ClaudeAgentRunner(model=args.model_id, max_turns=args.max_turns)
     result = await runner.run(args.question)
 
     if args.output_json:
