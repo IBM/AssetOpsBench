@@ -30,18 +30,27 @@ class Plan:
         return next((s for s in self.steps if s.step_number == number), None)
 
     def resolved_order(self) -> list[PlanStep]:
-        """Return steps in topological order (dependencies before dependents)."""
+        """Return steps in topological order (dependencies before dependents).
+
+        Guards against circular dependencies in LLM-generated plans by tracking
+        steps currently being visited (visiting set) in addition to completed ones.
+        Circular deps are broken by skipping already-in-progress nodes.
+        """
         seen: set[int] = set()
+        visiting: set[int] = set()
         ordered: list[PlanStep] = []
 
         def visit(n: int) -> None:
-            if n in seen:
+            if n in seen or n in visiting:
                 return
+            visiting.add(n)
             step = self.get_step(n)
             if step is None:
+                visiting.discard(n)
                 return
             for dep in step.dependencies:
                 visit(dep)
+            visiting.discard(n)
             seen.add(n)
             ordered.append(step)
 
