@@ -218,6 +218,43 @@ async def test_run_tool_output_captured():
 
 
 @pytest.mark.anyio
+async def test_run_tool_output_string_response():
+    """PostToolUse hook handles string tool_response (no .get)."""
+    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
+
+    mock_tool = MagicMock(spec=ToolUseBlock)
+    mock_tool.name = "sites"
+    mock_tool.input = {}
+    mock_tool.id = "tu_789"
+
+    mock_assistant = MagicMock(spec=AssistantMessage)
+    mock_assistant.content = [MagicMock(spec=TextBlock, text=""), mock_tool]
+    mock_assistant.usage = {"input_tokens": 10, "output_tokens": 5}
+
+    mock_result = MagicMock(spec=ResultMessage)
+    mock_result.result = "MAIN"
+    mock_result.stop_reason = "end_turn"
+
+    async def fake_query(prompt, options):
+        hook_fn = options.hooks["PostToolUse"][0].hooks[0]
+        yield mock_assistant
+        # Simulate SDK passing tool_response as a plain string
+        await hook_fn(
+            {"tool_response": '{"sites": ["MAIN"]}'},
+            "tu_789",
+            {},
+        )
+        yield mock_result
+
+    with patch("agent.claude_agent.runner.query", side_effect=fake_query):
+        runner = ClaudeAgentRunner(server_paths={})
+        result = await runner.run("What sites?")
+
+    tc = result.trajectory.turns[0].tool_calls[0]
+    assert tc.output == '{"sites": ["MAIN"]}'
+
+
+@pytest.mark.anyio
 async def test_run_empty_result():
     async def fake_query(prompt, options):
         return

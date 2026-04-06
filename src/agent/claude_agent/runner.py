@@ -150,9 +150,12 @@ class ClaudeAgentRunner(AgentRunner):
         turn_index = 0
         tool_outputs: dict[str, object] = {}
 
-        async def _capture_tool_output(input_data: dict, tool_use_id: str, context) -> dict:
-            output = input_data.get("tool_response", {}).get("content")
-            tool_outputs[tool_use_id] = output
+        async def _capture_tool_output(input_data, tool_use_id: str, context) -> dict:
+            resp = input_data.get("tool_response") if isinstance(input_data, dict) else input_data
+            if isinstance(resp, dict):
+                tool_outputs[tool_use_id] = resp.get("content", resp)
+            else:
+                tool_outputs[tool_use_id] = resp
             return {}
 
         options.hooks = {"PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])]}
