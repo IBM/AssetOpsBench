@@ -99,8 +99,8 @@ def _get_judge_llm():
     return _judge_llm
 
 
-def grade(question: str, characteristic_form: str, answer: str, trace: str = "") -> dict:
-    """Call LLM-as-judge and return per-dimension scores + overall pass/fail."""
+def grade_custom(question: str, characteristic_form: str, answer: str, trace: str = "") -> dict:
+    """LLM-as-judge using custom prompt (default mode)."""
     llm = _get_judge_llm()
     prompt = _JUDGE_PROMPT.format(
         question=question,
@@ -123,6 +123,32 @@ def grade(question: str, characteristic_form: str, answer: str, trace: str = "")
     return {"scores": scores}
 
 
+def grade_reactxen(question: str, characteristic_form: str, answer: str, trace: str = "") -> dict:
+    """Grade using the original EvaluationAgent from reactxen (scenario-server)."""
+    sys.path.insert(0, str(REPO_ROOT / "aobench" / "scenario-server" / "src"))
+    try:
+        from reactxen.agents.evaluation_agent.agent import EvaluationAgent
+    except ImportError:
+        print("[ERROR] reactxen not installed. Run: pip install git+https://github.com/IBM/ReActXen.git", file=sys.stderr)
+        sys.exit(1)
+
+    eval_agent = EvaluationAgent(model_id=16)
+    review = eval_agent.evaluate_response(
+        agent_response=answer,
+        characteristic_answer=characteristic_form,
+        question=question,
+        agent_think=trace or "",
+    )
+    return {"scores": review}
+
+
+def grade(question: str, characteristic_form: str, answer: str, trace: str = "", mode: str = "custom") -> dict:
+    """Call grader based on mode ('custom' or 'reactxen')."""
+    if mode == "reactxen":
+        return grade_reactxen(question, characteristic_form, answer, trace)
+    return grade_custom(question, characteristic_form, answer, trace)
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -130,12 +156,14 @@ def main() -> None:
     parser.add_argument("--model-id", default=DEFAULT_MODEL, help=f"LiteLLM model string (default: {DEFAULT_MODEL})")
     parser.add_argument("--runs", type=int, default=NUM_RUNS, help=f"Runs per scenario (default: {NUM_RUNS})")
     parser.add_argument("--thinking", action="store_true", help="Enable thinking mode in the planning phase.")
+    parser.add_argument("--grade-mode", default="custom", choices=["custom", "reactxen"], help="Grading mode: 'custom' (LLM-as-judge prompt) or 'reactxen' (original EvaluationAgent).")
     args = parser.parse_args()
 
     scenarios = load_scenarios()
-    print(f"Model:    {args.model_id}")
-    print(f"Thinking: {'enabled' if args.thinking else 'disabled'}")
-    print(f"Runs:     {args.runs} per scenario\n")
+    print(f"Model:      {args.model_id}")
+    print(f"Thinking:   {'enabled' if args.thinking else 'disabled'}")
+    print(f"Runs:       {args.runs} per scenario")
+    print(f"Grade mode: {args.grade_mode}\n")
 
     all_results = []
 
@@ -168,7 +196,7 @@ def main() -> None:
                     "plan": output.get("plan", []),
                     "history": output.get("history", []),
                 }, indent=2)
-                grade_result = grade(text, characteristic_form, output["answer"], trace)
+                grade_result = grade(text, characteristic_form, output["answer"], trace, mode=args.grade_mode)
                 print(f"[graded]")
             else:
                 print()
