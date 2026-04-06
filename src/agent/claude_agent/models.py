@@ -12,6 +12,7 @@ class ToolCall:
     name: str
     input: dict
     id: str = ""
+    output: object = None
 
 
 @dataclass

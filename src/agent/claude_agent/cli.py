@@ -94,6 +94,10 @@ def _print_trace(trajectory) -> None:
             print(f"    text: {snippet}")
         for tc in turn.tool_calls:
             print(f"    tool: {tc.name}  input: {tc.input}")
+            if tc.output is not None:
+                out_str = str(tc.output)
+                snippet = out_str[:200] + ("..." if len(out_str) > 200 else "")
+                print(f"    output: {snippet}")
     print(f"\n  Total: {trajectory.total_input_tokens} input / "
           f"{trajectory.total_output_tokens} output tokens  "
           f"({len(trajectory.turns)} turns, "

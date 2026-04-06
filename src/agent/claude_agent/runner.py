@@ -19,7 +19,7 @@ import logging
 import os
 from pathlib import Path
 
-from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, query
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, HookMatcher, ResultMessage, query
 from claude_agent_sdk import TextBlock, ToolUseBlock
 
 from ..models import AgentResult
@@ -148,9 +148,25 @@ class ClaudeAgentRunner(AgentRunner):
         answer = ""
         trajectory = Trajectory()
         turn_index = 0
+        tool_outputs: dict[str, object] = {}
+
+        async def _capture_tool_output(input_data: dict, tool_use_id: str, context) -> dict:
+            output = input_data.get("tool_response", {}).get("content")
+            tool_outputs[tool_use_id] = output
+            return {}
+
+        options.hooks = {"PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])]}
+
+        def _flush_tool_outputs() -> None:
+            """Patch any pending hook outputs onto the last turn's tool calls."""
+            if tool_outputs and trajectory.turns:
+                for tc in trajectory.turns[-1].tool_calls:
+                    if tc.id in tool_outputs:
+                        tc.output = tool_outputs.pop(tc.id)
 
         async for message in query(prompt=question, options=options):
             if isinstance(message, AssistantMessage):
+                _flush_tool_outputs()
                 text = ""
                 tool_calls: list[ToolCall] = []
                 for block in message.content:
@@ -172,6 +188,7 @@ class ClaudeAgentRunner(AgentRunner):
                 )
                 turn_index += 1
             elif isinstance(message, ResultMessage):
+                _flush_tool_outputs()
                 answer = message.result or ""
                 _log.info(
                     "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "

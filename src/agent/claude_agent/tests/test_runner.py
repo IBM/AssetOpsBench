@@ -169,6 +169,55 @@ async def test_run_collects_trajectory():
 
 
 @pytest.mark.anyio
+async def test_run_tool_output_captured():
+    """PostToolUse hook output is attached to the matching ToolCall."""
+    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
+
+    mock_tool = MagicMock(spec=ToolUseBlock)
+    mock_tool.name = "sensors"
+    mock_tool.input = {"asset_id": "CH-6"}
+    mock_tool.id = "tu_456"
+
+    mock_text = MagicMock(spec=TextBlock)
+    mock_text.text = ""
+
+    mock_assistant1 = MagicMock(spec=AssistantMessage)
+    mock_assistant1.content = [mock_text, mock_tool]
+    mock_assistant1.usage = {"input_tokens": 50, "output_tokens": 10}
+
+    mock_assistant2 = MagicMock(spec=AssistantMessage)
+    mock_assistant2.content = [MagicMock(spec=TextBlock, text="Done.")]
+    mock_assistant2.usage = {"input_tokens": 60, "output_tokens": 5}
+
+    mock_result = MagicMock(spec=ResultMessage)
+    mock_result.result = "5 sensors."
+    mock_result.stop_reason = "end_turn"
+
+    async def fake_query(prompt, options):
+        # Simulate hook firing between turns by calling it directly
+        hook_matcher = options.hooks["PostToolUse"][0]
+        hook_fn = hook_matcher.hooks[0]
+        yield mock_assistant1
+        await hook_fn(
+            {"tool_response": {"content": [{"type": "text", "text": "sensor data"}]}},
+            "tu_456",
+            {},
+        )
+        yield mock_assistant2
+        yield mock_result
+
+    with patch("agent.claude_agent.runner.query", side_effect=fake_query):
+        runner = ClaudeAgentRunner(server_paths={})
+        result = await runner.run("What sensors are on Chiller 6?")
+
+    traj = result.trajectory
+    assert len(traj.turns) == 2
+    tc = traj.turns[0].tool_calls[0]
+    assert tc.id == "tu_456"
+    assert tc.output == [{"type": "text", "text": "sensor data"}]
+
+
+@pytest.mark.anyio
 async def test_run_empty_result():
     async def fake_query(prompt, options):
         return
