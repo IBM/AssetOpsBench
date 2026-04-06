@@ -20,6 +20,7 @@ from scenario_server.grading import InMemGradingStorage, PostGresGradingStorage
 from scenario_server.handlers.aob.aob import AOBScenarios
 from scenario_server.handlers.aob_iot.aob_iot import AOBIoTScenarios
 from scenario_server.handlers.aob_tsfm.aob_tsfm import AOBTSFMScenarios
+from scenario_server.handlers.aob_memory.aob_memory import AOBMemoryScenarios
 from scenario_server.handlers.aob_workorders.aob_workorders import AOBWorkOrderScenarios
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -115,6 +116,7 @@ def get_app(
                 AOBIoTScenarios,
                 AOBTSFMScenarios,
                 AOBWorkOrderScenarios,
+                AOBMemoryScenarios,
             ]
         )
 
