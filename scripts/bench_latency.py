@@ -55,7 +55,7 @@ Respond with a JSON object only, no explanation:
 # ── dataset loading ───────────────────────────────────────────────────────────
 
 def load_scenarios() -> list[dict]:
-    """Load scenarios 501-520 from the HuggingFace AssetOpsBench dataset."""
+    """Load scenarios 1-10 from the HuggingFace AssetOpsBench dataset."""
     try:
         from datasets import load_dataset
     except ImportError:
@@ -64,8 +64,8 @@ def load_scenarios() -> list[dict]:
 
     print("Loading dataset from HuggingFace...", flush=True)
     ds = load_dataset("ibm-research/AssetOpsBench", "scenarios", split="train")
-    scenarios = [s for s in ds if 501 <= s["id"] <= 520]
-    print(f"Loaded {len(scenarios)} scenarios (id 501-520)\n")
+    scenarios = [s for s in ds if 1 <= s["id"] <= 10]
+    print(f"Loaded {len(scenarios)} scenarios (id 1-10)\n")
     return scenarios
 
 
