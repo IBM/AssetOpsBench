@@ -12,11 +12,9 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 
 _DEFAULT_MODEL = "claude-opus-4-6"
-_LITELLM_PREFIX = "litellm_proxy/"
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE_FORMAT = "%H:%M:%S"
 
@@ -28,12 +26,8 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 environment variables:
-  ANTHROPIC_API_KEY     Anthropic API key (direct) or LiteLLM key (proxy).
-                        Falls back to LITELLM_API_KEY when --model-id starts
-                        with "litellm_proxy/".
-  ANTHROPIC_BASE_URL    LiteLLM proxy URL (e.g. http://localhost:4000).
-                        Falls back to LITELLM_BASE_URL when --model-id starts
-                        with "litellm_proxy/".
+  LITELLM_API_KEY       LiteLLM / Anthropic API key (required)
+  LITELLM_BASE_URL      LiteLLM proxy URL (required for litellm_proxy/* models)
 
 examples:
   claude-agent "What assets are at site MAIN?"
@@ -70,18 +64,6 @@ examples:
     return parser
 
 
-def _apply_litellm_env(model_id: str) -> None:
-    """When model_id has the litellm_proxy/ prefix, populate ANTHROPIC_* env
-    vars from their LITELLM_* counterparts so claude-agent-sdk routes through
-    the proxy without extra manual configuration."""
-    if not model_id.startswith(_LITELLM_PREFIX):
-        return
-    if not os.environ.get("ANTHROPIC_BASE_URL") and os.environ.get("LITELLM_BASE_URL"):
-        os.environ["ANTHROPIC_BASE_URL"] = os.environ["LITELLM_BASE_URL"]
-    if not os.environ.get("ANTHROPIC_API_KEY") and os.environ.get("LITELLM_API_KEY"):
-        os.environ["ANTHROPIC_API_KEY"] = os.environ["LITELLM_API_KEY"]
-
-
 def _setup_logging(verbose: bool) -> None:
     level = logging.INFO if verbose else logging.WARNING
     handler = logging.StreamHandler(sys.stderr)
@@ -101,17 +83,7 @@ async def _run(args: argparse.Namespace) -> None:
         output = {
             "question": result.question,
             "answer": result.answer,
-            "history": [
-                {
-                    "step": r.step_number,
-                    "task": r.task,
-                    "server": r.server,
-                    "response": r.response,
-                    "error": r.error,
-                    "success": r.success,
-                }
-                for r in result.history
-            ],
+            "history": result.history,
         }
         print(json.dumps(output, indent=2))
         return
@@ -124,7 +96,6 @@ def main() -> None:
 
     load_dotenv()
     args = _build_parser().parse_args()
-    _apply_litellm_env(args.model_id)
     _setup_logging(args.verbose)
     asyncio.run(_run(args))
 
