@@ -3,6 +3,7 @@
 Usage:
     claude-agent "What sensors are on Chiller 6?"
     claude-agent --model-id claude-opus-4-6 --max-turns 20 "List failure modes for pumps"
+    claude-agent --show-trace "What sensors are on Chiller 6?"
     claude-agent --json "What is the current time?"
 """
 
@@ -10,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
 import json
 import logging
 import sys
@@ -17,6 +19,7 @@ import sys
 _DEFAULT_MODEL = "claude-opus-4-6"
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE_FORMAT = "%H:%M:%S"
+_HR = "─" * 60
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -33,6 +36,7 @@ examples:
   claude-agent "What assets are at site MAIN?"
   claude-agent --model-id claude-opus-4-6 --max-turns 20 "List sensors on Chiller 6"
   claude-agent --model-id litellm_proxy/aws/claude-opus-4-6 "What is the current time?"
+  claude-agent --show-trace "What sensors are on Chiller 6?"
   claude-agent --json "What is the current time?"
 """,
     )
@@ -49,6 +53,11 @@ examples:
         default=30,
         metavar="N",
         help="Maximum agentic loop turns (default: 30).",
+    )
+    parser.add_argument(
+        "--show-trace",
+        action="store_true",
+        help="Print each turn's text, tool calls, and token usage.",
     )
     parser.add_argument(
         "--json",
@@ -73,6 +82,24 @@ def _setup_logging(verbose: bool) -> None:
     logging.root.setLevel(level)
 
 
+def _print_trace(trajectory) -> None:
+    print(f"\n{_HR}")
+    print("  Trace")
+    print(_HR)
+    for turn in trajectory.turns:
+        print(f"\n  [Turn {turn.index}]  "
+              f"in={turn.input_tokens} out={turn.output_tokens} tokens")
+        if turn.text:
+            snippet = turn.text[:200] + ("..." if len(turn.text) > 200 else "")
+            print(f"    text: {snippet}")
+        for tc in turn.tool_calls:
+            print(f"    tool: {tc.name}  input: {tc.input}")
+    print(f"\n  Total: {trajectory.total_input_tokens} input / "
+          f"{trajectory.total_output_tokens} output tokens  "
+          f"({len(trajectory.turns)} turns, "
+          f"{len(trajectory.all_tool_calls)} tool calls)")
+
+
 async def _run(args: argparse.Namespace) -> None:
     from agent.claude_agent.runner import ClaudeAgentRunner
 
@@ -80,15 +107,17 @@ async def _run(args: argparse.Namespace) -> None:
     result = await runner.run(args.question)
 
     if args.output_json:
-        output = {
-            "question": result.question,
-            "answer": result.answer,
-            "history": result.history,
-        }
-        print(json.dumps(output, indent=2))
+        print(json.dumps(dataclasses.asdict(result.history), indent=2))
         return
 
+    if args.show_trace:
+        _print_trace(result.history)
+
+    print(f"\n{_HR}")
+    print("  Answer")
+    print(_HR)
     print(result.answer)
+    print()
 
 
 def main() -> None:
