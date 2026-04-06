@@ -23,7 +23,7 @@ from .dataquality import (
 )
 from .io import _make_json_compatible
 from .metrics import _METRICS_FORECAST, _TSFREQUENCY_TOLERANCE, _freq_token_to_minutes
-
+from .model_cache import get_compiled_model
 
 # ── TSFM data quality filter ──────────────────────────────────────────────────
 
@@ -268,9 +268,12 @@ def _get_ttm_hf_inference(
     )
     dataset_inference = dataset_dic[0]
 
-    model = TinyTimeMixerForPrediction.from_pretrained(
-        model_checkpoint, prediction_filter_length=forecast_horizon
-    )
+    # model = TinyTimeMixerForPrediction.from_pretrained(
+    #     model_checkpoint, prediction_filter_length=forecast_horizon
+    # )
+    model = get_compiled_model("ttm_96_28")
+    if model is None:
+        raise RuntimeError(f"Model not pre-loaded: {"ttm_96_28"}")
     args = TrainingArguments(output_dir="./output", logging_dir="./log")
     trainer = Trainer(model=model, args=args, eval_dataset=dataset_inference)
 

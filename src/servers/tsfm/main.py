@@ -61,8 +61,29 @@ from .models import (
     TSFMModelEntry,
     TSFMModelsResult,
 )
+from .model_cache import preload_and_compile_models, get_compiled_model, get_model_config
+import logging
+
+# Initialize the logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
+def _initialize_server():
+    """Initialize server and pre-load models."""
+    logger.info("Starting TSFM MCP Server initialization...")
+    
+    # Update this line in _initialize_server()
+    models_dir = os.environ.get("PATH_TO_MODELS_DIR", "src/servers/tsfm/artifacts/output/tuned_models")
+    
+    # Pre-load all known models at startup
+    model_names = ["ttm_96_28"]  # Expand as needed
+    preload_and_compile_models(model_names, models_dir)
+    
+    logger.info("Server initialization complete")
+
+# Call initialization
+_initialize_server()
 
 _log_level = getattr(
     logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING
@@ -178,6 +199,10 @@ def run_tsfm_forecasting(
     except ImportError as exc:
         return ErrorResult(error=f"tsfm dependencies unavailable: {exc}")
 
+    model_config = get_model_config(model_checkpoint)
+    if model_config is None:
+        return ErrorResult(error=f"Model not pre-loaded: {model_checkpoint}. Available models: {list(get_compiled_model.__self__.keys())}")
+
     model_checkpoint = _get_model_checkpoint_path(model_checkpoint)
     dataset_path = _get_dataset_path(dataset_path)
     dataset_config = _build_dataset_config(
@@ -191,8 +216,8 @@ def run_tsfm_forecasting(
 
     try:
         data_df = _read_ts_data(dataset_path, dataset_config_dictionary=dataset_config)
-        with open(model_checkpoint + "/config.json") as _f:
-            model_config = json.load(_f)
+        # with open(model_checkpoint + "/config.json") as _f:
+        #     model_config = json.load(_f)
 
         output_data_quality = _tsfm_data_quality_filter(
             data_df, dataset_config, model_config, task="inference"
