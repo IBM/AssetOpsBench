@@ -3,7 +3,7 @@
 Usage:
     claude-agent "What sensors are on Chiller 6?"
     claude-agent --model-id claude-opus-4-6 --max-turns 20 "List failure modes for pumps"
-    claude-agent --show-trace "What sensors are on Chiller 6?"
+    claude-agent --show-history "What sensors are on Chiller 6?"
     claude-agent --json "What is the current time?"
 """
 
@@ -36,7 +36,7 @@ examples:
   claude-agent "What assets are at site MAIN?"
   claude-agent --model-id claude-opus-4-6 --max-turns 20 "List sensors on Chiller 6"
   claude-agent --model-id litellm_proxy/aws/claude-opus-4-6 "What is the current time?"
-  claude-agent --show-trace "What sensors are on Chiller 6?"
+  claude-agent --show-history "What sensors are on Chiller 6?"
   claude-agent --json "What is the current time?"
 """,
     )
@@ -55,7 +55,7 @@ examples:
         help="Maximum agentic loop turns (default: 30).",
     )
     parser.add_argument(
-        "--show-trace",
+        "--show-history",
         action="store_true",
         help="Print each turn's text, tool calls, and token usage.",
     )
@@ -110,7 +110,7 @@ async def _run(args: argparse.Namespace) -> None:
         print(json.dumps(dataclasses.asdict(result.history), indent=2))
         return
 
-    if args.show_trace:
+    if args.show_history:
         _print_trace(result.history)
 
     print(f"\n{_HR}")
