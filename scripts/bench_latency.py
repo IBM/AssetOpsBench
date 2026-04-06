@@ -31,6 +31,7 @@ You are evaluating an AI agent's response to an industrial asset operations quer
 
 Question: {question}
 Expected outcome: {characteristic_form}
+Agent execution trace: {trace}
 Agent response: {answer}
 
 Evaluate the response on the following six dimensions. Use the expected outcome as the ground truth.
@@ -41,7 +42,7 @@ Evaluate the response on the following six dimensions. Use the expected outcome 
 
 3. generalized_result_verification: Does the agent's result match what the expected outcome says should have happened? If the expected outcome states that anomalies were detected, a forecast was produced, or specific data was found, but the agent reports failure or missing data, this is False.
 
-4. agent_sequence_correct: Were all required steps executed in the correct order as implied by the expected outcome? If the expected outcome specifies multiple steps (e.g., retrieve data, then run TSFM, then store results) and the agent skipped or failed any of them, this is False.
+4. agent_sequence_correct: Were all required steps executed in the correct order as implied by the expected outcome? Use the execution trace to verify the actual sequence of tool calls. If the expected outcome specifies multiple steps and the trace shows the agent skipped or failed any of them, this is False.
 
 5. clarity_and_justification: Is the response clearly written and does it justify its conclusions?
 
@@ -55,17 +56,12 @@ Respond with a JSON object only, no explanation:
 # ── dataset loading ───────────────────────────────────────────────────────────
 
 def load_scenarios() -> list[dict]:
-    """Load scenarios 1-10 from the HuggingFace AssetOpsBench dataset."""
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        print("[ERROR] 'datasets' package not installed. Run: pip3 install datasets", file=sys.stderr)
-        sys.exit(1)
-
-    print("Loading dataset from HuggingFace...", flush=True)
-    ds = load_dataset("ibm-research/AssetOpsBench", "scenarios", split="train")
-    scenarios = [s for s in ds if 1 <= s["id"] <= 10]
-    print(f"Loaded {len(scenarios)} scenarios (id 1-10)\n")
+    """Load first 20 scenarios from the local vibration_utterance.json file."""
+    data_file = REPO_ROOT / "src" / "scenarios" / "local" / "vibration_utterance.json"
+    with open(data_file) as f:
+        scenarios = json.load(f)
+    scenarios = scenarios[:20]
+    print(f"Loaded {len(scenarios)} scenarios from {data_file.name}\n")
     return scenarios
 
 
@@ -103,13 +99,14 @@ def _get_judge_llm():
     return _judge_llm
 
 
-def grade(question: str, characteristic_form: str, answer: str) -> dict:
+def grade(question: str, characteristic_form: str, answer: str, trace: str = "") -> dict:
     """Call LLM-as-judge and return per-dimension scores + overall pass/fail."""
     llm = _get_judge_llm()
     prompt = _JUDGE_PROMPT.format(
         question=question,
         characteristic_form=characteristic_form,
         answer=answer,
+        trace=trace or "(not available)",
     )
     raw = llm.generate(prompt)
 
@@ -167,7 +164,11 @@ def main() -> None:
             if run == 1 and grade_result is None and output.get("answer"):
                 print(f"\n  answer: {output['answer']}")
                 print(" grading...", end=" ", flush=True)
-                grade_result = grade(text, characteristic_form, output["answer"])
+                trace = json.dumps({
+                    "plan": output.get("plan", []),
+                    "history": output.get("history", []),
+                }, indent=2)
+                grade_result = grade(text, characteristic_form, output["answer"], trace)
                 print(f"[graded]")
             else:
                 print()
