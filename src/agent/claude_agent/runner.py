@@ -19,9 +19,11 @@ import logging
 import os
 from pathlib import Path
 
-from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
+from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, query
+from claude_agent_sdk import TextBlock, ToolUseBlock
 
 from ..models import AgentResult
+from .models import ToolCall, Trajectory, TurnRecord
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
 
@@ -146,11 +148,40 @@ class ClaudeAgentRunner(AgentRunner):
 
         _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
         answer = ""
+        trajectory = Trajectory()
+        turn_index = 0
+
         async for message in query(prompt=question, options=options):
-            if isinstance(message, ResultMessage):
+            if isinstance(message, AssistantMessage):
+                text = ""
+                tool_calls: list[ToolCall] = []
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        text += block.text
+                    elif isinstance(block, ToolUseBlock):
+                        tool_calls.append(
+                            ToolCall(name=block.name, input=block.input, id=block.id)
+                        )
+                usage = message.usage or {}
+                trajectory.turns.append(
+                    TurnRecord(
+                        index=turn_index,
+                        text=text,
+                        tool_calls=tool_calls,
+                        input_tokens=usage.get("input_tokens", 0),
+                        output_tokens=usage.get("output_tokens", 0),
+                    )
+                )
+                turn_index += 1
+            elif isinstance(message, ResultMessage):
                 answer = message.result or ""
                 _log.info(
-                    "ClaudeAgentRunner: done (stop_reason=%s)", message.stop_reason
+                    "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "
+                    "input_tokens=%d, output_tokens=%d)",
+                    message.stop_reason,
+                    len(trajectory.turns),
+                    trajectory.total_input_tokens,
+                    trajectory.total_output_tokens,
                 )
 
-        return AgentResult(question=question, answer=answer, history=None)
+        return AgentResult(question=question, answer=answer, history=trajectory)

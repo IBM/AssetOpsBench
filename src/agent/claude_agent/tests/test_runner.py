@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from agent.claude_agent.models import Trajectory
 from agent.claude_agent.runner import ClaudeAgentRunner, _build_mcp_servers, _resolve_model, _sdk_env
 from agent.models import AgentResult
 
@@ -119,7 +120,52 @@ async def test_run_returns_orchestrator_result():
     assert isinstance(result, AgentResult)
     assert result.question == "How many sensors are there?"
     assert result.answer == "42 sensors found"
-    assert result.history is None
+    assert isinstance(result.history, Trajectory)
+    assert result.history.total_input_tokens == 0
+    assert result.history.total_output_tokens == 0
+
+
+@pytest.mark.anyio
+async def test_run_collects_trajectory():
+    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
+
+    mock_tool = MagicMock(spec=ToolUseBlock)
+    mock_tool.name = "sensors"
+    mock_tool.input = {"asset_id": "CH-6"}
+    mock_tool.id = "tu_123"
+
+    mock_text = MagicMock(spec=TextBlock)
+    mock_text.text = "Calling sensors tool..."
+
+    mock_assistant = MagicMock(spec=AssistantMessage)
+    mock_assistant.content = [mock_text, mock_tool]
+    mock_assistant.usage = {"input_tokens": 100, "output_tokens": 20}
+
+    mock_result = MagicMock(spec=ResultMessage)
+    mock_result.result = "Chiller 6 has 5 sensors."
+    mock_result.stop_reason = "end_turn"
+
+    async def fake_query(prompt, options):
+        yield mock_assistant
+        yield mock_result
+
+    with patch("agent.claude_agent.runner.query", side_effect=fake_query):
+        runner = ClaudeAgentRunner(server_paths={})
+        result = await runner.run("What sensors are on Chiller 6?")
+
+    traj = result.history
+    assert isinstance(traj, Trajectory)
+    assert len(traj.turns) == 1
+    turn = traj.turns[0]
+    assert turn.text == "Calling sensors tool..."
+    assert len(turn.tool_calls) == 1
+    assert turn.tool_calls[0].name == "sensors"
+    assert turn.tool_calls[0].input == {"asset_id": "CH-6"}
+    assert turn.input_tokens == 100
+    assert turn.output_tokens == 20
+    assert traj.total_input_tokens == 100
+    assert traj.total_output_tokens == 20
+    assert len(traj.all_tool_calls) == 1
 
 
 @pytest.mark.anyio
@@ -133,4 +179,5 @@ async def test_run_empty_result():
         result = await runner.run("What time is it?")
 
     assert result.answer == ""
-    assert result.history is None
+    assert isinstance(result.history, Trajectory)
+    assert result.history.turns == []
