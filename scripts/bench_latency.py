@@ -56,8 +56,8 @@ Respond with a JSON object only, no explanation:
 # ── dataset loading ───────────────────────────────────────────────────────────
 
 def load_scenarios() -> list[dict]:
-    """Load first 20 scenarios from the local vibration_utterance.json file."""
-    data_file = REPO_ROOT / "src" / "scenarios" / "local" / "vibration_utterance.json"
+    """Load first 20 scenarios from the local chiller_utterance.json file."""
+    data_file = REPO_ROOT / "src" / "scenarios" / "local" / "chiller_utterance.json"
     with open(data_file) as f:
         scenarios = json.load(f)
     scenarios = scenarios[:20]
