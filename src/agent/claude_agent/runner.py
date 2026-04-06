@@ -112,7 +112,7 @@ class ClaudeAgentRunner(AgentRunner):
         server_paths: dict[str, Path | str] | None = None,
         model: str = _DEFAULT_MODEL,
         max_turns: int = 30,
-        permission_mode: str = "default",
+        permission_mode: str = "bypassPermissions",
     ) -> None:
         super().__init__(llm, server_paths)
         self._model = _resolve_model(model)

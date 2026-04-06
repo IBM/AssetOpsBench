@@ -86,7 +86,7 @@ def test_runner_defaults():
     runner = ClaudeAgentRunner()
     assert runner._model == "claude-opus-4-6"
     assert runner._max_turns == 30
-    assert runner._permission_mode == "default"
+    assert runner._permission_mode == "bypassPermissions"
     assert "iot" in runner._resolved_server_paths
 
 
