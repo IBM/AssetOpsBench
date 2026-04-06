@@ -478,13 +478,15 @@ print(result.answer)
 | `all_tool_calls`      | `list[ToolCall]`  | Flat list of every tool call made    |
 
 Each `TurnRecord` has `index`, `text`, `tool_calls`, `input_tokens`, `output_tokens`.
-Each `ToolCall` has `name`, `input`, `id`.
+Each `ToolCall` has `name`, `input`, `id`, `output` (the MCP server response, captured via `PostToolUse` hook).
 
 ```python
 traj = result.trajectory
 print(f"{traj.total_input_tokens} input / {traj.total_output_tokens} output tokens")
 for tc in traj.all_tool_calls:
     print(f"  {tc.name}: {tc.input}")
+    if tc.output is not None:
+        print(f"    -> {tc.output}")
 ```
 
 ---
