@@ -99,7 +99,7 @@ def _get_judge_llm():
     return _judge_llm
 
 
-def grade_custom(question: str, characteristic_form: str, answer: str, trace: str = "") -> dict:
+def grade_custom(question: str, characteristic_form: str, answer: str, trace: str = "", max_retries: int = 3) -> dict:
     """LLM-as-judge using custom prompt (default mode)."""
     llm = _get_judge_llm()
     prompt = _JUDGE_PROMPT.format(
@@ -108,19 +108,25 @@ def grade_custom(question: str, characteristic_form: str, answer: str, trace: st
         answer=answer,
         trace=trace or "(not available)",
     )
-    raw = llm.generate(prompt)
 
-    text = raw.strip()
-    if "```" in text:
-        lines = text.splitlines()
-        text = "\n".join(l for l in lines if not l.strip().startswith("```"))
-    start, end = text.find("{"), text.rfind("}") + 1
-    try:
-        scores = json.loads(text[start:end]) if start != -1 else {}
-    except json.JSONDecodeError:
-        scores = {}
+    for attempt in range(1, max_retries + 1):
+        try:
+            raw = llm.generate(prompt)
+            text = raw.strip()
+            if "```" in text:
+                lines = text.splitlines()
+                text = "\n".join(l for l in lines if not l.strip().startswith("```"))
+            start, end = text.find("{"), text.rfind("}") + 1
+            scores = json.loads(text[start:end]) if start != -1 else {}
+            if scores:
+                return {"scores": scores}
+            raise ValueError("empty scores")
+        except Exception as e:
+            print(f" [judge attempt {attempt}/{max_retries} failed: {e}]", end="", flush=True)
+            if attempt == max_retries:
+                return {"scores": {}}
 
-    return {"scores": scores}
+    return {"scores": {}}
 
 
 def grade_reactxen(question: str, characteristic_form: str, answer: str, trace: str = "") -> dict:
