@@ -20,8 +20,8 @@ from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
+from ..models import AgentResult
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
-from ..plan_execute.models import AgentResult, Plan, StepResult
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
@@ -61,9 +61,8 @@ class ClaudeAgentRunner(AgentRunner):
     """Agent runner that delegates to the claude-agent-sdk agentic loop.
 
     The sdk handles tool discovery, invocation, and multi-turn conversation
-    against the registered MCP servers.  An empty ``Plan`` is returned in the
-    result because the sdk manages its own internal loop; the ``history`` list
-    contains a single ``StepResult`` with the sdk's raw answer.
+    against the registered MCP servers.  ``history`` is ``None`` until a
+    structured history type is decided.
 
     Args:
         llm: Unused — ClaudeAgentRunner uses the claude-agent-sdk directly.
@@ -98,8 +97,8 @@ class ClaudeAgentRunner(AgentRunner):
             question: Natural-language question to answer.
 
         Returns:
-            AgentResult where ``answer`` holds the sdk's final response,
-            ``plan`` is an empty placeholder, and ``history`` has one entry.
+            AgentResult where ``answer`` holds the sdk's final response
+            and ``history`` is ``None`` (type TBD).
         """
         mcp_servers = _build_mcp_servers(self._resolved_server_paths)
 
@@ -120,18 +119,4 @@ class ClaudeAgentRunner(AgentRunner):
                     "ClaudeAgentRunner: done (stop_reason=%s)", message.stop_reason
                 )
 
-        history = [
-            StepResult(
-                step_number=1,
-                task=question,
-                server="claude-agent-sdk",
-                response=answer,
-            )
-        ]
-        empty_plan = Plan(steps=[], raw="")
-        return AgentResult(
-            question=question,
-            answer=answer,
-            plan=empty_plan,
-            history=history,
-        )
+        return AgentResult(question=question, answer=answer, history=None)

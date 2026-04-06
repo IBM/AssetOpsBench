@@ -68,8 +68,8 @@ class StepResult:
 
 
 @dataclass
-class AgentResult:
-    """Final result returned by any AgentRunner."""
+class OrchestratorResult:
+    """Final result from the plan-execute orchestrator."""
 
     question: str
     answer: str

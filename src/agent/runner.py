@@ -7,7 +7,7 @@ from pathlib import Path
 
 from llm import LLMBackend
 
-from .plan_execute.models import AgentResult
+from .models import AgentResult
 
 
 class AgentRunner(ABC):

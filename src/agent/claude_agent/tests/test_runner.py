@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agent.claude_agent.runner import ClaudeAgentRunner, _build_mcp_servers
-from agent.plan_execute.models import AgentResult, StepResult
+from agent.models import AgentResult
 
 
 # ---------------------------------------------------------------------------
@@ -81,11 +81,7 @@ async def test_run_returns_orchestrator_result():
     assert isinstance(result, AgentResult)
     assert result.question == "How many sensors are there?"
     assert result.answer == "42 sensors found"
-    assert len(result.plan.steps) == 0
-    assert len(result.history) == 1
-    assert isinstance(result.history[0], StepResult)
-    assert result.history[0].response == "42 sensors found"
-    assert result.history[0].server == "claude-agent-sdk"
+    assert result.history is None
 
 
 @pytest.mark.anyio
@@ -99,4 +95,4 @@ async def test_run_empty_result():
         result = await runner.run("What time is it?")
 
     assert result.answer == ""
-    assert result.history[0].response == ""
+    assert result.history is None
