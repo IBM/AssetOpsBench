@@ -12,4 +12,4 @@ class AgentResult:
 
     question: str
     answer: str
-    history: Any
+    trajectory: Any

@@ -95,8 +95,7 @@ class ClaudeAgentRunner(AgentRunner):
     """Agent runner that delegates to the claude-agent-sdk agentic loop.
 
     The sdk handles tool discovery, invocation, and multi-turn conversation
-    against the registered MCP servers.  ``history`` is ``None`` until a
-    structured history type is decided.
+    against the registered MCP servers.
 
     Args:
         llm: Unused — ClaudeAgentRunner uses the claude-agent-sdk directly.
@@ -132,8 +131,7 @@ class ClaudeAgentRunner(AgentRunner):
             question: Natural-language question to answer.
 
         Returns:
-            AgentResult where ``answer`` holds the sdk's final response
-            and ``history`` is ``None`` (type TBD).
+            AgentResult with the final answer and full execution trajectory.
         """
         mcp_servers = _build_mcp_servers(self._resolved_server_paths)
 
@@ -184,4 +182,4 @@ class ClaudeAgentRunner(AgentRunner):
                     trajectory.total_output_tokens,
                 )
 
-        return AgentResult(question=question, answer=answer, history=trajectory)
+        return AgentResult(question=question, answer=answer, trajectory=trajectory)

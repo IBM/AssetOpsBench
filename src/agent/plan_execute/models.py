@@ -74,4 +74,4 @@ class OrchestratorResult:
     question: str
     answer: str
     plan: Plan
-    history: list[StepResult]
+    trajectory: list[StepResult]

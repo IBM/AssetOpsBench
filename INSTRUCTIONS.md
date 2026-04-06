@@ -254,8 +254,8 @@ Flags:
 | `--model-id MODEL_ID` | litellm model string with provider prefix (default: `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8`) |
 | `--server NAME=SPEC`  | Override MCP servers with `NAME=SPEC` pairs (repeatable); SPEC is an entry-point name or path                    |
 | `--show-plan`         | Print the generated plan before execution                                                                        |
-| `--show-history`      | Print each step result after execution                                                                           |
-| `--json`              | Output answer + plan + history as JSON                                                                           |
+| `--show-trajectory`   | Print each step result after execution                                                                           |
+| `--json`              | Output answer + plan + trajectory as JSON                                                                           |
 
 The provider is encoded in the `--model-id` prefix:
 
@@ -277,7 +277,7 @@ uv run plan-execute --model-id watsonx/ibm/granite-3-3-8b-instruct --show-plan "
 uv run plan-execute --model-id litellm_proxy/GCP/claude-4-sonnet "What are the failure modes for a chiller?"
 
 # Machine-readable output
-uv run plan-execute --show-history --json "How many observations exist for CH-1?" | jq .answer
+uv run plan-execute --show-trajectory --json "How many observations exist for CH-1?" | jq .answer
 ```
 
 ### End-to-end examples
@@ -299,7 +299,7 @@ uv run plan-execute "For equipment CWC04013, how many preventive vs corrective w
 uv run plan-execute "What is the probability that alert rule RUL0018 on equipment CWC04009 leads to a work order, and how long does it typically take?"
 
 # Work order distribution + next prediction (multi-step)
-uv run plan-execute --show-plan --show-history \
+uv run plan-execute --show-plan --show-trajectory \
   "For equipment CWC04014, show the work order distribution and predict the next maintenance type"
 ```
 
@@ -308,7 +308,7 @@ uv run plan-execute --show-plan --show-history \
 Run a question that exercises three servers with independent parallel steps:
 
 ```bash
-uv run plan-execute --show-plan --show-history \
+uv run plan-execute --show-plan --show-trajectory \
   "What is the current date and time? Also list assets at site MAIN. Also get sensor list and failure mode list for any of the chiller at site MAIN."
 ```
 
@@ -353,7 +353,7 @@ print(result.answer)
 | --------- | ------------------ | --------------------------------- |
 | `answer`  | `str`              | Final synthesised answer          |
 | `plan`    | `Plan`             | The generated plan with its steps |
-| `history` | `list[StepResult]` | Per-step execution results        |
+| `trajectory` | `list[StepResult]` | Per-step execution results        |
 
 ### Bring your own LLM
 
@@ -423,7 +423,7 @@ Flags:
 | --------------------- | ---------------------------------------------------------------------------- |
 | `--model-id MODEL_ID` | Claude model ID (default: `claude-opus-4-6`)                                 |
 | `--max-turns N`       | Maximum agentic loop turns (default: 30)                                     |
-| `--show-history`      | Print each turn's text, tool calls, and token usage                          |
+| `--show-trajectory`      | Print each turn's text, tool calls, and token usage                          |
 | `--json`              | Output full trajectory (turns, tool calls, token counts) as JSON             |
 | `--verbose`           | Show INFO-level logs on stderr                                               |
 
@@ -444,7 +444,7 @@ uv run claude-agent "What assets are at site MAIN?"
 uv run claude-agent --model-id litellm_proxy/aws/claude-opus-4-6 "What sensors are on Chiller 6?"
 
 # Show full trajectory (turns, tool calls, token usage)
-uv run claude-agent --show-history "What are the failure modes for a chiller?"
+uv run claude-agent --show-trajectory "What are the failure modes for a chiller?"
 
 # Machine-readable trajectory
 uv run claude-agent --json "What is the current time?" | jq .turns
@@ -466,7 +466,7 @@ print(result.answer)
 | Field     | Type         | Description                                    |
 | --------- | ------------ | ---------------------------------------------- |
 | `answer`  | `str`        | Final answer from the agent                    |
-| `history` | `Trajectory` | Full execution trace (turns, tool calls, tokens) |
+| `trajectory` | `Trajectory` | Full execution trace (turns, tool calls, tokens) |
 
 `Trajectory` fields:
 
@@ -481,7 +481,7 @@ Each `TurnRecord` has `index`, `text`, `tool_calls`, `input_tokens`, `output_tok
 Each `ToolCall` has `name`, `input`, `id`.
 
 ```python
-traj = result.history
+traj = result.trajectory
 print(f"{traj.total_input_tokens} input / {traj.total_output_tokens} output tokens")
 for tc in traj.all_tool_calls:
     print(f"  {tc.name}: {tc.input}")

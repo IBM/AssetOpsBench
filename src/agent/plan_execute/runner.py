@@ -81,7 +81,7 @@ class PlanExecuteRunner(AgentRunner):
 
         Returns:
             OrchestratorResult with the final answer, the generated plan, and
-            the per-step execution history.
+            the per-step execution trajectory.
         """
         # 1. Discover
         _log.info("Discovering server capabilities...")
@@ -93,14 +93,14 @@ class PlanExecuteRunner(AgentRunner):
         _log.info("Plan has %d step(s).", len(plan.steps))
 
         # 3. Execute
-        history = await self._executor.execute_plan(plan, question)
+        trajectory = await self._executor.execute_plan(plan, question)
 
         # 4. Summarise
         _log.info("Summarising...")
         results_text = "\n\n".join(
             f"Step {r.step_number} — {r.task} (server: {r.server}):\n"
             + (r.response if r.success else f"ERROR: {r.error}")
-            for r in history
+            for r in trajectory
         )
         answer = self._llm.generate(
             _SUMMARIZE_PROMPT.format(question=question, results=results_text)
@@ -110,5 +110,5 @@ class PlanExecuteRunner(AgentRunner):
             question=question,
             answer=answer,
             plan=plan,
-            history=history,
+            trajectory=trajectory,
         )

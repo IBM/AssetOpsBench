@@ -120,9 +120,9 @@ async def test_run_returns_orchestrator_result():
     assert isinstance(result, AgentResult)
     assert result.question == "How many sensors are there?"
     assert result.answer == "42 sensors found"
-    assert isinstance(result.history, Trajectory)
-    assert result.history.total_input_tokens == 0
-    assert result.history.total_output_tokens == 0
+    assert isinstance(result.trajectory, Trajectory)
+    assert result.trajectory.total_input_tokens == 0
+    assert result.trajectory.total_output_tokens == 0
 
 
 @pytest.mark.anyio
@@ -153,7 +153,7 @@ async def test_run_collects_trajectory():
         runner = ClaudeAgentRunner(server_paths={})
         result = await runner.run("What sensors are on Chiller 6?")
 
-    traj = result.history
+    traj = result.trajectory
     assert isinstance(traj, Trajectory)
     assert len(traj.turns) == 1
     turn = traj.turns[0]
@@ -179,5 +179,5 @@ async def test_run_empty_result():
         result = await runner.run("What time is it?")
 
     assert result.answer == ""
-    assert isinstance(result.history, Trajectory)
-    assert result.history.turns == []
+    assert isinstance(result.trajectory, Trajectory)
+    assert result.trajectory.turns == []

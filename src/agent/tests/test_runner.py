@@ -104,7 +104,7 @@ async def test_orchestrator_run_returns_result(sequential_llm):
     assert result.question == "What are the IoT sites?"
     assert result.answer == _FINAL_ANSWER
     assert len(result.plan.steps) == 2
-    assert len(result.history) == 2
+    assert len(result.trajectory) == 2
 
 
 @pytest.mark.anyio
@@ -113,7 +113,7 @@ async def test_orchestrator_all_steps_succeed(sequential_llm):
     with _patch_mcp()[0], _patch_mcp()[1]:
         result = await PlanExecuteRunner(llm).run("Q")
 
-    assert all(r.success for r in result.history)
+    assert all(r.success for r in result.trajectory)
 
 
 @pytest.mark.anyio
@@ -130,9 +130,9 @@ async def test_orchestrator_unknown_server_recorded_as_error(sequential_llm):
     with _patch_mcp()[0], _patch_mcp()[1]:
         result = await PlanExecuteRunner(llm).run("Q")
 
-    assert len(result.history) == 1
-    assert result.history[0].success is False
-    assert "ghost" in result.history[0].error
+    assert len(result.trajectory) == 1
+    assert result.trajectory[0].success is False
+    assert "ghost" in result.trajectory[0].error
 
 
 @pytest.mark.anyio
@@ -150,8 +150,8 @@ async def test_orchestrator_no_tool_returns_expected_output(sequential_llm):
     with _patch_mcp()[0], _patch_mcp()[1]:
         result = await PlanExecuteRunner(llm).run("Simple Q")
 
-    assert result.history[0].response == "42"
-    assert result.history[0].success is True
+    assert result.trajectory[0].response == "42"
+    assert result.trajectory[0].success is True
 
 
 # ── executor unit tests ───────────────────────────────────────────────────────
@@ -375,7 +375,7 @@ async def test_pipeline_uses_llm_args_for_each_step(sequential_llm):
     ):
         result = await PlanExecuteRunner(llm).run("List all assets at site MAIN")
 
-    assert all(r.success for r in result.history)
+    assert all(r.success for r in result.trajectory)
     step2_args = call_mock.call_args_list[1].args[2]
     assert step2_args["site_name"] == "MAIN"
 
