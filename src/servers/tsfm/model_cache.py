@@ -48,9 +48,19 @@ def preload_and_compile_models(model_names: list[str], model_dir: str) -> None:
         
         try:
             logger.info(f"Pre-loading model: {model_name}")
+
+                        # Load and cache model config
+            config_path = os.path.join(checkpoint_path, "config.json")
+            with open(config_path, "r") as f:
+                config = json.load(f)
+            _COMPILED_MODEL_CONFIGS[model_name] = config
             
             # Load model
-            model = TinyTimeMixerForPrediction.from_pretrained(checkpoint_path)
+            logger.info(f"preapring Compiling model: {model_name} with torch.compile(mode='reduce-overhead') and second arg as {_COMPILED_MODEL_CONFIGS[model_name]["prediction_length"]}")
+
+            model = TinyTimeMixerForPrediction.from_pretrained(checkpoint_path
+                                                               , prediction_filter_length=_COMPILED_MODEL_CONFIGS[model_name]["prediction_length"]
+                                                               )
             
             # Move to eval mode
             model.eval()
@@ -62,11 +72,7 @@ def preload_and_compile_models(model_names: list[str], model_dir: str) -> None:
             # Store compiled model
             _COMPILED_MODELS[model_name] = compiled_model
             
-            # Load and cache model config
-            config_path = os.path.join(checkpoint_path, "config.json")
-            with open(config_path, "r") as f:
-                config = json.load(f)
-            _COMPILED_MODEL_CONFIGS[model_name] = config
+
             
             logger.info(f"✓ Successfully pre-loaded and compiled: {model_name}")
             
