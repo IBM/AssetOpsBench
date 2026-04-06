@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent.claude_agent.runner import ClaudeAgentRunner, _build_mcp_servers, _resolve_model
+from agent.claude_agent.runner import ClaudeAgentRunner, _build_mcp_servers, _resolve_model, _sdk_env
 from agent.models import AgentResult
 
 
@@ -30,6 +30,26 @@ def test_resolve_model_passthrough():
 def test_resolve_model_stored_on_runner():
     runner = ClaudeAgentRunner(model="litellm_proxy/aws/claude-opus-4-6")
     assert runner._model == "aws/claude-opus-4-6"
+
+
+def test_sdk_env_no_prefix_returns_none():
+    assert _sdk_env("claude-opus-4-6") is None
+
+
+def test_sdk_env_litellm_prefix_maps_vars(monkeypatch):
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-1234")
+    env = _sdk_env("litellm_proxy/aws/claude-opus-4-6")
+    assert env == {
+        "ANTHROPIC_BASE_URL": "http://localhost:4000",
+        "ANTHROPIC_API_KEY": "sk-1234",
+    }
+
+
+def test_sdk_env_missing_litellm_vars_returns_none(monkeypatch):
+    monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+    assert _sdk_env("litellm_proxy/aws/claude-opus-4-6") is None
 
 
 # ---------------------------------------------------------------------------

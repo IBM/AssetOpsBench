@@ -16,6 +16,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
@@ -33,10 +34,6 @@ _LITELLM_PREFIX = "litellm_proxy/"
 def _resolve_model(model_id: str) -> str:
     """Strip the ``litellm_proxy/`` prefix from a model ID.
 
-    When routing through a LiteLLM proxy (``ANTHROPIC_BASE_URL`` set),
-    the model name passed to claude-agent-sdk must match the ``model_name``
-    in the LiteLLM config — without the provider prefix used by LiteLLMBackend.
-
     Examples::
 
         "litellm_proxy/aws/claude-opus-4-6"  ->  "aws/claude-opus-4-6"
@@ -45,6 +42,23 @@ def _resolve_model(model_id: str) -> str:
     if model_id.startswith(_LITELLM_PREFIX):
         return model_id[len(_LITELLM_PREFIX):]
     return model_id
+
+
+def _sdk_env(model_id: str) -> dict[str, str] | None:
+    """Build env overrides for the claude-agent-sdk subprocess.
+
+    When routing through a LiteLLM proxy the SDK needs the proxy URL and key
+    under its own env var names.  We derive them from the LITELLM_* vars so
+    the user never has to set SDK-internal vars directly.
+    """
+    if not model_id.startswith(_LITELLM_PREFIX):
+        return None
+    env: dict[str, str] = {}
+    if base_url := os.environ.get("LITELLM_BASE_URL"):
+        env["ANTHROPIC_BASE_URL"] = base_url
+    if api_key := os.environ.get("LITELLM_API_KEY"):
+        env["ANTHROPIC_API_KEY"] = api_key
+    return env or None
 
 _SYSTEM_PROMPT = """\
 You are an industrial asset operations assistant with access to MCP tools for
@@ -102,6 +116,7 @@ class ClaudeAgentRunner(AgentRunner):
     ) -> None:
         super().__init__(llm, server_paths)
         self._model = _resolve_model(model)
+        self._sdk_env = _sdk_env(model)
         self._max_turns = max_turns
         self._permission_mode = permission_mode
         self._resolved_server_paths: dict[str, Path | str] = (
@@ -126,6 +141,7 @@ class ClaudeAgentRunner(AgentRunner):
             mcp_servers=mcp_servers,
             max_turns=self._max_turns,
             permission_mode=self._permission_mode,
+            env=self._sdk_env,
         )
 
         _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
