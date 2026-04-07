@@ -3,6 +3,7 @@
 Heavy ML dependencies (tsfm_public, transformers, torch) are imported lazily
 so the module can be imported even when they are absent.
 """
+# forecasting.py
 
 from __future__ import annotations
 
@@ -123,37 +124,90 @@ def _tsfm_data_quality_filter(
 # ── Inference helpers ─────────────────────────────────────────────────────────
 
 
-def _get_gt_and_predictions(
-    trainer, dataset, ix_target_features, inverse_transforms=None
-):
+# def _get_gt_and_predictions(
+#     trainer, dataset, ix_target_features, inverse_transforms=None
+# ):
+#     if inverse_transforms is None:
+#         inverse_transforms = []
+#     outputs = trainer.predict(dataset)
+#     target_value_list = []
+#     pred_value_list = []
+#     timestamp_id_value_dic: dict = {}
+#     for i in range(len(dataset)):
+#         aux = dataset[i]["future_values"][:, ix_target_features].detach().numpy()
+#         if "timestamp" in dataset[i]:
+#             timestamp_id_value_dic.setdefault("timestamp", []).append(
+#                 dataset[i]["timestamp"]
+#             )
+#         if "id" in dataset[i]:
+#             timestamp_id_value_dic.setdefault("id", []).extend(list(dataset[i]["id"]))
+#         target_value_list.append(aux)
+#         forecast_h = aux.shape[0]
+#         aux_pred = outputs.predictions[0][
+#             i, :forecast_h, ix_target_features
+#         ].transpose()
+#         pred_value_list.append(aux_pred)
+#     y_gt = np.array(target_value_list)
+#     y_pred = np.array(pred_value_list)
+#     for ix_fhorizon in range(y_gt.shape[1]):
+#         if inverse_transforms:
+#             y_gt[:, ix_fhorizon, :] = inverse_transforms[0](y_gt[:, ix_fhorizon, :])
+#             y_pred[:, ix_fhorizon, :] = inverse_transforms[0](y_pred[:, ix_fhorizon, :])
+#     return y_gt, y_pred, timestamp_id_value_dic
+
+def _get_gt_and_predictions(model, dataset, ix_target_features, inverse_transforms=None):
+    import torch
+    
     if inverse_transforms is None:
         inverse_transforms = []
-    outputs = trainer.predict(dataset)
+
+    # --- 1. Batch all samples from the dataset ---
+    all_inputs = {}
+    for sample in dataset:
+        for k, v in sample.items():
+            if isinstance(v, torch.Tensor):
+                all_inputs.setdefault(k, []).append(v)
+
+    batched_inputs = {k: torch.stack(vs) for k, vs in all_inputs.items()}
+
+    # --- 2. Run inference directly ---
+    with torch.no_grad():
+        outputs = model(**batched_inputs)
+
+    # outputs.prediction_outputs shape: [N, prediction_length, num_channels]
+    raw_predictions = outputs.prediction_outputs.numpy()
+
+    # --- 3. Reconstruct what Trainer used to give you ---
     target_value_list = []
     pred_value_list = []
-    timestamp_id_value_dic: dict = {}
-    for i in range(len(dataset)):
-        aux = dataset[i]["future_values"][:, ix_target_features].detach().numpy()
-        if "timestamp" in dataset[i]:
-            timestamp_id_value_dic.setdefault("timestamp", []).append(
-                dataset[i]["timestamp"]
-            )
-        if "id" in dataset[i]:
-            timestamp_id_value_dic.setdefault("id", []).extend(list(dataset[i]["id"]))
+    timestamp_id_value_dic = {}
+
+    for i, sample in enumerate(dataset):
+        # Ground truth — future_values for the target features
+        aux = sample["future_values"][:, ix_target_features].numpy()
+
+        if "timestamp" in sample:
+            timestamp_id_value_dic.setdefault("timestamp", []).append(sample["timestamp"])
+        if "id" in sample:
+            timestamp_id_value_dic.setdefault("id", []).extend(list(sample["id"]))
+
         target_value_list.append(aux)
+
         forecast_h = aux.shape[0]
-        aux_pred = outputs.predictions[0][
-            i, :forecast_h, ix_target_features
-        ].transpose()
+        # Slice predictions to match ground truth horizon and target features
+        aux_pred = raw_predictions[i, :forecast_h, ix_target_features].T
         pred_value_list.append(aux_pred)
+
     y_gt = np.array(target_value_list)
     y_pred = np.array(pred_value_list)
+
+    # --- 4. Apply inverse transforms if scaling was used ---
     for ix_fhorizon in range(y_gt.shape[1]):
         if inverse_transforms:
             y_gt[:, ix_fhorizon, :] = inverse_transforms[0](y_gt[:, ix_fhorizon, :])
             y_pred[:, ix_fhorizon, :] = inverse_transforms[0](y_pred[:, ix_fhorizon, :])
-    return y_gt, y_pred, timestamp_id_value_dic
 
+    return y_gt, y_pred, timestamp_id_value_dic
 
 def _get_performance(
     y_gt,
@@ -268,21 +322,42 @@ def _get_ttm_hf_inference(
     )
     dataset_inference = dataset_dic[0]
 
+    # target_cols = dataset_config_dictionary["column_specifiers"]["target_columns"]
+    # df_dataframe[target_cols] = df_dataframe[target_cols].interpolate(method='linear').ffill().bfill()
+
     # model = TinyTimeMixerForPrediction.from_pretrained(
     #     model_checkpoint, prediction_filter_length=forecast_horizon
     # )
     model = get_compiled_model("ttm_96_28")
     if model is None:
         raise RuntimeError(f"Model not pre-loaded: {"ttm_96_28"}")
+    # when i comment out the below code, it doesnt work
+    # model = TinyTimeMixerForPrediction.from_pretrained(
+    #     model_checkpoint, prediction_filter_length=forecast_horizon
+    # )
     args = TrainingArguments(output_dir="./output", logging_dir="./log")
-    trainer = Trainer(model=model, args=args, eval_dataset=dataset_inference)
+    # trainer = Trainer(model=model, args=args, eval_dataset=dataset_inference)
 
     ix_target_features = list(
         np.arange(len(dataset_config_dictionary["column_specifiers"]["target_columns"]))
     )
 
-    outputs = trainer.predict(dataset_inference)
-    y_pred = outputs.predictions[0][:, :forecast_horizon, ix_target_features]
+    # outputs = trainer.predict(dataset_inference)
+    # y_pred = outputs.predictions[0][:, :forecast_horizon, ix_target_features]
+
+    import torch
+
+    all_inputs = {}
+    for sample in dataset_inference:
+        for k, v in sample.items():
+            if isinstance(v, torch.Tensor):
+                all_inputs.setdefault(k, []).append(v)
+
+    # Stack into batches
+    batched_inputs = {k: torch.stack(vs) for k, vs in all_inputs.items()}
+    with torch.no_grad():
+        outputs = model(**batched_inputs)
+        y_pred = outputs.prediction_outputs[:, :forecast_horizon, ix_target_features]
 
     if tsp.scaling:
         for ixf in range(y_pred.shape[1]):
@@ -318,7 +393,7 @@ def _get_ttm_hf_inference(
         inverse_transforms.append(tsp.target_scaler_dict["0"].inverse_transform)
 
     y_gt, y_pred_eval, timestamp_id_value_dic = _get_gt_and_predictions(
-        trainer,
+        model,
         dataset_inference,
         ix_target_features=ix_target_features,
         inverse_transforms=inverse_transforms,

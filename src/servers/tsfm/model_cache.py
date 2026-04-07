@@ -3,6 +3,8 @@
 Models are loaded and compiled once at server startup, then reused for all inference calls.
 This eliminates the loading overhead from individual tool invocations.
 """
+# model_cache.py
+
 
 from __future__ import annotations
 
@@ -56,7 +58,7 @@ def preload_and_compile_models(model_names: list[str], model_dir: str) -> None:
             _COMPILED_MODEL_CONFIGS[model_name] = config
             
             # Load model
-            logger.info(f"preapring Compiling model: {model_name} with torch.compile(mode='reduce-overhead') and second arg as {_COMPILED_MODEL_CONFIGS[model_name]["prediction_length"]}")
+            logger.info(f"preapring Compiling model: {model_name} path is {checkpoint_path} with torch.compile(mode='reduce-overhead') and second arg as {_COMPILED_MODEL_CONFIGS[model_name]["prediction_length"]}")
 
             model = TinyTimeMixerForPrediction.from_pretrained(checkpoint_path
                                                                , prediction_filter_length=_COMPILED_MODEL_CONFIGS[model_name]["prediction_length"]
