@@ -28,15 +28,16 @@ def parse_skill_frontmatter(content: str) -> tuple[dict, str]:
 
 
 def load_skills(skills_dir: Path) -> list[dict]:
-    """Load all ``*.md`` files under *skills_dir* and return parsed skill dicts.
+    """Load all ``SKILL.md`` files under *skills_dir* and return parsed skill dicts.
 
     Each dict contains the frontmatter keys plus ``"content"`` (the body) and
-    ``"path"`` (the source file).
+    ``"path"`` (the source file).  Only files named exactly ``SKILL.md`` are
+    loaded; ``README.md`` and other files are ignored.
     """
     skills: list[dict] = []
     if not skills_dir.is_dir():
         return skills
-    for path in sorted(skills_dir.rglob("*.md")):
+    for path in sorted(skills_dir.rglob("SKILL.md")):
         raw = path.read_text(encoding="utf-8")
         meta, body = parse_skill_frontmatter(raw)
         meta["content"] = body.strip()

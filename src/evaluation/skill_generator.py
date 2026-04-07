@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
+
+import yaml
 
 from llm import LLMBackend
 
@@ -24,20 +27,32 @@ generate an executable skill specification in SKILL.md format.
 ## Instructions
 
 Generate a SKILL.md file that:
-1. Defines WHEN this skill should be triggered (specific task patterns).
-2. Lists PREREQUISITE MCP tools (must be from the available tools above).
-3. Provides a STEP-BY-STEP PROCEDURE with explicit tool calls: \
+1. Has a **descriptive kebab-case name** reflecting the concrete task \
+(e.g. ``bearing-fft-analysis``, NOT ``skill-1``).
+2. Has a **description** field that includes:
+   - WHAT the skill does.
+   - WHEN to use it (specific trigger phrases a user would say).
+   - Key capabilities or file types handled.
+   Example: "End-to-end bearing fault diagnosis from raw vibration data. \
+Use when user asks to 'diagnose vibration', 'analyse bearing fault', or \
+'check asset vibration health'. Covers FFT spectrum, envelope analysis, \
+and ISO 10816 severity."
+3. Lists PREREQUISITE MCP tools (must be from the available tools above).
+4. Provides a STEP-BY-STEP PROCEDURE with explicit tool calls: \
 `call tool_name(param=value)`.
-4. Includes DECISION LOGIC with if-then branching based on intermediate results.
-5. Specifies EXPECTED OUTPUTS as a JSON schema.
-6. References relevant DOMAIN STANDARDS (ISO, FMEA, etc.).
+5. Includes DECISION LOGIC with if-then branching based on intermediate results.
+6. Specifies EXPECTED OUTPUTS as a JSON schema.
+7. References relevant DOMAIN STANDARDS (ISO, FMEA, etc.).
 
 ## Output Format
 
 Return ONLY the SKILL.md content in this exact format:
 ---
-name: {{skill-name}}
-description: {{one-line description}}
+name: {{descriptive-kebab-case-name}}
+description: >-
+  {{What it does. Use when user asks to "trigger phrase 1",
+  "trigger phrase 2", or "trigger phrase 3". Covers capability1,
+  capability2.}}
 domain: {domain}
 required_mcp_tools:
   - {{tool_name_1}}
@@ -99,6 +114,22 @@ def _format_server_descriptions(descs: dict[str, str]) -> str:
     return "\n\n".join(f"### {name}\n{body}" for name, body in descs.items())
 
 
+def _extract_skill_name(skill_md: str) -> str:
+    """Extract the ``name`` field from SKILL.md frontmatter.
+
+    Falls back to ``"unnamed-skill"`` when parsing fails.
+    """
+    match = re.match(r"^---\s*\n(.+?)\n---", skill_md, re.DOTALL)
+    if match:
+        try:
+            meta = yaml.safe_load(match.group(1))
+            if isinstance(meta, dict) and meta.get("name"):
+                return str(meta["name"])
+        except Exception:  # noqa: BLE001
+            pass
+    return "unnamed-skill"
+
+
 def generate_skills_for_domain(
     domain: str,
     llm: LLMBackend,
@@ -123,7 +154,10 @@ def generate_skills_for_domain(
             f"\n\nGenerate skill {i} of {len(levels)} for the {domain} domain. "
             f"This skill MUST have `level: {level}` in its frontmatter. "
             f"Level meaning — low: single-tool invocation, "
-            f"mid: multi-tool workflow, high: cross-domain orchestration."
+            f"mid: multi-tool workflow, high: cross-domain orchestration. "
+            f"The `name` field must be a descriptive kebab-case identifier "
+            f"reflecting the concrete task (e.g. bearing-fft-analysis), "
+            f"NOT a generic label like skill-1."
         )
         skill_md = llm.generate(prompt + suffix)
         skills.append(skill_md)
@@ -150,8 +184,12 @@ def generate_all_skills(
         domain_dir = output_dir / domain
         domain_dir.mkdir(parents=True, exist_ok=True)
         paths: list[Path] = []
-        for idx, skill_md in enumerate(skills, 1):
-            path = domain_dir / f"skill-{idx}.md"
+        for skill_md in skills:
+            # Each skill goes into its own kebab-case folder as SKILL.md.
+            skill_name = _extract_skill_name(skill_md)
+            skill_dir = domain_dir / skill_name
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            path = skill_dir / "SKILL.md"
             path.write_text(skill_md, encoding="utf-8")
             _log.info("Wrote skill %s", path)
             paths.append(path)
