@@ -21,6 +21,8 @@ import re
 from pathlib import Path
 from typing import Dict, List, Union
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import yaml
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -233,9 +235,15 @@ def get_failure_mode_sensor_mapping(
     sensor2fm: Dict[str, List[str]] = {}
 
     try:
-        for s in sensors:
-            for fm in failure_modes:
-                gen = _call_relevancy(asset_name, fm, s)
+        pairs = [(s, fm) for s in sensors for fm in failure_modes]
+        with ThreadPoolExecutor() as executor:
+            futures = {
+                executor.submit(_call_relevancy, asset_name, fm, s): (s, fm)
+                for s, fm in pairs
+            }
+            for future in as_completed(futures):
+                s, fm = futures[future]
+                gen = future.result()
                 entry = RelevancyEntry(
                     asset_name=asset_name,
                     failure_mode=fm,
