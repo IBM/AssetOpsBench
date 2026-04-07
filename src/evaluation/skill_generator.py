@@ -85,13 +85,13 @@ DOMAIN_CONTEXTS: dict[str, str] = {
     ),
 }
 
-# Number of skills to generate per domain.
-_SKILLS_PER_DOMAIN: dict[str, int] = {
-    "vibration": 3,
-    "iot": 2,
-    "fmsr": 2,
-    "tsfm": 2,
-    "cross-domain": 1,
+# Number of skills to generate per domain, with their target level.
+_SKILLS_PER_DOMAIN: dict[str, list[str]] = {
+    "vibration": ["low", "mid", "high"],
+    "iot": ["low", "mid"],
+    "fmsr": ["low", "mid"],
+    "tsfm": ["low", "mid"],
+    "cross-domain": ["high"],
 }
 
 
@@ -103,19 +103,28 @@ def generate_skills_for_domain(
     domain: str,
     llm: LLMBackend,
     server_descriptions: dict[str, str],
-    n_skills: int | None = None,
+    levels: list[str] | None = None,
 ) -> list[str]:
-    """Generate *n_skills* SKILL.md texts for *domain* using the LLM."""
-    if n_skills is None:
-        n_skills = _SKILLS_PER_DOMAIN.get(domain, 2)
+    """Generate SKILL.md texts for *domain* using the LLM.
+
+    *levels* controls how many skills are produced and at what complexity:
+    ``["low", "mid", "high"]`` generates three skills, one per level.
+    """
+    if levels is None:
+        levels = _SKILLS_PER_DOMAIN.get(domain, ["low", "mid"])
     prompt = META_SKILL_PROMPT.format(
         server_descriptions=_format_server_descriptions(server_descriptions),
         domain=domain,
         domain_context=DOMAIN_CONTEXTS.get(domain, ""),
     )
     skills: list[str] = []
-    for i in range(n_skills):
-        suffix = f"\n\nGenerate skill {i + 1} of {n_skills} for the {domain} domain."
+    for i, level in enumerate(levels, 1):
+        suffix = (
+            f"\n\nGenerate skill {i} of {len(levels)} for the {domain} domain. "
+            f"This skill MUST have `level: {level}` in its frontmatter. "
+            f"Level meaning — low: single-tool invocation, "
+            f"mid: multi-tool workflow, high: cross-domain orchestration."
+        )
         skill_md = llm.generate(prompt + suffix)
         skills.append(skill_md)
     return skills
@@ -136,8 +145,8 @@ def generate_all_skills(
     all_paths: dict[str, list[Path]] = {}
 
     for domain in DOMAIN_CONTEXTS:
-        n = _SKILLS_PER_DOMAIN.get(domain, 2)
-        skills = generate_skills_for_domain(domain, llm, server_descriptions, n)
+        levels = _SKILLS_PER_DOMAIN.get(domain, ["low", "mid"])
+        skills = generate_skills_for_domain(domain, llm, server_descriptions, levels)
         domain_dir = output_dir / domain
         domain_dir.mkdir(parents=True, exist_ok=True)
         paths: list[Path] = []

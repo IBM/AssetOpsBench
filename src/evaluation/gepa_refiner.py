@@ -77,6 +77,21 @@ def _score_skill_quality(refined_skill: str, execution_trace: str) -> float:
     return score / len(markers)
 
 
+def _score_skill_pass_rate(
+    refined_skill: str,
+    eval_results: list[dict],
+) -> float:
+    """Task-pass-rate metric for a refined skill.
+
+    *eval_results* is a list of dicts with at least a ``"passed"`` bool key,
+    typically collected by running the evaluation batch with the refined skill
+    injected.  Returns the fraction of scenarios that passed.
+    """
+    if not eval_results:
+        return 0.0
+    return sum(1 for r in eval_results if r.get("passed")) / len(eval_results)
+
+
 async def run_gepa_refinement(
     cluster_name: str,
     seed_skills: list[Path],
@@ -84,6 +99,7 @@ async def run_gepa_refinement(
     llm_model: str = "claude-sonnet-4-6",
     max_metric_calls: int = 300,
     output_dir: Path = Path("src/skills/gepa-refined"),
+    eval_results_by_scenario: dict[str, bool] | None = None,
 ) -> list[Path]:
     """Refine skills for a task cluster using GEPA-style optimisation.
 
@@ -95,6 +111,10 @@ async def run_gepa_refinement(
         llm_model: Model string for the DSPy LM.
         max_metric_calls: Budget per skill (approx. 300 per cluster).
         output_dir: Where to write refined skills.
+        eval_results_by_scenario: Optional mapping of scenario_id → passed.
+            When provided the optimiser uses a combined metric (0.7 × task
+            pass rate + 0.3 × structural quality) instead of structural
+            quality alone.
 
     Returns:
         Paths to the refined SKILL.md files.
@@ -106,7 +126,16 @@ async def run_gepa_refinement(
 
     def skill_quality_metric(example: Any, prediction: Any, trace: Any = None) -> float:
         refined = prediction.refined_skill
-        return _score_skill_quality(refined, example.execution_trace)
+        structural = _score_skill_quality(refined, example.execution_trace)
+        if eval_results_by_scenario:
+            # Build per-scenario results list for pass-rate scoring.
+            results = [
+                {"scenario_id": sid, "passed": passed}
+                for sid, passed in eval_results_by_scenario.items()
+            ]
+            pass_rate = _score_skill_pass_rate(refined, results)
+            return 0.7 * pass_rate + 0.3 * structural
+        return structural
 
     refined_paths: list[Path] = []
     cluster_dir = output_dir / cluster_name
