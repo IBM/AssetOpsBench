@@ -1,17 +1,15 @@
-"""Data models for the agent orchestration layer."""
+"""Top-level data models for the agent orchestration layer."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from .plan_execute.models import Plan, StepResult
+from typing import Any
 
 
 @dataclass
-class OrchestratorResult:
-    """Final result from the plan-execute orchestrator."""
+class AgentResult:
+    """Result returned by any AgentRunner."""
 
     question: str
     answer: str
-    plan: Plan
-    history: list[StepResult]
+    trajectory: Any

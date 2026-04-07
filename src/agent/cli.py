@@ -47,7 +47,7 @@ examples:
   plan-execute "What assets are at site MAIN?"
   plan-execute --model-id watsonx/ibm/granite-3-3-8b-instruct --show-plan "List sensors"
   plan-execute --model-id litellm_proxy/GCP/claude-4-sonnet "What are the failure modes?"
-  plan-execute --verbose --show-history --json "How many IoT observations exist for CH-1?"
+  plan-execute --verbose --show-trajectory --json "How many IoT observations exist for CH-1?"
 """,
     )
     parser.add_argument("question", help="The question to answer.")
@@ -75,7 +75,7 @@ examples:
         help="Print the generated plan before execution.",
     )
     parser.add_argument(
-        "--show-history",
+        "--show-trajectory",
         action="store_true",
         help="Print each step result after execution.",
     )
@@ -83,7 +83,7 @@ examples:
         "--json",
         action="store_true",
         dest="output_json",
-        help="Output the full result (answer, plan, history) as JSON.",
+        help="Output the full result (answer, plan, trajectory) as JSON.",
     )
     parser.add_argument(
         "--verbose",
@@ -164,7 +164,7 @@ async def _run(args: argparse.Namespace) -> None:
                 }
                 for s in result.plan.steps
             ],
-            "history": [
+            "trajectory": [
                 {
                     "step": r.step_number,
                     "task": r.task,
@@ -175,7 +175,7 @@ async def _run(args: argparse.Namespace) -> None:
                     "error": r.error,
                     "success": r.success,
                 }
-                for r in result.history
+                for r in result.trajectory
             ],
         }
         print(json.dumps(output, indent=2))
@@ -189,9 +189,9 @@ async def _run(args: argparse.Namespace) -> None:
             print(f"       tool: {step.tool}  args: {step.tool_args}")
             print(f"       deps={deps} | expected: {step.expected_output}")
 
-    if args.show_history:
-        _print_section("Execution History")
-        for r in result.history:
+    if args.show_trajectory:
+        _print_section("Trajectory")
+        for r in result.trajectory:
             status = "OK " if r.success else "ERR"
             print(f"  [{status}] Step {r.step_number} ({r.server}): {r.task}")
             if r.tool and r.tool.lower() not in ("none", "null", ""):

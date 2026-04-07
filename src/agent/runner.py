@@ -7,14 +7,14 @@ from pathlib import Path
 
 from llm import LLMBackend
 
-from .models import OrchestratorResult
+from .models import AgentResult
 
 
 class AgentRunner(ABC):
     """Abstract base class for all agent runners.
 
     Subclasses implement :meth:`run` to handle a natural-language question and
-    return an :class:`OrchestratorResult`.  The ``llm`` and ``server_paths``
+    return an :class:`AgentResult`.  The ``llm`` and ``server_paths``
     attributes are available to all subclasses.
     """
 
@@ -27,5 +27,5 @@ class AgentRunner(ABC):
         self._server_paths = server_paths
 
     @abstractmethod
-    async def run(self, question: str) -> OrchestratorResult:
+    async def run(self, question: str) -> AgentResult:
         """Run the agent on *question* and return a structured result."""
