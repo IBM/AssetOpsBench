@@ -1,0 +1,48 @@
+# Skills evaluation configuration
+# Usage: uv run eval-skills --config configs/eval_skills.yaml
+
+evaluation:
+  models:
+    - watsonx/meta-llama/llama-3-3-70b-instruct
+
+  conditions:
+    - no_skills
+    - mcp_only
+    - mcp_skills
+
+  skills_dir: src/skills/generated
+
+  runs_per_scenario: 5
+  bootstrap_samples: 10000
+  confidence_level: 0.95
+  random_seed: 42
+  max_concurrent: 5
+  checkpoint_every: 10
+  judge_model_id: 16
+
+  output_dir: results
+
+  # Ablation studies (§6.4 of the paper)
+  # Each entry adds an MCP+Skills variant with stripped building blocks.
+  ablations:
+    - label: procedure_only
+      structure: procedure_only   # keep only ## Procedure
+    - label: tool_list_only
+      structure: tool_list_only   # keep only ## Prerequisites
+    # Granularity ablations (filter by skill level field)
+    # - label: low_granularity
+    #   structure: full
+    #   granularity: low
+    # - label: mid_granularity
+    #   structure: full
+    #   granularity: mid
+    # - label: high_granularity
+    #   structure: full
+    #   granularity: high
+
+  # GEPA refinement (requires dspy)
+  # gepa:
+  #   enabled: false
+  #   clusters: ["diagnostics_reasoning", "forecasting_monitoring"]
+  #   max_metric_calls: 300
+  #   seed_from: mcp_skills
