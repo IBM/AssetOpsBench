@@ -63,9 +63,9 @@ def test_parse_invalid_yaml():
 
 
 def test_load_skills_from_dir(tmp_path):
-    d = tmp_path / "skills" / "vibration"
+    d = tmp_path / "skills" / "vibration" / "vibration-diagnosis"
     d.mkdir(parents=True)
-    (d / "skill-1.md").write_text(_VALID_SKILL, encoding="utf-8")
+    (d / "SKILL.md").write_text(_VALID_SKILL, encoding="utf-8")
     skills = load_skills(tmp_path / "skills")
     assert len(skills) == 1
     assert skills[0]["name"] == "vibration-diagnosis"
@@ -78,6 +78,17 @@ def test_load_skills_empty_dir(tmp_path):
     assert load_skills(d) == []
 
 
+def test_load_skills_ignores_readme(tmp_path):
+    """Only ``SKILL.md`` files are loaded; other Markdown is ignored."""
+    d = tmp_path / "skills" / "vibration" / "vibration-diagnosis"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text(_VALID_SKILL, encoding="utf-8")
+    (d / "README.md").write_text("# Human-facing docs\nNot a skill.", encoding="utf-8")
+    skills = load_skills(tmp_path / "skills")
+    assert len(skills) == 1
+    assert skills[0]["name"] == "vibration-diagnosis"
+
+
 def test_load_skills_nonexistent(tmp_path):
     assert load_skills(tmp_path / "nope") == []
 
@@ -86,23 +97,23 @@ def test_load_skills_nonexistent(tmp_path):
 
 
 def test_load_skills_as_text(tmp_path):
-    d = tmp_path / "skills" / "vibration"
+    d = tmp_path / "skills" / "vibration" / "vibration-diagnosis"
     d.mkdir(parents=True)
-    (d / "skill-1.md").write_text(_VALID_SKILL, encoding="utf-8")
+    (d / "SKILL.md").write_text(_VALID_SKILL, encoding="utf-8")
     text = load_skills_as_text(tmp_path / "skills")
     assert "vibration-diagnosis" in text
     assert "# Vibration Diagnosis" in text
 
 
 def test_load_skills_as_text_domain_filter(tmp_path):
-    d = tmp_path / "skills" / "iot"
+    d = tmp_path / "skills" / "iot" / "iot-diagnosis"
     d.mkdir(parents=True)
     iot_skill = _VALID_SKILL.replace("vibration", "iot").replace("Vibration", "IoT")
-    (d / "skill-1.md").write_text(iot_skill, encoding="utf-8")
+    (d / "SKILL.md").write_text(iot_skill, encoding="utf-8")
     # Create a vibration skill too
-    dv = tmp_path / "skills" / "vibration"
+    dv = tmp_path / "skills" / "vibration" / "vibration-diagnosis"
     dv.mkdir(parents=True)
-    (dv / "skill-1.md").write_text(_VALID_SKILL, encoding="utf-8")
+    (dv / "SKILL.md").write_text(_VALID_SKILL, encoding="utf-8")
 
     text = load_skills_as_text(tmp_path / "skills", domain_filter="iot")
     assert "iot" in text.lower()
