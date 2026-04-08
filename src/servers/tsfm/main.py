@@ -121,7 +121,7 @@ mcp = FastMCP("tsfm")
 # ── Static tools ──────────────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(title="Get AI Tasks")
 def get_ai_tasks() -> AITasksResult:
     """Returns the list of supported AI task types for time-series analysis.
 
@@ -131,7 +131,7 @@ def get_ai_tasks() -> AITasksResult:
     return AITasksResult(tasks=[AITaskEntry(**t) for t in _AI_TASKS])
 
 
-@mcp.tool()
+@mcp.tool(title="Get TSFM Models")
 def get_tsfm_models() -> TSFMModelsResult:
     """Returns the list of available pre-trained TinyTimeMixer (TTM) model checkpoints.
 
@@ -144,7 +144,7 @@ def get_tsfm_models() -> TSFMModelsResult:
 # ── TSFM Forecasting (zero-shot inference) ────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(title="Run TSFM Forecasting")
 def run_tsfm_forecasting(
     dataset_path: str,
     timestamp_column: str,
@@ -271,7 +271,7 @@ def run_tsfm_forecasting(
 # ── TSFM Finetuning ───────────────────────────────────────────────────────────
 
 
-@mcp.tool()
+@mcp.tool(title="Run TSFM Finetuning")
 def run_tsfm_finetuning(
     dataset_path: str,
     timestamp_column: str,
@@ -406,7 +406,7 @@ def run_tsfm_finetuning(
 # ── TSAD (conformal anomaly detection on top of TSFM forecasts) ──────────────
 
 
-@mcp.tool()
+@mcp.tool(title="Run Anomaly Detection")
 def run_tsad(
     dataset_path: str,
     tsfm_output_json: str,
@@ -514,7 +514,7 @@ def run_tsad(
 # ── Integrated TSAD (forecasting + anomaly detection in one call) ─────────────
 
 
-@mcp.tool()
+@mcp.tool(title="Run Integrated Forecasting + Anomaly Detection")
 def run_integrated_tsad(
     dataset_path: str,
     timestamp_column: str,

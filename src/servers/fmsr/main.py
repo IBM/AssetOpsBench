@@ -191,7 +191,7 @@ class FailureModeSensorMappingResult(BaseModel):
 mcp = FastMCP("fmsr")
 
 
-@mcp.tool()
+@mcp.tool(title="Get Failure Modes")
 def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]:
     """Returns a list of known failure modes for the given asset.
     For chillers and AHUs returns a curated list. For other assets queries the LLM."""
@@ -216,7 +216,7 @@ def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]
         return ErrorResult(error=str(exc))
 
 
-@mcp.tool()
+@mcp.tool(title="Get Failure Mode Sensor Mapping")
 def get_failure_mode_sensor_mapping(
     asset_name: str,
     failure_modes: List[str],

@@ -22,17 +22,17 @@ mcp = FastMCP("wo")
 from . import tools  # noqa: E402
 
 _TOOLS = [
-    tools.get_work_orders,
-    tools.get_preventive_work_orders,
-    tools.get_corrective_work_orders,
-    tools.get_events,
-    tools.get_failure_codes,
-    tools.get_work_order_distribution,
-    tools.predict_next_work_order,
-    tools.analyze_alert_to_failure,
+    (tools.get_work_orders, "Get Work Orders"),
+    (tools.get_preventive_work_orders, "Get Preventive Work Orders"),
+    (tools.get_corrective_work_orders, "Get Corrective Work Orders"),
+    (tools.get_events, "Get Events"),
+    (tools.get_failure_codes, "Get Failure Codes"),
+    (tools.get_work_order_distribution, "Get Work Order Distribution"),
+    (tools.predict_next_work_order, "Predict Next Work Order"),
+    (tools.analyze_alert_to_failure, "Analyze Alert to Failure"),
 ]
-for _fn in _TOOLS:
-    mcp.tool()(_fn)
+for _fn, _title in _TOOLS:
+    mcp.tool(title=_title)(_fn)
 
 
 def main():

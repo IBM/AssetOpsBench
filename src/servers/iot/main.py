@@ -131,13 +131,13 @@ def get_sensor_list(asset_id: str) -> List[str]:
         return []
 
 
-@mcp.tool()
+@mcp.tool(title="List Sites")
 def sites() -> SitesResult:
     """Retrieves a list of sites. Each site is represented by a name."""
     return SitesResult(sites=SITES)
 
 
-@mcp.tool()
+@mcp.tool(title="List Assets")
 def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
     """Returns a list of assets for a given site. Each asset includes an id and a name."""
     if site_name not in SITES:
@@ -152,7 +152,7 @@ def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
     )
 
 
-@mcp.tool()
+@mcp.tool(title="List Sensors")
 def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
     """Lists the sensors available for a specified asset at a given site."""
     if site_name not in SITES:
@@ -171,7 +171,7 @@ def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
     )
 
 
-@mcp.tool()
+@mcp.tool(title="Get Sensor History")
 def history(
     site_name: str, asset_id: str, start: str, final: Optional[str] = None
 ) -> Union[HistoryResult, ErrorResult]:

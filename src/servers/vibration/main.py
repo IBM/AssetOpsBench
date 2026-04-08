@@ -130,7 +130,7 @@ def _resolve_signal(data_id: str) -> tuple[np.ndarray, float]:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool(title="Get Vibration Data")
 def get_vibration_data(
     site_name: str,
     asset_id: str,
@@ -174,7 +174,7 @@ def get_vibration_data(
     return {"data_id": data_id, **entry.summary()}
 
 
-@mcp.tool()
+@mcp.tool(title="List Vibration Sensors")
 def list_vibration_sensors(
     site_name: str,
     asset_id: str,
@@ -198,7 +198,7 @@ def list_vibration_sensors(
     }
 
 
-@mcp.tool()
+@mcp.tool(title="Compute FFT Spectrum")
 def compute_fft_spectrum(
     data_id: str,
     window: str = "hann",
@@ -236,7 +236,7 @@ def compute_fft_spectrum(
     return summary
 
 
-@mcp.tool()
+@mcp.tool(title="Compute Envelope Spectrum")
 def compute_envelope_spectrum(
     data_id: str,
     band_low_hz: Optional[float] = None,
@@ -271,7 +271,7 @@ def compute_envelope_spectrum(
     return summary
 
 
-@mcp.tool()
+@mcp.tool(title="Assess Vibration Severity")
 def assess_vibration_severity(
     rms_velocity_mm_s: float,
     machine_group: str = "group2",
@@ -294,7 +294,7 @@ def assess_vibration_severity(
     return assess_iso10816(rms_velocity_mm_s, machine_group)
 
 
-@mcp.tool()
+@mcp.tool(title="Calculate Bearing Frequencies")
 def calculate_bearing_frequencies(
     rpm: float,
     n_balls: int,
@@ -324,13 +324,13 @@ def calculate_bearing_frequencies(
     return result.to_dict()
 
 
-@mcp.tool()
+@mcp.tool(title="List Known Bearings")
 def list_known_bearings() -> dict:
     """List all bearings in the built-in database with their geometric parameters."""
     return {"bearings": list_bearings()}
 
 
-@mcp.tool()
+@mcp.tool(title="Diagnose Vibration")
 def diagnose_vibration(
     data_id: str,
     rpm: Optional[float] = None,
