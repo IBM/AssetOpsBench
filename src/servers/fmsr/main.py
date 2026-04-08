@@ -118,13 +118,22 @@ except Exception as _e:
 
 # ── LLM call helpers with retry ───────────────────────────────────────────────
 
+_asset2fm_cache: dict[str, list[str]] = {}
+
+
 def _call_asset2fm(asset_name: str) -> list[str]:
-    """Query the LLM for failure modes of an asset. Retries up to _MAX_RETRIES times."""
+    """Query the LLM for failure modes of an asset. Retries up to _MAX_RETRIES times.
+    Results are cached to avoid redundant LLM calls for the same asset."""
+    if asset_name in _asset2fm_cache:
+        return _asset2fm_cache[asset_name]
+
     prompt = _ASSET2FM_PROMPT.format(asset_name=asset_name)
     last_exc: Exception | None = None
     for _ in range(_MAX_RETRIES):
         try:
-            return _parse_numbered_list(_llm.generate(prompt))
+            result = _parse_numbered_list(_llm.generate(prompt))
+            _asset2fm_cache[asset_name] = result
+            return result
         except Exception as exc:
             last_exc = exc
     raise last_exc
@@ -179,10 +188,10 @@ class FailureModeSensorMappingResult(BaseModel):
 
 # ── FastMCP server ────────────────────────────────────────────────────────────
 
-mcp = FastMCP("fmsr")
+mcp = FastMCP("fmsr", instructions="Failure mode and sensor reasoning: get failure modes for assets and determine which sensors can detect each failure.")
 
 
-@mcp.tool()
+@mcp.tool(title="Get Failure Modes")
 def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]:
     """Returns a list of known failure modes for the given asset.
     For chillers and AHUs returns a curated list. For other assets queries the LLM."""
@@ -207,7 +216,7 @@ def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]
         return ErrorResult(error=str(exc))
 
 
-@mcp.tool()
+@mcp.tool(title="Get Failure Mode Sensor Mapping")
 def get_failure_mode_sensor_mapping(
     asset_name: str,
     failure_modes: List[str],
