@@ -115,7 +115,7 @@ def _tsad_output_to_df(output: dict) -> pd.DataFrame:
 
 # ── FastMCP server ────────────────────────────────────────────────────────────
 
-mcp = FastMCP("tsfm")
+mcp = FastMCP("tsfm", instructions="Time-series foundation models: forecasting, finetuning, and anomaly detection using IBM Granite TinyTimeMixer.")
 
 
 # ── Static tools ──────────────────────────────────────────────────────────────

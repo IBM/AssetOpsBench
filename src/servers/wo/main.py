@@ -16,7 +16,7 @@ load_dotenv()
 _log_level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING)
 logging.basicConfig(level=_log_level)
 
-mcp = FastMCP("wo")
+mcp = FastMCP("wo", instructions="Work order analytics: query work orders, events, failure codes, and predict maintenance patterns.")
 
 # Register tools — imported after mcp is created to avoid circular imports.
 from . import tools  # noqa: E402

@@ -188,7 +188,7 @@ class FailureModeSensorMappingResult(BaseModel):
 
 # ── FastMCP server ────────────────────────────────────────────────────────────
 
-mcp = FastMCP("fmsr")
+mcp = FastMCP("fmsr", instructions="Failure mode and sensor reasoning: get failure modes for assets and determine which sensors can detect each failure.")
 
 
 @mcp.tool(title="Get Failure Modes")
