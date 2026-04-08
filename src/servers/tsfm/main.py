@@ -28,7 +28,8 @@ import logging
 import os
 import tempfile
 import uuid
-from typing import List, Optional, Union
+from functools import lru_cache
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -73,6 +74,13 @@ logger = logging.getLogger("tsfm-mcp-server")
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
+
+@lru_cache(maxsize=16)
+def _load_model_config(model_checkpoint: str) -> dict:
+    """Load and cache model config.json to avoid repeated disk reads."""
+    with open(model_checkpoint + "/config.json") as f:
+        return json.load(f)
 
 
 def _build_dataset_config(
@@ -191,8 +199,7 @@ def run_tsfm_forecasting(
 
     try:
         data_df = _read_ts_data(dataset_path, dataset_config_dictionary=dataset_config)
-        with open(model_checkpoint + "/config.json") as _f:
-            model_config = json.load(_f)
+        model_config = _load_model_config(model_checkpoint)
 
         output_data_quality = _tsfm_data_quality_filter(
             data_df, dataset_config, model_config, task="inference"
@@ -326,8 +333,7 @@ def run_tsfm_finetuning(
 
     try:
         data_df = _read_ts_data(dataset_path, dataset_config_dictionary=dataset_config)
-        with open(model_checkpoint + "/config.json") as _f:
-            model_config = json.load(_f)
+        model_config = _load_model_config(model_checkpoint)
 
         os.makedirs(abs_save_dir, exist_ok=True)
 
@@ -558,9 +564,19 @@ def run_integrated_tsad(
         ad_model_save = _get_outputs_path("tsad_model_save/")
         os.makedirs(ad_model_save, exist_ok=True)
 
-        with open(model_checkpoint + "/config.json") as _f:
-            model_config = json.load(_f)
+        model_config = _load_model_config(model_checkpoint)
         df_combined = pd.DataFrame()
+
+        # Read the full dataset once with all target columns, then subset per column
+        full_config = _build_dataset_config(
+            timestamp_column,
+            target_columns,
+            conditional_columns,
+            id_columns,
+            frequency_sampling,
+            autoregressive_modeling,
+        )
+        full_data_df = _read_ts_data(dataset_path, dataset_config_dictionary=full_config)
 
         for col in target_columns:
             col_config = _build_dataset_config(
@@ -572,8 +588,8 @@ def run_integrated_tsad(
                 autoregressive_modeling,
             )
 
-            # 1. Load and quality-filter data for this column
-            data_df = _read_ts_data(dataset_path, dataset_config_dictionary=col_config)
+            # 1. Quality-filter data for this column (reuse already-loaded data)
+            data_df = full_data_df
             output_dq = _tsfm_data_quality_filter(
                 data_df, col_config, model_config, task="inference"
             )

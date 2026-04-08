@@ -118,13 +118,22 @@ except Exception as _e:
 
 # ── LLM call helpers with retry ───────────────────────────────────────────────
 
+_asset2fm_cache: dict[str, list[str]] = {}
+
+
 def _call_asset2fm(asset_name: str) -> list[str]:
-    """Query the LLM for failure modes of an asset. Retries up to _MAX_RETRIES times."""
+    """Query the LLM for failure modes of an asset. Retries up to _MAX_RETRIES times.
+    Results are cached to avoid redundant LLM calls for the same asset."""
+    if asset_name in _asset2fm_cache:
+        return _asset2fm_cache[asset_name]
+
     prompt = _ASSET2FM_PROMPT.format(asset_name=asset_name)
     last_exc: Exception | None = None
     for _ in range(_MAX_RETRIES):
         try:
-            return _parse_numbered_list(_llm.generate(prompt))
+            result = _parse_numbered_list(_llm.generate(prompt))
+            _asset2fm_cache[asset_name] = result
+            return result
         except Exception as exc:
             last_exc = exc
     raise last_exc

@@ -68,11 +68,21 @@ _DATE_COLS: Dict[str, List[str]] = {
 }
 
 
+_dataset_cache: Dict[str, Optional[pd.DataFrame]] = {}
+
+
 def load(dataset: str) -> Optional[pd.DataFrame]:
     """Fetch all documents with ``_dataset == dataset`` and return a DataFrame.
 
+    Results are cached after the first successful load to avoid repeated
+    full-collection scans against CouchDB on every tool call.
+
     Returns ``None`` when CouchDB is unavailable or the dataset is empty.
     """
+    if dataset in _dataset_cache:
+        cached = _dataset_cache[dataset]
+        return cached.copy() if cached is not None else None
+
     db = _get_db()
     if db is None:
         return None
@@ -84,6 +94,7 @@ def load(dataset: str) -> Optional[pd.DataFrame]:
         docs = result.get("docs", [])
         if not docs:
             logger.warning("No documents found for dataset '%s'", dataset)
+            _dataset_cache[dataset] = None
             return None
 
         df = pd.DataFrame(docs)
@@ -96,7 +107,8 @@ def load(dataset: str) -> Optional[pd.DataFrame]:
                 df[col] = pd.to_datetime(df[col], errors="coerce")
 
         logger.info("Loaded %d rows for dataset '%s'", len(df), dataset)
-        return df
+        _dataset_cache[dataset] = df
+        return df.copy()
     except Exception as exc:
         logger.error("Failed to load dataset '%s': %s", dataset, exc)
         return None

@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -75,28 +76,41 @@ class HistoryResult(BaseModel):
     message: str
 
 
+_asset_list_cache: Optional[List[str]] = None
+
+
 def get_asset_list() -> List[str]:
-    """Helper to fetch unique asset IDs from CouchDB."""
+    """Helper to fetch unique asset IDs from CouchDB.  Result is cached after
+    the first successful call to avoid repeated full-table scans."""
+    global _asset_list_cache
+    if _asset_list_cache is not None:
+        return _asset_list_cache
+
     if not db:
         return []
 
-    # Using a mango query to find unique asset_ids might be slow without an index,
-    # but for this benchmark we'll query documents and unique them.
-    # In a production environment, we'd use a CouchDB view.
     try:
         # We limit the fields to just asset_id to minimize data transfer
         res = db.find(
             {"asset_id": {"$exists": True}}, fields=["asset_id"], limit=100000
         )
         assets = {doc["asset_id"] for doc in res["docs"] if "asset_id" in doc}
-        return sorted(list(assets))
+        _asset_list_cache = sorted(list(assets))
+        return _asset_list_cache
     except Exception as e:
         logger.error(f"Error fetching assets: {e}")
         return []
 
 
+_sensor_list_cache: Dict[str, List[str]] = {}
+
+
 def get_sensor_list(asset_id: str) -> List[str]:
-    """Helper to fetch sensor names for a given asset from CouchDB."""
+    """Helper to fetch sensor names for a given asset from CouchDB.
+    Result is cached per asset_id after the first successful call."""
+    if asset_id in _sensor_list_cache:
+        return _sensor_list_cache[asset_id]
+
     if not db:
         return []
 
@@ -109,8 +123,9 @@ def get_sensor_list(asset_id: str) -> List[str]:
         doc = res["docs"][0]
         # Exclude metadata and standard fields
         exclude = {"_id", "_rev", "asset_id", "timestamp"}
-        sensors = [key for key in doc.keys() if key not in exclude]
-        return sorted(sensors)
+        sensors = sorted(key for key in doc.keys() if key not in exclude)
+        _sensor_list_cache[asset_id] = sensors
+        return sensors
     except Exception as e:
         logger.error(f"Error fetching sensors for {asset_id}: {e}")
         return []
