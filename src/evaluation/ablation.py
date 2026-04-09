@@ -1,4 +1,4 @@
-"""Skill ablation support for §6.4 of the paper.
+"""Skill ablation support.
 
 Provides configuration and transforms to strip building blocks from
 SKILL.md files, enabling controlled ablation studies on:
