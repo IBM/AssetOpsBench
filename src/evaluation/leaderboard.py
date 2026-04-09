@@ -28,7 +28,7 @@ def generate_json(metrics: dict[str, Any], output_dir: Path) -> Path:
 
 
 def generate_latex_main(metrics: dict[str, Any], output_dir: Path) -> Path:
-    """Produce ``leaderboard.tex`` — the main results table for the paper."""
+    """Produce ``leaderboard.tex`` — the main results table."""
     output_dir.mkdir(parents=True, exist_ok=True)
     lines = [
         r"\begin{table}[t]",
