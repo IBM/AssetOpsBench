@@ -324,12 +324,12 @@ def aggregate_results(
                 "n": len(vals),
             }
 
-        # Normalized gain (MCP_SKILLS vs MCP_ONLY)
-        mcp_only = model_out.get(EvalCondition.MCP_ONLY.value, {}).get("pass_rate", 0.0)
+        # Normalized gain (MCP_SKILLS vs NO_SKILLS)
+        no_skills = model_out.get(EvalCondition.NO_SKILLS.value, {}).get("pass_rate", 0.0)
         mcp_skills = model_out.get(EvalCondition.MCP_SKILLS.value, {}).get(
             "pass_rate", 0.0
         )
-        model_out["normalized_gain"] = compute_normalized_gain(mcp_skills, mcp_only)
+        model_out["normalized_gain"] = compute_normalized_gain(mcp_skills, no_skills)
 
         # Per-category breakdown
         cats: dict[str, dict[str, Any]] = {}
