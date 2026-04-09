@@ -1,4 +1,4 @@
-"""Map AssetOpsBench scenarios to paper task categories."""
+"""Map AssetOpsBench scenarios to task categories."""
 
 from __future__ import annotations
 
