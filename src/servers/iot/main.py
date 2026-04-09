@@ -1,6 +1,7 @@
 import os
 import logging
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -11,7 +12,9 @@ load_dotenv()
 
 # Setup logging — default WARNING so stderr stays quiet when used as MCP server;
 # set LOG_LEVEL=INFO (or DEBUG) in the environment to see verbose output.
-_log_level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING)
+_log_level = getattr(
+    logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING
+)
 logging.basicConfig(level=_log_level)
 logger = logging.getLogger("iot-mcp-server")
 
@@ -24,14 +27,17 @@ COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD")
 # Initialize CouchDB
 try:
     db = couchdb3.Database(
-        COUCHDB_DBNAME, url=COUCHDB_URL, user=COUCHDB_USERNAME, password=COUCHDB_PASSWORD
+        COUCHDB_DBNAME,
+        url=COUCHDB_URL,
+        user=COUCHDB_USERNAME,
+        password=COUCHDB_PASSWORD,
     )
     logger.info(f"Connected to CouchDB: {COUCHDB_DBNAME}")
 except Exception as e:
     logger.error(f"Failed to connect to CouchDB: {e}")
     db = None
 
-mcp = FastMCP("iot")
+mcp = FastMCP("iot", instructions="IoT sensor data: browse sites, assets, sensors, and query historical readings from CouchDB.")
 
 # Static site as per original requirement
 SITES = ["MAIN"]
@@ -70,28 +76,41 @@ class HistoryResult(BaseModel):
     message: str
 
 
+_asset_list_cache: Optional[List[str]] = None
+
+
 def get_asset_list() -> List[str]:
-    """Helper to fetch unique asset IDs from CouchDB."""
+    """Helper to fetch unique asset IDs from CouchDB.  Result is cached after
+    the first successful call to avoid repeated full-table scans."""
+    global _asset_list_cache
+    if _asset_list_cache is not None:
+        return _asset_list_cache
+
     if not db:
         return []
 
-    # Using a mango query to find unique asset_ids might be slow without an index,
-    # but for this benchmark we'll query documents and unique them.
-    # In a production environment, we'd use a CouchDB view.
     try:
         # We limit the fields to just asset_id to minimize data transfer
         res = db.find(
             {"asset_id": {"$exists": True}}, fields=["asset_id"], limit=100000
         )
         assets = {doc["asset_id"] for doc in res["docs"] if "asset_id" in doc}
-        return sorted(list(assets))
+        _asset_list_cache = sorted(list(assets))
+        return _asset_list_cache
     except Exception as e:
         logger.error(f"Error fetching assets: {e}")
         return []
 
 
+_sensor_list_cache: Dict[str, List[str]] = {}
+
+
 def get_sensor_list(asset_id: str) -> List[str]:
-    """Helper to fetch sensor names for a given asset from CouchDB."""
+    """Helper to fetch sensor names for a given asset from CouchDB.
+    Result is cached per asset_id after the first successful call."""
+    if asset_id in _sensor_list_cache:
+        return _sensor_list_cache[asset_id]
+
     if not db:
         return []
 
@@ -104,20 +123,21 @@ def get_sensor_list(asset_id: str) -> List[str]:
         doc = res["docs"][0]
         # Exclude metadata and standard fields
         exclude = {"_id", "_rev", "asset_id", "timestamp"}
-        sensors = [key for key in doc.keys() if key not in exclude]
-        return sorted(sensors)
+        sensors = sorted(key for key in doc.keys() if key not in exclude)
+        _sensor_list_cache[asset_id] = sensors
+        return sensors
     except Exception as e:
         logger.error(f"Error fetching sensors for {asset_id}: {e}")
         return []
 
 
-@mcp.tool()
+@mcp.tool(title="List Sites")
 def sites() -> SitesResult:
     """Retrieves a list of sites. Each site is represented by a name."""
     return SitesResult(sites=SITES)
 
 
-@mcp.tool()
+@mcp.tool(title="List Assets")
 def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
     """Returns a list of assets for a given site. Each asset includes an id and a name."""
     if site_name not in SITES:
@@ -128,11 +148,11 @@ def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
         site_name=site_name,
         total_assets=len(asset_list),
         assets=asset_list,
-        message=f"found {len(asset_list)} assets for site_name {site_name}.",
+        message=f"found {len(asset_list)} asset ids for site_name {site_name}: {', '.join(asset_list)}.",
     )
 
 
-@mcp.tool()
+@mcp.tool(title="List Sensors")
 def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
     """Lists the sensors available for a specified asset at a given site."""
     if site_name not in SITES:
@@ -147,11 +167,11 @@ def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
         asset_id=asset_id,
         total_sensors=len(sensor_list),
         sensors=sensor_list,
-        message=f"found {len(sensor_list)} sensors for asset_id {asset_id} and site_name {site_name}.",
+        message=f"found {len(sensor_list)} sensors for asset_id {asset_id} and site_name {site_name}: {', '.join(sensor_list)}.",
     )
 
 
-@mcp.tool()
+@mcp.tool(title="Get Sensor History")
 def history(
     site_name: str, asset_id: str, start: str, final: Optional[str] = None
 ) -> Union[HistoryResult, ErrorResult]:
@@ -188,7 +208,7 @@ def history(
             start=start,
             final=final,
             observations=docs,
-            message=f"found {len(docs)} observations.",
+            message=f"found {len(docs)} observations for asset_id {asset_id} from {start} to {final or 'now'}.",
         )
     except Exception as e:
         logger.error(f"CouchDB query failed: {e}")
