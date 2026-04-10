@@ -17,7 +17,7 @@ _log_level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), lo
 logging.basicConfig(level=_log_level)
 logger = logging.getLogger("utilities-mcp-server")
 
-mcp = FastMCP("utilities")
+mcp = FastMCP("utilities", instructions="General utilities: read JSON files and get current date/time.")
 
 
 class DateTimeResult(BaseModel):
@@ -49,7 +49,7 @@ def get_temp_filename() -> str:
 # --- JSON Tools ---
 
 
-@mcp.tool()
+@mcp.tool(title="Read JSON File")
 def json_reader(file_name: str) -> str:
     """Reads a JSON file, parses its content, and returns the parsed data."""
     try:
@@ -64,7 +64,7 @@ def json_reader(file_name: str) -> str:
 # --- Time Tools ---
 
 
-@mcp.tool()
+@mcp.tool(title="Get Current Date and Time")
 def current_date_time() -> DateTimeResult:
     """Provides the current date time as a JSON object."""
     now = datetime.now(timezone.utc)
@@ -78,7 +78,7 @@ def current_date_time() -> DateTimeResult:
     return DateTimeResult(currentDateTime=now_iso, currentDateTimeDescription=description)
 
 
-@mcp.tool()
+@mcp.tool(title="Get Current Time in English")
 def current_time_english() -> TimeEnglishResult:
     """Returns the current time in English text."""
     now = datetime.now(timezone.utc)
