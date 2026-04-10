@@ -131,13 +131,38 @@ def get_sensor_list(asset_id: str) -> List[str]:
         return []
 
 
-@mcp.tool(title="List Sites")
+@mcp.tool(
+        name="list_sites",
+        title="List Sites",
+        description=(
+            "Retrieves the list of available IoT sites. "
+        "Each site is identified by a unique name. "
+        "Use this as the starting point to discover what sites exist before querying assets or sensors."
+        ),
+        tags={"sites, discovery"},
+        #annotations=READONLY_ANNOTATIONS,
+        annotations={"readOnlyHint": True},
+        #annotations=ToolAnnotations(
+        #    readOnlyHint = True)
+)
 def sites() -> SitesResult:
     """Retrieves a list of sites. Each site is represented by a name."""
     return SitesResult(sites=SITES)
 
 
-@mcp.tool(title="List Assets")
+@mcp.tool(
+        name="list_assets",
+        title="List Assets",
+        description=(
+        "Returns all assets registered under a given site. "
+        "Each asset is identified by a unique asset ID. "
+        "Call list_sites first to obtain a valid site_name. "
+        "Returns an error if the site_name is not recognized."
+        ),
+        tags={"assets", "discovery"},
+        #annotations=READONLY_ANNOTATIONS
+        annotations={"readOnlyHint": True},
+        )
 def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
     """Returns a list of assets for a given site. Each asset includes an id and a name."""
     if site_name not in SITES:
@@ -152,7 +177,18 @@ def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
     )
 
 
-@mcp.tool(title="List Sensors")
+@mcp.tool(
+        name="list_sensors",
+        title="List Sensors",
+        description=(
+        "Lists all sensors available for a specific asset at a given site. "
+        "Sensor names correspond to the measurement fields stored in CouchDB documents. "
+        "Call list_assets first to obtain a valid asset_id. "
+        "Returns an error if the site_name or asset_id is not recognized."
+        ),
+        tags={"sensors", "discovery"},
+        annotations={"readOnlyHint": True},
+        )
 def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
     """Lists the sensors available for a specified asset at a given site."""
     if site_name not in SITES:
@@ -171,7 +207,19 @@ def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
     )
 
 
-@mcp.tool(title="Get Sensor History")
+@mcp.tool(
+        name="get_sensor_history",
+        title="Get Sensor History",
+        description=(
+        "Queries historical sensor readings for a specific asset within a time range. "
+        "Dates must be provided as ISO 8601 strings (e.g. '2024-01-15T00:00:00'). "
+        "'start' is inclusive; 'final' is exclusive and defaults to now if omitted. "
+        "Returns up to 1000 observations ordered by timestamp ascending. "
+        "Returns an error if dates are invalid, start >= final, or CouchDB is unreachable."
+        ),
+        tags={"history", "sensors", "query"},
+        annotations={"readOnlyHint": True},
+        )
 def history(
     site_name: str, asset_id: str, start: str, final: Optional[str] = None
 ) -> Union[HistoryResult, ErrorResult]:
