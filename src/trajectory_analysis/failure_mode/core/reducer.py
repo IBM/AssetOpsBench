@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any, Tuple, List
 
 def failure_mode_reduction(
     combined_pickle_path: str,
-    out_dir: str = "./src/trajectory_analysis/failure_mode/processed_trajectories/summary",
+    out_dir: str = "./src/trajectory_analysis/failure_mode/results/summary",
     model_name: str = "all-MiniLM-L6-v2",
     k: Optional[int] = None,
     k_min: int = 2,
@@ -26,11 +26,11 @@ def failure_mode_reduction(
     2. Embedding failure mode titles using sentence transformers
     3. Clustering similar failure modes using K-means
     4. Selecting representative titles for each cluster
-    5. Exporting results to CSV files
+    5. Exporting results to CSV files in results/summary/
 
     Args:
         combined_pickle_path: Path to the combined pickle file from trajectory processing
-        out_dir: Output directory for CSV files (default: processed_trajectories/summary)
+        out_dir: Output directory for CSV files (default: results/summary)
         model_name: Sentence transformer model name for embeddings (default: all-MiniLM-L6-v2)
         k: Fixed number of clusters (None = auto-select using silhouette score)
         k_min: Minimum K to consider when auto-selecting (default: 2)
@@ -41,7 +41,7 @@ def failure_mode_reduction(
         Dictionary containing:
             - df_expanded: DataFrame with exploded failure modes [title, description]
             - df_clustered: DataFrame with clusters [cluster, failure mode, title, description]
-            - k: Number of clusters used
+            - n_clusters: Number of clusters used
             - silhouette_scores: List of (k, score) tuples if auto-selected, else []
             - paths: Dict with CSV file paths
 
@@ -88,13 +88,13 @@ def failure_mode_reduction(
         )
     df_expanded = df_expanded[keep_cols].copy()
 
-    # Save the "addtional_fm.csv" (typo preserved for backward compatibility)
+    # Save the additional failure modes CSV
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    addtional_csv = out / "addtional_fm.csv"
-    df_expanded.to_csv(addtional_csv, index=False)
+    additional_csv = out / "additional_fm.csv"
+    df_expanded.to_csv(additional_csv, index=False)
     if verbose:
-        print(f"Saved: {addtional_csv} (rows={len(df_expanded)})")
+        print(f"Saved: {additional_csv} (rows={len(df_expanded)})")
 
     # --- Step 2: Embeddings + clustering with small-sample handling ---
     titles = df_expanded["title"].fillna("").astype(str).tolist()
@@ -112,7 +112,7 @@ def failure_mode_reduction(
             "k": 0,
             "silhouette_scores": [],
             "paths": {
-                "addtional_fm_csv": str(addtional_csv),
+                "additional_fm_csv": str(additional_csv),
                 "additional_fm_clustered_csv": None,
             },
         }
@@ -136,7 +136,7 @@ def failure_mode_reduction(
             "k": 1,
             "silhouette_scores": [],
             "paths": {
-                "addtional_fm_csv": str(addtional_csv),
+                "additional_fm_csv": str(additional_csv),
                 "additional_fm_clustered_csv": str(clustered_csv),
             },
         }
@@ -242,7 +242,7 @@ def failure_mode_reduction(
         "k": k,
         "silhouette_scores": silhouette_scores,
         "paths": {
-            "addtional_fm_csv": str(addtional_csv),
+            "additional_fm_csv": str(additional_csv),
             "additional_fm_clustered_csv": str(clustered_csv),
         },
     }
