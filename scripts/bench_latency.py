@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-"""Benchmark latency and accuracy for multi-agent scenarios 501-520.
+"""Benchmark latency and accuracy for multi-agent scenarios.
 
-Each scenario is run NUM_RUNS times:
-  - Run 1: latency recorded + accuracy graded via LLM-as-judge
-  - Runs 2-N: latency recorded only
-  - Final latency is averaged across all runs
+Each scenario is executed once: latency recorded + accuracy graded via LLM-as-judge.
 
 Usage:
     python scripts/bench_latency.py
@@ -24,7 +21,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 DEFAULT_MODEL = "openai/Qwen/Qwen2.5-7B-Instruct"  # requires LITELLM_BASE_URL pointing to local vLLM
-NUM_RUNS = 1
 
 # ── LLM-as-judge prompt ───────────────────────────────────────────────────────
 
@@ -181,11 +177,9 @@ _print_lock = threading.Lock()
 
 
 def process_scenario(idx: int, total: int, scenario: dict, args: argparse.Namespace) -> dict | None:
-    """Run all repetitions for one scenario and return the result dict.
+    """Run one scenario once: record latency and grade the answer.
 
-    Run 1 is executed first (sequential) to obtain the answer for grading.
-    Runs 2-N are dispatched in parallel (latency-only).
-    All output is buffered and printed atomically under _print_lock.
+    Output is buffered and printed atomically under _print_lock.
     """
     sid = scenario["id"]
     text = scenario["text"]
@@ -195,71 +189,37 @@ def process_scenario(idx: int, total: int, scenario: dict, args: argparse.Namesp
     lines.append(f"[{idx}/{total}] id={sid}: {text}")
     lines.append(f"  expected: {characteristic_form}")
 
-    latencies: list[dict] = []
     grade_result: dict | None = None
+    latency: dict | None = None
 
-    # ── run 1 (sequential, graded) ────────────────────────────────────────────
-    output1 = run_scenario(text, args.model_id, thinking=args.thinking)
-    if output1 is None:
-        lines.append("  run 1/? [FAILED]")
+    output = run_scenario(text, args.model_id, thinking=args.thinking)
+    if output is None:
+        lines.append("  [FAILED]")
     else:
-        lat = output1.get("latency", {})
-        if lat:
-            latencies.append(lat)
-            lines.append(f"  run 1/{args.runs} total={lat['total']:.2f}s")
-        if output1.get("answer"):
-            lines.append(f"  answer: {output1['answer']}")
+        latency = output.get("latency") or None
+        if latency:
+            lines.append(f"  latency: plan={latency['plan']:.2f}s  execute={latency['execute']:.2f}s  "
+                         f"summarize={latency['summarize']:.2f}s  total={latency['total']:.2f}s")
+        if output.get("answer"):
+            lines.append(f"  answer: {output['answer']}")
             lines.append("  grading...")
             trace = json.dumps({
-                "plan": output1.get("plan", []),
-                "history": output1.get("history", []),
+                "plan": output.get("plan", []),
+                "history": output.get("history", []),
             }, indent=2)
-            grade_result = grade(text, characteristic_form, output1["answer"], trace, mode=args.grade_mode)
+            grade_result = grade(text, characteristic_form, output["answer"], trace, mode=args.grade_mode)
             lines.append(f"  graded: {grade_result['scores']}")
-
-    # ── runs 2-N (parallel, latency only) ────────────────────────────────────
-    if args.runs > 1:
-        with ThreadPoolExecutor(max_workers=args.runs - 1) as pool:
-            futures = {
-                pool.submit(run_scenario, text, args.model_id, args.thinking): run_num
-                for run_num in range(2, args.runs + 1)
-            }
-            run_lats: list[tuple[int, dict]] = []
-            for fut in as_completed(futures):
-                run_num = futures[fut]
-                out = fut.result()
-                if out is None:
-                    lines.append(f"  run {run_num}/{args.runs} [FAILED]")
-                    continue
-                lat = out.get("latency", {})
-                if lat:
-                    run_lats.append((run_num, lat))
-            # append in run order for readability
-            for run_num, lat in sorted(run_lats):
-                latencies.append(lat)
-                lines.append(f"  run {run_num}/{args.runs} total={lat['total']:.2f}s")
-
-    if not latencies:
-        lines.append("  [SKIPPED] no latency data")
-        with _print_lock:
-            print("\n".join(lines) + "\n", flush=True)
-        return None
-
-    avg_lat = {k: sum(r[k] for r in latencies) / len(latencies)
-               for k in ("plan", "execute", "summarize", "total")}
-    lines.append(
-        f"  avg: plan={avg_lat['plan']:.3f}s  execute={avg_lat['execute']:.3f}s  "
-        f"summarize={avg_lat['summarize']:.3f}s  total={avg_lat['total']:.3f}s"
-    )
 
     with _print_lock:
         print("\n".join(lines) + "\n", flush=True)
 
+    if latency is None:
+        return None
+
     return {
         "id": sid,
         "text": text,
-        "latency_avg": avg_lat,
-        "latency_runs": latencies,
+        "latency": latency,
         "grade": grade_result,
     }
 
@@ -269,7 +229,6 @@ def process_scenario(idx: int, total: int, scenario: dict, args: argparse.Namesp
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark plan-execute on multi-agent scenarios 501-520.")
     parser.add_argument("--model-id", default=DEFAULT_MODEL, help=f"LiteLLM model string (default: {DEFAULT_MODEL})")
-    parser.add_argument("--runs", type=int, default=NUM_RUNS, help=f"Runs per scenario (default: {NUM_RUNS})")
     parser.add_argument("--thinking", action="store_true", help="Enable thinking mode in the planning phase.")
     parser.add_argument("--grade-mode", default="custom", choices=["custom", "reactxen"], help="Grading mode: 'custom' (LLM-as-judge prompt) or 'reactxen' (original EvaluationAgent).")
     parser.add_argument("--local", action="store_true", help="Load scenarios from local file instead of HuggingFace.")
@@ -284,7 +243,6 @@ def main() -> None:
         scenarios = load_scenarios_hf(split=args.split, limit=args.limit)
     print(f"Model:      {args.model_id}")
     print(f"Thinking:   {'enabled' if args.thinking else 'disabled'}")
-    print(f"Runs:       {args.runs} per scenario")
     print(f"Batch size: {args.batch_size}")
     print(f"Grade mode: {args.grade_mode}\n")
 
@@ -308,7 +266,7 @@ def main() -> None:
 
     all_results.sort(key=lambda r: r["id"])
     n = len(all_results)
-    avg = {k: sum(r["latency_avg"][k] for r in all_results) / n
+    avg = {k: sum(r["latency"][k] for r in all_results) / n
            for k in ("plan", "execute", "summarize", "total")}
 
     dims = ["task_completion", "data_retrieval_accuracy", "generalized_result_verification",
@@ -338,7 +296,6 @@ def main() -> None:
     out_path.write_text(json.dumps({
         "model": args.model_id,
         "thinking": args.thinking,
-        "runs_per_scenario": args.runs,
         "summary": {**avg, "dim_scores": dim_scores},
         "scenarios": all_results,
     }, indent=2))
