@@ -45,6 +45,7 @@ Traditional Python usage (if uv not available):
 
 import sys
 import argparse
+import logging
 from pathlib import Path
 
 # Support both direct script execution and module execution
@@ -131,6 +132,13 @@ Examples:
         help="Sentence transformer model for clustering (default: all-MiniLM-L6-v2)",
     )
 
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging (shows detailed file processing and handler info)",
+    )
+
     return parser.parse_args()
 
 
@@ -140,6 +148,15 @@ def main():
     # Parse command line arguments
     args = parse_args()
 
+    # Configure logging based on verbose flag
+    log_level = logging.INFO if args.verbose else logging.WARNING
+    logging.basicConfig(
+        level=log_level,
+        format="%(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+        force=True,  # Override any existing configuration
+    )
+
     trajectory_dir = args.path
     output_dir = args.output
     temperature = args.temperature
@@ -147,6 +164,9 @@ def main():
     print("=" * 60)
     print("Failure Mode Analysis - Example Script")
     print("=" * 60)
+
+    if args.verbose:
+        print("\n🔊 Verbose mode enabled - detailed logging active")
 
     # Check if trajectory directory exists
     if not Path(trajectory_dir).exists():
