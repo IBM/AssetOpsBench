@@ -6,6 +6,7 @@ failure modes in agent behavior.
 
 import os
 import json
+import logging
 import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, List, Sequence, Optional
@@ -13,6 +14,9 @@ from typing import Dict, Any, List, Sequence, Optional
 from src.llm.base import LLMBackend
 from src.llm.litellm import LiteLLMBackend
 from .utils import get_llm_answer_from_json, extract_json_from_response
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 def _load_all_json_files(root_path: str) -> Dict[str, Any]:
@@ -25,15 +29,27 @@ def _load_all_json_files(root_path: str) -> Dict[str, Any]:
         Dictionary mapping file paths to their JSON content
     """
     json_data: Dict[str, Any] = {}
+    total_files = 0
+    valid_files = 0
+
     for dirpath, _, filenames in os.walk(root_path):
         for filename in filenames:
             file_path = os.path.join(dirpath, filename)
+            total_files += 1
+
             try:
+                logger.info(f"📄 Loading: {file_path}")
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     json_data[file_path] = data
-            except Exception:
-                pass
+                    valid_files += 1
+                    logger.info(f"   ✅ Valid JSON loaded")
+            except json.JSONDecodeError as e:
+                logger.warning(f"   ❌ Invalid JSON: {e}")
+            except Exception as e:
+                logger.warning(f"   ❌ Error loading file: {e}")
+
+    logger.info(f"\n📊 Summary: {valid_files}/{total_files} files loaded successfully")
     return json_data
 
 
@@ -118,32 +134,30 @@ def process_trajectories(
     print(f"  Loaded {len(all_jsons)} files")
 
     df_columns = [
-        "model_id",
         "counter",
-        "timestamp",
-        "vendor",
-        "model",
         "ut_id",
         "addi_fm_cnt",
         "addi_fm_list",
     ] + failure_mode_keys
     df = pd.DataFrame(columns=df_columns)
 
-    # Use a placeholder model_id for tracking
-    model_id = "llm_backend"
     counter = 1
 
     for path, content in all_jsons.items():
         parts = os.path.relpath(path, root_directory).split("_")
         ut_id = parts[0]
-        model = model_id
-        vendor = ""
+
+        logger.info(f"\n🔄 Processing trajectory {counter}/{len(all_jsons)}: {ut_id}")
+        logger.info(f"   📂 Path: {path}")
 
         max_trial = 2
         cur_trial = 0
         while cur_trial < max_trial:
             cur_trial = cur_trial + 1
             try:
+                logger.info(
+                    f"   🤖 Analyzing with LLM (attempt {cur_trial}/{max_trial})..."
+                )
                 raw_output = get_llm_answer_from_json(
                     data=content, llm_backend=llm_backend, temperature=temperature
                 )
@@ -154,12 +168,14 @@ def process_trajectories(
                     response_json.get("additional_failure_modes", [])
                 )
 
+                # Count detected failure modes
+                fm_count = sum(1 for v in failure_modes.values() if v)
+                logger.info(
+                    f"   ✅ Analysis complete: {fm_count} failure modes detected, {len(afm_list)} additional"
+                )
+
                 row = {
-                    "model_id": model_id,
                     "counter": counter,
-                    "timestamp": timestamp,
-                    "vendor": vendor,
-                    "model": model,
                     "ut_id": ut_id,
                     "addi_fm_cnt": len(afm_list),
                     "addi_fm_list": afm_list,
@@ -170,13 +186,15 @@ def process_trajectories(
                 df.loc[len(df)] = row
                 break
             except Exception as e:
-                print(f"  Failed to process {path}: {e}")
+                logger.error(f"   ❌ Failed to process {path}: {e}")
+                if cur_trial >= max_trial:
+                    logger.warning(f"   ⚠️  Skipping after {max_trial} attempts")
 
         counter += 1
 
     # Save per-timestamp results in both pickle and CSV formats
-    df_pkl_path = f"{out_dir}/{timestamp}_m{model_id}_db.pkl"
-    df_csv_path = f"{out_dir}/{timestamp}_m{model_id}_db.csv"
+    df_pkl_path = f"{out_dir}/{timestamp}_failure_modes.pkl"
+    df_csv_path = f"{out_dir}/{timestamp}_failure_modes.csv"
     df.to_pickle(df_pkl_path)
     df.to_csv(df_csv_path, index=False)
     per_timestamp_paths.append(df_pkl_path)
@@ -186,8 +204,8 @@ def process_trajectories(
 
     # Save combined results in both pickle and CSV formats
     combined_df = pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
-    combined_pkl_path = f"{out_dir}/combined_m{model_id}_db.pkl"
-    combined_csv_path = f"{out_dir}/combined_m{model_id}_db.csv"
+    combined_pkl_path = f"{out_dir}/combined_failure_modes.pkl"
+    combined_csv_path = f"{out_dir}/combined_failure_modes.csv"
     combined_df.to_pickle(combined_pkl_path)
     combined_df.to_csv(combined_csv_path, index=False)
     print(f"\nSaved combined DataFrame:")
