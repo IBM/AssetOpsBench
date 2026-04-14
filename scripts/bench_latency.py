@@ -55,8 +55,8 @@ Respond with a JSON object only, no explanation:
 
 HF_DATASET = "ibm-research/AssetOpsBench"
 
-def load_scenarios_hf(split: str = "train", limit: int = 20) -> list[dict]:
-    """Load scenarios from HuggingFace ibm-research/AssetOpsBench.
+def load_scenarios_hf(split: str = "train") -> list[dict]:
+    """Load all scenarios from HuggingFace ibm-research/AssetOpsBench.
 
     Expected dataset columns: id, text, characteristic_form.
     """
@@ -64,19 +64,16 @@ def load_scenarios_hf(split: str = "train", limit: int = 20) -> list[dict]:
 
     print(f"Loading scenarios from HuggingFace: {HF_DATASET} (split={split}) ...")
     ds = load_dataset(HF_DATASET, split=split)
-    if limit:
-        ds = ds.select(range(min(limit, len(ds))))
     scenarios = [dict(row) for row in ds]
     print(f"Loaded {len(scenarios)} scenarios from {HF_DATASET}\n")
     return scenarios
 
 
-def load_scenarios_local(limit: int = 20) -> list[dict]:
-    """Load scenarios from the local chiller_utterance.json file (fallback)."""
+def load_scenarios_local() -> list[dict]:
+    """Load all scenarios from the local chiller_utterance.json file (fallback)."""
     data_file = REPO_ROOT / "src" / "scenarios" / "local" / "chiller_utterance.json"
     with open(data_file) as f:
         scenarios = json.load(f)
-    scenarios = scenarios[:limit]
     print(f"Loaded {len(scenarios)} scenarios from {data_file.name}\n")
     return scenarios
 
@@ -233,16 +230,21 @@ def main() -> None:
     parser.add_argument("--grade-mode", default="custom", choices=["custom", "reactxen"], help="Grading mode: 'custom' (LLM-as-judge prompt) or 'reactxen' (original EvaluationAgent).")
     parser.add_argument("--local", action="store_true", help="Load scenarios from local file instead of HuggingFace.")
     parser.add_argument("--split", default="train", help="HuggingFace dataset split to use (default: train).")
-    parser.add_argument("--limit", type=int, default=20, help="Number of scenarios to run (default: 20).")
+    parser.add_argument("--id-min", type=int, default=400, help="Minimum scenario id, inclusive (default: 400).")
+    parser.add_argument("--id-max", type=int, default=446, help="Maximum scenario id, inclusive (default: 446).")
     parser.add_argument("--batch-size", type=int, default=1, help="Number of scenarios to run in parallel (default: 1).")
     args = parser.parse_args()
 
     if args.local:
-        scenarios = load_scenarios_local(limit=args.limit)
+        scenarios = load_scenarios_local()
     else:
-        scenarios = load_scenarios_hf(split=args.split, limit=args.limit)
+        scenarios = load_scenarios_hf(split=args.split)
+
+    scenarios = [s for s in scenarios if args.id_min <= int(s["id"]) <= args.id_max]
+
     print(f"Model:      {args.model_id}")
     print(f"Thinking:   {'enabled' if args.thinking else 'disabled'}")
+    print(f"ID range:   {args.id_min}–{args.id_max}  ({len(scenarios)} scenarios)")
     print(f"Batch size: {args.batch_size}")
     print(f"Grade mode: {args.grade_mode}\n")
 
