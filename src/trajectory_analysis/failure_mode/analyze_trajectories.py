@@ -22,7 +22,7 @@ Usage:
 
     # Use specific LiteLLM proxy model
     uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --model-id litellm_proxy/aws/claude-sonnet-4-6
+        --model-id litellm_proxy/claude-sonnet-4-6
 
     # With clustering enabled
     uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py --cluster
@@ -90,8 +90,8 @@ Examples:
         "-o",
         "--output",
         type=str,
-        default="./src/trajectory_analysis/failure_mode/processed_trajectories",
-        help="Output directory for results (default: ./src/trajectory_analysis/failure_mode/processed_trajectories)",
+        default="./src/trajectory_analysis/failure_mode/results",
+        help="Output directory for results (default: ./src/trajectory_analysis/failure_mode/results)",
     )
 
     parser.add_argument(
@@ -107,14 +107,20 @@ Examples:
         "--model-id",
         type=str,
         default=None,
-        help="Full model ID (e.g., 'litellm_proxy/aws/claude-sonnet-4-6' or 'watsonx/meta-llama/llama-3-3-70b-instruct'). "
-        "If not specified, uses litellm_proxy/aws/claude-sonnet-4-6 (LiteLLM) or watsonx/meta-llama/llama-3-3-70b-instruct (WatsonX)",
+        help="Full model ID (e.g., 'litellm_proxy/claude-sonnet-4-6' or 'watsonx/meta-llama/llama-3-3-70b-instruct'). "
+        "If not specified, uses litellm_proxy/claude-sonnet-4-6 (LiteLLM) or watsonx/meta-llama/llama-3-3-70b-instruct (WatsonX)",
     )
 
     parser.add_argument(
         "--cluster",
         action="store_true",
-        help="Enable clustering of additional failure modes (Phase 3)",
+        help="Enable clustering of additional failure modes after analysis",
+    )
+
+    parser.add_argument(
+        "--cluster-only",
+        action="store_true",
+        help="Skip trajectory analysis, only combine existing runs and cluster (requires existing runs in --output/runs/)",
     )
 
     parser.add_argument(
@@ -157,38 +163,83 @@ def main():
         force=True,  # Override any existing configuration
     )
 
-    trajectory_dir = args.path
     output_dir = args.output
     temperature = args.temperature
 
     print("=" * 60)
-    print("Failure Mode Analysis - Example Script")
+    print("Failure Mode Analysis")
     print("=" * 60)
 
     if args.verbose:
         print("\n🔊 Verbose mode enabled - detailed logging active")
 
+    # Handle cluster-only mode
+    if args.cluster_only:
+        print("\n📊 Cluster-only mode: Combining and clustering existing runs...")
+        print(f"📂 Output directory: {output_dir}")
+
+        # Check if runs directory exists
+        runs_dir = Path(output_dir) / "runs"
+        if not runs_dir.exists() or not any(runs_dir.iterdir()):
+            print(f"\n❌ Error: No runs found in '{runs_dir}'")
+            print("   Please run trajectory analysis first without --cluster-only")
+            sys.exit(1)
+
+        try:
+            from src.trajectory_analysis.failure_mode.core.generator import (
+                combine_all_runs,
+            )
+            from src.trajectory_analysis.failure_mode.core.reducer import (
+                failure_mode_reduction,
+            )
+
+            # Combine all runs
+            combined = combine_all_runs(
+                runs_dir=str(runs_dir), summary_dir=f"{output_dir}/summary"
+            )
+
+            if not combined["combined_path"]:
+                print("\n❌ Error: No valid runs to combine")
+                sys.exit(1)
+
+            # Cluster
+            red = failure_mode_reduction(
+                combined_pickle_path=combined["combined_path"],
+                out_dir=f"{output_dir}/summary",
+                model_name=args.embedding_model,
+                k=args.num_clusters,
+            )
+
+            print("\n" + "=" * 60)
+            print("✅ Clustering Complete!")
+            print("=" * 60)
+            print(f"\n📊 Combined {combined['n_runs']} runs")
+            print(f"📦 Results saved to: {output_dir}/summary/")
+            print(f"   - combined_failure_modes.pkl")
+            print(f"   - combined_failure_modes.csv")
+            print(f"   - additional_fm.csv")
+            print(f"   - additional_fm_clustered.csv")
+            print(f"   - {red['k']} clusters identified")
+            print("\n")
+            return 0
+
+        except Exception as e:
+            print(f"\n❌ Error during clustering: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return 1
+
+    # Normal mode: analyze trajectories
+    trajectory_dir = args.path
+
     # Check if trajectory directory exists
     if not Path(trajectory_dir).exists():
         print(f"\n❌ Error: Directory '{trajectory_dir}' not found!")
         print(f"   Please create it and add trajectory JSON files.")
-        print(f"\n   Example trajectory format:")
-        print(
-            """   {
-     "text": "Your question here",
-     "trajectory": [
-       {
-         "task_description": "Step description",
-         "agent_name": "AgentName",
-         "response": "Agent response",
-         "final_answer": "Final answer"
-       }
-     ]
-   }"""
-        )
         sys.exit(1)
 
-    # Check if directory has files (JSON validation happens in _load_all_json_files)
+    # Check if directory has files
     all_files = list(Path(trajectory_dir).rglob("*"))
     file_count = len([f for f in all_files if f.is_file()])
 
@@ -226,49 +277,51 @@ def main():
         else:
             # No model specified - use default (None = Claude 4 Sonnet in generator.py)
             llm_backend = None
-            print("   Using default: litellm_proxy/aws/claude-sonnet-4-6 (LiteLLM)")
+            model_id = "litellm_proxy/claude-sonnet-4-6"  # Set default model_id
+            print(f"   Using default: {model_id} (LiteLLM)")
             print("   (Make sure .env has LITELLM_API_KEY and LITELLM_BASE_URL)")
             print(
                 "   Alternative: Use --model-id watsonx/meta-llama/llama-3-3-70b-instruct for WatsonX"
             )
 
-        # Run the pipeline (with or without clustering)
-        if args.cluster:
-            print("\n🔄 Clustering enabled - running complete pipeline...")
-            results = run_failure_mode_pipeline(
-                traj_root_base=trajectory_dir,
-                llm_backend=llm_backend,
-                temperature=temperature,
-                summary_dir=f"{output_dir}/summary",
-                model_name=args.embedding_model,
-                k=args.num_clusters,
-            )
-            # Get results
-            df = results["generation"]["combined_df"]
-            combined_path = results["generation"]["combined_path"]
-            has_clustering = True
-        else:
-            print("\n🔍 Detection only - skipping clustering...")
-            from src.trajectory_analysis.failure_mode.core import process_trajectories
+        # Run the pipeline
+        results = run_failure_mode_pipeline(
+            traj_root_base=trajectory_dir,
+            llm_backend=llm_backend,
+            temperature=temperature,
+            enable_clustering=args.cluster,
+            runs_dir=f"{output_dir}/runs",
+            summary_dir=f"{output_dir}/summary",
+            model_name=args.embedding_model,
+            k=args.num_clusters,
+            model_id=model_id,  # Use the model_id variable instead of args.model_id
+        )
 
-            gen_results = process_trajectories(
-                traj_root_base=trajectory_dir,
-                llm_backend=llm_backend,
-                temperature=temperature,
-                out_dir=output_dir,
-            )
-            df = gen_results["combined_df"]
-            combined_path = gen_results["combined_path"]
-            results = {"generation": gen_results}
-            has_clustering = False
+        # Get results
+        gen_results = results["generation"]
+        df = gen_results["df"]
+        run_dir = gen_results["run_dir"]
+        run_id = gen_results["run_id"]
 
         print("\n" + "=" * 60)
         print("✅ Analysis Complete!")
         print("=" * 60)
         print(f"\n📊 Processed {len(df)} trajectories")
-        print(f"💾 Results saved to:")
-        print(f"   - Pickle: {combined_path}")
-        print(f"   - CSV: {combined_path.replace('.pkl', '.csv')}")
+        print(f"💾 Results saved to: {run_dir}")
+        print(f"   - failure_modes.pkl")
+        print(f"   - failure_modes.csv")
+
+        if args.cluster and "combination" in results:
+            combined_path = results["combination"]["combined_path"]
+            if combined_path:
+                print(f"\n📦 Combined results: {output_dir}/summary/")
+                print(f"   - combined_failure_modes.pkl")
+                print(f"   - combined_failure_modes.csv")
+
+            if "reduction" in results:
+                print(f"   - additional_fm.csv")
+                print(f"   - additional_fm_clustered.csv")
+                print(f"   - {results['reduction']['k']} clusters identified")
 
         # Show failure mode summary
         print("\n📋 Failure Mode Summary:")
@@ -301,25 +354,18 @@ def main():
                         f"   - Trajectory {row['ut_id']}: {row['addi_fm_cnt']} additional modes"
                     )
 
-        # Show clustering results if enabled
-        if has_clustering and "reduction" in results:
-            red = results["reduction"]
-            print(f"\n📊 Clustering Results:")
-            print(f"   Created {red['k']} clusters")
-            print(f"   Output files:")
-            for key, path in red["paths"].items():
-                if path:
-                    print(f"   - {key}: {path}")
-
         print("\n" + "=" * 60)
         print("💡 Next Steps:")
         print("=" * 60)
-        print(f"1. Load results: df = pd.read_pickle('{combined_path}')")
+        print(f"1. Load results: df = pd.read_pickle('{run_dir}/failure_modes.pkl')")
         print("2. Analyze: df.describe(), df.head()")
         print("3. Filter: df[df['1.1 Disobey Task Specification'] == True]")
-        if has_clustering:
+        if args.cluster:
             print(
-                "4. View clusters: pd.read_csv('summary/additional_fm_clustered.csv')"
+                f"4. View combined: pd.read_pickle('{output_dir}/summary/combined_failure_modes.pkl')"
+            )
+            print(
+                f"5. View clusters: pd.read_csv('{output_dir}/summary/additional_fm_clustered.csv')"
             )
         else:
             print("4. Enable clustering: add --cluster flag")
