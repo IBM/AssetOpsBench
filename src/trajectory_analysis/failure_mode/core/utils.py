@@ -23,11 +23,12 @@ def get_llm_answer_from_json(
     llm_backend: LLMBackend,
     temperature: float = 0.0,
     timeout_seconds: int = 30,
-) -> str:
+) -> tuple[str, str]:
     """
     Given a parsed JSON dict with trajectory data, formats the content and
-    returns the LLM's response. Automatically detects and handles different
-    trajectory formats using pluggable format handlers.
+    returns the LLM's response along with the handler name used.
+    Automatically detects and handles different trajectory formats using
+    pluggable format handlers.
 
     Args:
         data: Dictionary containing trajectory data. Supports multiple formats
@@ -35,9 +36,10 @@ def get_llm_answer_from_json(
               registering custom handlers.
         llm_backend: LLM backend instance to use for generation
         temperature: Temperature parameter for LLM generation (default: 0.0)
+        timeout_seconds: Timeout in seconds for LLM call (default: 30)
 
     Returns:
-        str: The LLM's generated response text
+        tuple[str, str]: (LLM response text, handler name used)
 
     Raises:
         ValueError: If no format handler can process the data
@@ -80,12 +82,14 @@ def get_llm_answer_from_json(
                 prompt=prompt,
                 temperature=temperature,
             )
-            return ans
+            return ans, handler_name
         except TimeoutError as e:
-            return f"Error: LLM call timed out after {timeout_seconds} seconds. Model may be unavailable."
+            error_msg = f"Error: LLM call timed out after {timeout_seconds} seconds. Model may be unavailable."
+            return error_msg, handler_name
 
     except Exception as e:
-        return f"Error while processing input data: {e}"
+        error_msg = f"Error while processing input data: {e}"
+        return error_msg, "Unknown"
 
 
 def extract_json_from_response(response_text: str) -> Dict[str, Any]:
