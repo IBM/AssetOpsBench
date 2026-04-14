@@ -50,10 +50,12 @@ def run_failure_mode_pipeline(
         ...     llm_backend=llm
         ... )
     """
-    # Default to Claude 4 Sonnet if no backend provided
+    # Default to AWS Claude Sonnet if no backend provided
     if llm_backend is None:
-        llm_backend = LiteLLMBackend("litellm_proxy/GCP/claude-4-sonnet")
-        print("Using default LLM: Claude 4 Sonnet (litellm_proxy/GCP/claude-4-sonnet)")
+        llm_backend = LiteLLMBackend("litellm_proxy/aws/claude-sonnet-4-6")
+        print(
+            "Using default LLM: AWS Claude Sonnet 4.6 (litellm_proxy/aws/claude-sonnet-4-6)"
+        )
 
     # Step 1: generate + save combined pickle
     gen = process_trajectories(
