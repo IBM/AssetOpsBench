@@ -5,6 +5,7 @@ interacting with LLM backends for failure mode analysis.
 """
 
 import json
+import logging
 import re
 from typing import Dict, Any
 
@@ -12,6 +13,9 @@ from src.llm.base import LLMBackend
 from .prompts import system_prompt
 from .format_handlers import get_default_registry
 from .timeout_wrapper import call_with_timeout, TimeoutError
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 def get_llm_answer_from_json(
@@ -43,6 +47,10 @@ def get_llm_answer_from_json(
         # Use format handler registry to auto-detect and parse the format
         registry = get_default_registry()
         formatted_data = registry.format_trajectory(data)
+
+        # Log which handler was used
+        handler_name = formatted_data.get("handler_used", "Unknown")
+        logger.info(f"   🔧 Using handler: {handler_name}")
 
         question = formatted_data["question"]
         steps = formatted_data["steps"]
