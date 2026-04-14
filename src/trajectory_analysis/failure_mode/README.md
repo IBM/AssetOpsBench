@@ -113,14 +113,35 @@ results/
 - `failure_modes.pkl`: Pickle file with DataFrame
 - `failure_modes.csv`: CSV file with same data
 
-**Columns**:
-- `model_id`: LLM model used for analysis (e.g., "litellm_proxy/claude-sonnet-4-6")
-- `trajectory_path`: Relative path to trajectory file
-- `counter`: Sequential row number
-- `ut_id`: Trajectory identifier (e.g., "0003", "0004")
-- `addi_fm_cnt`: Count of additional failure modes
-- `addi_fm_list`: List of additional failure modes with descriptions
-- Boolean flags for each of 14 predefined failure modes
+**CSV Column Reference**:
+
+| Column | Type | Description | Example |
+|--------|------|-------------|---------|
+| `model_id` | string | LLM model used for analysis | `litellm_proxy/claude-sonnet-4-6` |
+| `trajectory_path` | string | Full path to trajectory file | `src/trajectory_analysis/failure_mode/trajectories/mistral-large/0003` |
+| `format_handler` | string | JSON format handler used to parse trajectory | `ThoughtActionFormatHandler` |
+| `counter` | integer | Sequential row number (1-based) | `1`, `2`, `3` |
+| `ut_id` | string | Trajectory identifier (filename) | `0003`, `0004` |
+| `addi_fm_cnt` | integer | Count of additional failure modes discovered | `0`, `1`, `2` |
+| `addi_fm_list` | list[dict] | List of additional failure modes with `title` and `description` | `[{'title': 'Artifact Contamination', 'description': '...'}]` |
+| `1.1 Disobey Task Specification` | boolean | Predefined failure mode flag | `True`, `False` |
+| `1.2 Disobey Role Specification` | boolean | Predefined failure mode flag | `True`, `False` |
+| `1.3 Step Repetition` | boolean | Predefined failure mode flag | `True`, `False` |
+| `1.4 Loss of Conversation History` | boolean | Predefined failure mode flag | `True`, `False` |
+| `1.5 Unaware of Termination Conditions` | boolean | Predefined failure mode flag | `True`, `False` |
+| `2.1 Conversation Reset` | boolean | Predefined failure mode flag | `True`, `False` |
+| `2.2 Fail to Ask for Clarification` | boolean | Predefined failure mode flag | `True`, `False` |
+| `2.3 Task Derailment` | boolean | Predefined failure mode flag | `True`, `False` |
+| `2.4 Information Withholding` | boolean | Predefined failure mode flag | `True`, `False` |
+| `2.5 Ignored Other Agent's Input` | boolean | Predefined failure mode flag | `True`, `False` |
+| `2.6 Action-Reasoning Mismatch` | boolean | Predefined failure mode flag | `True`, `False` |
+| `3.1 Premature Termination` | boolean | Predefined failure mode flag | `True`, `False` |
+| `3.2 No or Incorrect Verification` | boolean | Predefined failure mode flag | `True`, `False` |
+| `3.3 Weak Verification` | boolean | Predefined failure mode flag | `True`, `False` |
+
+**Notes**:
+- **Additional Failure Modes**: Beyond the 14 predefined categories, the LLM can identify novel failure patterns. These are stored in `addi_fm_list` with custom titles and descriptions.
+- **Format Handler**: Indicates which parser was used (e.g., `ThoughtActionFormatHandler` for thought/action/observation format, `TaskDescriptionFormatHandler` for task_description/agent_name/response format).
 
 **Summary (`results/summary/` - created with --cluster)**
 - `combined_failure_modes.{pkl,csv}`: All runs combined (includes `run_id` column from folder names)
