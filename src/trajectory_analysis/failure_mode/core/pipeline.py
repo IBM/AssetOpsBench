@@ -8,7 +8,7 @@ from typing import Optional
 
 from src.llm.base import LLMBackend
 from src.llm.litellm import LiteLLMBackend
-from .generator import process_trajectories
+from .generator import process_trajectories, combine_all_runs
 from .reducer import failure_mode_reduction
 
 
@@ -16,66 +16,83 @@ def run_failure_mode_pipeline(
     traj_root_base: str,
     llm_backend: Optional[LLMBackend] = None,
     temperature: float = 0.0,
-    timestamps=None,  # None => auto-discover subfolders
-    summary_dir: str = "summary",
+    enable_clustering: bool = False,
+    runs_dir: str = "./src/trajectory_analysis/failure_mode/results/runs",
+    summary_dir: str = "./src/trajectory_analysis/failure_mode/results/summary",
     model_name: str = "all-MiniLM-L6-v2",
-    k: int | None = None,  # fix cluster count if you want
+    k: int | None = None,
+    model_id: Optional[str] = None,
 ):
     """
-    Run the complete failure mode analysis pipeline.
+    Run the failure mode analysis pipeline.
+
+    Workflow:
+    1. Analyze trajectories → saves to results/runs/{timestamp}/failure_modes.{pkl,csv}
+    2. If clustering enabled:
+       a. Combine all runs → results/summary/combined_failure_modes.{pkl,csv}
+       b. Cluster additional failures → results/summary/additional_fm*.csv
 
     Args:
         traj_root_base: Root directory containing trajectory files
         llm_backend: LLM backend to use (defaults to Claude 4 Sonnet if None)
         temperature: Temperature parameter for LLM generation (default: 0.0)
-        timestamps: Optional list of timestamps to process (None = auto-discover)
-        summary_dir: Output directory for summary results
+        enable_clustering: Enable clustering of additional failure modes (default: False)
+        runs_dir: Directory for individual run results (default: results/runs)
+        summary_dir: Directory for combined/clustered results (default: results/summary)
         model_name: Sentence transformer model name for clustering
         k: Fixed cluster count (None = auto-determine optimal k)
 
     Returns:
-        Dictionary containing generation and reduction results
+        Dictionary containing:
+            - generation: Results from trajectory processing
+            - combination: Results from combining runs (if clustering enabled)
+            - reduction: Results from clustering (if clustering enabled)
 
     Example:
-        >>> # Use default Claude 4 Sonnet
+        >>> # Simple analysis (no clustering)
         >>> results = run_failure_mode_pipeline(
         ...     traj_root_base="/path/to/trajectories"
         ... )
 
-        >>> # Use Llama 3.3 70B
-        >>> from src.llm.litellm import LiteLLMBackend
-        >>> llm = LiteLLMBackend("watsonx/meta-llama/llama-3-3-70b-instruct")
+        >>> # With clustering
         >>> results = run_failure_mode_pipeline(
         ...     traj_root_base="/path/to/trajectories",
-        ...     llm_backend=llm
+        ...     enable_clustering=True
         ... )
     """
-    # Default to AWS Claude Sonnet if no backend provided
+    # Default to Claude Sonnet if no backend provided
     if llm_backend is None:
-        llm_backend = LiteLLMBackend("litellm_proxy/aws/claude-sonnet-4-6")
-        print(
-            "Using default LLM: AWS Claude Sonnet 4.6 (litellm_proxy/aws/claude-sonnet-4-6)"
-        )
+        llm_backend = LiteLLMBackend("litellm_proxy/claude-sonnet-4-6")
+        print("Using default LLM: Claude Sonnet 4.6 (litellm_proxy/claude-sonnet-4-6)")
 
-    # Step 1: generate + save combined pickle
+    # Step 1: Process trajectories and save to individual run folder
     gen = process_trajectories(
-        timestamps=timestamps,  # or leave None to auto-discover
         traj_root_base=traj_root_base,
         llm_backend=llm_backend,
         temperature=temperature,
+        out_dir=runs_dir,
+        model_id=model_id,
     )
-    print("Combined pickle:", gen["combined_path"])
-    print(gen["combined_df"].head())
 
-    # Step 2: reduce/cluster using the combined pickle from Step 1
-    red = failure_mode_reduction(
-        combined_pickle_path=gen["combined_path"],
-        out_dir=summary_dir,
-        model_name=model_name,
-        k=k,
-    )
-    print("Chosen K:", red["k"])
-    print("Paths:", red["paths"])
-    print(red["df_clustered"].head())
+    result = {"generation": gen}
 
-    return {"generation": gen, "reduction": red}
+    # Step 2 & 3: Combine and cluster (if enabled)
+    if enable_clustering:
+        # Combine all runs
+        combined = combine_all_runs(runs_dir=runs_dir, summary_dir=summary_dir)
+        result["combination"] = combined
+
+        if combined["combined_path"]:
+            # Cluster additional failure modes
+            red = failure_mode_reduction(
+                combined_pickle_path=combined["combined_path"],
+                out_dir=summary_dir,
+                model_name=model_name,
+                k=k,
+            )
+            result["reduction"] = red
+            print(f"\n✅ Clustering complete: {red['k']} clusters")
+        else:
+            print("\n⚠️  No runs to cluster")
+
+    return result
