@@ -5,7 +5,7 @@ New formats can be added by creating a new handler class.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class TrajectoryFormatHandler(ABC):
@@ -45,13 +45,16 @@ class TrajectoryFormatHandler(ABC):
         pass
 
 
-class OldFormatHandler(TrajectoryFormatHandler):
-    """Handler for old trajectory format with 'text' and task_description/agent_name/response."""
+class AgentResponseFormatHandler(TrajectoryFormatHandler):
+    """Handler for trajectories with agent_name/task_description/response structure.
+
+    This format uses:
+    - 'text' field for the question/task
+    - trajectory steps with: task_description, agent_name, response
+    """
 
     def can_handle(self, data: Dict[str, Any]) -> bool:
-        """Check if data uses old format (has 'text' field)."""
-        # If it has 'text' field, it's old format
-        # (even if trajectory steps are empty or missing fields)
+        """Check if data uses agent response format (has 'text' field)."""
         return "text" in data
 
     def extract_question(self, data: Dict[str, Any]) -> str:
@@ -80,13 +83,16 @@ class OldFormatHandler(TrajectoryFormatHandler):
         return steps
 
 
-class NewFormatHandler(TrajectoryFormatHandler):
-    """Handler for new trajectory format with 'task' and thought/action/observation."""
+class ThoughtActionFormatHandler(TrajectoryFormatHandler):
+    """Handler for trajectories with thought/action/observation structure (ReAct pattern).
+
+    This format uses:
+    - 'task' field for the question/task
+    - trajectory steps with: thought, action, observation
+    """
 
     def can_handle(self, data: Dict[str, Any]) -> bool:
-        """Check if data uses new format (has 'task' field)."""
-        # If it has 'task' field, it's new format
-        # (even if trajectory steps are empty or missing fields)
+        """Check if data uses thought-action format (has 'task' field)."""
         return "task" in data
 
     def extract_question(self, data: Dict[str, Any]) -> str:
@@ -128,8 +134,8 @@ class TrajectoryFormatRegistry:
     def __init__(self):
         """Initialize registry with default handlers."""
         self.handlers: List[TrajectoryFormatHandler] = [
-            NewFormatHandler(),  # Try new format first
-            OldFormatHandler(),  # Fallback to old format
+            ThoughtActionFormatHandler(),  # Try thought-action format first
+            AgentResponseFormatHandler(),  # Fallback to agent response format
         ]
 
     def register_handler(self, handler: TrajectoryFormatHandler, priority: int = 0):
@@ -168,7 +174,7 @@ class TrajectoryFormatRegistry:
             data: The trajectory data dictionary
 
         Returns:
-            Standardized dict with keys: 'question', 'steps', 'final_answer'
+            Standardized dict with keys: 'question', 'steps', 'final_answer', 'handler_used'
 
         Raises:
             ValueError: If no handler can process the data
@@ -184,6 +190,7 @@ class TrajectoryFormatRegistry:
             "question": handler.extract_question(data),
             "steps": handler.extract_steps(data),
             "final_answer": handler.extract_final_answer(data),
+            "handler_used": handler.__class__.__name__,
         }
 
 
@@ -194,6 +201,3 @@ _default_registry = TrajectoryFormatRegistry()
 def get_default_registry() -> TrajectoryFormatRegistry:
     """Get the default global registry instance."""
     return _default_registry
-
-
-# Made with Bob
