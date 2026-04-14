@@ -58,6 +58,20 @@ Example: {{"site_name": "MAIN", "asset_id": "CH-1"}}
 
 Response:"""
 
+_REASONING_PROMPT = """\
+You are executing a reasoning step in a multi-step plan. No tool call is needed.
+Use the results from prior steps to complete the task.
+
+Task: {task}
+Expected output: {expected_output}
+
+Results from prior steps:
+{context}
+
+Produce the output for this task. Be concise and precise — if the task asks to \
+extract a specific value (e.g. an asset ID), output that value directly.
+"""
+
 
 class Executor:
     """Executes plan steps by routing tool calls to MCP servers."""
@@ -122,6 +136,33 @@ class Executor:
            them from prior step results.
         4. Call the tool and return its result.
         """
+        # If no tool is needed, skip server validation.
+        # - With dependencies: call the LLM to reason over prior step results.
+        # - Without dependencies: return expected_output as a static pass-through.
+        if not step.tool or step.tool.lower() in ("none", "null"):
+            if step.dependencies and context:
+                context_text = "\n".join(
+                    f"Step {n}: {context[n].response}"
+                    for n in sorted(step.dependencies)
+                    if n in context
+                )
+                prompt = _REASONING_PROMPT.format(
+                    task=step.task,
+                    expected_output=step.expected_output,
+                    context=context_text,
+                )
+                response = self._llm.generate(prompt)
+            else:
+                response = step.expected_output
+            return StepResult(
+                step_number=step.step_number,
+                task=step.task,
+                server=step.server,
+                response=response,
+                tool=step.tool,
+                tool_args=step.tool_args,
+            )
+
         server_path = self._server_paths.get(step.server)
         if server_path is None:
             return StepResult(
@@ -133,16 +174,6 @@ class Executor:
                     f"Unknown server '{step.server}'. "
                     f"Registered servers: {list(self._server_paths)}"
                 ),
-            )
-
-        if not step.tool or step.tool.lower() in ("none", "null"):
-            return StepResult(
-                step_number=step.step_number,
-                task=step.task,
-                server=step.server,
-                response=step.expected_output,
-                tool=step.tool,
-                tool_args=step.tool_args,
             )
 
         try:
