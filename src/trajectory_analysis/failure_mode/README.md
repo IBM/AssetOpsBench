@@ -1,199 +1,337 @@
-# TrajFM: LLM Trajectory Failure Mode Analysis
+# Trajectory Failure Mode Analysis
 
-A pipeline for analyzing LLM agent trajectories to identify and categorize failure modes using LLM-based analysis and clustering.
-
-> 📖 **For detailed documentation**, see [README_detail.md](README_detail.md)
+Automatically analyze LLM agent trajectories to identify and categorize failure modes using LLM-based analysis.
 
 ## 🚀 Quick Start
 
 ### Installation
 
 ```bash
-pip install pandas numpy scikit-learn sentence-transformers
-pip install plotly kaleido  # For visualization
+# Install base dependencies
+uv sync
+
+# Optional: Install clustering dependencies
+uv sync --group trajectory-analysis
 ```
 
 ### Basic Usage
 
 ```bash
-# Run the complete pipeline
-python failure_mode_extractor.py \
-    --traj_root_base /path/to/trajectories \
-    --model_id 18 \
-    --summary_dir summary_codabench
+# Analyze trajectories (default: Claude via LiteLLM)
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large
 
-# Generate visualizations
-python plot_failure_mode.py
+# With verbose logging
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large \
+    --verbose
+
+# With clustering enabled
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large \
+    --cluster
 ```
 
-### Python API
+### Command-Line Options
 
-```python
-from failure_mode_pipeline import run_failure_mode_pipeline
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--path` | `-p` | `./sample_trajectories` | Input directory with trajectory JSON files |
+| `--output` | `-o` | `./results` | Output directory for results |
+| `--model-id` | `-m` | `litellm_proxy/aws/claude-sonnet-4-6` | LLM model for analysis |
+| `--temperature` | `-t` | `0.0` | LLM temperature (0.0=deterministic) |
+| `--cluster` | | `False` | Enable clustering after analysis |
+| `--cluster-only` | | `False` | Skip analysis, only combine & cluster existing runs |
+| `--num-clusters` | `-k` | `auto` | Number of clusters (auto-selects optimal) |
+| `--verbose` | `-v` | `False` | Enable detailed logging |
 
-results = run_failure_mode_pipeline(
-    traj_root_base="/path/to/trajectories",
-    model_id=18,
-    summary_dir="summary_codabench"
-)
-```
+## 🎯 Key Features
 
-## 📁 Project Structure
-
-```
-TrajFM/
-├── failure_mode_extractor.py      # Main CLI entry point
-├── failure_mode_generator.py      # LLM-based trajectory analysis
-├── failure_mode_reduction.py      # Clustering and categorization
-├── failure_mode_pipeline.py       # Simplified pipeline wrapper
-├── plot_failure_mode.py           # Visualization generation
-├── prompt.py                       # LLM system prompt
-├── utils.py                        # Helper functions
-└── README_detail.md               # Detailed documentation
-```
+- **14 Predefined Failure Modes**: Automatically detects common agent failures
+- **Custom Failure Discovery**: LLM identifies additional failure patterns
+- **Intelligent Clustering**: Groups similar failures using embeddings
+- **Multi-Format Support**: Handles different trajectory JSON structures (auto-detected)
+- **Organized Output**: Timestamped runs with centralized summary
+- **Timeout Protection**: 30-second timeout prevents hanging
+- **Verbose Logging**: Optional detailed logging with file processing info
 
 ## 📊 Input Format
 
-Trajectories should be JSON files with this structure:
+The system auto-detects and supports multiple trajectory formats:
 
+**Format 1: Old Format (task_description/agent_name/response)**
 ```json
 {
-  "text": "Question or task description",
+  "text": "Download sensor data",
   "trajectory": [
     {
-      "task_description": "What the agent is thinking",
-      "agent_name": "AgentName",
-      "response": "Agent's response or observation"
+      "task_description": "Connecting to database",
+      "agent_name": "IoTAgent",
+      "response": "Successfully connected"
     }
   ],
-  "final_answer": "The final answer (optional)"
+  "final_answer": "Data downloaded"
 }
 ```
 
-## 📈 Output Files
+**Format 2: New Format (thought/action/observation)**
+```json
+{
+  "task": "Analyze vibration data",
+  "trajectory": [
+    {
+      "thought": "Need to retrieve sensor data",
+      "action": "query_iot_database",
+      "observation": "Retrieved 1000 data points"
+    }
+  ],
+  "result": "Bearing fault detected"
+}
+```
 
-1. **`processed_trajectories/combined_m{model_id}_db.pkl`** - Analyzed trajectories with failure modes
-2. **`summary_codabench/addtional_fm.csv`** - Raw additional failure modes
-3. **`summary_codabench/additional_fm_clustered.csv`** - Clustered failure modes
-4. **`failure_modes_sunburst.html`** - Interactive visualization
-5. **`failure_modes_sunburst.png`** - Static visualization
+## 📈 Output Structure
 
-## 🔍 What It Detects
+```
+results/
+├── runs/                              # Individual run results
+│   ├── 20260414_140523/               # Timestamped run folder
+│   │   ├── failure_modes.csv          # Analysis results (CSV)
+│   │   └── failure_modes.pkl          # Analysis results (Pickle)
+│   └── 20260414_153012/               # Another run
+│       ├── failure_modes.csv
+│       └── failure_modes.pkl
+└── summary/                           # Aggregated results (created with --cluster)
+    ├── combined_failure_modes.csv     # All runs combined
+    ├── combined_failure_modes.pkl
+    ├── additional_fm.csv              # Additional failures extracted
+    └── additional_fm_clustered.csv    # Clustered results
+```
 
-### 14 Predefined Failure Modes
+### Output Files
 
-**Task Execution Issues:**
-- Disobey Task/Role Specification
-- Step Repetition
-- Loss of Conversation History
-- Unaware of Termination Conditions
+**Individual Run (`results/runs/{timestamp}/`)**
+- `failure_modes.pkl`: Pickle file with DataFrame
+- `failure_modes.csv`: CSV file with same data
 
-**Communication Issues:**
-- Conversation Reset
-- Fail to Ask for Clarification
-- Task Derailment
-- Information Withholding
-- Ignored Other Agent's Input
-- Action-Reasoning Mismatch
+**Columns**:
+- `model_id`: LLM model used for analysis (e.g., "litellm_proxy/claude-sonnet-4-6")
+- `trajectory_path`: Relative path to trajectory file
+- `counter`: Sequential row number
+- `ut_id`: Trajectory identifier (e.g., "0003", "0004")
+- `addi_fm_cnt`: Count of additional failure modes
+- `addi_fm_list`: List of additional failure modes with descriptions
+- Boolean flags for each of 14 predefined failure modes
 
-**Verification Issues:**
-- Premature Termination
-- No or Incorrect Verification
-- Weak Verification
+**Summary (`results/summary/` - created with --cluster)**
+- `combined_failure_modes.{pkl,csv}`: All runs combined (includes `run_id` column from folder names)
+- `additional_fm.csv`: Additional failures from all runs
+- `additional_fm_clustered.csv`: Clustered additional failures
 
-### Additional Failure Modes
+## 🔍 Detected Failure Modes
 
-The system also identifies and clusters **additional failure modes** not in the predefined list, such as:
-- Inadequate Error Handling
-- Lack of Final Answer
-- Insufficient File Format Support
-- Inconsistent Data Retrieval
+### Task Execution Issues (1.x)
+- **1.1** Disobey Task Specification
+- **1.2** Disobey Role Specification
+- **1.3** Step Repetition
+- **1.4** Loss of Conversation History
+- **1.5** Unaware of Termination Conditions
 
-## 🎨 Visualization
+### Communication Issues (2.x)
+- **2.1** Conversation Reset
+- **2.2** Fail to Ask for Clarification
+- **2.3** Task Derailment
+- **2.4** Information Withholding
+- **2.5** Ignored Other Agent's Input
+- **2.6** Action-Reasoning Mismatch
 
-The `plot_failure_mode.py` script creates interactive sunburst charts showing:
-- Hierarchical view of failure modes
-- Cluster distributions
-- Interactive drill-down capabilities
-
-**Note:** The script includes sample data. To visualize your results, modify it to load from `summary_codabench/additional_fm_clustered.csv`.
+### Verification Issues (3.x)
+- **3.1** Premature Termination
+- **3.2** No or Incorrect Verification
+- **3.3** Weak Verification
 
 ## ⚙️ Configuration
 
-### CLI Arguments
+### LiteLLM Proxy (Recommended)
 
 ```bash
---traj_root_base    # Root directory containing trajectory JSON files
---model_id          # Model identifier (default: 18)
---summary_dir       # Output directory for CSV files (default: summary)
---k                 # Number of clusters (optional, auto-determined if not set)
+export LITELLM_API_KEY="your-api-key"
+export LITELLM_BASE_URL="https://your-proxy-url"
+
+# Use with model ID
+--model-id litellm_proxy/aws/claude-sonnet-4-6
+--model-id litellm_proxy/gcp/gemini-2.0-flash-exp
 ```
 
-### Clustering Parameters
+### WatsonX
 
-```python
-# In failure_mode_reduction.py
-model_name = "all-MiniLM-L6-v2"  # Sentence transformer model
-k = None  # Auto-determine optimal clusters (or set fixed number)
-```
+```bash
+export WATSONX_APIKEY="your-api-key"
+export WATSONX_URL="https://your-watsonx-url"
+export WATSONX_PROJECT_ID="your-project-id"
 
-## 🔧 Customization
-
-### Using a Different LLM Provider
-
-Modify `utils.py` to replace the `watsonx_llm()` function with your LLM API:
-
-```python
-def get_llm_answer_from_json(data: dict, model_id: int) -> str:
-    # Replace with your LLM API call
-    response = your_llm_api(prompt=formatted_prompt)
-    return response
-```
-
-### Adding New Predefined Failure Modes
-
-Edit `prompt.py` to add new failure mode definitions to the `system_prompt`.
-
-## 📝 Example Workflow
-
-```python
-# 1. Generate failure mode analysis
-from failure_mode_generator import process_trajectories
-
-gen_results = process_trajectories(
-    traj_root_base="/path/to/trajectories",
-    model_id=18
-)
-
-# 2. Cluster additional failure modes
-from failure_mode_reduction import failure_mode_reduction
-
-red_results = failure_mode_reduction(
-    combined_db_path=gen_results['combined_path'],
-    summary_dir="summary_codabench"
-)
-
-# 3. Visualize results
-# Modify plot_failure_mode.py to load your CSV and run:
-# python plot_failure_mode.py
+# Use with model ID
+--model-id watsonx/meta-llama/llama-3-3-70b-instruct
 ```
 
 ## 🧪 Testing
 
 ```bash
-# Test trajectory processing
-python failure_mode_generator_test.py
+# Run all tests
+uv run pytest src/trajectory_analysis/failure_mode/tests/
 
-# Test clustering
-python failure_mode_reduction_test.py
+# Run with coverage
+uv run pytest --cov=src/trajectory_analysis/failure_mode/core
 ```
 
-## 📚 Documentation
+## 🔧 Diagnostic Tools
 
-- **[README_detail.md](README_detail.md)** - Complete documentation with:
-  - Detailed function references
-  - Step-by-step examples
-  - Troubleshooting guide
-  - Advanced customization options
-  - Complete API documentation
+### Test All Available Models
+```bash
+python src/trajectory_analysis/failure_mode/diagnostics/test_all_litellm_models.py
+```
 
+### Test Specific Model
+```bash
+python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py \
+    --model-id litellm_proxy/aws/claude-sonnet-4-6
+```
+
+### Verify Trajectory Format
+```bash
+python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+    --path sample_trajectories/mistral-large/0001_sample_trajectory.json \
+    --show-llm-prompt
+```
+
+## 📁 Project Structure
+
+```
+failure_mode/
+├── analyze_trajectories.py          # Main CLI entry point
+├── core/                             # Core pipeline modules
+│   ├── generator.py                  # LLM-based trajectory analysis
+│   ├── reducer.py                    # Clustering and categorization
+│   ├── pipeline.py                   # High-level orchestration
+│   ├── utils.py                      # LLM calls and JSON parsing
+│   ├── prompts.py                    # System prompts for LLM
+│   ├── format_handlers.py            # Multi-format support
+│   └── timeout_wrapper.py            # Timeout protection
+├── diagnostics/                      # Diagnostic utilities
+├── tests/                            # Test suite
+├── sample_trajectories/              # Example data
+└── results/                          # Output (generated)
+    ├── runs/                         # Individual run results
+    └── summary/                      # Combined/clustered results
+```
+
+## 💡 Usage Examples
+
+### Example 1: Simple Analysis
+```bash
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path ./trajectories/mistral-large
+
+# Output: results/runs/20260414_140523/failure_modes.{pkl,csv}
+```
+
+### Example 2: With Clustering
+```bash
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path ./trajectories/mistral-large \
+    --cluster
+
+# Output:
+#   results/runs/20260414_140523/failure_modes.{pkl,csv}
+#   results/summary/combined_failure_modes.{pkl,csv}
+#   results/summary/additional_fm.csv
+#   results/summary/additional_fm_clustered.csv
+```
+
+### Example 3: Multiple Runs, Then Cluster
+```bash
+# Run 1 - analyze mistral-large
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path ./trajectories/mistral-large
+
+# Run 2 - analyze gpt4
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path ./trajectories/gpt4
+
+# Run 3 - analyze claude
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path ./trajectories/claude
+
+# Now cluster all 3 runs together (no new analysis)
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --cluster-only
+
+# Summary folder now contains combined results from all 3 runs
+```
+
+### Example 4: Cluster-Only Mode
+```bash
+# You already have runs in results/runs/
+# Just want to re-cluster with different parameters
+
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --cluster-only \
+    --num-clusters 5
+
+# Or with different embedding model
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --cluster-only \
+    --embedding-model all-mpnet-base-v2
+```
+
+### Example 5: Load and Analyze Results
+```python
+import pandas as pd
+
+# Load individual run
+df = pd.read_pickle('results/runs/20260414_140523/failure_modes.pkl')
+print(df.head())
+
+# Load combined results
+combined = pd.read_pickle('results/summary/combined_failure_modes.pkl')
+print(f"Total trajectories: {len(combined)}")
+
+# Filter by failure mode
+weak_verification = combined[combined['3.3 Weak Verification'] == True]
+print(f"Weak verification: {len(weak_verification)} trajectories")
+
+# Load clustered results
+clusters = pd.read_csv('results/summary/additional_fm_clustered.csv')
+print(clusters.groupby('cluster').size())
+```
+
+## 🐛 Troubleshooting
+
+**"Model not available"**
+- Run `test_all_litellm_models.py` to see available models
+- Check API credentials
+
+**"Timeout after 30 seconds"**
+- Use a faster model or increase timeout in code
+
+**"Invalid trajectory format"**
+- Use `verify_trajectory_import.py` to check JSON structure
+
+**"No additional failure modes found"**
+- Normal if trajectories only have predefined failures
+- Try with `--cluster` flag
+
+## 📚 Additional Documentation
+
+- **tests/README.md**: Testing strategy and test documentation
+- **diagnostics/README.md**: Diagnostic tools guide
+
+## 🤝 Contributing
+
+1. Add tests for new features
+2. Update README for new functionality
+3. Follow existing code style (type hints, docstrings)
+4. Run test suite before submitting
+
+## 📄 License
+
+See LICENSE file in repository root.
