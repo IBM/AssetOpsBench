@@ -25,7 +25,7 @@ pip3 install -q --break-system-packages requests pandas python-dotenv
 echo "Loading IoT asset data..."
 COUCHDB_URL="http://localhost:5984" \
   python3 /couchdb/init_asset_data.py \
-    --data-file /sample_data/iot/chiller6_june2020_sensordata_couchdb.json \
+    --data-file /sample_data/iot/main.json \
     --db "${IOT_DBNAME:-chiller}" \
     --drop
 
