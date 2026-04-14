@@ -24,7 +24,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 DEFAULT_MODEL = "openai/Qwen/Qwen2.5-7B-Instruct"  # requires LITELLM_BASE_URL pointing to local vLLM
-NUM_RUNS = 5
+NUM_RUNS = 1
 
 # ── LLM-as-judge prompt ───────────────────────────────────────────────────────
 
