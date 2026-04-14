@@ -5,10 +5,11 @@ and LLM interaction formatting.
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
+
 from src.trajectory_analysis.failure_mode.core.utils import (
-    get_llm_answer_from_json,
     extract_json_from_response,
+    get_llm_answer_from_json,
 )
 
 

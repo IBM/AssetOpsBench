@@ -4,17 +4,18 @@ Tests the process_trajectories function and helper functions
 in generator.py.
 """
 
-import pytest
-import tempfile
 import json
 import os
-import pandas as pd
+import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
+import pandas as pd
+
 from src.trajectory_analysis.failure_mode.core.generator import (
-    process_trajectories,
     _load_all_json_files,
     _normalize_additional_failure_modes,
+    process_trajectories,
 )
 
 
@@ -196,8 +197,8 @@ class TestProcessTrajectories:
                 out_dir=tmpdir,
             )
 
-            # Verify default Claude 4 Sonnet was created
-            mock_litellm.assert_called_once_with("litellm_proxy/GCP/claude-4-sonnet")
+            # Verify default AWS Claude Sonnet was created
+            mock_litellm.assert_called_once_with("litellm_proxy/aws/claude-sonnet-4-6")
 
     @patch(
         "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"

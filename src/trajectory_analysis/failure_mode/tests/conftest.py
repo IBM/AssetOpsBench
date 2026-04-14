@@ -1,8 +1,10 @@
 """Pytest configuration and fixtures for trajectory analysis tests."""
 
 import os
+
 import pytest
 from dotenv import load_dotenv
+
 from src.llm.litellm import LiteLLMBackend
 
 
@@ -32,8 +34,8 @@ def load_env():
 
 @pytest.fixture
 def llm_claude():
-    """Fixture for Claude 4 Sonnet LLM backend (default, best accuracy)."""
-    return LiteLLMBackend("litellm_proxy/GCP/claude-4-sonnet")
+    """Fixture for Claude Sonnet LLM backend (default, best accuracy)."""
+    return LiteLLMBackend("litellm_proxy/aws/claude-sonnet-4-6")
 
 
 @pytest.fixture
@@ -45,7 +47,7 @@ def llm_llama():
 @pytest.fixture
 def llm_granite():
     """Fixture for Granite LLM backend (lowest cost)."""
-    return LiteLLMBackend("watsonx/ibm/granite-13b-instruct-v2")
+    return LiteLLMBackend("watsonx/ibm/granite-3-8b-instruct")
 
 
 @pytest.fixture
@@ -75,6 +77,3 @@ def temp_output_dir(tmp_path):
     output_dir = tmp_path / "test_output"
     output_dir.mkdir()
     return str(output_dir)
-
-
-# Made with Bob

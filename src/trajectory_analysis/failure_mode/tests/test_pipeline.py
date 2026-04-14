@@ -3,9 +3,9 @@
 Tests the high-level pipeline orchestration in pipeline.py.
 """
 
-import pytest
 import tempfile
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
 from src.trajectory_analysis.failure_mode.core.pipeline import run_failure_mode_pipeline
 
 
@@ -36,7 +36,7 @@ class TestRunFailureModePipeline:
             )
 
             # Verify default LLM was created
-            mock_litellm.assert_called_once_with("litellm_proxy/GCP/claude-4-sonnet")
+            mock_litellm.assert_called_once_with("litellm_proxy/aws/claude-sonnet-4-6")
 
             # Verify process_trajectories was called with the LLM
             mock_process.assert_called_once()

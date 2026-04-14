@@ -5,12 +5,13 @@ don't hang indefinitely when models are unavailable or unresponsive.
 """
 
 import time
-import pytest
 from unittest.mock import Mock
 
+import pytest
+
 from src.trajectory_analysis.failure_mode.core.timeout_wrapper import (
-    call_with_timeout,
     TimeoutError,
+    call_with_timeout,
 )
 from src.trajectory_analysis.failure_mode.core.utils import get_llm_answer_from_json
 
