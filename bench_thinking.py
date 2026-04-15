@@ -5,8 +5,8 @@ import time
 import json
 import httpx
 
-BASE_URL = os.environ.get("LITELLM_BASE_URL", "").rstrip("/")
-API_KEY = os.environ.get("LITELLM_API_KEY", "")
+BASE_URL = os.environ.get("LITELLM_BASE_URL", "https://m398a4q87ru0z8-8000.proxy.runpod.net/v1").rstrip("/")
+API_KEY = os.environ.get("LITELLM_API_KEY", "sk-runpod-dummy")
 MODEL = "google/gemma-4-31B-it"
 
 QUESTIONS = [
@@ -56,8 +56,8 @@ def call(question: str, thinking: bool) -> dict:
 
 
 def main():
-    if not BASE_URL or not API_KEY:
-        raise SystemExit("Set LITELLM_BASE_URL and LITELLM_API_KEY environment variables.")
+    if not BASE_URL:
+        raise SystemExit("Set LITELLM_BASE_URL environment variable.")
 
     results = []
     for i, q in enumerate(QUESTIONS, 1):
