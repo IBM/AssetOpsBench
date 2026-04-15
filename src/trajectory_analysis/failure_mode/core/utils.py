@@ -124,4 +124,3 @@ def extract_json_from_response(response_text: str) -> Dict[str, Any]:
         raise ValueError(f"JSON decoding failed: {e}")
 
 
-# Made with Bob

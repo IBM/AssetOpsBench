@@ -58,4 +58,3 @@ def call_with_timeout(
     return result[0]
 
 
-# Made with Bob

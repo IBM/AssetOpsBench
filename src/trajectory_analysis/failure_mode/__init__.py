@@ -41,4 +41,3 @@ __all__ = [
     "run_extraction_pipeline",
 ]
 
-# Made with Bob

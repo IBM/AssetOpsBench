@@ -168,4 +168,3 @@ if __name__ == "__main__":
         print("\n⚠️  Test result unclear")
         sys.exit(1)
 
-# Made with Bob

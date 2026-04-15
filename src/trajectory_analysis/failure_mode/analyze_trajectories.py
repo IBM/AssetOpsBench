@@ -10,37 +10,49 @@
 Command-line script to run failure mode analysis on agent trajectories.
 
 This script uses `uv` for dependency management and execution.
-Supports both simple detection (Phase 2) and complete analysis with clustering (Phase 3).
+Supports both simple detection and complete analysis with clustering.
 
 Usage:
-    # Simple detection with default model (LiteLLM Claude)
-    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py
+    # Simple analysis with default model (LiteLLM Claude Sonnet 4.6)
+    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py
+
+    # Specify custom trajectory path
+    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+        --path ./my_trajectories
+
+    # With verbose logging
+    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+        --path ./my_trajectories \
+        --verbose
 
     # Use WatsonX Llama model
-    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
         --model-id watsonx/meta-llama/llama-3-3-70b-instruct
 
     # Use specific LiteLLM proxy model
-    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
         --model-id litellm_proxy/claude-sonnet-4-6
 
     # With clustering enabled
-    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py --cluster
+    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+        --cluster
 
     # Complete example with all options
-    uv run src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --path ./data \
-        --model-id litellm_proxy/Azure/gpt-5-2025-08-07 \
+    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+        --path ./my_trajectories \
+        --output ./my_results \
+        --model-id litellm_proxy/claude-sonnet-4-6 \
+        --temperature 0.0 \
         --cluster \
         --num-clusters 5 \
-        --temperature 0.7
+        --verbose
 
-Or make it executable and run directly:
-    chmod +x src/trajectory_analysis/failure_mode/analyze_trajectories.py
-    ./src/trajectory_analysis/failure_mode/analyze_trajectories.py --cluster
+    # Cluster existing runs without new analysis
+    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+        --cluster-only
 
 Traditional Python usage (if uv not available):
-    python src/trajectory_analysis/failure_mode/analyze_trajectories.py --cluster
+    python src/trajectory_analysis/failure_mode/analyze_trajectories.py --verbose
 """
 
 import sys
@@ -48,13 +60,8 @@ import argparse
 import logging
 from pathlib import Path
 
-# Support both direct script execution and module execution
-try:
-    from src.trajectory_analysis.failure_mode.core import run_failure_mode_pipeline
-except ModuleNotFoundError:
-    # When run as a script, add parent directory to path
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-    from src.trajectory_analysis.failure_mode.core import run_failure_mode_pipeline
+# Import from the package
+from trajectory_analysis.failure_mode.core import run_failure_mode_pipeline
 
 
 def parse_args():
@@ -213,10 +220,10 @@ def main():
             )
 
         try:
-            from src.trajectory_analysis.failure_mode.core.generator import (
+            from trajectory_analysis.failure_mode.core.generator import (
                 combine_all_runs,
             )
-            from src.trajectory_analysis.failure_mode.core.reducer import (
+            from trajectory_analysis.failure_mode.core.reducer import (
                 failure_mode_reduction,
             )
 
@@ -319,7 +326,7 @@ def main():
         print("🔇 Quiet mode: Logs saved to file only (use --verbose to see on screen)")
 
     try:
-        from src.llm.litellm import LiteLLMBackend
+        from llm.litellm import LiteLLMBackend
 
         # Configure LLM backend based on model-id
         if args.model_id:
@@ -456,4 +463,3 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 
-# Made with Bob
