@@ -121,9 +121,7 @@ class Planner:
             f"{name}:\n{desc}" for name, desc in server_descriptions.items()
         )
         prompt = _PLAN_PROMPT.format(servers=servers_text, question=question)
-        if self._thinking:
-            prompt = "<|think|>\n" + prompt
-        raw = self._llm.generate(prompt)
+        raw = self._llm.generate(prompt, enable_thinking=self._thinking)
         print("[DEBUG thinking raw]", raw[:500])
         # strip thinking block before parsing to avoid misparse of reasoning content
         import re

@@ -9,6 +9,6 @@ class LLMBackend(ABC):
     """Abstract interface for LLM backends."""
 
     @abstractmethod
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
+    def generate(self, prompt: str, temperature: float = 0.0, enable_thinking: bool = False) -> str:
         """Generate text given a prompt."""
         ...
