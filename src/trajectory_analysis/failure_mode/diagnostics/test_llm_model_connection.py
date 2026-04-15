@@ -4,16 +4,20 @@ Test script to verify LLM model connection via LiteLLM with timeout.
 Accepts model ID as command-line argument.
 
 Usage:
+    cd /path/to/AssetOpsBench
     uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py --model-id <model_id>
 
 Examples:
     # Test Claude
+    cd /path/to/AssetOpsBench
     uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py --model-id litellm_proxy/claude-sonnet-4-6
 
     # Test Llama
+    cd /path/to/AssetOpsBench
     uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py --model-id watsonx/meta-llama/llama-3-3-70b-instruct
 
     # Test GPT
+    cd /path/to/AssetOpsBench
     uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py --model-id litellm_proxy/Azure/gpt-4.1
 """
 
@@ -167,4 +171,3 @@ if __name__ == "__main__":
     else:
         print("\n⚠️  Test result unclear")
         sys.exit(1)
-
