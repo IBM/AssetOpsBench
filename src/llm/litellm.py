@@ -32,9 +32,11 @@ class LiteLLMBackend(LLMBackend):
         self,
         model_id: str,
         truncate_prompt_tokens: int | None = 100_000,
+        enable_thinking: bool = False,
     ) -> None:
         self._model_id = model_id
         self._truncate_prompt_tokens = truncate_prompt_tokens
+        self._enable_thinking = enable_thinking
 
     def generate(self, prompt: str, temperature: float = 0.0) -> str:
         import litellm
@@ -48,6 +50,9 @@ class LiteLLMBackend(LLMBackend):
 
         if self._truncate_prompt_tokens is not None:
             kwargs["truncate_prompt_tokens"] = self._truncate_prompt_tokens
+
+        if self._enable_thinking:
+            kwargs["extra_body"] = {"enable_thinking": True}
 
         if self._model_id.startswith("watsonx/"):
             kwargs["api_key"] = os.environ["WATSONX_APIKEY"]

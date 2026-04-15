@@ -108,7 +108,7 @@ def _setup_logging(verbose: bool) -> None:
     logging.root.setLevel(level)
 
 
-def _build_llm(model_id: str):
+def _build_llm(model_id: str, enable_thinking: bool = False):
     """Instantiate the LiteLLMBackend for the given model_id."""
     try:
         from llm.litellm import LiteLLMBackend
@@ -116,7 +116,7 @@ def _build_llm(model_id: str):
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
     try:
-        return LiteLLMBackend(model_id=model_id)
+        return LiteLLMBackend(model_id=model_id, enable_thinking=enable_thinking)
     except KeyError as exc:
         print(f"error: missing environment variable {exc}", file=sys.stderr)
         sys.exit(1)
@@ -148,7 +148,7 @@ def _print_section(title: str) -> None:
 async def _run(args: argparse.Namespace) -> None:
     from workflow.runner import PlanExecuteRunner
 
-    llm = _build_llm(args.model_id)
+    llm = _build_llm(args.model_id, enable_thinking=args.thinking)
     server_paths = _parse_servers(args.servers)
     runner = PlanExecuteRunner(llm=llm, server_paths=server_paths, thinking=args.thinking)
     result = await runner.run(args.question)
