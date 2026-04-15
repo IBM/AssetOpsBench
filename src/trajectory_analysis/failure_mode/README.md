@@ -111,22 +111,61 @@ uv sync
 uv sync --group trajectory-analysis
 ```
 
-### Basic Usage
+### Three Main Usage Modes
 
+**Note**: All commands assume you're in the project root directory (AssetOpsBench):
 ```bash
-# Analyze trajectories (default: Claude via LiteLLM)
+cd /path/to/AssetOpsBench
+```
+
+#### 1️⃣ Analysis-Only Mode (Default)
+Analyzes trajectories and detects failure modes without clustering:
+```bash
+# Using sample trajectories
 uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-    --path src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large
+    --path src/trajectory_analysis/failure_mode/sample_trajectories
 
 # With verbose logging
 uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-    --path src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large \
+    --path src/trajectory_analysis/failure_mode/sample_trajectories \
     --verbose
 
-# With clustering enabled
+# Using your own trajectory folder
 uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-    --path src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large \
+    --path /path/to/your/trajectories
+```
+
+#### 2️⃣ Analysis + Clustering Mode
+Analyzes trajectories AND clusters the detected failure modes:
+```bash
+# Using sample trajectories with clustering
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path src/trajectory_analysis/failure_mode/sample_trajectories \
     --cluster
+
+# With custom number of clusters
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path src/trajectory_analysis/failure_mode/sample_trajectories \
+    --cluster \
+    --num-clusters 5
+
+# Using your own trajectory folder
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --path /path/to/your/trajectories \
+    --cluster
+```
+
+#### 3️⃣ Cluster-Only Mode
+Skips analysis and only clusters existing results from previous runs:
+```bash
+# Cluster existing results in default output directory
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --cluster-only
+
+# Specify custom output directory with existing results
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+    --output /path/to/your/results \
+    --cluster-only
 ```
 
 ### Command-Line Options
@@ -528,11 +567,6 @@ uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
 uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
     --cluster-only \
     --num-clusters 5
-
-# Or with different embedding model
-uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-    --cluster-only \
-    --embedding-model all-mpnet-base-v2
 ```
 
 ### Example 5: Load and Analyze Results
