@@ -154,24 +154,31 @@ def main():
     # Parse command line arguments
     args = parse_args()
 
-    # Configure logging based on verbose flag
-    log_level = logging.INFO if args.verbose else logging.WARNING
+    output_dir = args.output
+    temperature = args.temperature
+
+    # Configure logging
+    # Always log INFO to file, but only show on screen if --verbose
+    log_level = logging.INFO
+
+    # Console handler - only if verbose
+    handlers = []
+    if args.verbose:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(logging.Formatter("%(message)s"))
+        handlers.append(console_handler)
+
     logging.basicConfig(
         level=log_level,
         format="%(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
+        handlers=handlers,
         force=True,  # Override any existing configuration
     )
-
-    output_dir = args.output
-    temperature = args.temperature
 
     print("=" * 60)
     print("Failure Mode Analysis")
     print("=" * 60)
-
-    if args.verbose:
-        print("\n🔊 Verbose mode enabled - detailed logging active")
 
     # Handle cluster-only mode
     if args.cluster_only:
@@ -184,6 +191,26 @@ def main():
             print(f"\n❌ Error: No runs found in '{runs_dir}'")
             print("   Please run trajectory analysis first without --cluster-only")
             sys.exit(1)
+
+        # Setup logging for clustering (ALWAYS, regardless of verbose flag)
+        summary_dir = Path(output_dir) / "summary"
+        summary_dir.mkdir(parents=True, exist_ok=True)
+        log_file = summary_dir / "clustering.log"
+
+        file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+        logging.getLogger().addHandler(file_handler)
+        print(f"📝 Logging to file: {log_file}")
+
+        if args.verbose:
+            print("🔊 Verbose mode: Showing detailed logs on screen")
+        else:
+            print(
+                "🔇 Quiet mode: Logs saved to file only (use --verbose to see on screen)"
+            )
 
         try:
             from src.trajectory_analysis.failure_mode.core.generator import (
@@ -256,6 +283,41 @@ def main():
 
     print("\n🚀 Starting failure mode analysis...")
 
+    # Setup file logging (ALWAYS, regardless of verbose flag)
+    file_handler = None
+    run_id_for_pipeline = None
+
+    from datetime import datetime
+
+    # Create runs directory
+    runs_dir_path = Path(output_dir) / "runs"
+    runs_dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Generate run_id (timestamp without "run_" prefix to match generator.py)
+    run_id_for_pipeline = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir_path = runs_dir_path / run_id_for_pipeline
+    run_dir_path.mkdir(parents=True, exist_ok=True)
+
+    # Setup file logging (always enabled for audit trail)
+    log_file = run_dir_path / "analysis.log"
+    file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
+    logging.getLogger().addHandler(file_handler)
+    print(f"📝 Logging to file: {log_file}")
+
+    if args.verbose:
+        print("🔊 Verbose mode: Showing detailed logs on screen")
+    else:
+        print("🔇 Quiet mode: Logs saved to file only (use --verbose to see on screen)")
+
+    if args.verbose:
+        print("🔊 Verbose mode: Showing detailed logs on screen")
+    else:
+        print("🔇 Quiet mode: Logs saved to file only (use --verbose to see on screen)")
+
     try:
         from src.llm.litellm import LiteLLMBackend
 
@@ -295,6 +357,7 @@ def main():
             model_name=args.embedding_model,
             k=args.num_clusters,
             model_id=model_id,  # Use the model_id variable instead of args.model_id
+            run_id=run_id_for_pipeline,  # Pass pre-generated run_id for logging
         )
 
         # Get results
@@ -383,6 +446,11 @@ def main():
 
         traceback.print_exc()
         return 1
+    finally:
+        # Close file handler if it was created
+        if file_handler:
+            file_handler.close()
+            logging.getLogger().removeHandler(file_handler)
 
 
 if __name__ == "__main__":
