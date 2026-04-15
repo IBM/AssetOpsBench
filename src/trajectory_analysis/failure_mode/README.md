@@ -2,6 +2,103 @@
 
 Automatically analyze LLM agent trajectories to identify and categorize failure modes using LLM-based analysis.
 
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TB
+    subgraph Input["📥 Input Layer"]
+        TrajDir["Trajectory Directory<br/>(Recursive)"]
+        TrajFiles["JSON Files<br/>(0001, 0002, ...)"]
+        TrajDir --> TrajFiles
+    end
+
+    subgraph FormatDetection["🔍 Format Detection"]
+        Registry["Format Handler Registry"]
+        Handler1["ThoughtActionFormatHandler"]
+        Handler2["StepFormatHandler"]
+        Handler3["Custom Handlers"]
+        Registry --> Handler1
+        Registry --> Handler2
+        Registry --> Handler3
+    end
+
+    subgraph Generation["⚙️ Phase 1: Generation"]
+        Loader["_load_all_json_files()<br/>Recursive JSON Loading"]
+        FormatParser["format_trajectory()<br/>Auto-detect & Parse"]
+        LLMAnalysis["LLM Analysis<br/>(Claude/Gemini/GPT)"]
+        Timeout["30s Timeout Protection"]
+        
+        Loader --> FormatParser
+        FormatParser --> LLMAnalysis
+        LLMAnalysis --> Timeout
+    end
+
+    subgraph LLMOutput["📋 LLM Output"]
+        PredefinedFM["14 Predefined<br/>Failure Modes"]
+        CustomFM["Additional<br/>Failure Modes"]
+        LLMAnalysis --> PredefinedFM
+        LLMAnalysis --> CustomFM
+    end
+
+    subgraph Clustering["🎯 Phase 2: Clustering (Optional)"]
+        Embeddings["Sentence Embeddings<br/>(all-MiniLM-L6-v2)"]
+        KSelection["K-Selection<br/>(Silhouette Score)"]
+        KMeans["K-Means Clustering"]
+        RepTitle["Representative<br/>Title Selection"]
+        
+        Embeddings --> KSelection
+        KSelection --> KMeans
+        KMeans --> RepTitle
+    end
+
+    subgraph Output["📤 Output Layer"]
+        RunDir["results/runs/<br/>YYYYMMDD_HHMMSS/"]
+        FailureModes["failure_modes.pkl<br/>failure_modes.csv"]
+        Summary["results/summary/"]
+        Combined["combined_failure_modes.pkl<br/>combined_failure_modes.csv"]
+        Clustered["clustered_failure_modes.csv"]
+        Logs["analysis.log<br/>clustering.log"]
+        
+        RunDir --> FailureModes
+        Summary --> Combined
+        Summary --> Clustered
+        Summary --> Logs
+    end
+
+    TrajFiles --> Loader
+    Registry -.-> FormatParser
+    PredefinedFM --> RunDir
+    CustomFM --> Embeddings
+    RepTitle --> Summary
+
+    style Input fill:#e1f5ff
+    style FormatDetection fill:#fff3e0
+    style Generation fill:#f3e5f5
+    style LLMOutput fill:#e8f5e9
+    style Clustering fill:#fff9c4
+    style Output fill:#fce4ec
+```
+
+### Pipeline Flow
+
+1. **Input Layer**: Recursively loads all JSON trajectory files from the specified directory
+2. **Format Detection**: Auto-detects trajectory format using registered handlers
+3. **Phase 1 - Generation**:
+   - Parses trajectories into standardized format
+   - Sends to LLM for failure mode analysis
+   - Applies 30-second timeout protection
+   - Identifies both predefined and custom failure modes
+4. **Phase 2 - Clustering** (Optional):
+   - Generates embeddings for custom failure modes
+   - Auto-selects optimal number of clusters
+   - Groups similar failures together
+   - Selects representative titles for each cluster
+5. **Output Layer**:
+   - Saves individual run results with timestamps
+   - Creates combined summary across all runs
+   - Generates clustered results with representative titles
+   - Maintains detailed log files for auditing
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -279,23 +376,48 @@ uv run pytest --cov=src/trajectory_analysis/failure_mode/core
 
 ## 🔧 Diagnostic Tools
 
-### Test All Available Models
+Three diagnostic scripts are available to help troubleshoot and verify your setup:
+
+### 1. Test All Available Models
+Tests all LiteLLM proxy models and provides a summary report (18/19 models typically working).
+
 ```bash
-python src/trajectory_analysis/failure_mode/diagnostics/test_all_litellm_models.py
+uv run python src/trajectory_analysis/failure_mode/diagnostics/test_all_litellm_models.py
 ```
 
-### Test Specific Model
+**Output**: Summary of working/failed models by provider (Claude, Gemini, GPT)
+
+### 2. Test Specific Model Connection
+Verifies that a specific LLM model is accessible and responding correctly.
+
 ```bash
-python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py \
+uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py \
     --model-id litellm_proxy/aws/claude-sonnet-4-6
 ```
 
-### Verify Trajectory Format
+**Use cases**:
+- Verify model credentials before running analysis
+- Test timeout behavior
+- Debug connection issues
+
+### 3. Verify Trajectory Format
+Tests trajectory JSON format detection and parsing to ensure compatibility.
+
 ```bash
-python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
-    --path sample_trajectories/mistral-large/0001_sample_trajectory.json \
-    --show-llm-prompt
+# Basic verification
+uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+    src/trajectory_analysis/failure_mode/trajectories/mistral-large/0001
+
+# Show what gets passed to LLM
+uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+    src/trajectory_analysis/failure_mode/trajectories/mistral-large/0001 \
+    --show-prompt
 ```
+
+**Use cases**:
+- Verify new trajectory formats are supported
+- Debug format detection issues
+- Preview LLM prompt structure
 
 ## 📁 Project Structure
 
