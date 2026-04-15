@@ -124,6 +124,7 @@ class Planner:
         if self._thinking:
             prompt = "<|think|>\n" + prompt
         raw = self._llm.generate(prompt)
+        print("[DEBUG thinking raw]", raw[:500])
         # strip thinking block before parsing to avoid misparse of reasoning content
         import re
         raw = re.sub(r"<\|channel>thought\n.*?<channel\|>", "", raw, flags=re.DOTALL).strip()
