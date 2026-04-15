@@ -10,46 +10,80 @@
 Command-line script to run failure mode analysis on agent trajectories.
 
 This script uses `uv` for dependency management and execution.
-Supports both simple detection and complete analysis with clustering.
 
-Usage:
-    # Simple analysis with default model (LiteLLM Claude Sonnet 4.6)
-    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py
+IMPORTANT: Run all commands from the project root directory (AssetOpsBench):
+    cd /path/to/AssetOpsBench
 
-    # Specify custom trajectory path
-    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --path ./my_trajectories
+THREE MAIN USAGE MODES:
 
-    # With verbose logging
-    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --path ./my_trajectories \
-        --verbose
+1️⃣ ANALYSIS-ONLY MODE (Default):
+   Analyzes trajectories and detects failure modes without clustering.
+   
+   # Using sample trajectories (default path)
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py
+   
+   # Using sample trajectories with explicit path
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --path src/trajectory_analysis/failure_mode/sample_trajectories
+   
+   # With verbose logging
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --path src/trajectory_analysis/failure_mode/sample_trajectories \
+       --verbose
+   
+   # Using your own trajectory folder
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --path /path/to/your/trajectories
 
-    # Use WatsonX Llama model
-    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --model-id watsonx/meta-llama/llama-3-3-70b-instruct
+2️⃣ ANALYSIS + CLUSTERING MODE:
+   Analyzes trajectories AND clusters the detected failure modes.
+   
+   # Using sample trajectories with clustering
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --path src/trajectory_analysis/failure_mode/sample_trajectories \
+       --cluster
+   
+   # With custom number of clusters
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --path src/trajectory_analysis/failure_mode/sample_trajectories \
+       --cluster \
+       --num-clusters 5
+   
+   # Using your own trajectory folder
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --path /path/to/your/trajectories \
+       --cluster
+   
+   # Complete example with all options
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --path src/trajectory_analysis/failure_mode/sample_trajectories \
+       --output src/trajectory_analysis/failure_mode/results \
+       --model-id litellm_proxy/claude-sonnet-4-6 \
+       --temperature 0.0 \
+       --cluster \
+       --num-clusters 5 \
+       --verbose
 
-    # Use specific LiteLLM proxy model
-    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --model-id litellm_proxy/claude-sonnet-4-6
+3️⃣ CLUSTER-ONLY MODE:
+   Skips analysis and only clusters existing results from previous runs.
+   
+   # Cluster existing results in default output directory
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --cluster-only
+   
+   # Specify custom output directory with existing results
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --output /path/to/your/results \
+       --cluster-only
 
-    # With clustering enabled
-    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --cluster
-
-    # Complete example with all options
-    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --path ./my_trajectories \
-        --output ./my_results \
-        --model-id litellm_proxy/claude-sonnet-4-6 \
-        --temperature 0.0 \
-        --cluster \
-        --num-clusters 5 \
-        --verbose
-
-    # Cluster existing runs without new analysis
-    uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
-        --cluster-only
+ADDITIONAL OPTIONS:
+   # Use WatsonX Llama model
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --model-id watsonx/meta-llama/llama-3-3-70b-instruct
+   
+   # Use specific LiteLLM proxy model
+   uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
+       --model-id litellm_proxy/claude-sonnet-4-6
 
 Traditional Python usage (if uv not available):
     python src/trajectory_analysis/failure_mode/analyze_trajectories.py --verbose
@@ -462,4 +496,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
