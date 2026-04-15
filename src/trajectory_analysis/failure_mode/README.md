@@ -43,7 +43,7 @@ uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
 | `--cluster` | | `False` | Enable clustering after analysis |
 | `--cluster-only` | | `False` | Skip analysis, only combine & cluster existing runs |
 | `--num-clusters` | `-k` | `auto` | Number of clusters (auto-selects optimal) |
-| `--verbose` | `-v` | `False` | Enable detailed logging |
+| `--verbose` | `-v` | `False` | Enable detailed logging + save log file |
 
 ## 🎯 Key Features
 
@@ -53,7 +53,7 @@ uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
 - **Multi-Format Support**: Handles different trajectory JSON structures (auto-detected)
 - **Organized Output**: Timestamped runs with centralized summary
 - **Timeout Protection**: 30-second timeout prevents hanging
-- **Verbose Logging**: Optional detailed logging with file processing info
+- **Verbose Logging**: Optional detailed logging with timestamped log files
 
 ## 📊 Input Format
 
@@ -94,17 +94,20 @@ The system auto-detects and supports multiple trajectory formats:
 ```
 results/
 ├── runs/                              # Individual run results
-│   ├── 20260414_140523/               # Timestamped run folder
+│   ├── run_20260414_140523/           # Timestamped run folder
 │   │   ├── failure_modes.csv          # Analysis results (CSV)
-│   │   └── failure_modes.pkl          # Analysis results (Pickle)
-│   └── 20260414_153012/               # Another run
+│   │   ├── failure_modes.pkl          # Analysis results (Pickle)
+│   │   └── analysis.log               # Detailed log (with --verbose)
+│   └── run_20260414_153012/           # Another run
 │       ├── failure_modes.csv
-│       └── failure_modes.pkl
+│       ├── failure_modes.pkl
+│       └── analysis.log               # Detailed log (with --verbose)
 └── summary/                           # Aggregated results (created with --cluster)
     ├── combined_failure_modes.csv     # All runs combined
     ├── combined_failure_modes.pkl
     ├── additional_fm.csv              # Additional failures extracted
-    └── additional_fm_clustered.csv    # Clustered results
+    ├── additional_fm_clustered.csv    # Clustered results
+    └── clustering.log                 # Clustering log (with --verbose --cluster-only)
 ```
 
 ### Output Files
@@ -145,8 +148,78 @@ results/
 
 **Summary (`results/summary/` - created with --cluster)**
 - `combined_failure_modes.{pkl,csv}`: All runs combined (includes `run_id` column from folder names)
-- `additional_fm.csv`: Additional failures from all runs
-- `additional_fm_clustered.csv`: Clustered additional failures
+- `additional_fm.csv`: Additional failures from all runs (exploded from `addi_fm_list`)
+- `additional_fm_clustered.csv`: Clustered additional failures with representative labels
+
+**Clustered Results CSV Column Reference** (`additional_fm_clustered.csv`):
+
+| Column | Type | Description | Example |
+|--------|------|-------------|---------|
+| `cluster` | integer | Cluster ID assigned by K-means clustering | `0`, `1`, `2` |
+| `failure mode` | string | Representative title for the cluster (closest to centroid) | `"Data Quality Issues"`, `"API Timeout"` |
+| `trajectory_path` | string | Full path to source trajectory file | `src/trajectory_analysis/failure_mode/trajectories/mistral-large/0003` |
+| `title` | string | Original failure mode title from LLM analysis | `"Data Validation Error"`, `"Missing Field"` |
+| `description` | string | Detailed description of the failure mode | `"The agent failed to validate input data..."` |
+
+**Notes**:
+- **Clustering**: Uses sentence embeddings (default: `all-MiniLM-L6-v2`) and K-means to group similar failure modes
+- **Representative Title**: The `failure mode` column shows the title closest to the cluster centroid, representing all failures in that cluster
+- **Auto K-selection**: If `--num-clusters` not specified, uses silhouette score to find optimal number of clusters (range: 2-7)
+- **Trajectory Traceability**: `trajectory_path` allows you to trace each failure back to its source trajectory
+
+### Logging Behavior
+
+**Log files are ALWAYS created** for audit trail purposes, regardless of the `--verbose` flag:
+
+**With `--verbose` flag:**
+- ✅ Logs displayed on screen (real-time monitoring)
+- ✅ Logs saved to file (permanent record)
+
+**Without `--verbose` flag:**
+- ❌ No logs on screen (quiet mode)
+- ✅ Logs saved to file (permanent record)
+
+```bash
+# Verbose mode: See logs on screen AND in file
+uv run python -m src.trajectory_analysis.failure_mode.analyze_trajectories \
+    --path trajectories/mistral-large \
+    --verbose
+
+# Quiet mode: Logs only in file (clean console output)
+uv run python -m src.trajectory_analysis.failure_mode.analyze_trajectories \
+    --path trajectories/mistral-large
+
+# Clustering with verbose
+uv run python -m src.trajectory_analysis.failure_mode.analyze_trajectories \
+    --cluster-only \
+    --verbose
+```
+
+**Log File Locations**:
+- **Analysis logs**: `results/runs/YYYYMMDD_HHMMSS/analysis.log`
+- **Clustering logs**: `results/summary/clustering.log`
+
+**Log Contents**:
+- Timestamp for each operation
+- File loading progress
+- LLM analysis details
+- Format handler detection
+- Clustering progress (embeddings, K-selection, representative titles)
+- Error messages and warnings
+
+**Example Log Entry**:
+```
+2026-04-14 19:51:09,686 - INFO - 📄 Loading: src/trajectory_analysis/failure_mode/trajectories/mistral-large/0003
+2026-04-14 19:51:09,687 - INFO -    🔧 Using handler: ThoughtActionFormatHandler
+2026-04-14 19:51:10,234 - INFO -    ✅ Analysis complete
+```
+
+**Benefits**:
+- ✅ **Always auditable**: Log files created regardless of verbose flag
+- ✅ **Flexible**: Choose between quiet or verbose console output
+- ✅ **Organized**: Each run has its own log file co-located with results
+- ✅ **Traceable**: Easy to identify which log belongs to which run
+- ✅ **Clean**: Quiet mode keeps console output minimal for production use
 
 ## 🔍 Detected Failure Modes
 
