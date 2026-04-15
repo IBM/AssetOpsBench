@@ -12,8 +12,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Sequence, Optional
 
-from src.llm.base import LLMBackend
-from src.llm.litellm import LiteLLMBackend
+from llm.base import LLMBackend
+from llm.litellm import LiteLLMBackend
 from .utils import get_llm_answer_from_json, extract_json_from_response
 
 # Configure logger

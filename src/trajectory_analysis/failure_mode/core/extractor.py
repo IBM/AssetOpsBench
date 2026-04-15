@@ -16,7 +16,7 @@ from .reducer import failure_mode_reduction
 
 def run_extraction_pipeline(
     traj_directory: str = ".",
-    summary_dir: str = "./src/trajectory_analysis/failure_mode/processed_trajectories/summary",
+    summary_dir: str = "./results/summary",
     model_name: str = "all-MiniLM-L6-v2",
     k: Optional[int] = None,
     timestamps: Optional[List[str]] = None,
@@ -70,7 +70,7 @@ def run_extraction_pipeline(
         traj_root_base=traj_directory,
         llm_backend=llm_backend,
         temperature=temperature,
-        out_dir="./src/trajectory_analysis/failure_mode/processed_trajectories",
+        out_dir="./results",
     )
     if verbose:
         print(f"[Step 1] Combined pickle: {gen['combined_path']}")
@@ -133,8 +133,8 @@ Examples:
     parser.add_argument(
         "--summary_dir",
         type=str,
-        default="./src/trajectory_analysis/failure_mode/processed_trajectories/summary",
-        help="Directory to write the clustered CSV outputs (default: processed_trajectories/summary)",
+        default="./results/summary",
+        help="Directory to write the clustered CSV outputs (default: results/summary)",
     )
     parser.add_argument(
         "--model_name",

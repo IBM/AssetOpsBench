@@ -6,8 +6,8 @@ processing and failure mode detection using LLM backends.
 
 from typing import Optional
 
-from src.llm.base import LLMBackend
-from src.llm.litellm import LiteLLMBackend
+from llm.base import LLMBackend
+from llm.litellm import LiteLLMBackend
 from .generator import process_trajectories, combine_all_runs
 from .reducer import failure_mode_reduction
 

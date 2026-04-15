@@ -50,8 +50,8 @@ def failure_mode_reduction(
 
     Example:
         >>> results = failure_mode_reduction(
-        ...     combined_pickle_path="./processed_trajectories/combined_m18_db.pkl",
-        ...     out_dir="./summary",
+        ...     combined_pickle_path="./results/combined_m18_db.pkl",
+        ...     out_dir="./results/summary",
         ...     k=5  # Fixed 5 clusters
         ... )
         >>> print(f"Created {results['k']} clusters")

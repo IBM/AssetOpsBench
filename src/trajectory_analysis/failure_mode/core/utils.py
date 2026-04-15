@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Dict, Any
 
-from src.llm.base import LLMBackend
+from llm.base import LLMBackend
 from .prompts import system_prompt
 from .format_handlers import get_default_registry
 from .timeout_wrapper import call_with_timeout, TimeoutError
