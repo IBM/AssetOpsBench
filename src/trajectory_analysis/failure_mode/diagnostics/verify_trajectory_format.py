@@ -3,11 +3,35 @@
 Diagnostic script to verify trajectory format detection and parsing.
 
 Usage:
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py <trajectory_file>
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py --show-prompt <trajectory_file>
+    cd /path/to/AssetOpsBench
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py [trajectory_file]
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py --show-prompt [trajectory_file]
 
 Examples:
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py src/trajectory_analysis/failure_mode/trajectories/mistral-large/0001
+    # Use default trajectory file
+    cd /path/to/AssetOpsBench
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py
+    
+    # Verify specific Mistral trajectory
+    cd /path/to/AssetOpsBench
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+        src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0001
+    
+    # Verify Claude trajectory
+    cd /path/to/AssetOpsBench
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+        src/trajectory_analysis/failure_mode/sample_trajectories/claude-4-sonnet/0402
+    
+    # Show full LLM prompt that would be sent
+    cd /path/to/AssetOpsBench
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+        src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0011 \
+        --show-prompt
+    
+    # Verify your own trajectory file
+    cd /path/to/AssetOpsBench
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+        /path/to/your/trajectory.json
 """
 
 import json
@@ -130,8 +154,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "trajectory_file",
         nargs="?",
-        default="src/trajectory_analysis/failure_mode/trajectories/mistral-large/0001",
-        help="Path to trajectory JSON file (default: mistral-large/0001)",
+        default="src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0001",
+        help="Path to trajectory JSON file (default: sample_trajectories/mistral-large/0001)",
     )
     parser.add_argument(
         "--show-prompt",
@@ -157,4 +181,3 @@ if __name__ == "__main__":
         print("\n" + "=" * 70)
         print("❌ CONCLUSION: There's an issue with trajectory import")
         print("=" * 70)
-
