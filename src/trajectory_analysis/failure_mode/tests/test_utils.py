@@ -219,9 +219,11 @@ class TestGetLlmAnswerFromJson:
 
         result = get_llm_answer_from_json(data, mock_llm)
 
-        # Should return error message instead of raising
-        assert "Error while processing input data" in result
-        assert "LLM API error" in result
+        # Should return error message as tuple (response, handler_name)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert "Error while processing input data" in result[0]
+        assert "LLM API error" in result[0]
 
     def test_get_llm_answer_temperature_default(self):
         """Test default temperature value."""
@@ -267,8 +269,8 @@ class TestIntegration:
             ],
         }
 
-        # Get LLM response
-        llm_response = get_llm_answer_from_json(data, mock_llm)
+        # Get LLM response - now returns tuple (response, handler_name)
+        llm_response, handler_name = get_llm_answer_from_json(data, mock_llm)
 
         # Extract JSON from response
         result = extract_json_from_response(llm_response)

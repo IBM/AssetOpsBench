@@ -35,8 +35,8 @@ class TestRunFailureModePipeline:
                 traj_root_base=tmpdir, llm_backend=None  # Should use default
             )
 
-            # Verify default LLM was created
-            mock_litellm.assert_called_once_with("litellm_proxy/aws/claude-sonnet-4-6")
+            # Verify default LLM was created (model changed)
+            mock_litellm.assert_called_once_with("litellm_proxy/claude-sonnet-4-6")
 
             # Verify process_trajectories was called with the LLM
             mock_process.assert_called_once()
@@ -87,27 +87,8 @@ class TestRunFailureModePipeline:
             call_kwargs = mock_process.call_args[1]
             assert call_kwargs["temperature"] == 0.8
 
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
-    def test_pipeline_with_timestamps(self, mock_process, mock_reduction):
-        """Test pipeline with custom timestamps."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            mock_llm = Mock()
-            timestamps = ["2024-01", "2024-02"]
-
-            mock_process.return_value = {
-                "combined_path": f"{tmpdir}/combined.pkl",
-                "combined_df": Mock(),
-                "per_timestamp_paths": [],
-            }
-
-            result = run_failure_mode_pipeline(
-                traj_root_base=tmpdir, llm_backend=mock_llm, timestamps=timestamps
-            )
-
-            # Verify timestamps were passed
-            call_kwargs = mock_process.call_args[1]
-            assert call_kwargs["timestamps"] == timestamps
+    # REMOVED: timestamps parameter no longer exists in pipeline
+    # The pipeline now auto-discovers trajectories from the directory
 
     @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
     @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
@@ -150,7 +131,7 @@ class TestRunFailureModePipeline:
                 traj_root_base=tmpdir,
                 llm_backend=mock_llm,
                 temperature=0.5,
-                timestamps=["2024-01"],
+                # timestamps parameter removed - auto-discovery now
                 summary_dir="custom_summary",
                 model_name="custom-model",
                 k=5,
@@ -161,7 +142,7 @@ class TestRunFailureModePipeline:
             assert call_kwargs["traj_root_base"] == tmpdir
             assert call_kwargs["llm_backend"] == mock_llm
             assert call_kwargs["temperature"] == 0.5
-            assert call_kwargs["timestamps"] == ["2024-01"]
+            # timestamps no longer passed - auto-discovery
 
     @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
     @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")

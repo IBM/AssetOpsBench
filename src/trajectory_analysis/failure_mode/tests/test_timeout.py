@@ -99,7 +99,10 @@ class TestLLMTimeoutIntegration:
             data=data, llm_backend=mock_backend, temperature=0.0, timeout_seconds=30
         )
 
-        assert isinstance(result, str)
+        # Result is now a tuple (response, handler_name)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], str)
         assert mock_backend.generate.called
 
     def test_get_llm_answer_with_slow_backend(self):
@@ -126,7 +129,7 @@ class TestLLMTimeoutIntegration:
             ],
         }
 
-        # Should timeout and return error message
+        # Should timeout and return error message as tuple
         result = get_llm_answer_from_json(
             data=data,
             llm_backend=mock_backend,
@@ -134,8 +137,10 @@ class TestLLMTimeoutIntegration:
             timeout_seconds=1,  # Short timeout for testing
         )
 
-        assert "timed out" in result.lower()
-        assert "1 seconds" in result
+        # Result is tuple (response, handler_name)
+        assert isinstance(result, tuple)
+        assert "timed out" in result[0].lower()
+        assert "1 seconds" in result[0]
 
     def test_get_llm_answer_default_timeout(self):
         """Test that default timeout is 30 seconds."""
@@ -161,7 +166,10 @@ class TestLLMTimeoutIntegration:
             data=data, llm_backend=mock_backend, temperature=0.0
         )
 
-        assert isinstance(result, str)
+        # Result is now a tuple (response, handler_name)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], str)
         assert mock_backend.generate.called
 
 
