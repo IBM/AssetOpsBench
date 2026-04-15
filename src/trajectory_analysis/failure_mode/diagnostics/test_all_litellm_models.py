@@ -4,6 +4,7 @@ Test all LiteLLM proxy models from the available models list.
 Dynamically fetches available models from the proxy.
 
 Usage:
+    cd /path/to/AssetOpsBench
     uv run python src/trajectory_analysis/failure_mode/diagnostics/test_all_litellm_models.py
 
 This script will test all available LiteLLM proxy models and provide a summary report.
@@ -253,4 +254,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
