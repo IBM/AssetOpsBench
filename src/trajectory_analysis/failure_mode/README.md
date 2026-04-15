@@ -441,12 +441,18 @@ export WATSONX_PROJECT_ID="your-project-id"
 
 ## 🧪 Testing
 
+**Note**: Run tests from the project root directory (AssetOpsBench):
 ```bash
-# Run all tests
+cd /path/to/AssetOpsBench
+
+# Run all tests (49 tests)
 uv run pytest src/trajectory_analysis/failure_mode/tests/
 
+# Run with verbose output
+uv run pytest src/trajectory_analysis/failure_mode/tests/ -v
+
 # Run with coverage
-uv run pytest --cov=src/trajectory_analysis/failure_mode/core
+uv run pytest --cov=src/trajectory_analysis/failure_mode/core src/trajectory_analysis/failure_mode/tests/
 ```
 
 ## 🔧 Diagnostic Tools
@@ -480,12 +486,12 @@ Tests trajectory JSON format detection and parsing to ensure compatibility.
 
 ```bash
 # Basic verification
-uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
-    src/trajectory_analysis/failure_mode/trajectories/mistral-large/0001
+uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py \
+    src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0001
 
 # Show what gets passed to LLM
-uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
-    src/trajectory_analysis/failure_mode/trajectories/mistral-large/0001 \
+uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py \
+    src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0001 \
     --show-prompt
 ```
 
@@ -600,7 +606,7 @@ print(clusters.groupby('cluster').size())
 - Use a faster model or increase timeout in code
 
 **"Invalid trajectory format"**
-- Use `verify_trajectory_import.py` to check JSON structure
+- Use `verify_trajectory_format.py` to check JSON structure
 
 **"No additional failure modes found"**
 - Normal if trajectories only have predefined failures
