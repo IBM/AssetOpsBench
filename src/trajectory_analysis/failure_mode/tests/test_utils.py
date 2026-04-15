@@ -282,4 +282,3 @@ class TestIntegration:
         assert result["additional_failure_modes"][0]["title"] == "Custom Issue"
 
 
-# Made with Bob

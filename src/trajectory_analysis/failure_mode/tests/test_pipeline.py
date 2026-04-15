@@ -242,4 +242,3 @@ class TestPipelineDocumentation:
         assert sig.parameters["temperature"].default == 0.0
 
 
-# Made with Bob

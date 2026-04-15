@@ -371,4 +371,3 @@ class TestIntegration:
             mock_pickle.assert_called()
 
 
-# Made with Bob
