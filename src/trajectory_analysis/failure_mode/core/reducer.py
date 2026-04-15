@@ -69,7 +69,12 @@ def failure_mode_reduction(
     if "addi_fm_cnt" not in df.columns or "addi_fm_list" not in df.columns:
         raise KeyError("Expected columns 'addi_fm_cnt' and 'addi_fm_list' not found.")
 
-    df_new_fm = df[df["addi_fm_cnt"] > 0][["addi_fm_cnt", "addi_fm_list"]].copy()
+    # Keep trajectory_path to link failures back to their source
+    cols_to_keep = ["addi_fm_cnt", "addi_fm_list"]
+    if "trajectory_path" in df.columns:
+        cols_to_keep.append("trajectory_path")
+
+    df_new_fm = df[df["addi_fm_cnt"] > 0][cols_to_keep].copy()
     df_new_fm.reset_index(drop=True, inplace=True)
 
     df_exploded = df_new_fm.explode("addi_fm_list", ignore_index=True)
@@ -81,8 +86,12 @@ def failure_mode_reduction(
         axis=1,
     )
 
-    keep_cols = [c for c in ["title", "description"] if c in df_expanded.columns]
-    if not keep_cols:
+    keep_cols = [
+        c
+        for c in ["trajectory_path", "title", "description"]
+        if c in df_expanded.columns
+    ]
+    if "title" not in keep_cols and "description" not in keep_cols:
         raise KeyError(
             "No 'title'/'description' columns found inside 'addi_fm_list' items."
         )
@@ -123,9 +132,12 @@ def failure_mode_reduction(
         df_clustered["cluster"] = 0
         df_clustered["failure mode"] = df_clustered["title"]
         clustered_csv = out / "additional_fm_clustered.csv"
-        df_clustered[["cluster", "failure mode", "title", "description"]].to_csv(
-            clustered_csv, index=False
-        )
+        # Include trajectory_path if available
+        cols = ["cluster", "failure mode"]
+        if "trajectory_path" in df_clustered.columns:
+            cols.append("trajectory_path")
+        cols.extend(["title", "description"])
+        df_clustered[cols].to_csv(clustered_csv, index=False)
         if verbose:
             print(f"Single item: saved {clustered_csv}")
         return {
@@ -227,8 +239,11 @@ def failure_mode_reduction(
     cluster_to_title = dict(representative_titles)
     df_clustered["failure mode"] = df_clustered["cluster"].map(cluster_to_title)
 
-    # Final column order
-    cols = ["cluster", "failure mode", "title", "description"]
+    # Final column order - include trajectory_path if available
+    cols = ["cluster", "failure mode"]
+    if "trajectory_path" in df_clustered.columns:
+        cols.append("trajectory_path")
+    cols.extend(["title", "description"])
     df_clustered = df_clustered[cols].copy()
 
     clustered_csv = out / "additional_fm_clustered.csv"
