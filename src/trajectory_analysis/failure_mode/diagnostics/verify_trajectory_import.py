@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-"""Test script to verify trajectory format detection and parsing."""
+"""
+Diagnostic script to verify trajectory format detection and parsing.
+
+Usage:
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py <trajectory_file>
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py --show-prompt <trajectory_file>
+
+Examples:
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py src/trajectory_analysis/failure_mode/trajectories/mistral-large/0001
+"""
 
 import json
-import sys
+import argparse
 from pathlib import Path
 
-# Add workspace root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
-from src.trajectory_analysis.failure_mode.core.format_handlers import (
+from trajectory_analysis.failure_mode.core.format_handlers import (
     get_default_registry,
 )
-from src.trajectory_analysis.failure_mode.core.prompts import system_prompt
+from trajectory_analysis.failure_mode.core.prompts import system_prompt
 
 
 def test_trajectory_import(trajectory_path: str, show_llm_prompt: bool = False):
@@ -118,16 +124,14 @@ def test_trajectory_import(trajectory_path: str, show_llm_prompt: bool = False):
 
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser(
         description="Verify that a trajectory JSON file is imported and formatted correctly"
     )
     parser.add_argument(
         "trajectory_file",
         nargs="?",
-        default="/Users/jzhou/work/notebooks/agenticfram/trajectories/2025-05-09T12_22_18/mistralai/mistral-large/0001",
-        help="Path to trajectory JSON file (default: test with real data file)",
+        default="src/trajectory_analysis/failure_mode/trajectories/mistral-large/0001",
+        help="Path to trajectory JSON file (default: mistral-large/0001)",
     )
     parser.add_argument(
         "--show-prompt",

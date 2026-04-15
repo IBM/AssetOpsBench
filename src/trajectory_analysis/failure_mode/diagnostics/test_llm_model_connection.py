@@ -4,28 +4,24 @@ Test script to verify LLM model connection via LiteLLM with timeout.
 Accepts model ID as command-line argument.
 
 Usage:
-    uv run python src/trajectory_analysis/failure_mode/test_llm_model_connection.py <model_id>
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py --model-id <model_id>
 
 Examples:
     # Test Claude
-    uv run python src/trajectory_analysis/failure_mode/test_llm_model_connection.py litellm_proxy/GCP/claude-3-7-sonnet
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py --model-id litellm_proxy/claude-sonnet-4-6
 
     # Test Llama
-    uv run python src/trajectory_analysis/failure_mode/test_llm_model_connection.py watsonx/meta-llama/llama-3-3-70b-instruct
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py --model-id watsonx/meta-llama/llama-3-3-70b-instruct
 
     # Test GPT
-    uv run python src/trajectory_analysis/failure_mode/test_llm_model_connection.py litellm_proxy/Azure/gpt-4.1
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py --model-id litellm_proxy/Azure/gpt-4.1
 """
 
 import sys
 import argparse
 import threading
-from pathlib import Path
 
-# Add repo root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
-from src.llm.litellm import LiteLLMBackend
+from llm.litellm import LiteLLMBackend
 
 
 def test_with_timeout(func, timeout_seconds=30):
