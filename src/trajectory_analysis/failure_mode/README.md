@@ -457,12 +457,18 @@ uv run pytest --cov=src/trajectory_analysis/failure_mode/core src/trajectory_ana
 
 ## 🔧 Diagnostic Tools
 
+**Note**: Run diagnostic tools from the project root directory (AssetOpsBench):
+```bash
+cd /path/to/AssetOpsBench
+```
+
 Three diagnostic scripts are available to help troubleshoot and verify your setup:
 
 ### 1. Test All Available Models
 Tests all LiteLLM proxy models and provides a summary report (18/19 models typically working).
 
 ```bash
+cd /path/to/AssetOpsBench
 uv run python src/trajectory_analysis/failure_mode/diagnostics/test_all_litellm_models.py
 ```
 
@@ -472,6 +478,7 @@ uv run python src/trajectory_analysis/failure_mode/diagnostics/test_all_litellm_
 Verifies that a specific LLM model is accessible and responding correctly.
 
 ```bash
+cd /path/to/AssetOpsBench
 uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_connection.py \
     --model-id litellm_proxy/aws/claude-sonnet-4-6
 ```
@@ -485,11 +492,13 @@ uv run python src/trajectory_analysis/failure_mode/diagnostics/test_llm_model_co
 Tests trajectory JSON format detection and parsing to ensure compatibility.
 
 ```bash
+cd /path/to/AssetOpsBench
+
 # Basic verification
 uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py \
     src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0001
 
-# Show what gets passed to LLM
+# Show what gets passed to LLM (does NOT actually call LLM)
 uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py \
     src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0001 \
     --show-prompt
@@ -498,7 +507,7 @@ uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory
 **Use cases**:
 - Verify new trajectory formats are supported
 - Debug format detection issues
-- Preview LLM prompt structure
+- Preview LLM prompt structure (without calling LLM)
 
 ## 📁 Project Structure
 
