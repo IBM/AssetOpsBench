@@ -22,6 +22,7 @@ def run_failure_mode_pipeline(
     model_name: str = "all-MiniLM-L6-v2",
     k: int | None = None,
     model_id: Optional[str] = None,
+    run_id: Optional[str] = None,
 ):
     """
     Run the failure mode analysis pipeline.
@@ -72,6 +73,7 @@ def run_failure_mode_pipeline(
         temperature=temperature,
         out_dir=runs_dir,
         model_id=model_id,
+        run_id=run_id,
     )
 
     result = {"generation": gen}
