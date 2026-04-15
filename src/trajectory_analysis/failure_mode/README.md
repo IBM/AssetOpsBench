@@ -15,7 +15,7 @@ flowchart TB
     subgraph FormatDetection["🔍 Format Detection"]
         Registry["Format Handler Registry"]
         Handler1["ThoughtActionFormatHandler"]
-        Handler2["StepFormatHandler"]
+        Handler2["AgentResponseFormatHandler"]
         Handler3["Custom Handlers"]
         Registry --> Handler1
         Registry --> Handler2
@@ -133,9 +133,9 @@ uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--path` | `-p` | `./sample_trajectories` | Input directory with trajectory JSON files |
-| `--output` | `-o` | `./results` | Output directory for results |
-| `--model-id` | `-m` | `litellm_proxy/aws/claude-sonnet-4-6` | LLM model for analysis |
+| `--path` | `-p` | `./src/trajectory_analysis/failure_mode/sample_trajectories` | Input directory with trajectory JSON files |
+| `--output` | `-o` | `./src/trajectory_analysis/failure_mode/results` | Output directory for results |
+| `--model-id` | `-m` | `litellm_proxy/claude-sonnet-4-6` | LLM model for analysis |
 | `--temperature` | `-t` | `0.0` | LLM temperature (0.0=deterministic) |
 | `--cluster` | | `False` | Enable clustering after analysis |
 | `--cluster-only` | | `False` | Skip analysis, only combine & cluster existing runs |
@@ -156,7 +156,7 @@ uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
 
 The system auto-detects and supports multiple trajectory formats:
 
-**Format 1: Old Format (task_description/agent_name/response)**
+**Format 1: Agent Response Format (task_description/agent_name/response)**
 ```json
 {
   "text": "Download sensor data",
@@ -171,7 +171,7 @@ The system auto-detects and supports multiple trajectory formats:
 }
 ```
 
-**Format 2: New Format (thought/action/observation)**
+**Format 2: ReAct Format (thought/action/observation)**
 ```json
 {
   "task": "Analyze vibration data",
@@ -182,23 +182,59 @@ The system auto-detects and supports multiple trajectory formats:
       "observation": "Retrieved 1000 data points"
     }
   ],
-  "result": "Bearing fault detected"
+  "final_answer": "Bearing fault detected"
 }
 ```
+
+### Adding Custom Formats
+
+If your trajectories use a different format, you can add a custom handler:
+
+1. Create a new handler class in `src/trajectory_analysis/failure_mode/core/format_handlers.py`
+2. Extend `TrajectoryFormatHandler` base class
+3. Implement required methods:
+   - `can_handle(data)` - Detect if your format applies
+   - `extract_question(data)` - Extract the task/question
+   - `extract_final_answer(data)` - Extract the final answer
+   - `extract_steps(data)` - Extract trajectory steps as thought/action/observation
+4. Register your handler with the global registry
+
+**Example:**
+```python
+from trajectory_analysis.failure_mode.core.format_handlers import (
+    TrajectoryFormatHandler,
+    get_default_registry
+)
+
+class MyCustomFormatHandler(TrajectoryFormatHandler):
+    def can_handle(self, data):
+        return "my_custom_field" in data
+    
+    def extract_question(self, data):
+        return data.get("my_custom_field", "")
+    
+    # ... implement other methods
+
+# Register the handler
+registry = get_default_registry()
+registry.register_handler(MyCustomFormatHandler(), priority=1)
+```
+
+See `format_handlers.py` for complete implementation details.
 
 ## 📈 Output Structure
 
 ```
 results/
 ├── runs/                              # Individual run results
-│   ├── run_20260414_140523/           # Timestamped run folder
+│   ├── 20260414_140523/               # Timestamped run folder
 │   │   ├── failure_modes.csv          # Analysis results (CSV)
 │   │   ├── failure_modes.pkl          # Analysis results (Pickle)
-│   │   └── analysis.log               # Detailed log (with --verbose)
-│   └── run_20260414_153012/           # Another run
+│   │   └── analysis.log               # Detailed log (always created)
+│   └── 20260414_153012/               # Another run
 │       ├── failure_modes.csv
 │       ├── failure_modes.pkl
-│       └── analysis.log               # Detailed log (with --verbose)
+│       └── analysis.log               # Detailed log (always created)
 └── summary/                           # Aggregated results (created with --cluster)
     ├── combined_failure_modes.csv     # All runs combined
     ├── combined_failure_modes.pkl
@@ -241,7 +277,7 @@ results/
 
 **Notes**:
 - **Additional Failure Modes**: Beyond the 14 predefined categories, the LLM can identify novel failure patterns. These are stored in `addi_fm_list` with custom titles and descriptions.
-- **Format Handler**: Indicates which parser was used (e.g., `ThoughtActionFormatHandler` for thought/action/observation format, `TaskDescriptionFormatHandler` for task_description/agent_name/response format).
+- **Format Handler**: Indicates which parser was used (e.g., `ThoughtActionFormatHandler` for thought/action/observation format, `AgentResponseFormatHandler` for task_description/agent_name/response format).
 
 **Summary (`results/summary/` - created with --cluster)**
 - `combined_failure_modes.{pkl,csv}`: All runs combined (includes `run_id` column from folder names)
@@ -278,16 +314,16 @@ results/
 
 ```bash
 # Verbose mode: See logs on screen AND in file
-uv run python -m src.trajectory_analysis.failure_mode.analyze_trajectories \
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
     --path trajectories/mistral-large \
     --verbose
 
 # Quiet mode: Logs only in file (clean console output)
-uv run python -m src.trajectory_analysis.failure_mode.analyze_trajectories \
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
     --path trajectories/mistral-large
 
 # Clustering with verbose
-uv run python -m src.trajectory_analysis.failure_mode.analyze_trajectories \
+uv run python src/trajectory_analysis/failure_mode/analyze_trajectories.py \
     --cluster-only \
     --verbose
 ```
