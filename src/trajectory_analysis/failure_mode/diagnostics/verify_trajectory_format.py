@@ -4,33 +4,33 @@ Diagnostic script to verify trajectory format detection and parsing.
 
 Usage:
     cd /path/to/AssetOpsBench
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py [trajectory_file]
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py --show-prompt [trajectory_file]
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py [trajectory_file]
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py --show-prompt [trajectory_file]
 
 Examples:
     # Use default trajectory file
     cd /path/to/AssetOpsBench
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py
     
     # Verify specific Mistral trajectory
     cd /path/to/AssetOpsBench
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py \
         src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0001
     
     # Verify Claude trajectory
     cd /path/to/AssetOpsBench
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py \
         src/trajectory_analysis/failure_mode/sample_trajectories/claude-4-sonnet/0402
     
-    # Show full LLM prompt that would be sent
+    # Show full LLM prompt that would be sent (does NOT actually call LLM)
     cd /path/to/AssetOpsBench
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py \
         src/trajectory_analysis/failure_mode/sample_trajectories/mistral-large/0011 \
         --show-prompt
     
     # Verify your own trajectory file
     cd /path/to/AssetOpsBench
-    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_import.py \
+    uv run python src/trajectory_analysis/failure_mode/diagnostics/verify_trajectory_format.py \
         /path/to/your/trajectory.json
 """
 
