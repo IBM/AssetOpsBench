@@ -223,14 +223,12 @@ The CLI examples below use a `$query` shell variable so you can swap in any ques
 
 ```bash
 # Simple single-server queries
-query="What assets are at site MAIN?"
 query="What sensors are on Chiller 6?"
-query="What is the current time?"
+query="Is LSTM model supported in TSFM?"
+query="Get the work order of equipment CWC04013 for year 2017."
 
 # Multi-step / multi-server queries
-query="What are the failure modes for a chiller?"
-query="How many work orders does equipment CWC04014 have, and what is the most common failure code?"
-query="For equipment CWC04013, how many preventive vs corrective work orders were completed?"
+query="What is the current date and time? Also list assets at site MAIN. Also get sensor list and failure mode list for any of the chiller at site MAIN."
 ```
 
 ## Plan-Execute Agent
