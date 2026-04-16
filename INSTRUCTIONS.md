@@ -25,6 +25,10 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
   - [How it works](#how-it-works-1)
   - [CLI](#cli-1)
   - [Python API](#python-api-1)
+- [OpenAI Agent](#openai-agent)
+  - [How it works](#how-it-works-2)
+  - [CLI](#cli-2)
+  - [Python API](#python-api-2)
 - [Connect to Claude Desktop](#connect-to-claude-desktop)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
@@ -125,6 +129,14 @@ uv run vibration-mcp-server
 | ------------------ | ------------ | -------------------------------------------------------------------- |
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
+
+**OpenAI** — openai-agent runner
+
+| Variable         | Default      | Description    |
+| ---------------- | ------------ | -------------- |
+| `OPENAI_API_KEY` | _(required)_ | OpenAI API key |
+
+> **Note:** The `openai-agent` runner also supports LiteLLM proxy via the `litellm_proxy/` model-id prefix — in that case set `LITELLM_API_KEY` and `LITELLM_BASE_URL` instead.
 
 ---
 
@@ -491,6 +503,112 @@ for tc in traj.all_tool_calls:
 
 ---
 
+## OpenAI Agent
+
+`src/agent/openai_agent/` uses the **[OpenAI Agents SDK](https://github.com/openai/openai-agents-python)** (`openai-agents`) to drive the same MCP servers. Like `ClaudeAgentRunner`, there is no explicit plan — the SDK's built-in agentic loop handles tool discovery, invocation, and multi-turn reasoning autonomously.
+
+### How it works
+
+```
+OpenAIAgentRunner.run(question)
+  │
+  └─ OpenAI Agents SDK Runner.run loop
+       • connects to each MCP server over stdio (MCPServerStdio)
+       • GPT decides which tools to call and in what order
+       • tool calls and results are handled internally by the SDK
+       • final answer is returned via result.final_output
+```
+
+### CLI
+
+After `uv sync`, the `openai-agent` command is available:
+
+```bash
+uv run openai-agent "What sensors are on Chiller 6?"
+```
+
+Flags:
+
+| Flag                  | Description                                                              |
+| --------------------- | ------------------------------------------------------------------------ |
+| `--model-id MODEL_ID` | Model ID, optionally prefixed with `litellm_proxy/` (default: `gpt-4o`) |
+| `--max-turns N`       | Maximum agentic loop turns (default: 30)                                 |
+| `--show-trajectory`   | Print each turn's text, tool calls, and token usage                      |
+| `--json`              | Output full trajectory (turns, tool calls, token counts) as JSON         |
+| `--verbose`           | Show INFO-level logs on stderr                                           |
+
+The `--model-id` prefix determines the backend:
+
+| Prefix           | Backend       | Required env vars                     |
+| ---------------- | ------------- | ------------------------------------- |
+| _(none)_         | OpenAI API    | `OPENAI_API_KEY`                      |
+| `litellm_proxy/` | LiteLLM proxy | `LITELLM_API_KEY`, `LITELLM_BASE_URL` |
+
+Examples:
+
+```bash
+# Direct OpenAI API
+uv run openai-agent "What assets are at site MAIN?"
+
+# Different model
+uv run openai-agent --model-id gpt-4.1-mini "What sensors are on Chiller 6?"
+
+# LiteLLM proxy
+uv run openai-agent --model-id litellm_proxy/azure/gpt-5.4 "What sensors are on Chiller 6?"
+
+# Show full trajectory (turns, tool calls, token usage)
+uv run openai-agent --show-trajectory "What are the failure modes for a chiller?"
+
+# Machine-readable trajectory
+uv run openai-agent --json "What is the current time?" | jq .turns
+```
+
+### Python API
+
+```python
+import asyncio
+from agent.openai_agent import OpenAIAgentRunner
+
+# Direct OpenAI API
+runner = OpenAIAgentRunner(model="gpt-4o")
+result = asyncio.run(runner.run("What sensors are on Chiller 6?"))
+print(result.answer)
+
+# Via LiteLLM proxy
+runner = OpenAIAgentRunner(model="litellm_proxy/azure/gpt-5.4")
+result = asyncio.run(runner.run("What sensors are on Chiller 6?"))
+```
+
+`AgentResult` fields:
+
+| Field        | Type         | Description                                      |
+| ------------ | ------------ | ------------------------------------------------ |
+| `answer`     | `str`        | Final answer from the agent                      |
+| `trajectory` | `Trajectory` | Full execution trace (turns, tool calls, tokens)  |
+
+`Trajectory` fields:
+
+| Field                 | Type              | Description                          |
+| --------------------- | ----------------- | ------------------------------------ |
+| `turns`               | `list[TurnRecord]`| One record per assistant turn        |
+| `total_input_tokens`  | `int`             | Sum of input tokens across all turns |
+| `total_output_tokens` | `int`             | Sum of output tokens across all turns|
+| `all_tool_calls`      | `list[ToolCall]`  | Flat list of every tool call made    |
+
+Each `TurnRecord` has `index`, `text`, `tool_calls`, `input_tokens`, `output_tokens`.
+Each `ToolCall` has `name`, `input`, `id`, `output`.
+
+```python
+traj = result.trajectory
+print(f"{traj.total_input_tokens} input / {traj.total_output_tokens} output tokens")
+for tc in traj.all_tool_calls:
+    print(f"  {tc.name}: {tc.input}")
+    if tc.output is not None:
+        print(f"    -> {tc.output}")
+```
+
+---
+
 ## Connect to Claude Desktop
 
 Add the following to your Claude Desktop `claude_desktop_config.json`:
@@ -599,6 +717,13 @@ uv run pytest src/ -v
 │  ┌─────────────────────────────────────────┐                 │
 │  │  claude-agent-sdk agentic loop          │                 │
 │  │  Claude decides tools + order autonomously               │
+│  │  Trajectory (turns, tool calls, tokens) collected        │
+│  └─────────────────────────────────────────┘                 │
+│                                                              │
+│  OpenAIAgentRunner.run(question)                             │
+│  ┌─────────────────────────────────────────┐                 │
+│  │  openai-agents SDK Runner.run loop      │                 │
+│  │  GPT decides tools + order autonomously                  │
 │  │  Trajectory (turns, tool calls, tokens) collected        │
 │  └─────────────────────────────────────────┘                 │
 └──────────────────────────┬───────────────────────────────────┘
