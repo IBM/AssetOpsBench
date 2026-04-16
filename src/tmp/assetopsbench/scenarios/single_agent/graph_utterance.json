@@ -1,0 +1,362 @@
+[
+    {
+        "id": 601,
+        "type": "Graph",
+        "text": "What equipment is affected if Chiller-1 fails? Trace the full downstream dependency chain.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify downstream equipment affected by Chiller-1 failure through DEPENDS_ON edges, including AHU-1, Pump-CW-1, and Motor-CH1. The response should describe the cascade of failures through the dependency graph.",
+        "note": "Requires graph traversal over DEPENDS_ON edges (multi-hop dependency)"
+    },
+    {
+        "id": 602,
+        "type": "Graph",
+        "text": "Pump-CW-1 is scheduled for replacement. Identify all equipment within 2 hops that will be affected.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify equipment within 2 hops of Pump-CW-1 in the DEPENDS_ON graph, including Chiller-1 (upstream) and Motor-P1 (downstream). The response should describe the cascade impact.",
+        "note": "Requires 2-hop graph traversal over DEPENDS_ON edges"
+    },
+    {
+        "id": 603,
+        "type": "Graph",
+        "text": "Boiler-2 has tube corrosion and wall thinning. Which equipment shares a system with it and what downstream dependencies exist?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify Boiler-1 as sharing a system with Boiler-2 via SHARES_SYSTEM_WITH edges, and list any downstream dependencies through the DEPENDS_ON graph.",
+        "note": "Requires traversal of both SHARES_SYSTEM_WITH and DEPENDS_ON edges"
+    },
+    {
+        "id": 604,
+        "type": "Graph",
+        "text": "All equipment at HVAC-South is offline for maintenance. Trace which sensors, equipment, and active work orders are impacted.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify all equipment at HVAC-South location, their associated sensors via HAS_SENSOR edges, and any active work orders via FOR_EQUIPMENT edges. It should also trace downstream impact through DEPENDS_ON and SHARES_SYSTEM_WITH graphs.",
+        "note": "Requires multi-hop traversal across Location, Equipment, Sensor, and WorkOrder nodes"
+    },
+    {
+        "id": 605,
+        "type": "Graph",
+        "text": "Motor-CH1 drives Chiller-1. If the motor bearing fails, what is the full failure cascade through AHU-1 and Pump-CW-1?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should trace the failure cascade from Motor-CH1 through Chiller-1 (via DEPENDS_ON) and then to AHU-1 and Pump-CW-1 which also depend on Chiller-1. The response should describe the full impact path.",
+        "note": "Requires multi-hop dependency traversal from Motor-CH1"
+    },
+    {
+        "id": 606,
+        "type": "Graph",
+        "text": "Chiller-2 is a hub in the dependency graph. List the transitive closure of all equipment affected if Chiller-2 goes offline.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should compute the transitive closure of equipment reachable from Chiller-2 through DEPENDS_ON edges, including Pump-CW-2 and AHU-2 and any further downstream equipment.",
+        "note": "Requires transitive closure computation over DEPENDS_ON graph"
+    },
+    {
+        "id": 607,
+        "type": "Graph",
+        "text": "Chiller-3 has condenser water side fouling. Which equipment shares cooling loop B and which AHUs depend on them?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify Chiller-4 as sharing cooling loop B with Chiller-3 via SHARES_SYSTEM_WITH, and then identify AHU-3 and AHU-4 as dependent equipment through DEPENDS_ON edges.",
+        "note": "Requires SHARES_SYSTEM_WITH followed by DEPENDS_ON traversal"
+    },
+    {
+        "id": 608,
+        "type": "Graph",
+        "text": "Compare the blast radius of failing Pump-CW-1 versus Pump-CW-2. Which has a larger downstream impact?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should compute the number of downstream dependent equipment for both Pump-CW-1 and Pump-CW-2 through DEPENDS_ON traversal, and compare their blast radii to determine which failure has a larger impact.",
+        "note": "Requires comparative graph traversal and counting"
+    },
+    {
+        "id": 609,
+        "type": "Graph",
+        "text": "Chiller-1 condenser water return temperature rose 15% over 48 hours. Are the connected AHU-1 and Pump-CW-1 showing correlated anomalies?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should check for anomalies on AHU-1 and Pump-CW-1 that are connected to Chiller-1 via DEPENDS_ON edges, and determine if their anomalies are correlated with the temperature rise on Chiller-1.",
+        "note": "Requires cross-asset anomaly correlation via DEPENDS_ON edges"
+    },
+    {
+        "id": 610,
+        "type": "Graph",
+        "text": "Three sensors on different equipment in HVAC-North triggered high-temperature alerts within 10 minutes. Are these assets connected through SHARES_SYSTEM_WITH edges?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify the three equipment nodes at HVAC-North location with recent high-temperature alerts, and check if they are connected through SHARES_SYSTEM_WITH edges to explain the correlated alerts.",
+        "note": "Requires correlation of alerts across SHARES_SYSTEM_WITH graph"
+    },
+    {
+        "id": 611,
+        "type": "Graph",
+        "text": "Vibration anomaly detected on Motor-CH1. Check if Chiller-1 and any equipment sharing a system with Chiller-1 had anomalies in the last 7 days.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should traverse from Motor-CH1 to Chiller-1 via DEPENDS_ON, then to equipment connected via SHARES_SYSTEM_WITH, and check for anomalies on each through DETECTED_ANOMALY edges within the last 7 days.",
+        "note": "Requires DEPENDS_ON + SHARES_SYSTEM_WITH traversal with temporal filtering"
+    },
+    {
+        "id": 612,
+        "type": "Graph",
+        "text": "Condenser water flow dropped 20% on cooling loop A. Correlate sensor readings across all equipment on that loop to find the source.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify all equipment on cooling loop A (Chiller-1, Chiller-2, Pump-CW-1, Pump-CW-2 via SHARES_SYSTEM_WITH), retrieve their sensor readings, and correlate the readings to identify the source of the flow drop.",
+        "note": "Requires SHARES_SYSTEM_WITH traversal + sensor reading correlation"
+    },
+    {
+        "id": 613,
+        "type": "Graph",
+        "text": "A work order reports unusual noise from AHU-3. Find all equipment sharing the same system and check for concurrent anomalies.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify AHU-4 as sharing a system with AHU-3 via SHARES_SYSTEM_WITH, and check for concurrent anomalies on both pieces of equipment.",
+        "note": "Requires SHARES_SYSTEM_WITH traversal + anomaly check"
+    },
+    {
+        "id": 614,
+        "type": "Graph",
+        "text": "Electrical anomaly detected at Utilities-East. Identify all equipment at that location and check for simultaneous sensor deviations.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should list all equipment at Utilities-East location, check their sensor readings for simultaneous deviations, and trace the propagation path through DEPENDS_ON edges to confirm the anomaly source.",
+        "note": "Requires Location-based Equipment lookup + DEPENDS_ON propagation"
+    },
+    {
+        "id": 615,
+        "type": "Graph",
+        "text": "Chiller-1 shows early signs of compressor overheating. Find the top 5 most similar historical failure modes using vector search on failure mode embeddings.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should perform vector similarity search on FailureMode embeddings to find the top 5 failure modes most similar to 'compressor overheating', returning similarity scores and failure mode descriptions.",
+        "note": "Requires vector similarity search on FailureMode node embeddings"
+    },
+    {
+        "id": 616,
+        "type": "Graph",
+        "text": "A new anomaly 'intermittent high-frequency vibration with thermal cycling' was detected on Motor-CH1. Find failure modes with similar semantic embeddings across all equipment types.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should use vector similarity search to find failure modes semantically similar to 'intermittent high-frequency vibration with thermal cycling' across all equipment types, returning matches with similarity scores.",
+        "note": "Requires cross-equipment vector similarity search"
+    },
+    {
+        "id": 617,
+        "type": "Graph",
+        "text": "Condenser water side fouling detected on Chiller-3. Retrieve similar past failure modes across all chillers and their associated work orders.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should find failure modes similar to 'condenser water side fouling' via vector search, then traverse EXPERIENCED and FOR_EQUIPMENT edges to find associated work orders and their costs.",
+        "note": "Requires vector search + work order graph traversal"
+    },
+    {
+        "id": 618,
+        "type": "Graph",
+        "text": "An operator described a failure as 'pump cavitation with suction line blockage' on Pump-CW-1. Find semantically similar failure modes even if they use different terminology.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should use vector similarity search to find failure modes semantically similar to 'pump cavitation with suction line blockage' even with different terminology, such as 'Impeller erosion or cavitation damage', returning similarity scores.",
+        "note": "Requires semantic vector search that matches across different terminologies"
+    },
+    {
+        "id": 619,
+        "type": "Graph",
+        "text": "Scale buildup detected on Boiler-1. Find similar failure modes across the entire boiler fleet and rank by severity-weighted similarity.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should find failure modes similar to 'scale buildup' across Boiler-1 through Boiler-4 via vector search, and rank them by a combination of similarity score and severity.",
+        "note": "Requires fleet-wide vector search with severity weighting"
+    },
+    {
+        "id": 620,
+        "type": "Graph",
+        "text": "Motor-AHU1 experienced 'Stator winding insulation breakdown'. Which other motors had similar failure modes, and what spare parts were used in their repairs?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should find motors with similar failure modes via vector search, then traverse USES_PART edges to find spare parts used in their work orders. Should include Motor-CH1, Motor-P1, Motor-BL1 if they had similar failures.",
+        "note": "Requires vector search + USES_PART graph traversal"
+    },
+    {
+        "id": 621,
+        "type": "Graph",
+        "text": "Rank all equipment by graph-based criticality using PageRank on the dependency network. Which are the top 5 most critical assets?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should run PageRank on the DEPENDS_ON graph and return the top 5 equipment nodes by criticality score. Chillers are expected to rank highest as they have the most dependents.",
+        "note": "Requires PageRank graph algorithm execution on DEPENDS_ON network"
+    },
+    {
+        "id": 622,
+        "type": "Graph",
+        "text": "Compare PageRank-based criticality scores with the static criticality_score property on Equipment nodes. Where do they disagree?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should compute PageRank scores and compare them against the static criticality_score property stored on Equipment nodes, identifying equipment where the two metrics disagree significantly.",
+        "note": "Requires PageRank computation + property comparison"
+    },
+    {
+        "id": 623,
+        "type": "Graph",
+        "text": "Identify single points of failure: equipment with high in-degree on DEPENDS_ON that, if removed, would disconnect the dependency graph.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify equipment nodes that are articulation points in the DEPENDS_ON graph, especially Chiller-1 and Chiller-2 which have the most dependents. These are single points of failure whose removal disconnects the graph.",
+        "note": "Requires graph topology analysis (articulation point detection)"
+    },
+    {
+        "id": 624,
+        "type": "Graph",
+        "text": "Which Location contains the highest concentration of critical equipment by PageRank? Flag it for redundancy review.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should compute PageRank on the DEPENDS_ON network, group equipment by Location (HVAC-North, HVAC-South, Utilities-East, Utilities-West), and identify which location has the highest concentration of top-quartile critical equipment.",
+        "note": "Requires PageRank + Location-based aggregation"
+    },
+    {
+        "id": 625,
+        "type": "Graph",
+        "text": "Using weakly connected components on the SHARES_SYSTEM_WITH edges, identify independent system clusters. Which cluster has the highest aggregate criticality?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should compute weakly connected components on the SHARES_SYSTEM_WITH graph to find independent clusters (e.g., Chiller-1/Chiller-2 cooling loop A, Boiler-1/Boiler-2), then compute aggregate criticality per cluster.",
+        "note": "Requires WCC graph algorithm + criticality aggregation"
+    },
+    {
+        "id": 626,
+        "type": "Graph",
+        "text": "Schedule preventive maintenance for the 4 chillers within the next available maintenance window, minimizing total downtime.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should assign Chiller-1 through Chiller-4 to available MaintenanceWindow nodes while minimizing total downtime, considering DEPENDS_ON relationships and crew constraints.",
+        "note": "Requires maintenance optimization with graph-aware scheduling"
+    },
+    {
+        "id": 627,
+        "type": "Graph",
+        "text": "There are open work orders and maintenance windows this month. Assign work orders to windows to minimize total cost while respecting crew_size constraints.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should solve a constrained assignment problem: assign open work orders (via FOR_EQUIPMENT edges) to available maintenance windows, minimizing cost while respecting crew_size constraints on each window.",
+        "note": "Requires constrained optimization over work order and maintenance window nodes"
+    },
+    {
+        "id": 628,
+        "type": "Graph",
+        "text": "Pump-CW-1 and Pump-HW-1 share a system. Can their maintenance be bundled into a single window to reduce repeated shutdowns?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should check the SHARES_SYSTEM_WITH edge between Pump-CW-1 and Pump-HW-1, find their pending work orders, and determine if maintenance can be bundled into a single window to reduce shutdowns.",
+        "note": "Requires SHARES_SYSTEM_WITH traversal + maintenance bundling"
+    },
+    {
+        "id": 629,
+        "type": "Graph",
+        "text": "Generate a Pareto-optimal set of maintenance schedules trading off total cost versus maximum equipment downtime.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should generate multiple maintenance schedules along the Pareto frontier, showing trade-offs between total cost and maximum equipment downtime. Each schedule should be a valid assignment of work orders to maintenance windows.",
+        "note": "Requires multi-objective optimization (Pareto frontier computation)"
+    },
+    {
+        "id": 630,
+        "type": "Graph",
+        "text": "A compressor gasket set spare part has a 14-day lead time and only 2 units in stock. Which pending work orders for chillers require this part, and can they all be completed before stock runs out?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should traverse USES_PART edges from work orders to SparePart nodes to find which pending chiller work orders require the compressor gasket set, and check if the 2 available units and 14-day lead time are sufficient.",
+        "note": "Requires USES_PART graph traversal + inventory constraint check"
+    },
+    {
+        "id": 631,
+        "type": "Graph",
+        "text": "A work order reports Chiller-2 tripped on high head pressure. Trace backward through sensor readings, anomalies, and upstream equipment to find the root cause.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should trace backward from the Chiller-2 work order through TRIGGERED, DETECTED_ANOMALY, and HAS_SENSOR edges to reconstruct the causal chain, then check upstream equipment via DEPENDS_ON for prior anomalies.",
+        "note": "Requires reverse traversal of TRIGGERED/DETECTED_ANOMALY/DEPENDS_ON edges"
+    },
+    {
+        "id": 632,
+        "type": "Graph",
+        "text": "AHU-1 and AHU-2 in HVAC-North reported low supply air temperature within 2 hours. Is the root cause a shared chilled water supply issue from Chiller-1 or Chiller-2?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should trace the DEPENDS_ON edges from AHU-1 and AHU-2 to their upstream chillers, check for anomalies on Chiller-1 and Chiller-2, and determine if a shared chilled water supply issue is the root cause.",
+        "note": "Requires multi-source root cause analysis via DEPENDS_ON graph"
+    },
+    {
+        "id": 633,
+        "type": "Graph",
+        "text": "A vibration anomaly on Motor-P1 triggered a work order. Walk back the DETECTED_ANOMALY and TRIGGERED edges to reconstruct the full event timeline.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should traverse from the work order back through TRIGGERED edges to the anomaly, then through DETECTED_ANOMALY edges to the sensor readings on Motor-P1, reconstructing the full timeline of events.",
+        "note": "Requires reverse edge traversal for event timeline reconstruction"
+    },
+    {
+        "id": 634,
+        "type": "Graph",
+        "text": "Boiler-3 experienced burner flame instability. Traverse the dependency graph and shared systems to check if related equipment had prior anomalies.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should traverse from Boiler-3 through DEPENDS_ON and SHARES_SYSTEM_WITH (to Boiler-4) edges, checking for prior anomalies via DETECTED_ANOMALY edges on each piece of related equipment.",
+        "note": "Requires DEPENDS_ON + SHARES_SYSTEM_WITH traversal with anomaly check"
+    },
+    {
+        "id": 635,
+        "type": "Graph",
+        "text": "Multiple work orders have been created for Motor-AHU1 for 'Stator winding insulation breakdown'. Is this a recurring issue and are repairs addressing the root cause?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should query work orders for Motor-AHU1, identify recurring 'Stator winding insulation breakdown' patterns, check if root causes were addressed by examining the ADDRESSES edges to FailureMode nodes.",
+        "note": "Requires temporal work order analysis + FailureMode graph traversal"
+    },
+    {
+        "id": 636,
+        "type": "Graph",
+        "text": "Calculate the Mean Time Between Failures (MTBF) for all Chiller equipment over the past 24 months. Which chiller has the worst MTBF?",
+        "category": "Data Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should compute MTBF for Chiller-1 through Chiller-4 by querying work orders with timestamps over 24 months, calculating time between consecutive failures for each chiller, and identifying the worst performer.",
+        "note": "Requires temporal analysis over work order timestamps"
+    },
+    {
+        "id": 637,
+        "type": "Graph",
+        "text": "Do Chiller failures peak in summer and Boiler failures peak in winter? Show monthly failure counts over 2 years.",
+        "category": "Data Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should aggregate work orders by month for Chillers and Boilers over a 2-year period, showing seasonal patterns. Chillers are expected to have more failures in summer and Boilers in winter.",
+        "note": "Requires temporal aggregation of work orders by equipment type and month"
+    },
+    {
+        "id": 638,
+        "type": "Graph",
+        "text": "Sensor Motor-CH1-BearingTemp has been trending upward over 30 days. Extrapolate when it will breach the max threshold.",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should retrieve Motor-CH1-BearingTemp sensor readings over 30 days, compute the upward trend, and extrapolate the date when the max_threshold will be breached based on the trend rate.",
+        "note": "Requires sensor data trend analysis with threshold extrapolation"
+    },
+    {
+        "id": 639,
+        "type": "Graph",
+        "text": "Identify equipment where the interval between consecutive work orders is decreasing, indicating accelerating degradation.",
+        "category": "Data Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should query work orders per equipment, compute intervals between consecutive work orders, and identify equipment where the interval is decreasing over time, indicating accelerating degradation.",
+        "note": "Requires temporal pattern analysis over work order sequences"
+    },
+    {
+        "id": 640,
+        "type": "Graph",
+        "text": "For the top 5 most failure-prone equipment, plot the cumulative failure count over time. Do any exhibit bathtub curve behavior?",
+        "category": "Inference Query",
+        "deterministic": false,
+        "characteristic_form": "The expected response should identify the top 5 equipment by work order count, compute cumulative failure counts over time, and analyze whether any exhibit bathtub curve behavior (early failures, steady state, wear-out phase).",
+        "note": "Requires cumulative temporal analysis + reliability pattern recognition"
+    }
+]
