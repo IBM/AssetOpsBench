@@ -1,10 +1,10 @@
-"""CLI entry point for the ClaudeAgentRunner.
+"""CLI entry point for the OpenAIAgentRunner.
 
 Usage:
-    claude-agent "What sensors are on Chiller 6?"
-    claude-agent --model-id claude-opus-4-6 --max-turns 20 "List failure modes for pumps"
-    claude-agent --show-trajectory "What sensors are on Chiller 6?"
-    claude-agent --json "What is the current time?"
+    openai-agent --model-id litellm_proxy/azure/gpt-5.4 "What sensors are on Chiller 6?"
+    openai-agent --model-id litellm_proxy/azure/gpt-5.4 --max-turns 20 "List failure modes for pumps"
+    openai-agent --model-id litellm_proxy/azure/gpt-5.4 --show-trajectory "What sensors are on Chiller 6?"
+    openai-agent --model-id litellm_proxy/azure/gpt-5.4 --json "What is the current time?"
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import json
 import logging
 import sys
 
-_DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
+_DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE_FORMAT = "%H:%M:%S"
 _HR = "─" * 60
@@ -24,20 +24,22 @@ _HR = "─" * 60
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="claude-agent",
-        description="Run a question through the Claude Agent SDK with AssetOpsBench MCP servers.",
+        prog="openai-agent",
+        description="Run a question through the OpenAI Agents SDK with AssetOpsBench MCP servers.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
+model-id format:
+  litellm_proxy/<model>   LiteLLM proxy (e.g. litellm_proxy/azure/gpt-5.4)
+
 environment variables:
-  LITELLM_API_KEY       LiteLLM / Anthropic API key (required)
-  LITELLM_BASE_URL      LiteLLM proxy URL (required for litellm_proxy/* models)
+  LITELLM_API_KEY       LiteLLM API key    (required)
+  LITELLM_BASE_URL      LiteLLM base URL   (required)
 
 examples:
-  claude-agent "What assets are at site MAIN?"
-  claude-agent --model-id claude-opus-4-6 --max-turns 20 "List sensors on Chiller 6"
-  claude-agent --model-id litellm_proxy/aws/claude-opus-4-6 "What is the current time?"
-  claude-agent --show-history "What sensors are on Chiller 6?"
-  claude-agent --json "What is the current time?"
+  openai-agent "What assets are at site MAIN?"
+  openai-agent --model-id litellm_proxy/azure/gpt-5.4 --max-turns 20 "List sensors on Chiller 6"
+  openai-agent --show-trajectory "What are the failure modes for a chiller?"
+  openai-agent --json "What is the current time?"
 """,
     )
     parser.add_argument("question", help="The question to answer.")
@@ -45,7 +47,7 @@ examples:
         "--model-id",
         default=_DEFAULT_MODEL,
         metavar="MODEL_ID",
-        help=f"Claude model ID (default: {_DEFAULT_MODEL}).",
+        help=f"LiteLLM model string with litellm_proxy/ prefix (default: {_DEFAULT_MODEL}).",
     )
     parser.add_argument(
         "--max-turns",
@@ -105,9 +107,9 @@ def _print_trace(trajectory) -> None:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    from agent.claude_agent.runner import ClaudeAgentRunner
+    from agent.openai_agent.runner import OpenAIAgentRunner
 
-    runner = ClaudeAgentRunner(model=args.model_id, max_turns=args.max_turns)
+    runner = OpenAIAgentRunner(model=args.model_id, max_turns=args.max_turns)
     result = await runner.run(args.question)
 
     if args.output_json:
