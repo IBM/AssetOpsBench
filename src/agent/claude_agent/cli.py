@@ -16,7 +16,7 @@ import json
 import logging
 import sys
 
-_DEFAULT_MODEL = "claude-opus-4-6"
+_DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE_FORMAT = "%H:%M:%S"
 _HR = "─" * 60

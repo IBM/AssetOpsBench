@@ -326,7 +326,7 @@ Flags:
 
 | Flag                  | Description                                                                  |
 | --------------------- | ---------------------------------------------------------------------------- |
-| `--model-id MODEL_ID` | Claude model ID (default: `claude-opus-4-6`)                                 |
+| `--model-id MODEL_ID` | Claude model ID (default: `litellm_proxy/aws/claude-opus-4-6`)               |
 | `--max-turns N`       | Maximum agentic loop turns (default: 30)                                     |
 | `--show-trajectory`      | Print each turn's text, tool calls, and token usage                          |
 | `--json`              | Output full trajectory (turns, tool calls, token counts) as JSON             |
@@ -342,11 +342,11 @@ The `--model-id` prefix determines the backend:
 Examples:
 
 ```bash
-# Direct Anthropic API
+# LiteLLM proxy (default)
 uv run claude-agent "$query"
 
-# LiteLLM proxy
-uv run claude-agent --model-id litellm_proxy/aws/claude-opus-4-6 "$query"
+# Direct Anthropic API
+uv run claude-agent --model-id claude-opus-4-6 "$query"
 
 # Show full trajectory (turns, tool calls, token usage)
 uv run claude-agent --show-trajectory "$query"
