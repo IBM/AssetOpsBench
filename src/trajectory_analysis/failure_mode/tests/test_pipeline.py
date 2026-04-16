@@ -6,15 +6,15 @@ Tests the high-level pipeline orchestration in pipeline.py.
 import tempfile
 from unittest.mock import Mock, patch
 
-from src.trajectory_analysis.failure_mode.core.pipeline import run_failure_mode_pipeline
+from trajectory_analysis.failure_mode.core.pipeline import run_failure_mode_pipeline
 
 
 class TestRunFailureModePipeline:
     """Test the main pipeline function."""
 
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.LiteLLMBackend")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.LiteLLMBackend")
     def test_pipeline_with_default_llm(
         self, mock_litellm, mock_process, mock_reduction
     ):
@@ -44,8 +44,8 @@ class TestRunFailureModePipeline:
             assert call_kwargs["llm_backend"] == mock_llm_instance
             assert call_kwargs["traj_root_base"] == tmpdir
 
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
     def test_pipeline_with_custom_llm(self, mock_process, mock_reduction):
         """Test pipeline with custom LLM backend."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -66,8 +66,8 @@ class TestRunFailureModePipeline:
             call_kwargs = mock_process.call_args[1]
             assert call_kwargs["llm_backend"] == custom_llm
 
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
     def test_pipeline_with_temperature(self, mock_process, mock_reduction):
         """Test pipeline passes temperature parameter."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -90,8 +90,8 @@ class TestRunFailureModePipeline:
     # REMOVED: timestamps parameter no longer exists in pipeline
     # The pipeline now auto-discovers trajectories from the directory
 
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
     def test_pipeline_returns_generation_results(self, mock_process, mock_reduction):
         """Test pipeline returns generation results."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -114,8 +114,8 @@ class TestRunFailureModePipeline:
             assert result["generation"] == expected_gen_result
             assert result["generation"]["combined_df"] == mock_df
 
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
     def test_pipeline_with_all_parameters(self, mock_process, mock_reduction):
         """Test pipeline with all optional parameters."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -144,9 +144,9 @@ class TestRunFailureModePipeline:
             assert call_kwargs["temperature"] == 0.5
             # timestamps no longer passed - auto-discovery
 
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.LiteLLMBackend")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.LiteLLMBackend")
     def test_pipeline_default_temperature(
         self, mock_litellm, mock_process, mock_reduction
     ):
@@ -174,8 +174,8 @@ class TestRunFailureModePipeline:
 class TestPipelineIntegration:
     """Integration tests for the complete pipeline."""
 
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
-    @patch("src.trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.failure_mode_reduction")
+    @patch("trajectory_analysis.failure_mode.core.pipeline.process_trajectories")
     def test_pipeline_end_to_end_mock(self, mock_process, mock_reduction):
         """Test complete pipeline flow with mocked components."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -240,5 +240,3 @@ class TestPipelineDocumentation:
 
         assert "temperature" in sig.parameters
         assert sig.parameters["temperature"].default == 0.0
-
-

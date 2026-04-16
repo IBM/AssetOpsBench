@@ -9,11 +9,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.trajectory_analysis.failure_mode.core.timeout_wrapper import (
+from trajectory_analysis.failure_mode.core.timeout_wrapper import (
     TimeoutError,
     call_with_timeout,
 )
-from src.trajectory_analysis.failure_mode.core.utils import get_llm_answer_from_json
+from trajectory_analysis.failure_mode.core.utils import get_llm_answer_from_json
 
 
 class TestTimeoutWrapper:
@@ -209,5 +209,3 @@ class TestTimeoutEdgeCases:
         assert result1 == 3
         assert result2 == 7
         assert result3 == 11
-
-

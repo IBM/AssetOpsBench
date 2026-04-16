@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 
-from src.trajectory_analysis.failure_mode.core.generator import (
+from trajectory_analysis.failure_mode.core.generator import (
     _load_all_json_files,
     _normalize_additional_failure_modes,
     process_trajectories,
@@ -142,10 +142,8 @@ class TestProcessTrajectories:
     @patch(
         "pandas.DataFrame.to_pickle"
     )  # Mock pickle to avoid Mock object serialization
-    @patch(
-        "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"
-    )
-    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
+    @patch("trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json")
+    @patch("trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_basic(self, mock_load, mock_llm_answer, mock_pickle):
         """Test basic trajectory processing."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -188,8 +186,8 @@ class TestProcessTrajectories:
             assert df.iloc[0]["1.1 Disobey Task Specification"] == True
             assert df.iloc[0]["1.2 Disobey Role Specification"] == False
 
-    @patch("src.trajectory_analysis.failure_mode.core.generator.LiteLLMBackend")
-    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
+    @patch("trajectory_analysis.failure_mode.core.generator.LiteLLMBackend")
+    @patch("trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_default_llm(self, mock_load, mock_litellm):
         """Test that default LLM backend is created when none provided."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -206,10 +204,8 @@ class TestProcessTrajectories:
             # Verify default Claude Sonnet was created (model changed)
             mock_litellm.assert_called_once_with("litellm_proxy/claude-sonnet-4-6")
 
-    @patch(
-        "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"
-    )
-    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
+    @patch("trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json")
+    @patch("trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_with_temperature(self, mock_load, mock_llm_answer):
         """Test temperature parameter is passed through."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -229,10 +225,8 @@ class TestProcessTrajectories:
             call_args = mock_llm_answer.call_args
             assert call_args[1]["temperature"] == 0.7
 
-    @patch(
-        "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"
-    )
-    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
+    @patch("trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json")
+    @patch("trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_error_handling(self, mock_load, mock_llm_answer):
         """Test error handling during processing."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -261,10 +255,8 @@ class TestProcessTrajectories:
     @patch(
         "pandas.DataFrame.to_pickle"
     )  # Mock pickle to avoid Mock object serialization
-    @patch(
-        "src.trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json"
-    )
-    @patch("src.trajectory_analysis.failure_mode.core.generator._load_all_json_files")
+    @patch("trajectory_analysis.failure_mode.core.generator.get_llm_answer_from_json")
+    @patch("trajectory_analysis.failure_mode.core.generator._load_all_json_files")
     def test_process_trajectories_additional_failure_modes(
         self, mock_load, mock_llm_answer, mock_pickle
     ):
@@ -302,7 +294,7 @@ class TestProcessTrajectories:
             out_dir = os.path.join(tmpdir, "new_output_dir")
 
             with patch(
-                "src.trajectory_analysis.failure_mode.core.generator._load_all_json_files"
+                "trajectory_analysis.failure_mode.core.generator._load_all_json_files"
             ) as mock_load:
                 mock_load.return_value = {}
                 mock_llm = Mock()
@@ -369,5 +361,3 @@ class TestIntegration:
 
             # Verify pickle was called (mocked)
             mock_pickle.assert_called()
-
-

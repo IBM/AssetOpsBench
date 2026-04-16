@@ -7,7 +7,7 @@ and LLM interaction formatting.
 import pytest
 from unittest.mock import Mock
 
-from src.trajectory_analysis.failure_mode.core.utils import (
+from trajectory_analysis.failure_mode.core.utils import (
     extract_json_from_response,
     get_llm_answer_from_json,
 )
@@ -280,5 +280,3 @@ class TestIntegration:
         assert result["failure_modes"]["2.1 Conversation Reset"] is False
         assert len(result["additional_failure_modes"]) == 1
         assert result["additional_failure_modes"][0]["title"] == "Custom Issue"
-
-
