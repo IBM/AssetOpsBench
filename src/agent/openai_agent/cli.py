@@ -3,6 +3,7 @@
 Usage:
     openai-agent "What sensors are on Chiller 6?"
     openai-agent --model-id gpt-4o --max-turns 20 "List failure modes for pumps"
+    openai-agent --model-id litellm_proxy/Azure/gpt-5-2025-08-07 "What sensors are on Chiller 6?"
     openai-agent --show-trajectory "What sensors are on Chiller 6?"
     openai-agent --json "What is the current time?"
 """
@@ -28,12 +29,21 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Run a question through the OpenAI Agents SDK with AssetOpsBench MCP servers.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
+model-id format:
+  The provider is encoded in the model-id prefix:
+    gpt-4o                           OpenAI API directly
+    litellm_proxy/<model>            LiteLLM proxy (e.g. litellm_proxy/Azure/gpt-5-2025-08-07)
+
 environment variables:
-  OPENAI_API_KEY        OpenAI API key (required)
+  OPENAI_API_KEY        OpenAI API key          (required for direct OpenAI models)
+
+  LITELLM_API_KEY       LiteLLM API key         (required for litellm_proxy/* models)
+  LITELLM_BASE_URL      LiteLLM base URL        (required for litellm_proxy/* models)
 
 examples:
   openai-agent "What assets are at site MAIN?"
   openai-agent --model-id gpt-4o --max-turns 20 "List sensors on Chiller 6"
+  openai-agent --model-id litellm_proxy/Azure/gpt-5-2025-08-07 "What sensors are on Chiller 6?"
   openai-agent --show-trajectory "What sensors are on Chiller 6?"
   openai-agent --json "What is the current time?"
 """,
@@ -43,7 +53,7 @@ examples:
         "--model-id",
         default=_DEFAULT_MODEL,
         metavar="MODEL_ID",
-        help=f"OpenAI model ID (default: {_DEFAULT_MODEL}).",
+        help=f"Model ID, optionally prefixed with litellm_proxy/ (default: {_DEFAULT_MODEL}).",
     )
     parser.add_argument(
         "--max-turns",

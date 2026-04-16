@@ -15,7 +15,9 @@ from agent.openai_agent.models import Trajectory
 from agent.openai_agent.runner import (
     OpenAIAgentRunner,
     _build_mcp_servers,
+    _build_run_config,
     _build_trajectory,
+    _resolve_model,
 )
 from agent.models import AgentResult
 
@@ -45,6 +47,43 @@ def test_build_mcp_servers_empty():
 
 
 # ---------------------------------------------------------------------------
+# _resolve_model
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_model_strips_litellm_prefix():
+    assert _resolve_model("litellm_proxy/Azure/gpt-5-2025-08-07") == "Azure/gpt-5-2025-08-07"
+
+
+def test_resolve_model_passthrough():
+    assert _resolve_model("gpt-4o") == "gpt-4o"
+
+
+# ---------------------------------------------------------------------------
+# _build_run_config
+# ---------------------------------------------------------------------------
+
+
+def test_build_run_config_no_prefix_returns_none():
+    assert _build_run_config("gpt-4o") is None
+
+
+def test_build_run_config_litellm_prefix(monkeypatch):
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
+    config = _build_run_config("litellm_proxy/Azure/gpt-5-2025-08-07")
+    assert config is not None
+    assert config.model_provider is not None
+
+
+def test_build_run_config_missing_env_raises(monkeypatch):
+    monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="LITELLM_BASE_URL"):
+        _build_run_config("litellm_proxy/Azure/gpt-5-2025-08-07")
+
+
+# ---------------------------------------------------------------------------
 # OpenAIAgentRunner.__init__
 # ---------------------------------------------------------------------------
 
@@ -52,6 +91,7 @@ def test_build_mcp_servers_empty():
 def test_runner_defaults():
     runner = OpenAIAgentRunner()
     assert runner._model == "gpt-4o"
+    assert runner._run_config is None
     assert runner._max_turns == 30
     assert "iot" in runner._resolved_server_paths
 
@@ -65,6 +105,14 @@ def test_runner_custom_server_paths():
 def test_runner_custom_model():
     runner = OpenAIAgentRunner(model="gpt-4.1-mini")
     assert runner._model == "gpt-4.1-mini"
+
+
+def test_runner_litellm_model(monkeypatch):
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
+    runner = OpenAIAgentRunner(model="litellm_proxy/Azure/gpt-5-2025-08-07")
+    assert runner._model == "Azure/gpt-5-2025-08-07"
+    assert runner._run_config is not None
 
 
 # ---------------------------------------------------------------------------

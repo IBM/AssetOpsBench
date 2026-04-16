@@ -11,6 +11,10 @@ Usage::
     runner = OpenAIAgentRunner(model="gpt-4o")
     result = anyio.run(runner.run, "What sensors are on Chiller 6?")
     print(result.answer)
+
+    # Via LiteLLM proxy:
+    runner = OpenAIAgentRunner(model="litellm_proxy/Azure/gpt-5-2025-08-07")
+    result = anyio.run(runner.run, "What sensors are on Chiller 6?")
 """
 
 from __future__ import annotations
@@ -20,7 +24,9 @@ import logging
 import os
 from pathlib import Path
 
-from agents import Agent, Runner
+from openai import AsyncOpenAI
+
+from agents import Agent, ModelProvider, OpenAIChatCompletionsModel, RunConfig, Runner, set_tracing_disabled
 from agents.mcp import MCPServerStdio
 
 from ..models import AgentResult
@@ -31,6 +37,55 @@ from .models import ToolCall, Trajectory, TurnRecord
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "gpt-4o"
+_LITELLM_PREFIX = "litellm_proxy/"
+
+def _resolve_model(model_id: str) -> str:
+    """Strip the ``litellm_proxy/`` prefix from a model ID.
+
+    Examples::
+
+        "litellm_proxy/Azure/gpt-5-2025-08-07"  ->  "Azure/gpt-5-2025-08-07"
+        "gpt-4o"                                 ->  "gpt-4o"
+    """
+    if model_id.startswith(_LITELLM_PREFIX):
+        return model_id[len(_LITELLM_PREFIX):]
+    return model_id
+
+
+def _build_run_config(model_id: str) -> RunConfig | None:
+    """Build a RunConfig with a LiteLLM model provider when needed.
+
+    When *model_id* starts with ``litellm_proxy/``, creates an
+    :class:`AsyncOpenAI` client pointing at the LiteLLM proxy (using
+    ``LITELLM_BASE_URL`` and ``LITELLM_API_KEY``) and wraps it in
+    :class:`OpenAIChatCompletionsModel`.
+
+    Returns ``None`` for direct OpenAI API usage.
+    """
+    if not model_id.startswith(_LITELLM_PREFIX):
+        return None
+
+    base_url = os.environ.get("LITELLM_BASE_URL")
+    api_key = os.environ.get("LITELLM_API_KEY")
+    if not base_url or not api_key:
+        raise ValueError(
+            "LITELLM_BASE_URL and LITELLM_API_KEY must be set "
+            f"when using {_LITELLM_PREFIX!r} model prefix"
+        )
+
+    resolved = _resolve_model(model_id)
+    client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+    set_tracing_disabled(disabled=True)
+
+    class _LiteLLMModelProvider(ModelProvider):
+        def get_model(self, model_name: str | None):
+            return OpenAIChatCompletionsModel(
+                model=model_name or resolved,
+                openai_client=client,
+            )
+
+    return RunConfig(model_provider=_LiteLLMModelProvider())
+
 
 _SYSTEM_PROMPT = """\
 You are an industrial asset operations assistant with access to MCP tools for
@@ -141,12 +196,18 @@ class OpenAIAgentRunner(AgentRunner):
     The SDK handles tool discovery, invocation, and multi-turn conversation
     against the registered MCP servers.
 
+    Supports direct OpenAI API and LiteLLM proxy routing via model ID prefix:
+    - ``gpt-4o`` → direct OpenAI API (requires ``OPENAI_API_KEY``)
+    - ``litellm_proxy/Azure/gpt-5-2025-08-07`` → LiteLLM proxy
+      (requires ``LITELLM_BASE_URL`` and ``LITELLM_API_KEY``)
+
     Args:
         llm: Unused — OpenAIAgentRunner uses the OpenAI Agents SDK directly.
              Accepted for interface compatibility with ``AgentRunner``.
         server_paths: MCP server specs identical to ``PlanExecuteRunner``.
                       Defaults to all registered servers.
-        model: OpenAI model ID to use (default: ``gpt-4o``).
+        model: Model ID, optionally prefixed with ``litellm_proxy/``
+               (default: ``gpt-4o``).
         max_turns: Maximum agentic loop turns (default: 30).
     """
 
@@ -158,7 +219,9 @@ class OpenAIAgentRunner(AgentRunner):
         max_turns: int = 30,
     ) -> None:
         super().__init__(llm, server_paths)
-        self._model = model
+        self._model_id = model
+        self._model = _resolve_model(model)
+        self._run_config = _build_run_config(model)
         self._max_turns = max_turns
         self._resolved_server_paths: dict[str, Path | str] = (
             server_paths if server_paths is not None else dict(DEFAULT_SERVER_PATHS)
@@ -190,10 +253,14 @@ class OpenAIAgentRunner(AgentRunner):
                 len(active_servers),
             )
 
+            run_kwargs: dict = dict(max_turns=self._max_turns)
+            if self._run_config is not None:
+                run_kwargs["run_config"] = self._run_config
+
             result = await Runner.run(
                 agent,
                 question,
-                max_turns=self._max_turns,
+                **run_kwargs,
             )
 
             answer = result.final_output or ""
