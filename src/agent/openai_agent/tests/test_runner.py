@@ -88,15 +88,19 @@ def test_build_run_config_missing_env_raises(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_runner_defaults():
+def test_runner_defaults(monkeypatch):
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
     runner = OpenAIAgentRunner()
-    assert runner._model == "gpt-4o"
-    assert runner._run_config is None
+    assert runner._model == "azure/gpt-5.4"
+    assert runner._run_config is not None
     assert runner._max_turns == 30
     assert "iot" in runner._resolved_server_paths
 
 
-def test_runner_custom_server_paths():
+def test_runner_custom_server_paths(monkeypatch):
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
     paths = {"iot": "iot-mcp-server"}
     runner = OpenAIAgentRunner(server_paths=paths)
     assert runner._resolved_server_paths == paths
@@ -246,6 +250,7 @@ async def test_run_returns_agent_result():
     with (
         patch("agent.openai_agent.runner.Runner") as MockRunner,
         patch("agent.openai_agent.runner._build_mcp_servers", return_value=[]),
+        patch("agent.openai_agent.runner._build_run_config", return_value=None),
         patch("agent.openai_agent.runner._managed_servers") as MockCtx,
     ):
         MockRunner.run = AsyncMock(return_value=fake_result)
@@ -278,6 +283,7 @@ async def test_run_collects_trajectory():
     with (
         patch("agent.openai_agent.runner.Runner") as MockRunner,
         patch("agent.openai_agent.runner._build_mcp_servers", return_value=[]),
+        patch("agent.openai_agent.runner._build_run_config", return_value=None),
         patch("agent.openai_agent.runner._managed_servers") as MockCtx,
     ):
         MockRunner.run = AsyncMock(return_value=fake_result)
@@ -303,6 +309,7 @@ async def test_run_empty_result():
     with (
         patch("agent.openai_agent.runner.Runner") as MockRunner,
         patch("agent.openai_agent.runner._build_mcp_servers", return_value=[]),
+        patch("agent.openai_agent.runner._build_run_config", return_value=None),
         patch("agent.openai_agent.runner._managed_servers") as MockCtx,
     ):
         MockRunner.run = AsyncMock(return_value=fake_result)

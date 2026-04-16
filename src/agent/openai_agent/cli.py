@@ -1,11 +1,10 @@
 """CLI entry point for the OpenAIAgentRunner.
 
 Usage:
-    openai-agent "What sensors are on Chiller 6?"
-    openai-agent --model-id gpt-4o --max-turns 20 "List failure modes for pumps"
-    openai-agent --model-id litellm_proxy/Azure/gpt-5-2025-08-07 "What sensors are on Chiller 6?"
-    openai-agent --show-trajectory "What sensors are on Chiller 6?"
-    openai-agent --json "What is the current time?"
+    openai-agent --model-id litellm_proxy/azure/gpt-5.4 "What sensors are on Chiller 6?"
+    openai-agent --model-id litellm_proxy/azure/gpt-5.4 --max-turns 20 "List failure modes for pumps"
+    openai-agent --model-id litellm_proxy/azure/gpt-5.4 --show-trajectory "What sensors are on Chiller 6?"
+    openai-agent --model-id litellm_proxy/azure/gpt-5.4 --json "What is the current time?"
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ import json
 import logging
 import sys
 
-_DEFAULT_MODEL = "gpt-4o"
+_DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE_FORMAT = "%H:%M:%S"
 _HR = "─" * 60
@@ -30,21 +29,16 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 model-id format:
-  The provider is encoded in the model-id prefix:
-    gpt-4o                           OpenAI API directly
-    litellm_proxy/<model>            LiteLLM proxy (e.g. litellm_proxy/Azure/gpt-5-2025-08-07)
+  litellm_proxy/<model>   LiteLLM proxy (e.g. litellm_proxy/azure/gpt-5.4)
 
 environment variables:
-  OPENAI_API_KEY        OpenAI API key          (required for direct OpenAI models)
-
-  LITELLM_API_KEY       LiteLLM API key         (required for litellm_proxy/* models)
-  LITELLM_BASE_URL      LiteLLM base URL        (required for litellm_proxy/* models)
+  LITELLM_API_KEY       LiteLLM API key    (required)
+  LITELLM_BASE_URL      LiteLLM base URL   (required)
 
 examples:
   openai-agent "What assets are at site MAIN?"
-  openai-agent --model-id gpt-4o --max-turns 20 "List sensors on Chiller 6"
-  openai-agent --model-id litellm_proxy/Azure/gpt-5-2025-08-07 "What sensors are on Chiller 6?"
-  openai-agent --show-trajectory "What sensors are on Chiller 6?"
+  openai-agent --model-id litellm_proxy/azure/gpt-5.4 --max-turns 20 "List sensors on Chiller 6"
+  openai-agent --show-trajectory "What are the failure modes for a chiller?"
   openai-agent --json "What is the current time?"
 """,
     )
@@ -53,7 +47,7 @@ examples:
         "--model-id",
         default=_DEFAULT_MODEL,
         metavar="MODEL_ID",
-        help=f"Model ID, optionally prefixed with litellm_proxy/ (default: {_DEFAULT_MODEL}).",
+        help=f"LiteLLM model string with litellm_proxy/ prefix (default: {_DEFAULT_MODEL}).",
     )
     parser.add_argument(
         "--max-turns",

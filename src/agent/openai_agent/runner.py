@@ -8,13 +8,9 @@ Usage::
     import anyio
     from agent.openai_agent import OpenAIAgentRunner
 
-    runner = OpenAIAgentRunner(model="gpt-4o")
+    runner = OpenAIAgentRunner(model="litellm_proxy/azure/gpt-5.4")
     result = anyio.run(runner.run, "What sensors are on Chiller 6?")
     print(result.answer)
-
-    # Via LiteLLM proxy:
-    runner = OpenAIAgentRunner(model="litellm_proxy/Azure/gpt-5-2025-08-07")
-    result = anyio.run(runner.run, "What sensors are on Chiller 6?")
 """
 
 from __future__ import annotations
@@ -36,7 +32,7 @@ from .models import ToolCall, Trajectory, TurnRecord
 
 _log = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "gpt-4o"
+_DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 _LITELLM_PREFIX = "litellm_proxy/"
 
 def _resolve_model(model_id: str) -> str:
@@ -196,18 +192,16 @@ class OpenAIAgentRunner(AgentRunner):
     The SDK handles tool discovery, invocation, and multi-turn conversation
     against the registered MCP servers.
 
-    Supports direct OpenAI API and LiteLLM proxy routing via model ID prefix:
-    - ``gpt-4o`` → direct OpenAI API (requires ``OPENAI_API_KEY``)
-    - ``litellm_proxy/Azure/gpt-5-2025-08-07`` → LiteLLM proxy
-      (requires ``LITELLM_BASE_URL`` and ``LITELLM_API_KEY``)
+    Routes all requests through a LiteLLM proxy via the ``litellm_proxy/``
+    model ID prefix (requires ``LITELLM_BASE_URL`` and ``LITELLM_API_KEY``).
 
     Args:
         llm: Unused — OpenAIAgentRunner uses the OpenAI Agents SDK directly.
              Accepted for interface compatibility with ``AgentRunner``.
         server_paths: MCP server specs identical to ``PlanExecuteRunner``.
                       Defaults to all registered servers.
-        model: Model ID, optionally prefixed with ``litellm_proxy/``
-               (default: ``gpt-4o``).
+        model: LiteLLM model string with ``litellm_proxy/`` prefix
+               (default: ``litellm_proxy/azure/gpt-5.4``).
         max_turns: Maximum agentic loop turns (default: 30).
     """
 

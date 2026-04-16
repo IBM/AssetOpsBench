@@ -130,13 +130,9 @@ uv run vibration-mcp-server
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
-**OpenAI** — openai-agent runner
+**OpenAI Agents SDK** — openai-agent runner (always routed through LiteLLM proxy via `litellm_proxy/` prefix)
 
-| Variable         | Default      | Description    |
-| ---------------- | ------------ | -------------- |
-| `OPENAI_API_KEY` | _(required)_ | OpenAI API key |
-
-> **Note:** The `openai-agent` runner also supports LiteLLM proxy via the `litellm_proxy/` model-id prefix — in that case set `LITELLM_API_KEY` and `LITELLM_BASE_URL` instead.
+> Uses the same `LITELLM_API_KEY` and `LITELLM_BASE_URL` variables as the plan-execute runner above.
 
 ---
 
@@ -529,38 +525,26 @@ uv run openai-agent "What sensors are on Chiller 6?"
 
 Flags:
 
-| Flag                  | Description                                                              |
-| --------------------- | ------------------------------------------------------------------------ |
-| `--model-id MODEL_ID` | Model ID, optionally prefixed with `litellm_proxy/` (default: `gpt-4o`) |
-| `--max-turns N`       | Maximum agentic loop turns (default: 30)                                 |
-| `--show-trajectory`   | Print each turn's text, tool calls, and token usage                      |
-| `--json`              | Output full trajectory (turns, tool calls, token counts) as JSON         |
-| `--verbose`           | Show INFO-level logs on stderr                                           |
+| Flag                  | Description                                                                      |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `--model-id MODEL_ID` | LiteLLM model string with `litellm_proxy/` prefix (default: `litellm_proxy/azure/gpt-5.4`) |
+| `--max-turns N`       | Maximum agentic loop turns (default: 30)                                         |
+| `--show-trajectory`   | Print each turn's text, tool calls, and token usage                              |
+| `--json`              | Output full trajectory (turns, tool calls, token counts) as JSON                 |
+| `--verbose`           | Show INFO-level logs on stderr                                                   |
 
-The `--model-id` prefix determines the backend:
-
-| Prefix           | Backend       | Required env vars                     |
-| ---------------- | ------------- | ------------------------------------- |
-| _(none)_         | OpenAI API    | `OPENAI_API_KEY`                      |
-| `litellm_proxy/` | LiteLLM proxy | `LITELLM_API_KEY`, `LITELLM_BASE_URL` |
+Required env vars: `LITELLM_API_KEY`, `LITELLM_BASE_URL`
 
 Examples:
 
 ```bash
-# Direct OpenAI API
-uv run openai-agent "What assets are at site MAIN?"
-
-# Different model
-uv run openai-agent --model-id gpt-4.1-mini "What sensors are on Chiller 6?"
-
-# LiteLLM proxy
-uv run openai-agent --model-id litellm_proxy/azure/gpt-5.4 "What sensors are on Chiller 6?"
+uv run openai-agent --model-id litellm_proxy/azure/gpt-5.4 "What assets are at site MAIN?"
 
 # Show full trajectory (turns, tool calls, token usage)
-uv run openai-agent --show-trajectory "What are the failure modes for a chiller?"
+uv run openai-agent --model-id litellm_proxy/azure/gpt-5.4 --show-trajectory "What are the failure modes for a chiller?"
 
 # Machine-readable trajectory
-uv run openai-agent --json "What is the current time?" | jq .turns
+uv run openai-agent --model-id litellm_proxy/azure/gpt-5.4 --json "What is the current time?" | jq .turns
 ```
 
 ### Python API
@@ -569,14 +553,9 @@ uv run openai-agent --json "What is the current time?" | jq .turns
 import asyncio
 from agent.openai_agent import OpenAIAgentRunner
 
-# Direct OpenAI API
-runner = OpenAIAgentRunner(model="gpt-4o")
-result = asyncio.run(runner.run("What sensors are on Chiller 6?"))
-print(result.answer)
-
-# Via LiteLLM proxy
 runner = OpenAIAgentRunner(model="litellm_proxy/azure/gpt-5.4")
 result = asyncio.run(runner.run("What sensors are on Chiller 6?"))
+print(result.answer)
 ```
 
 `AgentResult` fields:
