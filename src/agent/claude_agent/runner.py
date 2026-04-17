@@ -29,7 +29,7 @@ from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
 
-_DEFAULT_MODEL = "claude-opus-4-6"
+_DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
 _LITELLM_PREFIX = "litellm_proxy/"
 
 
@@ -102,7 +102,7 @@ class ClaudeAgentRunner(AgentRunner):
              Accepted for interface compatibility with ``AgentRunner``.
         server_paths: MCP server specs identical to ``PlanExecuteRunner``.
                       Defaults to all registered servers.
-        model: Claude model ID to use (default: ``claude-opus-4-6``).
+        model: Claude model ID to use (default: ``litellm_proxy/aws/claude-opus-4-6``).
         max_turns: Maximum agentic loop turns (default: 30).
         permission_mode: claude-agent-sdk permission mode (default: ``"default"``).
     """
