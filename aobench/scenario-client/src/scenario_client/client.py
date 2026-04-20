@@ -3,6 +3,7 @@
 import logging
 import ssl
 from dataclasses import dataclass
+from enum import Enum
 from os import environ
 from typing import Any, Callable, Optional
 
@@ -170,6 +171,11 @@ class SSLConfig:
 
 # Default SSL configuration from environment variables
 _default_config: SSLConfig = SSLConfig.from_env()
+
+
+class MLflowAutoLogger(Enum):
+    langchain = "langchain"
+    default = "default"
 
 
 class AOBench:
@@ -439,7 +445,10 @@ class AOBench:
             return r.json()
 
     def scenario_set(
-        self, scenario_set_id: str, tracking: bool
+        self,
+        scenario_set_id: str,
+        tracking: bool,
+        mlflow_logger: MLflowAutoLogger = MLflowAutoLogger.langchain,
     ) -> tuple[dict, Optional[TrackingContext]]:
         """Load a scenario set with optional MLflow tracking setup.
 
@@ -447,6 +456,10 @@ class AOBench:
             scenario_set_id (str): Unique identifier for the scenario set to load.
             tracking (bool): Whether to enable MLflow tracking. If True, initializes
                 MLflow tracking and returns tracking context.
+            mlflow_logger (MLflowAutoLogger): Set mlflow autologging method, defaults
+                to `MLflowAutoLogger.langchain` which enables `mlflow.langchain.autolog()`.
+                The alternative is `MLflowAutoLogger.default` which enables
+                `mlflow.autolog()`
 
         Returns:
             tuple[dict, TrackingContext | None]: A tuple containing:
@@ -505,7 +518,11 @@ class AOBench:
                     logger.info(f"{tracking_uri=} / {experiment_id=} / {run_id=}")
 
                     mlflow.set_tracking_uri(uri=tracking_uri)
-                    mlflow.autolog()
+                    if mlflow_logger == MLflowAutoLogger.langchain:
+                        mlflow.langchain.autolog()
+                    else:
+                        mlflow.autolog()
+
                     mlflow.set_experiment(experiment_id=experiment_id)
 
                     tracking_context = TrackingContext(
