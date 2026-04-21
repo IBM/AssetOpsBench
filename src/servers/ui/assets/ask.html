@@ -1,0 +1,1647 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AssetOpsBench Ask</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f6f8;
+        --panel: #ffffff;
+        --panel-alt: #f9fafb;
+        --text: #111827;
+        --muted: #5f6b7a;
+        --line: #d7dde5;
+        --line-strong: #aeb8c6;
+        --accent: #0f62fe;
+        --accent-dark: #0043ce;
+        --accent-soft: #eaf1ff;
+        --option-bg: #ffffff;
+        --option-hover: #dbeafe;
+        --good: #198038;
+        --good-soft: #e7f4ec;
+        --warn: #8a5a00;
+        --warn-soft: #fff3d6;
+        --error: #b42318;
+        --error-soft: #fff0ee;
+        --bg-gradient: linear-gradient(145deg, #eef2f6 0%, #f8fafc 42%, #e6ebf1 100%);
+        --surface-gradient: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        --soft-gradient: linear-gradient(180deg, #fbfcfe 0%, #eef2f6 100%);
+        --recessed-gradient: linear-gradient(145deg, #eef2f6 0%, #f8fafc 54%, #e8edf3 100%);
+        --control-gradient: linear-gradient(180deg, #ffffff 0%, #f3f6f9 100%);
+        --shadow-sm: 0 1px 2px rgb(17 24 39 / 7%);
+        --shadow-md: 0 18px 46px rgb(17 24 39 / 12%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --bg: #101418;
+          --panel: #171c22;
+          --panel-alt: #20262e;
+          --text: #eef2f7;
+          --muted: #a2adba;
+          --line: #303944;
+          --line-strong: #4b5563;
+          --accent: #78a9ff;
+          --accent-dark: #a6c8ff;
+          --accent-soft: #172743;
+          --option-bg: #121820;
+          --option-hover: #233044;
+          --good: #42be65;
+          --good-soft: #143421;
+          --warn: #f1c21b;
+          --warn-soft: #3b3008;
+          --error: #ffb4ab;
+          --error-soft: #3b1f1d;
+          --bg-gradient: linear-gradient(145deg, #0f141a 0%, #171d24 48%, #0c1015 100%);
+          --surface-gradient: linear-gradient(180deg, #1b2129 0%, #141920 100%);
+          --soft-gradient: linear-gradient(180deg, #202730 0%, #161c23 100%);
+          --recessed-gradient: linear-gradient(145deg, #121820 0%, #1d242d 52%, #10151b 100%);
+          --control-gradient: linear-gradient(180deg, #202730 0%, #171d24 100%);
+          --shadow-sm: 0 1px 2px rgb(0 0 0 / 24%);
+          --shadow-md: 0 18px 46px rgb(0 0 0 / 32%);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg-gradient);
+        color: var(--text);
+        font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        margin: 0 auto;
+        max-width: 1220px;
+        padding: 24px;
+      }
+
+      .shell {
+        background: var(--surface-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 78%, var(--panel));
+        border-radius: 8px;
+        box-shadow: var(--shadow-md);
+        min-height: calc(100vh - 48px);
+        overflow: hidden;
+        position: relative;
+      }
+
+      .shell::before {
+        background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--accent) 38%, transparent) 50%, transparent 100%);
+        content: "";
+        height: 1px;
+        left: 0;
+        opacity: 0.7;
+        position: absolute;
+        right: 0;
+        top: 0;
+      }
+
+      h1,
+      h2 {
+        color: var(--text);
+        letter-spacing: 0;
+        line-height: 1.2;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 720;
+        margin: 0;
+      }
+
+      h2 {
+        font-size: 17px;
+        font-weight: 680;
+        margin: 24px 0 10px;
+      }
+
+      .topbar {
+        align-items: center;
+        background: var(--surface-gradient);
+        border-bottom: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        padding: 16px 18px;
+      }
+
+      .brand {
+        display: grid;
+        gap: 2px;
+      }
+
+      .brand-label {
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .tabs {
+        background: var(--control-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 82%, var(--panel));
+        border-radius: 8px;
+        box-shadow: var(--shadow-sm);
+        display: inline-grid;
+        grid-template-columns: repeat(2, minmax(132px, 1fr));
+        padding: 3px;
+        position: relative;
+      }
+
+      .tabs::before {
+        background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 100%);
+        border-radius: 6px;
+        content: "";
+        inset: 3px auto 3px 3px;
+        position: absolute;
+        transform: translateX(0);
+        transition: transform 180ms ease;
+        width: calc(50% - 3px);
+      }
+
+      .tabs:has(#evaluation-tab[aria-selected="true"])::before {
+        transform: translateX(100%);
+      }
+
+      .tab {
+        background: transparent;
+        border: 0;
+        border-radius: 6px;
+        color: var(--muted);
+        cursor: pointer;
+        font: inherit;
+        font-weight: 680;
+        margin: 0;
+        min-height: 36px;
+        padding: 8px 14px;
+        position: relative;
+        transition: color 180ms ease;
+        z-index: 1;
+      }
+
+      .tab[aria-selected="true"] {
+        color: #ffffff;
+      }
+
+      .view {
+        animation: view-enter 180ms ease;
+        padding: 18px;
+      }
+
+      @keyframes view-enter {
+        from {
+          opacity: 0;
+          transform: translateY(5px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .view[hidden] {
+        display: none;
+      }
+
+      .ask-layout {
+        display: grid;
+        gap: 14px;
+      }
+
+      .conversation {
+        background: var(--recessed-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 82%, var(--panel));
+        border-radius: 8px;
+        box-shadow:
+          inset 0 1px 0 color-mix(in srgb, var(--panel) 82%, transparent),
+          inset 0 -18px 42px color-mix(in srgb, var(--line) 24%, transparent);
+        display: grid;
+        gap: 12px;
+        grid-template-rows: auto 1fr auto;
+        min-height: 500px;
+        overflow: hidden;
+        padding: 0;
+      }
+
+      .chat-toolbar {
+        align-items: center;
+        background: color-mix(in srgb, var(--panel) 92%, var(--panel-alt));
+        border-bottom: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        padding: 13px 14px;
+      }
+
+      .session-title {
+        display: grid;
+        gap: 2px;
+      }
+
+      .session-title span {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .session-title strong {
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 760;
+      }
+
+      .model-control {
+        align-items: center;
+        background: var(--control-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+        border-radius: 8px;
+        box-shadow: var(--shadow-sm);
+        display: flex;
+        gap: 9px;
+        margin: 0;
+        min-height: 38px;
+        padding: 5px 5px 5px 10px;
+        text-transform: none;
+      }
+
+      .model-control span {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .model-control select {
+        background: var(--surface-gradient);
+        border-color: var(--line);
+        border-radius: 6px;
+        min-height: 30px;
+        padding: 5px 28px 5px 8px;
+        width: min(260px, 36vw);
+      }
+
+      .chat-log {
+        align-content: start;
+        display: grid;
+        gap: 12px;
+        overflow-y: auto;
+        padding: 16px;
+      }
+
+      .message {
+        display: grid;
+        gap: 6px;
+        max-width: min(760px, 92%);
+      }
+
+      .message.user {
+        justify-self: end;
+      }
+
+      .message.assistant,
+      .message.system {
+        justify-self: start;
+      }
+
+      .message-label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .bubble {
+        background: var(--surface-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 78%, var(--panel));
+        border-radius: 8px;
+        box-shadow: var(--shadow-sm);
+        color: var(--text);
+        overflow-wrap: anywhere;
+        padding: 12px 13px;
+        white-space: pre-wrap;
+      }
+
+      .message.user .bubble {
+        background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 100%);
+        border-color: var(--accent);
+        box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 22%, transparent);
+        color: #ffffff;
+      }
+
+      .message.system .bubble {
+        color: var(--muted);
+      }
+
+      .activity-log {
+        border-top: 1px solid var(--line);
+        display: grid;
+        gap: 8px;
+        margin: 0 16px 16px;
+        padding-top: 12px;
+      }
+
+      .activity-log[hidden] {
+        display: none;
+      }
+
+      .activity-item {
+        align-items: center;
+        color: var(--muted);
+        display: flex;
+        font-size: 13px;
+        gap: 8px;
+      }
+
+      .activity-dot {
+        animation: pulse 1200ms ease-in-out infinite;
+        background: var(--accent);
+        border-radius: 999px;
+        flex: 0 0 auto;
+        height: 7px;
+        width: 7px;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.45;
+          transform: scale(0.9);
+        }
+
+        50% {
+          opacity: 1;
+          transform: scale(1.15);
+        }
+      }
+
+      .trace {
+        border-top: 1px solid var(--line);
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+        padding-top: 10px;
+      }
+
+      .trace-row {
+        background: var(--soft-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+        border-radius: 7px;
+        color: var(--muted);
+        font-size: 13px;
+        padding: 8px;
+      }
+
+      .trace-row strong {
+        color: var(--text);
+      }
+
+      .composer {
+        background: var(--surface-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 82%, var(--panel));
+        border-radius: 8px;
+        box-shadow: var(--shadow-sm);
+        display: grid;
+        gap: 10px;
+        padding: 10px;
+      }
+
+      .composer-row {
+        align-items: end;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .evaluation-controls {
+        background: var(--recessed-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 82%, var(--panel));
+        border-radius: 8px;
+        box-shadow:
+          inset 0 1px 0 color-mix(in srgb, var(--panel) 82%, transparent),
+          inset 0 -14px 30px color-mix(in srgb, var(--line) 20%, transparent);
+        display: grid;
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .form-grid {
+        align-items: start;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(210px, 280px) minmax(0, 1fr);
+      }
+
+      .field {
+        display: grid;
+        gap: 7px;
+      }
+
+      .field.full {
+        grid-column: 1 / -1;
+      }
+
+      label,
+      .field-label {
+        color: var(--muted);
+        display: block;
+        font-size: 12px;
+        font-weight: 760;
+        margin: 0;
+        text-transform: uppercase;
+      }
+
+      select,
+      textarea,
+      button {
+        border-radius: 7px;
+        font: inherit;
+      }
+
+      select,
+      textarea {
+        background: var(--surface-gradient);
+        border: 1px solid var(--line-strong);
+        color: var(--text);
+        outline: none;
+        padding: 11px 12px;
+        transition: border-color 120ms ease, box-shadow 120ms ease;
+        width: 100%;
+      }
+
+      select {
+        min-height: 40px;
+      }
+
+      select {
+        color-scheme: light;
+      }
+
+      option {
+        background: var(--option-bg);
+        color: var(--text);
+      }
+
+      option:checked,
+      option:hover {
+        background: var(--option-hover);
+        color: var(--text);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        select {
+          color-scheme: dark;
+        }
+      }
+
+      select:focus,
+      textarea:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+      }
+
+      textarea {
+        min-height: 116px;
+        resize: vertical;
+      }
+
+      textarea::placeholder {
+        color: var(--muted);
+      }
+
+      #question {
+        min-height: 52px;
+      }
+
+      #evaluation-questions {
+        min-height: 184px;
+      }
+
+      #ask {
+        min-width: 104px;
+      }
+
+      button {
+        align-items: center;
+        background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 100%);
+        border: 1px solid var(--accent);
+        color: #ffffff;
+        cursor: pointer;
+        display: inline-flex;
+        font-weight: 720;
+        justify-content: center;
+        min-height: 40px;
+        padding: 9px 14px;
+        transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        background: linear-gradient(180deg, var(--accent-dark) 0%, var(--accent) 100%);
+        border-color: var(--accent-dark);
+        box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 20%, transparent);
+        transform: translateY(-1px);
+      }
+
+      .secondary-button {
+        background: var(--control-gradient);
+        border-color: var(--line-strong);
+        color: var(--text);
+      }
+
+      .secondary-button:hover:not(:disabled) {
+        background: var(--soft-gradient);
+        border-color: var(--line-strong);
+        color: var(--text);
+      }
+
+      .button-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .button-row button {
+        flex: 1;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.66;
+      }
+
+      .status,
+      .warning {
+        border-radius: 7px;
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 14px;
+        padding: 7px 9px;
+      }
+
+      .status {
+        background: var(--soft-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 86%, var(--panel));
+      }
+
+      .warning {
+        background: var(--warn-soft);
+        border: 1px solid color-mix(in srgb, var(--warn) 42%, var(--line));
+        color: var(--warn);
+      }
+
+      .metrics {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-top: 12px;
+      }
+
+      .metric {
+        background: var(--surface-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+        border-radius: 7px;
+        box-shadow: var(--shadow-sm);
+        padding: 10px;
+      }
+
+      .metric span {
+        color: var(--muted);
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .metric strong {
+        color: var(--text);
+        display: block;
+        font-size: 18px;
+        font-weight: 760;
+        margin-top: 3px;
+      }
+
+      .model-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .model-choice {
+        align-items: center;
+        background: var(--control-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+        border-radius: 999px;
+        cursor: pointer;
+        display: flex;
+        gap: 8px;
+        margin: 0;
+        min-height: 34px;
+        padding: 7px 11px;
+        text-transform: none;
+        transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+      }
+
+      .model-choice:has(input:checked) {
+        background: var(--accent-soft);
+        border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+        box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 10%, transparent);
+      }
+
+      .model-choice:hover {
+        transform: translateY(-1px);
+      }
+
+      .model-choice input {
+        accent-color: var(--accent);
+        flex: 0 0 auto;
+        margin: 0;
+      }
+
+      .model-choice span {
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 620;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .table-wrap {
+        border: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+        border-radius: 7px;
+        box-shadow: var(--shadow-sm);
+        margin-top: 12px;
+        overflow-x: auto;
+      }
+
+      table {
+        border-collapse: collapse;
+        min-width: 900px;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 11px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--soft-gradient);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      td {
+        color: var(--text);
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .model-cell {
+        font-weight: 680;
+        max-width: 300px;
+        overflow-wrap: anywhere;
+      }
+
+      .score-cell {
+        color: var(--good);
+        font-weight: 760;
+      }
+
+      details {
+        background: var(--surface-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+        border-radius: 7px;
+        box-shadow: var(--shadow-sm);
+        margin-top: 10px;
+        padding: 0;
+      }
+
+      details[open] {
+        border-color: var(--line-strong);
+      }
+
+      details > summary {
+        transition: background 120ms ease;
+      }
+
+      details[open] > summary {
+        background: var(--soft-gradient);
+      }
+
+      summary {
+        cursor: pointer;
+        font-weight: 680;
+        list-style-position: inside;
+        padding: 12px;
+      }
+
+      .response-body {
+        border-top: 1px solid var(--line);
+        padding: 12px;
+      }
+
+      .response-text {
+        margin: 10px 0 0;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+      }
+
+      .answer,
+      .error {
+        border-radius: 7px;
+        margin-top: 14px;
+        padding: 13px;
+        white-space: pre-wrap;
+      }
+
+      .answer {
+        background: var(--soft-gradient);
+        border: 1px solid color-mix(in srgb, var(--line) 84%, var(--panel));
+      }
+
+      .error {
+        background: var(--error-soft);
+        border: 1px solid color-mix(in srgb, var(--error) 42%, var(--line));
+        color: var(--error);
+      }
+
+      .work-flyout {
+        background: var(--surface-gradient);
+        border: 1px solid var(--line-strong);
+        border-radius: 8px;
+        bottom: 18px;
+        box-shadow: var(--shadow-md);
+        display: grid;
+        gap: 10px;
+        max-width: calc(100vw - 32px);
+        opacity: 0;
+        padding: 15px;
+        pointer-events: none;
+        position: fixed;
+        right: 18px;
+        transform: translateY(12px) scale(0.98);
+        transition: opacity 180ms ease, transform 180ms ease;
+        width: 360px;
+        z-index: 10;
+      }
+
+      .work-flyout.active {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+
+      .work-head {
+        align-items: center;
+        display: flex;
+        gap: 10px;
+      }
+
+      .spinner {
+        animation: spin 900ms linear infinite;
+        border: 2px solid var(--line);
+        border-radius: 999px;
+        border-top-color: var(--accent);
+        flex: 0 0 auto;
+        height: 18px;
+        width: 18px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .work-title {
+        color: var(--text);
+        font-weight: 740;
+      }
+
+      .work-copy {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0;
+      }
+
+      .progress-track {
+        background: var(--soft-gradient);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        height: 8px;
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        background: linear-gradient(90deg, var(--accent) 0%, var(--accent-dark) 100%);
+        border-radius: inherit;
+        height: 100%;
+        transition: width 300ms ease;
+        width: 8%;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          padding: 12px;
+        }
+
+        .topbar {
+          align-items: stretch;
+          flex-direction: column;
+          padding: 16px;
+        }
+
+        .tabs {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          width: 100%;
+        }
+
+        .view {
+          padding: 16px;
+        }
+
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .conversation {
+          min-height: 360px;
+        }
+
+        .chat-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .model-control {
+          align-items: stretch;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .model-control select {
+          width: 100%;
+        }
+
+        .composer-row {
+          grid-template-columns: 1fr;
+        }
+
+        .metrics {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .button-row {
+          flex-direction: column;
+        }
+
+        .model-choice {
+          width: 100%;
+        }
+
+        .work-flyout {
+          bottom: 12px;
+          right: 12px;
+          width: calc(100vw - 24px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="shell">
+        <div class="topbar">
+          <div class="brand">
+            <span class="brand-label">IBM Capstone</span>
+            <h1>AssetOpsBench</h1>
+          </div>
+          <div class="tabs" role="tablist" aria-label="AssetOpsBench views">
+            <button id="ask-tab" class="tab" type="button" role="tab" aria-selected="true" aria-controls="ask-view">Ask</button>
+            <button id="evaluation-tab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="evaluation-view">Evaluation</button>
+          </div>
+        </div>
+
+        <section id="ask-view" class="view" role="tabpanel" aria-labelledby="ask-tab">
+          <div class="ask-layout">
+            <div class="conversation">
+              <div class="chat-toolbar">
+                <div class="session-title">
+                  <span>Ask Session</span>
+                  <strong>Plan-execute workspace</strong>
+                </div>
+                <label class="model-control" for="model">
+                  <span>Model</span>
+                  <select id="model"></select>
+                </label>
+              </div>
+
+              <div id="chat-log" class="chat-log">
+                <div class="message system">
+                  <div class="message-label">System</div>
+                  <div class="bubble">Ask a question about AssetOpsBench. The run trace will appear here after the answer completes.</div>
+                </div>
+              </div>
+              <div id="activity-log" class="activity-log" hidden></div>
+            </div>
+
+            <div class="composer">
+              <div class="composer-row">
+                <div class="field">
+                  <label for="question">Question</label>
+                  <textarea id="question">What assets are at site MAIN?</textarea>
+                </div>
+
+                <button id="ask">Ask</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="status" class="status">Loading models...</div>
+          <div id="metrics" class="metrics" hidden></div>
+          <div id="answer" class="answer" hidden></div>
+          <div id="error" class="error" hidden></div>
+        </section>
+
+        <section id="evaluation-view" class="view" role="tabpanel" aria-labelledby="evaluation-tab" hidden>
+          <div class="evaluation-controls">
+            <div class="field">
+              <label for="evaluation-questions">Questions</label>
+              <textarea id="evaluation-questions"></textarea>
+            </div>
+
+            <div class="field">
+              <span class="field-label">Models</span>
+              <div id="evaluation-models" class="model-grid"></div>
+            </div>
+
+            <div class="button-row">
+              <button id="run-evaluation">Run Evaluation</button>
+              <button id="select-all-models" class="secondary-button" type="button">Clear Models</button>
+            </div>
+          </div>
+
+          <div id="evaluation-status" class="status">Loading evaluation setup...</div>
+          <div id="evaluation-warning" class="warning" hidden></div>
+          <div id="evaluation-error" class="error" hidden></div>
+          <div id="leaderboard" hidden></div>
+          <div id="responses" hidden></div>
+        </section>
+      </section>
+    </main>
+
+    <aside id="work-flyout" class="work-flyout" aria-live="polite" aria-hidden="true">
+      <div class="work-head">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <div id="work-title" class="work-title">Working</div>
+          <p id="work-copy" class="work-copy">Preparing evaluation...</p>
+        </div>
+      </div>
+      <div class="progress-track" aria-hidden="true">
+        <div id="work-progress" class="progress-bar"></div>
+      </div>
+    </aside>
+
+    <script>
+      const modelSelect = document.getElementById("model");
+      const questionInput = document.getElementById("question");
+      const askButton = document.getElementById("ask");
+      const statusEl = document.getElementById("status");
+      const metricsEl = document.getElementById("metrics");
+      const answerEl = document.getElementById("answer");
+      const errorEl = document.getElementById("error");
+      const chatLog = document.getElementById("chat-log");
+      const activityLog = document.getElementById("activity-log");
+      const askTab = document.getElementById("ask-tab");
+      const evaluationTab = document.getElementById("evaluation-tab");
+      const askView = document.getElementById("ask-view");
+      const evaluationView = document.getElementById("evaluation-view");
+      const evaluationQuestionsInput = document.getElementById("evaluation-questions");
+      const evaluationModelsEl = document.getElementById("evaluation-models");
+      const runEvaluationButton = document.getElementById("run-evaluation");
+      const selectAllModelsButton = document.getElementById("select-all-models");
+      const evaluationStatusEl = document.getElementById("evaluation-status");
+      const evaluationWarningEl = document.getElementById("evaluation-warning");
+      const evaluationErrorEl = document.getElementById("evaluation-error");
+      const leaderboardEl = document.getElementById("leaderboard");
+      const responsesEl = document.getElementById("responses");
+      const workFlyout = document.getElementById("work-flyout");
+      const workTitle = document.getElementById("work-title");
+      const workCopy = document.getElementById("work-copy");
+      const workProgress = document.getElementById("work-progress");
+      let messageCounter = 0;
+      const pending = new Map();
+      let availableModels = [];
+      let evaluationQuestionMetadata = [];
+      let workTimer = null;
+      let askActivityTimer = null;
+
+      function notifySize() {
+        window.parent.postMessage(
+          {
+            type: "ui-size-change",
+            payload: {
+              height: document.documentElement.scrollHeight,
+            },
+          },
+          "*",
+        );
+      }
+
+      function callTool(toolName, params) {
+        const messageId = `aob-${Date.now()}-${++messageCounter}`;
+        window.parent.postMessage(
+          {
+            type: "tool",
+            messageId,
+            payload: {
+              toolName,
+              params,
+            },
+          },
+          "*",
+        );
+
+        return new Promise((resolve, reject) => {
+          pending.set(messageId, { resolve, reject });
+        });
+      }
+
+      function parseJsonText(value) {
+        if (typeof value !== "string") {
+          return null;
+        }
+
+        try {
+          return JSON.parse(value);
+        } catch {
+          return null;
+        }
+      }
+
+      function unpackToolResult(value) {
+        if (!value) {
+          return {};
+        }
+
+        if (value.structuredContent) {
+          return value.structuredContent;
+        }
+
+        if (Array.isArray(value.content) && value.content.length > 0) {
+          const parsed = parseJsonText(value.content[0].text);
+          if (parsed) {
+            return parsed;
+          }
+        }
+
+        if (Array.isArray(value) && value.length > 0) {
+          const parsed = parseJsonText(value[0].text);
+          if (parsed) {
+            return parsed;
+          }
+        }
+
+        return value;
+      }
+
+      function unpackResponse(eventData) {
+        const payload = eventData && eventData.payload ? eventData.payload : {};
+        return unpackToolResult(payload.response ?? payload.result ?? payload);
+      }
+
+      window.addEventListener("message", (event) => {
+        const data = event.data || {};
+        if (data.type !== "ui-message-response" || !data.messageId) {
+          return;
+        }
+
+        const request = pending.get(data.messageId);
+        if (!request) {
+          return;
+        }
+
+        pending.delete(data.messageId);
+        const payload = data.payload || {};
+        if (payload.error) {
+          request.reject(new Error(String(payload.error)));
+        } else {
+          request.resolve(unpackResponse(data));
+        }
+      });
+
+      function setError(message) {
+        errorEl.hidden = !message;
+        errorEl.textContent = message || "";
+        notifySize();
+      }
+
+      function setEvaluationError(message) {
+        evaluationErrorEl.hidden = !message;
+        evaluationErrorEl.textContent = message || "";
+        notifySize();
+      }
+
+      function setActiveView(viewName) {
+        const isAsk = viewName === "ask";
+        askTab.setAttribute("aria-selected", String(isAsk));
+        evaluationTab.setAttribute("aria-selected", String(!isAsk));
+        askView.hidden = !isAsk;
+        evaluationView.hidden = isAsk;
+        notifySize();
+      }
+
+      function showWorkFlyout(title, totalRuns) {
+        const startedAt = Date.now();
+        const stages = [
+          "Starting live plan-execute runs",
+          "Collecting model answers",
+          "Scoring responses",
+          "Building leaderboard",
+        ];
+
+        clearInterval(workTimer);
+        workTitle.textContent = title;
+        workCopy.textContent = `Starting ${totalRuns} live run(s)...`;
+        workProgress.style.width = "8%";
+        workFlyout.classList.add("active");
+        workFlyout.setAttribute("aria-hidden", "false");
+
+        workTimer = setInterval(() => {
+          const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+          const stage = stages[Math.min(stages.length - 1, Math.floor(elapsedSeconds / 8))];
+          const progress = Math.min(92, 10 + elapsedSeconds * 2.5);
+          workCopy.textContent = `${stage} · ${totalRuns} run(s) queued · ${elapsedSeconds}s elapsed`;
+          workProgress.style.width = `${progress}%`;
+        }, 500);
+      }
+
+      function completeWorkFlyout(message) {
+        clearInterval(workTimer);
+        workTimer = null;
+        workCopy.textContent = message;
+        workProgress.style.width = "100%";
+        setTimeout(() => {
+          workFlyout.classList.remove("active");
+          workFlyout.setAttribute("aria-hidden", "true");
+        }, 900);
+      }
+
+      function hideWorkFlyout(message) {
+        clearInterval(workTimer);
+        workTimer = null;
+        if (message) {
+          workCopy.textContent = message;
+        }
+        workFlyout.classList.remove("active");
+        workFlyout.setAttribute("aria-hidden", "true");
+      }
+
+      function appendMessage(role, text) {
+        const message = document.createElement("div");
+        message.className = `message ${role}`;
+
+        const label = document.createElement("div");
+        label.className = "message-label";
+        label.textContent = role === "user" ? "You" : role === "assistant" ? "AssetOpsBench" : "System";
+
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.textContent = text;
+
+        message.append(label, bubble);
+        chatLog.appendChild(message);
+        message.scrollIntoView({ block: "end", behavior: "smooth" });
+        notifySize();
+        return bubble;
+      }
+
+      function setActivityItems(items) {
+        activityLog.replaceChildren(
+          ...items.map((item) => {
+            const row = document.createElement("div");
+            row.className = "activity-item";
+
+            const dot = document.createElement("span");
+            dot.className = "activity-dot";
+
+            const text = document.createElement("span");
+            text.textContent = item;
+
+            row.append(dot, text);
+            return row;
+          }),
+        );
+        activityLog.hidden = false;
+        notifySize();
+      }
+
+      function startAskActivity(modelId) {
+        const startedAt = Date.now();
+        const stages = [
+          "Building an execution plan",
+          "Selecting MCP tools",
+          "Calling AssetOpsBench tools",
+          "Summarizing the final answer",
+        ];
+
+        clearInterval(askActivityTimer);
+        setActivityItems([`Starting plan-execute with ${modelId}`]);
+
+        askActivityTimer = setInterval(() => {
+          const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+          const stageCount = Math.min(stages.length, Math.floor(elapsedSeconds / 5) + 1);
+          const visibleStages = stages.slice(0, stageCount);
+          visibleStages.push(`${elapsedSeconds}s elapsed`);
+          setActivityItems(visibleStages);
+        }, 700);
+      }
+
+      function stopAskActivity() {
+        clearInterval(askActivityTimer);
+        askActivityTimer = null;
+      }
+
+      function renderTrace(result, bubble) {
+        const plan = result.plan || [];
+        const trajectory = result.trajectory || [];
+        if (!plan.length && !trajectory.length) {
+          activityLog.hidden = true;
+          return;
+        }
+
+        activityLog.hidden = true;
+        const trace = document.createElement("div");
+        trace.className = "trace";
+
+        plan.forEach((step) => {
+          const row = document.createElement("div");
+          row.className = "trace-row";
+          const title = document.createElement("strong");
+          title.textContent = `Plan ${step.step}`;
+          row.append(
+            title,
+            ` · ${step.server || "server"} · ${step.tool || "tool"}`,
+            document.createElement("br"),
+            step.task || "",
+          );
+          trace.appendChild(row);
+        });
+
+        trajectory.forEach((step) => {
+          const row = document.createElement("div");
+          row.className = "trace-row";
+          const status = step.success ? "OK" : "Error";
+          const title = document.createElement("strong");
+          title.textContent = `${status}: step ${step.step}`;
+          row.append(title, ` · ${step.server || "server"} · ${step.tool || "tool"}`);
+          trace.appendChild(row);
+        });
+
+        bubble.appendChild(trace);
+        notifySize();
+      }
+
+      function formatPercent(value) {
+        return `${(Number(value || 0) * 100).toFixed(1)}%`;
+      }
+
+      function formatNumber(value, digits = 1) {
+        return Number(value || 0).toFixed(digits);
+      }
+
+      function appendCell(row, value) {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+        return cell;
+      }
+
+      function shortModelLabel(model) {
+        return (model.label || model.id)
+          .replace("Mistralai / ", "")
+          .replace("Openai / ", "")
+          .replace("Ibm / ", "");
+      }
+
+      function renderModels(models) {
+        availableModels = models;
+        modelSelect.replaceChildren(
+          ...models.map((model) => {
+            const option = document.createElement("option");
+            option.value = model.id;
+            option.textContent = shortModelLabel(model);
+            return option;
+          }),
+        );
+
+        evaluationModelsEl.replaceChildren(
+          ...models.map((model) => {
+            const label = document.createElement("label");
+            label.className = "model-choice";
+
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.value = model.id;
+            checkbox.checked = true;
+
+            const text = document.createElement("span");
+            text.textContent = shortModelLabel(model);
+
+            label.append(checkbox, text);
+            return label;
+          }),
+        );
+      }
+
+      function setAnswer(result, bubble) {
+        answerEl.hidden = true;
+        answerEl.textContent = "";
+        bubble.textContent = result.answer || result.error || "No answer returned.";
+        renderTrace(result, bubble);
+
+        metricsEl.hidden = false;
+        metricsEl.innerHTML = `
+          <div class="metric"><span>Latency</span><strong>${Number(result.latency || 0).toFixed(2)}s</strong></div>
+          <div class="metric"><span>Input tokens</span><strong>${result.estimated_input_tokens ?? 0}</strong></div>
+          <div class="metric"><span>Output tokens</span><strong>${result.estimated_output_tokens ?? 0}</strong></div>
+          <div class="metric"><span>Total tokens</span><strong>${result.estimated_total_tokens ?? 0}</strong></div>
+        `;
+        notifySize();
+      }
+
+      async function loadModels() {
+        try {
+          const result = await callTool("list_models", {});
+          const models = result.models || [];
+          renderModels(models);
+          statusEl.textContent = models.length ? "Ready." : "No models available.";
+          evaluationStatusEl.textContent = models.length ? "Ready." : "No models available.";
+        } catch (error) {
+          statusEl.textContent = "Could not load models.";
+          evaluationStatusEl.textContent = "Could not load models.";
+          setError(error.message);
+          setEvaluationError(error.message);
+        }
+      }
+
+      async function loadEvaluationQuestions() {
+        try {
+          const result = await callTool("list_evaluation_questions", {});
+          const questions = result.questions || [];
+          evaluationQuestionMetadata = questions;
+          evaluationQuestionsInput.value = questions
+            .map((question) => question.question)
+            .join("\n");
+        } catch (error) {
+          evaluationStatusEl.textContent = "Could not load evaluation questions.";
+          setEvaluationError(error.message);
+        }
+      }
+
+      function renderLeaderboard(rows) {
+        leaderboardEl.hidden = !rows.length;
+        leaderboardEl.replaceChildren();
+
+        if (!rows.length) {
+          return;
+        }
+
+        const title = document.createElement("h2");
+        title.textContent = "Leaderboard";
+
+        const tableWrap = document.createElement("div");
+        tableWrap.className = "table-wrap";
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        const questionIds = [
+          ...new Set(rows.flatMap((row) => Object.keys(row.question_scores || {}))),
+        ];
+        const questionLabels = questionIds.map((questionId) => {
+          const metadata = evaluationQuestionMetadata.find((question) => question.id === questionId);
+          return metadata ? metadata.id.toUpperCase() : questionId.toUpperCase();
+        });
+        const headers = [
+          "Model",
+          ...questionLabels,
+          "Average Score",
+          "Average Latency",
+          "Average Tokens",
+          "Score per 1k Tokens",
+        ];
+
+        headers.forEach((label) => {
+          const header = document.createElement("th");
+          header.textContent = label;
+          headerRow.appendChild(header);
+        });
+        thead.appendChild(headerRow);
+
+        const tbody = document.createElement("tbody");
+        rows.forEach((row) => {
+          const tr = document.createElement("tr");
+          appendCell(tr, row.model).className = "model-cell";
+          questionIds.forEach((questionId) => {
+            const score = row.question_scores ? row.question_scores[questionId] : undefined;
+            appendCell(tr, score === undefined ? "—" : formatPercent(score)).className = "score-cell";
+          });
+          appendCell(tr, formatPercent(row.average_evaluator_score)).className = "score-cell";
+          appendCell(tr, `${formatNumber(row.average_latency, 2)}s`);
+          appendCell(tr, formatNumber(row.average_total_tokens));
+          appendCell(tr, formatNumber(row.quality_weighted_score_per_1k_tokens, 2)).className = "score-cell";
+          tbody.appendChild(tr);
+        });
+
+        table.append(thead, tbody);
+        tableWrap.appendChild(table);
+        leaderboardEl.append(title, tableWrap);
+      }
+
+      function renderResponses(rows) {
+        responsesEl.hidden = !rows.length;
+        responsesEl.replaceChildren();
+
+        if (!rows.length) {
+          return;
+        }
+
+        const title = document.createElement("h2");
+        title.textContent = "Responses";
+        responsesEl.appendChild(title);
+
+        const grouped = rows.reduce((groups, row) => {
+          if (!groups.has(row.model)) {
+            groups.set(row.model, []);
+          }
+          groups.get(row.model).push(row);
+          return groups;
+        }, new Map());
+
+        grouped.forEach((modelRows, model) => {
+          const modelDetails = document.createElement("details");
+          const modelSummary = document.createElement("summary");
+          const averageScore = modelRows.reduce((total, row) => total + Number(row.score || 0), 0) / modelRows.length;
+          modelSummary.textContent = `${model} · ${modelRows.length} response(s) · ${formatPercent(averageScore)} avg`;
+
+          const body = document.createElement("div");
+          body.className = "response-body";
+
+          modelRows.forEach((row) => {
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            summary.textContent = `${row.question_id} · ${formatPercent(row.score)} · ${row.evaluation_summary}`;
+
+            const meta = document.createElement("div");
+            meta.className = "status";
+            meta.textContent = `Success: ${row.success} · Latency: ${formatNumber(row.latency, 2)}s · Tokens: ${row.estimated_total_tokens}`;
+
+            const question = document.createElement("p");
+            question.className = "response-text";
+            question.textContent = `Question: ${row.question}`;
+
+            const answer = document.createElement("p");
+            answer.className = "response-text";
+            answer.textContent = row.answer || row.error || "No answer returned.";
+
+            const responseBody = document.createElement("div");
+            responseBody.className = "response-body";
+            responseBody.append(meta, question, answer);
+
+            details.append(summary, responseBody);
+            body.appendChild(details);
+          });
+
+          modelDetails.append(modelSummary, body);
+          responsesEl.appendChild(modelDetails);
+        });
+      }
+
+      askTab.addEventListener("click", () => setActiveView("ask"));
+      evaluationTab.addEventListener("click", () => setActiveView("evaluation"));
+
+      selectAllModelsButton.addEventListener("click", () => {
+        const checkboxes = evaluationModelsEl.querySelectorAll("input[type='checkbox']");
+        const shouldSelect = [...checkboxes].some((checkbox) => !checkbox.checked);
+        checkboxes.forEach((checkbox) => {
+          checkbox.checked = shouldSelect;
+        });
+        selectAllModelsButton.textContent = shouldSelect ? "Clear Models" : "Select All Models";
+      });
+
+      askButton.addEventListener("click", async () => {
+        const question = questionInput.value.trim();
+        const modelId = modelSelect.value;
+        if (!question || !modelId) {
+          setError("Choose a model and enter a question.");
+          return;
+        }
+
+        askButton.disabled = true;
+        metricsEl.hidden = true;
+        setError("");
+        appendMessage("user", question);
+        const assistantBubble = appendMessage("assistant", "Working through the plan...");
+        startAskActivity(modelId);
+        statusEl.textContent = "Running plan-execute...";
+
+        try {
+          const result = await callTool("ask_aob", {
+            question,
+            model_id: modelId,
+            include_plan: true,
+            include_trajectory: true,
+          });
+          if (!result.success) {
+            setError(result.error || "AssetOpsBench returned an error.");
+          }
+          stopAskActivity();
+          setAnswer(result, assistantBubble);
+          statusEl.textContent = result.success ? "Complete." : "Finished with error.";
+        } catch (error) {
+          statusEl.textContent = "Failed.";
+          setError(error.message);
+          stopAskActivity();
+          activityLog.hidden = true;
+          assistantBubble.textContent = error.message;
+        } finally {
+          askButton.disabled = false;
+          notifySize();
+        }
+      });
+
+      runEvaluationButton.addEventListener("click", async () => {
+        const questions = evaluationQuestionsInput.value
+          .split("\n")
+          .map((question) => question.trim())
+          .filter(Boolean);
+        const modelIds = [
+          ...evaluationModelsEl.querySelectorAll("input[type='checkbox']:checked"),
+        ].map((checkbox) => checkbox.value);
+
+        if (!questions.length || !modelIds.length) {
+          setEvaluationError("Enter at least one question and select at least one model.");
+          return;
+        }
+
+        runEvaluationButton.disabled = true;
+        leaderboardEl.hidden = true;
+        responsesEl.hidden = true;
+        evaluationWarningEl.hidden = true;
+        evaluationWarningEl.textContent = "";
+        setEvaluationError("");
+        evaluationStatusEl.textContent = `Running ${questions.length} question(s) across ${modelIds.length} model(s)...`;
+        showWorkFlyout("Running evaluation", questions.length * modelIds.length);
+
+        try {
+          const result = await callTool("run_evaluation", {
+            questions,
+            model_ids: modelIds,
+          });
+
+          if (!result.success) {
+            setEvaluationError(result.error || "Evaluation returned an error.");
+            evaluationStatusEl.textContent = "Failed.";
+            hideWorkFlyout("Evaluation failed.");
+            return;
+          }
+
+          renderLeaderboard(result.leaderboard || []);
+          renderResponses(result.results || []);
+          if (result.warning) {
+            evaluationWarningEl.hidden = false;
+            evaluationWarningEl.textContent = result.warning;
+          }
+          evaluationStatusEl.textContent = "Evaluation complete.";
+          completeWorkFlyout("Evaluation complete.");
+        } catch (error) {
+          evaluationStatusEl.textContent = "Failed.";
+          setEvaluationError(error.message);
+          hideWorkFlyout("Evaluation failed.");
+        } finally {
+          runEvaluationButton.disabled = false;
+          notifySize();
+        }
+      });
+
+      window.parent.postMessage({ type: "ui-lifecycle-iframe-ready", payload: {} }, "*");
+      loadModels();
+      loadEvaluationQuestions();
+      notifySize();
+    </script>
+  </body>
+</html>
