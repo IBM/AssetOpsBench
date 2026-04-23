@@ -24,30 +24,16 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from observability import agent_run_span, annotate_result
 
-from ..models import AgentResult
+from .._litellm import LITELLM_PREFIX, resolve_model
+from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
-from .models import ToolCall, Trajectory, TurnRecord
 
 _log = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 
 _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
-_LITELLM_PREFIX = "litellm_proxy/"
-
-
-def _resolve_model(model_id: str) -> str:
-    """Strip the ``litellm_proxy/`` prefix from a model ID.
-
-    Examples::
-
-        "litellm_proxy/aws/claude-opus-4-6"  ->  "aws/claude-opus-4-6"
-        "gpt-4o"                             ->  "gpt-4o"
-    """
-    if model_id.startswith(_LITELLM_PREFIX):
-        return model_id[len(_LITELLM_PREFIX):]
-    return model_id
 
 
 def _build_chat_model(model_id: str):
@@ -58,18 +44,18 @@ def _build_chat_model(model_id: str):
     ``LITELLM_API_KEY``).  Otherwise the model string is passed to
     ``init_chat_model`` so any provider supported by LangChain can be used.
     """
-    if model_id.startswith(_LITELLM_PREFIX):
+    if model_id.startswith(LITELLM_PREFIX):
         base_url = os.environ.get("LITELLM_BASE_URL")
         api_key = os.environ.get("LITELLM_API_KEY")
         if not base_url or not api_key:
             raise ValueError(
                 "LITELLM_BASE_URL and LITELLM_API_KEY must be set "
-                f"when using {_LITELLM_PREFIX!r} model prefix"
+                f"when using {LITELLM_PREFIX!r} model prefix"
             )
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(
-            model=_resolve_model(model_id),
+            model=resolve_model(model_id),
             base_url=base_url,
             api_key=api_key,
         )

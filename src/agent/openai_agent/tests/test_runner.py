@@ -11,15 +11,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent.openai_agent.models import Trajectory
 from agent.openai_agent.runner import (
     OpenAIAgentRunner,
     _build_mcp_servers,
     _build_run_config,
     _build_trajectory,
-    _resolve_model,
 )
-from agent.models import AgentResult
+from agent.models import AgentResult, Trajectory
 
 
 # ---------------------------------------------------------------------------
@@ -44,19 +42,6 @@ def test_build_mcp_servers_path():
 
 def test_build_mcp_servers_empty():
     assert _build_mcp_servers({}) == []
-
-
-# ---------------------------------------------------------------------------
-# _resolve_model
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_model_strips_litellm_prefix():
-    assert _resolve_model("litellm_proxy/Azure/gpt-5-2025-08-07") == "Azure/gpt-5-2025-08-07"
-
-
-def test_resolve_model_passthrough():
-    assert _resolve_model("gpt-4o") == "gpt-4o"
 
 
 # ---------------------------------------------------------------------------

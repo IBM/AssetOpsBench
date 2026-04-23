@@ -12,28 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agent.deep_agent.models import Trajectory
 from agent.deep_agent.runner import (
     DeepAgentRunner,
     _build_chat_model,
     _build_mcp_connections,
     _build_trajectory,
-    _resolve_model,
 )
-from agent.models import AgentResult
-
-
-# ---------------------------------------------------------------------------
-# _resolve_model
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_model_strips_litellm_prefix():
-    assert _resolve_model("litellm_proxy/aws/claude-opus-4-6") == "aws/claude-opus-4-6"
-
-
-def test_resolve_model_passthrough():
-    assert _resolve_model("anthropic:claude-sonnet-4-6") == "anthropic:claude-sonnet-4-6"
+from agent.models import AgentResult, Trajectory
 
 
 # ---------------------------------------------------------------------------
