@@ -22,6 +22,8 @@ from pathlib import Path
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, HookMatcher, ResultMessage, query
 from claude_agent_sdk import TextBlock, ToolUseBlock
 
+from observability import agent_run_span, annotate_result
+
 from ..models import AgentResult
 from .models import ToolCall, Trajectory, TurnRecord
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
@@ -133,73 +135,77 @@ class ClaudeAgentRunner(AgentRunner):
         Returns:
             AgentResult with the final answer and full execution trajectory.
         """
-        mcp_servers = _build_mcp_servers(self._resolved_server_paths)
+        with agent_run_span(
+            "claude-agent", model=self._model, question=question
+        ) as span:
+            mcp_servers = _build_mcp_servers(self._resolved_server_paths)
 
-        options = ClaudeAgentOptions(
-            model=self._model,
-            system_prompt=_SYSTEM_PROMPT,
-            mcp_servers=mcp_servers,
-            max_turns=self._max_turns,
-            permission_mode=self._permission_mode,
-            env=self._sdk_env,
-        )
+            options = ClaudeAgentOptions(
+                model=self._model,
+                system_prompt=_SYSTEM_PROMPT,
+                mcp_servers=mcp_servers,
+                max_turns=self._max_turns,
+                permission_mode=self._permission_mode,
+                env=self._sdk_env,
+            )
 
-        _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
-        answer = ""
-        trajectory = Trajectory()
-        turn_index = 0
-        tool_outputs: dict[str, object] = {}
+            _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
+            answer = ""
+            trajectory = Trajectory()
+            turn_index = 0
+            tool_outputs: dict[str, object] = {}
 
-        async def _capture_tool_output(input_data, tool_use_id: str, context) -> dict:
-            resp = input_data.get("tool_response") if isinstance(input_data, dict) else input_data
-            if isinstance(resp, dict):
-                tool_outputs[tool_use_id] = resp.get("content", resp)
-            else:
-                tool_outputs[tool_use_id] = resp
-            return {}
+            async def _capture_tool_output(input_data, tool_use_id: str, context) -> dict:
+                resp = input_data.get("tool_response") if isinstance(input_data, dict) else input_data
+                if isinstance(resp, dict):
+                    tool_outputs[tool_use_id] = resp.get("content", resp)
+                else:
+                    tool_outputs[tool_use_id] = resp
+                return {}
 
-        options.hooks = {"PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])]}
+            options.hooks = {"PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])]}
 
-        def _flush_tool_outputs() -> None:
-            """Patch any pending hook outputs onto the last turn's tool calls."""
-            if tool_outputs and trajectory.turns:
-                for tc in trajectory.turns[-1].tool_calls:
-                    if tc.id in tool_outputs:
-                        tc.output = tool_outputs.pop(tc.id)
+            def _flush_tool_outputs() -> None:
+                """Patch any pending hook outputs onto the last turn's tool calls."""
+                if tool_outputs and trajectory.turns:
+                    for tc in trajectory.turns[-1].tool_calls:
+                        if tc.id in tool_outputs:
+                            tc.output = tool_outputs.pop(tc.id)
 
-        async for message in query(prompt=question, options=options):
-            if isinstance(message, AssistantMessage):
-                _flush_tool_outputs()
-                text = ""
-                tool_calls: list[ToolCall] = []
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        text += block.text
-                    elif isinstance(block, ToolUseBlock):
-                        tool_calls.append(
-                            ToolCall(name=block.name, input=block.input, id=block.id)
+            async for message in query(prompt=question, options=options):
+                if isinstance(message, AssistantMessage):
+                    _flush_tool_outputs()
+                    text = ""
+                    tool_calls: list[ToolCall] = []
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            text += block.text
+                        elif isinstance(block, ToolUseBlock):
+                            tool_calls.append(
+                                ToolCall(name=block.name, input=block.input, id=block.id)
+                            )
+                    usage = message.usage or {}
+                    trajectory.turns.append(
+                        TurnRecord(
+                            index=turn_index,
+                            text=text,
+                            tool_calls=tool_calls,
+                            input_tokens=usage.get("input_tokens", 0),
+                            output_tokens=usage.get("output_tokens", 0),
                         )
-                usage = message.usage or {}
-                trajectory.turns.append(
-                    TurnRecord(
-                        index=turn_index,
-                        text=text,
-                        tool_calls=tool_calls,
-                        input_tokens=usage.get("input_tokens", 0),
-                        output_tokens=usage.get("output_tokens", 0),
                     )
-                )
-                turn_index += 1
-            elif isinstance(message, ResultMessage):
-                _flush_tool_outputs()
-                answer = message.result or ""
-                _log.info(
-                    "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "
-                    "input_tokens=%d, output_tokens=%d)",
-                    message.stop_reason,
-                    len(trajectory.turns),
-                    trajectory.total_input_tokens,
-                    trajectory.total_output_tokens,
-                )
+                    turn_index += 1
+                elif isinstance(message, ResultMessage):
+                    _flush_tool_outputs()
+                    answer = message.result or ""
+                    _log.info(
+                        "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "
+                        "input_tokens=%d, output_tokens=%d)",
+                        message.stop_reason,
+                        len(trajectory.turns),
+                        trajectory.total_input_tokens,
+                        trajectory.total_output_tokens,
+                    )
 
-        return AgentResult(question=question, answer=answer, trajectory=trajectory)
+            annotate_result(span, answer=answer, trajectory=trajectory)
+            return AgentResult(question=question, answer=answer, trajectory=trajectory)

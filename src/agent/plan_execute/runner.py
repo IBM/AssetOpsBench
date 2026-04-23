@@ -16,6 +16,7 @@ import logging
 from pathlib import Path
 
 from llm import LLMBackend
+from observability import agent_run_span, annotate_result
 
 from .executor import Executor
 from .models import OrchestratorResult
@@ -83,32 +84,38 @@ class PlanExecuteRunner(AgentRunner):
             OrchestratorResult with the final answer, the generated plan, and
             the per-step execution trajectory.
         """
-        # 1. Discover
-        _log.info("Discovering server capabilities...")
-        server_descriptions = await self._executor.get_server_descriptions()
+        with agent_run_span(
+            "plan-execute", model=self._llm.model_id, question=question
+        ) as span:
+            # 1. Discover
+            _log.info("Discovering server capabilities...")
+            server_descriptions = await self._executor.get_server_descriptions()
 
-        # 2. Plan
-        _log.info("Planning...")
-        plan = self._planner.generate_plan(question, server_descriptions)
-        _log.info("Plan has %d step(s).", len(plan.steps))
+            # 2. Plan
+            _log.info("Planning...")
+            plan = self._planner.generate_plan(question, server_descriptions)
+            _log.info("Plan has %d step(s).", len(plan.steps))
 
-        # 3. Execute
-        trajectory = await self._executor.execute_plan(plan, question)
+            # 3. Execute
+            trajectory = await self._executor.execute_plan(plan, question)
 
-        # 4. Summarise
-        _log.info("Summarising...")
-        results_text = "\n\n".join(
-            f"Step {r.step_number} — {r.task} (server: {r.server}):\n"
-            + (r.response if r.success else f"ERROR: {r.error}")
-            for r in trajectory
-        )
-        answer = self._llm.generate(
-            _SUMMARIZE_PROMPT.format(question=question, results=results_text)
-        )
+            # 4. Summarise
+            _log.info("Summarising...")
+            results_text = "\n\n".join(
+                f"Step {r.step_number} — {r.task} (server: {r.server}):\n"
+                + (r.response if r.success else f"ERROR: {r.error}")
+                for r in trajectory
+            )
+            answer = self._llm.generate(
+                _SUMMARIZE_PROMPT.format(question=question, results=results_text)
+            )
 
-        return OrchestratorResult(
-            question=question,
-            answer=answer,
-            plan=plan,
-            trajectory=trajectory,
-        )
+            result = OrchestratorResult(
+                question=question,
+                answer=answer,
+                plan=plan,
+                trajectory=trajectory,
+            )
+            span.set_attribute("agent.plan.steps", len(plan.steps))
+            annotate_result(span, answer=answer)
+            return result

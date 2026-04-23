@@ -12,3 +12,12 @@ class LLMBackend(ABC):
     def generate(self, prompt: str, temperature: float = 0.0) -> str:
         """Generate text given a prompt."""
         ...
+
+    @property
+    def model_id(self) -> str:
+        """Return the backend's model identifier, or ``"unknown"``.
+
+        Default impl reads ``self._model_id`` if present so existing
+        subclasses work without modification.
+        """
+        return getattr(self, "_model_id", "unknown")

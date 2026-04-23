@@ -129,9 +129,12 @@ async def _run(args: argparse.Namespace) -> None:
 def main() -> None:
     from dotenv import load_dotenv
 
+    from observability import init_tracing
+
     load_dotenv()
     args = _build_parser().parse_args()
     _setup_logging(args.verbose)
+    init_tracing("openai-agent")
     asyncio.run(_run(args))
 
 

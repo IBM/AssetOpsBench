@@ -22,6 +22,8 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
 
+from observability import agent_run_span, annotate_result
+
 from ..models import AgentResult
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
@@ -204,56 +206,60 @@ class DeepAgentRunner(AgentRunner):
         Returns:
             :class:`AgentResult` with the final answer and full trajectory.
         """
-        from deepagents import create_deep_agent
-        from langchain_mcp_adapters.client import MultiServerMCPClient
+        with agent_run_span(
+            "deep-agent", model=self._model_id, question=question
+        ) as span:
+            from deepagents import create_deep_agent
+            from langchain_mcp_adapters.client import MultiServerMCPClient
 
-        connections = _build_mcp_connections(self._resolved_server_paths)
-        client = MultiServerMCPClient(connections) if connections else None
-        tools = await client.get_tools() if client is not None else []
+            connections = _build_mcp_connections(self._resolved_server_paths)
+            client = MultiServerMCPClient(connections) if connections else None
+            tools = await client.get_tools() if client is not None else []
 
-        chat_model = _build_chat_model(self._model_id)
-        agent = create_deep_agent(
-            model=chat_model,
-            tools=tools,
-            system_prompt=_SYSTEM_PROMPT,
-        )
+            chat_model = _build_chat_model(self._model_id)
+            agent = create_deep_agent(
+                model=chat_model,
+                tools=tools,
+                system_prompt=_SYSTEM_PROMPT,
+            )
 
-        _log.info(
-            "DeepAgentRunner: starting query (model=%s, tools=%d)",
-            self._model_id,
-            len(tools),
-        )
+            _log.info(
+                "DeepAgentRunner: starting query (model=%s, tools=%d)",
+                self._model_id,
+                len(tools),
+            )
 
-        state = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": question}]},
-            config={"recursion_limit": self._recursion_limit},
-        )
+            state = await agent.ainvoke(
+                {"messages": [{"role": "user", "content": question}]},
+                config={"recursion_limit": self._recursion_limit},
+            )
 
-        messages = state.get("messages", []) if isinstance(state, dict) else []
-        trajectory = _build_trajectory(messages)
+            messages = state.get("messages", []) if isinstance(state, dict) else []
+            trajectory = _build_trajectory(messages)
 
-        answer = ""
-        for msg in reversed(messages):
-            if isinstance(msg, AIMessage):
-                if isinstance(msg.content, str) and msg.content.strip():
-                    answer = msg.content
-                    break
-                if isinstance(msg.content, list):
-                    parts = [
-                        p.get("text", "")
-                        for p in msg.content
-                        if isinstance(p, dict) and p.get("type") == "text"
-                    ]
-                    joined = "".join(parts).strip()
-                    if joined:
-                        answer = joined
+            answer = ""
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage):
+                    if isinstance(msg.content, str) and msg.content.strip():
+                        answer = msg.content
                         break
+                    if isinstance(msg.content, list):
+                        parts = [
+                            p.get("text", "")
+                            for p in msg.content
+                            if isinstance(p, dict) and p.get("type") == "text"
+                        ]
+                        joined = "".join(parts).strip()
+                        if joined:
+                            answer = joined
+                            break
 
-        _log.info(
-            "DeepAgentRunner: done (turns=%d, input_tokens=%d, output_tokens=%d)",
-            len(trajectory.turns),
-            trajectory.total_input_tokens,
-            trajectory.total_output_tokens,
-        )
+            _log.info(
+                "DeepAgentRunner: done (turns=%d, input_tokens=%d, output_tokens=%d)",
+                len(trajectory.turns),
+                trajectory.total_input_tokens,
+                trajectory.total_output_tokens,
+            )
 
-        return AgentResult(question=question, answer=answer, trajectory=trajectory)
+            annotate_result(span, answer=answer, trajectory=trajectory)
+            return AgentResult(question=question, answer=answer, trajectory=trajectory)

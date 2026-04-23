@@ -25,6 +25,8 @@ from openai import AsyncOpenAI
 from agents import Agent, ModelProvider, OpenAIChatCompletionsModel, RunConfig, Runner, set_tracing_disabled
 from agents.mcp import MCPServerStdio
 
+from observability import agent_run_span, annotate_result
+
 from ..models import AgentResult
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
@@ -230,49 +232,53 @@ class OpenAIAgentRunner(AgentRunner):
         Returns:
             AgentResult with the final answer and full execution trajectory.
         """
-        mcp_servers = _build_mcp_servers(self._resolved_server_paths)
+        with agent_run_span(
+            "openai-agent", model=self._model_id, question=question
+        ) as span:
+            mcp_servers = _build_mcp_servers(self._resolved_server_paths)
 
-        # Use async context managers to manage MCP server lifecycle
-        async with _managed_servers(mcp_servers) as active_servers:
-            agent = Agent(
-                name="AssetOps Assistant",
-                instructions=_SYSTEM_PROMPT,
-                mcp_servers=active_servers,
-                model=self._model,
-            )
+            # Use async context managers to manage MCP server lifecycle
+            async with _managed_servers(mcp_servers) as active_servers:
+                agent = Agent(
+                    name="AssetOps Assistant",
+                    instructions=_SYSTEM_PROMPT,
+                    mcp_servers=active_servers,
+                    model=self._model,
+                )
 
-            _log.info(
-                "OpenAIAgentRunner: starting query (model=%s, servers=%d)",
-                self._model,
-                len(active_servers),
-            )
+                _log.info(
+                    "OpenAIAgentRunner: starting query (model=%s, servers=%d)",
+                    self._model,
+                    len(active_servers),
+                )
 
-            run_kwargs: dict = dict(max_turns=self._max_turns)
-            if self._run_config is not None:
-                run_kwargs["run_config"] = self._run_config
+                run_kwargs: dict = dict(max_turns=self._max_turns)
+                if self._run_config is not None:
+                    run_kwargs["run_config"] = self._run_config
 
-            result = await Runner.run(
-                agent,
-                question,
-                **run_kwargs,
-            )
+                result = await Runner.run(
+                    agent,
+                    question,
+                    **run_kwargs,
+                )
 
-            answer = result.final_output or ""
-            trajectory = _build_trajectory(result)
+                answer = result.final_output or ""
+                trajectory = _build_trajectory(result)
 
-            _log.info(
-                "OpenAIAgentRunner: done (turns=%d, input_tokens=%d, "
-                "output_tokens=%d)",
-                len(trajectory.turns),
-                trajectory.total_input_tokens,
-                trajectory.total_output_tokens,
-            )
+                _log.info(
+                    "OpenAIAgentRunner: done (turns=%d, input_tokens=%d, "
+                    "output_tokens=%d)",
+                    len(trajectory.turns),
+                    trajectory.total_input_tokens,
+                    trajectory.total_output_tokens,
+                )
 
-            return AgentResult(
-                question=question,
-                answer=answer,
-                trajectory=trajectory,
-            )
+                annotate_result(span, answer=answer, trajectory=trajectory)
+                return AgentResult(
+                    question=question,
+                    answer=answer,
+                    trajectory=trajectory,
+                )
 
 
 class _managed_servers:
