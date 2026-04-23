@@ -24,6 +24,9 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [OpenAI Agent](#openai-agent)
   - [How it works](#how-it-works-2)
   - [CLI](#cli-2)
+- [Deep Agent](#deep-agent)
+  - [How it works](#how-it-works-3)
+  - [CLI](#cli-3)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
 
@@ -125,6 +128,10 @@ uv run vibration-mcp-server
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
 **OpenAI Agents SDK** — openai-agent runner (always routed through LiteLLM proxy via `litellm_proxy/` prefix)
+
+> Uses the same `LITELLM_API_KEY` and `LITELLM_BASE_URL` variables as the plan-execute runner above.
+
+**LangChain deep-agents** — deep-agent runner (defaults to LiteLLM proxy via `litellm_proxy/` prefix)
 
 > Uses the same `LITELLM_API_KEY` and `LITELLM_BASE_URL` variables as the plan-execute runner above.
 
@@ -407,6 +414,55 @@ uv run openai-agent --model-id litellm_proxy/azure/gpt-5.4 --json "$query" | jq 
 
 ---
 
+## Deep Agent
+
+`src/agent/deep_agent/` uses the **[LangChain deep-agents](https://docs.langchain.com/oss/python/deepagents/overview)** framework to drive the same MCP servers. The deep agent ships with built-in planning (`write_todos`), a virtual filesystem, and sub-agent delegation. MCP servers are bridged to LangChain tools via `langchain-mcp-adapters`.
+
+### How it works
+
+```
+DeepAgentRunner.run(question)
+  │
+  └─ deep-agents agentic loop (LangGraph under the hood)
+       • MultiServerMCPClient exposes each MCP server's tools as LangChain tools
+       • the deep agent plans, calls tools, and writes to its virtual filesystem
+       • final answer is the content of the last AIMessage
+```
+
+### CLI
+
+After `uv sync`, the `deep-agent` command is available:
+
+```bash
+uv run deep-agent "$query"
+```
+
+Flags:
+
+| Flag                   | Description                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `--model-id MODEL_ID`  | LiteLLM-prefixed or native provider model string (default: `litellm_proxy/aws/claude-opus-4-6`) |
+| `--recursion-limit N`  | Maximum graph recursion steps (default: 100)                                     |
+| `--show-trajectory`    | Print each turn's text, tool calls, and token usage                              |
+| `--json`               | Output full trajectory (turns, tool calls, token counts) as JSON                 |
+| `--verbose`            | Show INFO-level logs on stderr                                                   |
+
+Required env vars (for `litellm_proxy/*` models): `LITELLM_API_KEY`, `LITELLM_BASE_URL`
+
+Examples:
+
+```bash
+uv run deep-agent --model-id litellm_proxy/aws/claude-opus-4-6 "$query"
+
+# Show full trajectory (turns, tool calls, token usage)
+uv run deep-agent --show-trajectory "$query"
+
+# Machine-readable trajectory
+uv run deep-agent --json "$query" | jq .turns
+```
+
+---
+
 ## Running Tests
 
 Run the full suite from the repo root (unit + integration where services are available):
@@ -480,6 +536,13 @@ uv run pytest src/ -v
 │  ┌─────────────────────────────────────────┐                 │
 │  │  openai-agents SDK Runner.run loop      │                 │
 │  │  GPT decides tools + order autonomously                  │
+│  │  Trajectory (turns, tool calls, tokens) collected        │
+│  └─────────────────────────────────────────┘                 │
+│                                                              │
+│  DeepAgentRunner.run(question)                               │
+│  ┌─────────────────────────────────────────┐                 │
+│  │  LangChain deep-agents LangGraph loop   │                 │
+│  │  MCP tools bridged via langchain-mcp-adapters            │
 │  │  Trajectory (turns, tool calls, tokens) collected        │
 │  └─────────────────────────────────────────┘                 │
 └──────────────────────────┬───────────────────────────────────┘

@@ -6,6 +6,7 @@ from .plan_execute.runner import PlanExecuteRunner
 from .plan_execute.models import OrchestratorResult, Plan, PlanStep, StepResult
 from .claude_agent.runner import ClaudeAgentRunner
 from .openai_agent.runner import OpenAIAgentRunner
+from .deep_agent.runner import DeepAgentRunner
 
 __all__ = [
     "AgentRunner",
@@ -17,4 +18,5 @@ __all__ = [
     "StepResult",
     "ClaudeAgentRunner",
     "OpenAIAgentRunner",
+    "DeepAgentRunner",
 ]
