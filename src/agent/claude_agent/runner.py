@@ -24,28 +24,15 @@ from claude_agent_sdk import TextBlock, ToolUseBlock
 
 from observability import agent_run_span, annotate_result
 
-from ..models import AgentResult
-from .models import ToolCall, Trajectory, TurnRecord
+from .._litellm import LITELLM_PREFIX, resolve_model
+from .._prompts import AGENT_SYSTEM_PROMPT
+from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
-_LITELLM_PREFIX = "litellm_proxy/"
-
-
-def _resolve_model(model_id: str) -> str:
-    """Strip the ``litellm_proxy/`` prefix from a model ID.
-
-    Examples::
-
-        "litellm_proxy/aws/claude-opus-4-6"  ->  "aws/claude-opus-4-6"
-        "claude-opus-4-6"                    ->  "claude-opus-4-6"
-    """
-    if model_id.startswith(_LITELLM_PREFIX):
-        return model_id[len(_LITELLM_PREFIX):]
-    return model_id
 
 
 def _sdk_env(model_id: str) -> dict[str, str] | None:
@@ -55,7 +42,7 @@ def _sdk_env(model_id: str) -> dict[str, str] | None:
     under its own env var names.  We derive them from the LITELLM_* vars so
     the user never has to set SDK-internal vars directly.
     """
-    if not model_id.startswith(_LITELLM_PREFIX):
+    if not model_id.startswith(LITELLM_PREFIX):
         return None
     env: dict[str, str] = {}
     if base_url := os.environ.get("LITELLM_BASE_URL"):
@@ -63,15 +50,6 @@ def _sdk_env(model_id: str) -> dict[str, str] | None:
     if api_key := os.environ.get("LITELLM_API_KEY"):
         env["ANTHROPIC_API_KEY"] = api_key
     return env or None
-
-_SYSTEM_PROMPT = """\
-You are an industrial asset operations assistant with access to MCP tools for
-querying IoT sensor data, failure mode and symptom records, time-series
-forecasting models, and work order management.
-
-Answer the user's question concisely and accurately using the available tools.
-When you retrieve data, include the key numbers or names in your answer.
-"""
 
 
 def _build_mcp_servers(
@@ -118,7 +96,7 @@ class ClaudeAgentRunner(AgentRunner):
         permission_mode: str = "bypassPermissions",
     ) -> None:
         super().__init__(llm, server_paths)
-        self._model = _resolve_model(model)
+        self._model = resolve_model(model)
         self._sdk_env = _sdk_env(model)
         self._max_turns = max_turns
         self._permission_mode = permission_mode
@@ -142,7 +120,7 @@ class ClaudeAgentRunner(AgentRunner):
 
             options = ClaudeAgentOptions(
                 model=self._model,
-                system_prompt=_SYSTEM_PROMPT,
+                system_prompt=AGENT_SYSTEM_PROMPT,
                 mcp_servers=mcp_servers,
                 max_turns=self._max_turns,
                 permission_mode=self._permission_mode,

@@ -27,27 +27,15 @@ from agents.mcp import MCPServerStdio
 
 from observability import agent_run_span, annotate_result
 
-from ..models import AgentResult
+from .._litellm import LITELLM_PREFIX, resolve_model
+from .._prompts import AGENT_SYSTEM_PROMPT
+from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
-from .models import ToolCall, Trajectory, TurnRecord
 
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
-_LITELLM_PREFIX = "litellm_proxy/"
-
-def _resolve_model(model_id: str) -> str:
-    """Strip the ``litellm_proxy/`` prefix from a model ID.
-
-    Examples::
-
-        "litellm_proxy/Azure/gpt-5-2025-08-07"  ->  "Azure/gpt-5-2025-08-07"
-        "gpt-4o"                                 ->  "gpt-4o"
-    """
-    if model_id.startswith(_LITELLM_PREFIX):
-        return model_id[len(_LITELLM_PREFIX):]
-    return model_id
 
 
 def _build_run_config(model_id: str) -> RunConfig | None:
@@ -60,7 +48,7 @@ def _build_run_config(model_id: str) -> RunConfig | None:
 
     Returns ``None`` for direct OpenAI API usage.
     """
-    if not model_id.startswith(_LITELLM_PREFIX):
+    if not model_id.startswith(LITELLM_PREFIX):
         return None
 
     base_url = os.environ.get("LITELLM_BASE_URL")
@@ -68,10 +56,10 @@ def _build_run_config(model_id: str) -> RunConfig | None:
     if not base_url or not api_key:
         raise ValueError(
             "LITELLM_BASE_URL and LITELLM_API_KEY must be set "
-            f"when using {_LITELLM_PREFIX!r} model prefix"
+            f"when using {LITELLM_PREFIX!r} model prefix"
         )
 
-    resolved = _resolve_model(model_id)
+    resolved = resolve_model(model_id)
     client = AsyncOpenAI(base_url=base_url, api_key=api_key)
     set_tracing_disabled(disabled=True)
 
@@ -83,16 +71,6 @@ def _build_run_config(model_id: str) -> RunConfig | None:
             )
 
     return RunConfig(model_provider=_LiteLLMModelProvider())
-
-
-_SYSTEM_PROMPT = """\
-You are an industrial asset operations assistant with access to MCP tools for
-querying IoT sensor data, failure mode and symptom records, time-series
-forecasting models, and work order management.
-
-Answer the user's question concisely and accurately using the available tools.
-When you retrieve data, include the key numbers or names in your answer.
-"""
 
 
 def _build_mcp_servers(
@@ -216,7 +194,7 @@ class OpenAIAgentRunner(AgentRunner):
     ) -> None:
         super().__init__(llm, server_paths)
         self._model_id = model
-        self._model = _resolve_model(model)
+        self._model = resolve_model(model)
         self._run_config = _build_run_config(model)
         self._max_turns = max_turns
         self._resolved_server_paths: dict[str, Path | str] = (
@@ -241,7 +219,7 @@ class OpenAIAgentRunner(AgentRunner):
             async with _managed_servers(mcp_servers) as active_servers:
                 agent = Agent(
                     name="AssetOps Assistant",
-                    instructions=_SYSTEM_PROMPT,
+                    instructions=AGENT_SYSTEM_PROMPT,
                     mcp_servers=active_servers,
                     model=self._model,
                 )
