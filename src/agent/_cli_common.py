@@ -11,10 +11,12 @@ each CLI only has to encode its runner-specific differences
 from __future__ import annotations
 
 import argparse
+import asyncio
 import dataclasses
 import json
 import logging
 import sys
+from typing import Awaitable, Callable
 
 LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 LOG_DATE_FORMAT = "%H:%M:%S"
@@ -107,3 +109,25 @@ def print_result(result, *, show_trajectory: bool, output_json: bool) -> None:
     if show_trajectory:
         print_trajectory(result.trajectory)
     print_answer(result.answer)
+
+
+def run_sdk_cli(
+    service_name: str,
+    build_parser: Callable[[], argparse.ArgumentParser],
+    run_coro: Callable[[argparse.Namespace], Awaitable[None]],
+) -> None:
+    """Run the standard SDK-CLI lifecycle.
+
+    Loads ``.env``, parses args with the caller's parser factory, configures
+    stderr logging, initialises OTEL tracing under *service_name*, and runs
+    *run_coro* to completion via :func:`asyncio.run`.
+    """
+    from dotenv import load_dotenv
+
+    from observability import init_tracing
+
+    load_dotenv()
+    args = build_parser().parse_args()
+    setup_logging(args.verbose)
+    init_tracing(service_name)
+    asyncio.run(run_coro(args))

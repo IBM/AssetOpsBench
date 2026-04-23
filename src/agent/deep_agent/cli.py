@@ -10,9 +10,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import asyncio
 
-from .._cli_common import add_common_args, print_result, setup_logging
+from .._cli_common import add_common_args, print_result, run_sdk_cli
 
 _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
 
@@ -61,15 +60,7 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    from dotenv import load_dotenv
-
-    from observability import init_tracing
-
-    load_dotenv()
-    args = _build_parser().parse_args()
-    setup_logging(args.verbose)
-    init_tracing("deep-agent")
-    asyncio.run(_run(args))
+    run_sdk_cli("deep-agent", _build_parser, _run)
 
 
 if __name__ == "__main__":

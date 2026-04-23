@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import cached_property
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -174,6 +175,11 @@ class DeepAgentRunner(AgentRunner):
             server_paths if server_paths is not None else dict(DEFAULT_SERVER_PATHS)
         )
 
+    @cached_property
+    def _chat_model(self):
+        """LangChain chat model, built once per runner instance."""
+        return _build_chat_model(self._model_id)
+
     async def run(self, question: str) -> AgentResult:
         """Run the deep-agents loop for *question*.
 
@@ -193,9 +199,8 @@ class DeepAgentRunner(AgentRunner):
             client = MultiServerMCPClient(connections) if connections else None
             tools = await client.get_tools() if client is not None else []
 
-            chat_model = _build_chat_model(self._model_id)
             agent = create_deep_agent(
-                model=chat_model,
+                model=self._chat_model,
                 tools=tools,
                 system_prompt=AGENT_SYSTEM_PROMPT,
             )
