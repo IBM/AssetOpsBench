@@ -25,6 +25,7 @@ from claude_agent_sdk import TextBlock, ToolUseBlock
 from observability import agent_run_span, annotate_result
 
 from .._litellm import LITELLM_PREFIX, resolve_model
+from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
@@ -49,15 +50,6 @@ def _sdk_env(model_id: str) -> dict[str, str] | None:
     if api_key := os.environ.get("LITELLM_API_KEY"):
         env["ANTHROPIC_API_KEY"] = api_key
     return env or None
-
-_SYSTEM_PROMPT = """\
-You are an industrial asset operations assistant with access to MCP tools for
-querying IoT sensor data, failure mode and symptom records, time-series
-forecasting models, and work order management.
-
-Answer the user's question concisely and accurately using the available tools.
-When you retrieve data, include the key numbers or names in your answer.
-"""
 
 
 def _build_mcp_servers(
@@ -128,7 +120,7 @@ class ClaudeAgentRunner(AgentRunner):
 
             options = ClaudeAgentOptions(
                 model=self._model,
-                system_prompt=_SYSTEM_PROMPT,
+                system_prompt=AGENT_SYSTEM_PROMPT,
                 mcp_servers=mcp_servers,
                 max_turns=self._max_turns,
                 permission_mode=self._permission_mode,

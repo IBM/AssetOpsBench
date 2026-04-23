@@ -18,6 +18,8 @@ import os
 
 from .base import LLMBackend
 
+_WATSONX_PREFIX = "watsonx/"
+
 
 class LiteLLMBackend(LLMBackend):
     """LLM backend using the litellm library.
@@ -41,7 +43,7 @@ class LiteLLMBackend(LLMBackend):
             "max_tokens": 2048,
         }
 
-        if self._model_id.startswith("watsonx/"):
+        if self._model_id.startswith(_WATSONX_PREFIX):
             kwargs["api_key"] = os.environ["WATSONX_APIKEY"]
             kwargs["project_id"] = os.environ["WATSONX_PROJECT_ID"]
             if url := os.environ.get("WATSONX_URL"):
