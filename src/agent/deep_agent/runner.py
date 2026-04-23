@@ -25,6 +25,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from observability import agent_run_span, annotate_result
 
 from .._litellm import LITELLM_PREFIX, resolve_model
+from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
@@ -63,16 +64,6 @@ def _build_chat_model(model_id: str):
     from langchain.chat_models import init_chat_model
 
     return init_chat_model(model_id)
-
-
-_SYSTEM_PROMPT = """\
-You are an industrial asset operations assistant with access to MCP tools for
-querying IoT sensor data, failure mode and symptom records, time-series
-forecasting models, and work order management.
-
-Answer the user's question concisely and accurately using the available tools.
-When you retrieve data, include the key numbers or names in your answer.
-"""
 
 
 def _build_mcp_connections(
@@ -206,7 +197,7 @@ class DeepAgentRunner(AgentRunner):
             agent = create_deep_agent(
                 model=chat_model,
                 tools=tools,
-                system_prompt=_SYSTEM_PROMPT,
+                system_prompt=AGENT_SYSTEM_PROMPT,
             )
 
             _log.info(

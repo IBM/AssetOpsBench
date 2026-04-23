@@ -28,6 +28,7 @@ from agents.mcp import MCPServerStdio
 from observability import agent_run_span, annotate_result
 
 from .._litellm import LITELLM_PREFIX, resolve_model
+from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
@@ -70,16 +71,6 @@ def _build_run_config(model_id: str) -> RunConfig | None:
             )
 
     return RunConfig(model_provider=_LiteLLMModelProvider())
-
-
-_SYSTEM_PROMPT = """\
-You are an industrial asset operations assistant with access to MCP tools for
-querying IoT sensor data, failure mode and symptom records, time-series
-forecasting models, and work order management.
-
-Answer the user's question concisely and accurately using the available tools.
-When you retrieve data, include the key numbers or names in your answer.
-"""
 
 
 def _build_mcp_servers(
@@ -228,7 +219,7 @@ class OpenAIAgentRunner(AgentRunner):
             async with _managed_servers(mcp_servers) as active_servers:
                 agent = Agent(
                     name="AssetOps Assistant",
-                    instructions=_SYSTEM_PROMPT,
+                    instructions=AGENT_SYSTEM_PROMPT,
                     mcp_servers=active_servers,
                     model=self._model,
                 )
