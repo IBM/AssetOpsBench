@@ -26,7 +26,7 @@ from openai import AsyncOpenAI
 from agents import Agent, ModelProvider, OpenAIChatCompletionsModel, RunConfig, Runner, set_tracing_disabled
 from agents.mcp import MCPServerStdio
 
-from observability import agent_run_span, annotate_result
+from observability import agent_run_span
 
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
@@ -252,7 +252,11 @@ class OpenAIAgentRunner(AgentRunner):
                     trajectory.total_output_tokens,
                 )
 
-                annotate_result(span, answer=answer, trajectory=trajectory)
+                span.set_attribute("agent.answer.length", len(answer))
+                span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
+                span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
+                span.set_attribute("agent.turns", len(trajectory.turns))
+                span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
                 return AgentResult(
                     question=question,
                     answer=answer,

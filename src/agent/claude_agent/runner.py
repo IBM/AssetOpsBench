@@ -22,7 +22,7 @@ from pathlib import Path
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, HookMatcher, ResultMessage, query
 from claude_agent_sdk import TextBlock, ToolUseBlock
 
-from observability import agent_run_span, annotate_result
+from observability import agent_run_span
 
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
@@ -99,6 +99,7 @@ class ClaudeAgentRunner(AgentRunner):
         self._sdk_env = _sdk_env(model)
         self._max_turns = max_turns
         self._permission_mode = permission_mode
+        self._mcp_servers = _build_mcp_servers(self._server_paths)
 
     async def run(self, question: str) -> AgentResult:
         """Run the claude-agent-sdk loop for *question*.
@@ -112,12 +113,10 @@ class ClaudeAgentRunner(AgentRunner):
         with agent_run_span(
             "claude-agent", model=self._model, question=question
         ) as span:
-            mcp_servers = _build_mcp_servers(self._server_paths)
-
             options = ClaudeAgentOptions(
                 model=self._model,
                 system_prompt=AGENT_SYSTEM_PROMPT,
-                mcp_servers=mcp_servers,
+                mcp_servers=self._mcp_servers,
                 max_turns=self._max_turns,
                 permission_mode=self._permission_mode,
                 env=self._sdk_env,
@@ -181,5 +180,9 @@ class ClaudeAgentRunner(AgentRunner):
                         trajectory.total_output_tokens,
                     )
 
-            annotate_result(span, answer=answer, trajectory=trajectory)
+            span.set_attribute("agent.answer.length", len(answer))
+            span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
+            span.set_attribute("agent.turns", len(trajectory.turns))
+            span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
             return AgentResult(question=question, answer=answer, trajectory=trajectory)

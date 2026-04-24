@@ -10,16 +10,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
-import logging
 import sys
 from pathlib import Path
 
-_DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+from ._cli_common import HR, add_common_args, run_sdk_cli
 
-_LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
-_LOG_DATE_FORMAT = "%H:%M:%S"
+_DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -27,7 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="plan-execute",
         description="Run a question through the MCP plan-execute workflow.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"""
+        epilog="""
 model-id format:
   The provider is encoded in the model-id prefix:
     watsonx/<model>          IBM WatsonX  (e.g. watsonx/meta-llama/llama-3-3-70b-instruct)
@@ -50,76 +47,24 @@ examples:
   plan-execute --verbose --show-trajectory --json "How many IoT observations exist for CH-1?"
 """,
     )
-    parser.add_argument("question", help="The question to answer.")
-    parser.add_argument(
-        "--model-id",
-        default=_DEFAULT_MODEL,
-        metavar="MODEL_ID",
-        help=f"litellm model string with provider prefix (default: {_DEFAULT_MODEL}).",
-    )
+    add_common_args(parser, default_model=_DEFAULT_MODEL)
     parser.add_argument(
         "--server",
         action="append",
         metavar="NAME=PATH",
         dest="servers",
         default=[],
-        help=(
-            "Register an MCP server as NAME=PATH. "
-            "Overrides the default servers. "
-            "Repeatable."
-        ),
+        help="Register an MCP server as NAME=PATH. Overrides the default servers. Repeatable.",
     )
     parser.add_argument(
         "--show-plan",
         action="store_true",
         help="Print the generated plan before execution.",
     )
-    parser.add_argument(
-        "--show-trajectory",
-        action="store_true",
-        help="Print each step result after execution.",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        dest="output_json",
-        help="Output the full result (answer, plan, trajectory) as JSON.",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Show INFO-level progress logs on stderr (default: WARNING+ only).",
-    )
-    parser.add_argument(
-        "--run-id",
-        metavar="ID",
-        default=None,
-        help=(
-            "Identifier recorded on the root OTEL span for this run. "
-            "Auto-generated (UUID4) if omitted."
-        ),
-    )
-    parser.add_argument(
-        "--scenario-id",
-        metavar="ID",
-        default=None,
-        help="Benchmark scenario identifier recorded on the root OTEL span.",
-    )
     return parser
 
 
-def _setup_logging(verbose: bool) -> None:
-    """Configure root logger to stderr; level depends on --verbose."""
-    level = logging.INFO if verbose else logging.WARNING
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATE_FORMAT))
-    logging.root.handlers.clear()
-    logging.root.addHandler(handler)
-    logging.root.setLevel(level)
-
-
 def _build_llm(model_id: str):
-    """Instantiate the LiteLLMBackend for the given model_id."""
     try:
         from llm.litellm import LiteLLMBackend
     except ImportError as exc:
@@ -133,7 +78,6 @@ def _build_llm(model_id: str):
 
 
 def _parse_servers(entries: list[str]) -> dict[str, Path] | None:
-    """Parse NAME=PATH pairs into a server_paths dict, or None if empty."""
     if not entries:
         return None
     result: dict[str, Path] = {}
@@ -150,9 +94,9 @@ def _parse_servers(entries: list[str]) -> dict[str, Path] | None:
 
 
 def _print_section(title: str) -> None:
-    print(f"\n{'─' * 60}")
+    print(f"\n{HR}")
     print(f"  {title}")
-    print(f"{'─' * 60}")
+    print(HR)
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -221,20 +165,7 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    import uuid
-
-    from dotenv import load_dotenv
-
-    from observability import init_tracing, set_run_context
-
-    load_dotenv()
-    args = _build_parser().parse_args()
-    _setup_logging(args.verbose)
-    init_tracing("plan-execute")
-    if args.run_id is None:
-        args.run_id = str(uuid.uuid4())
-    set_run_context(run_id=args.run_id, scenario_id=args.scenario_id)
-    asyncio.run(_run(args))
+    run_sdk_cli("plan-execute", _build_parser, _run)
 
 
 if __name__ == "__main__":

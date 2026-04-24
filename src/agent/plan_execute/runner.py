@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 
 from llm import LLMBackend
-from observability import agent_run_span, annotate_result
+from observability import agent_run_span
 
 from .executor import Executor
 from .models import OrchestratorResult
@@ -117,5 +117,5 @@ class PlanExecuteRunner(AgentRunner):
                 trajectory=trajectory,
             )
             span.set_attribute("agent.plan.steps", len(plan.steps))
-            annotate_result(span, answer=answer)
+            span.set_attribute("agent.answer.length", len(answer or ""))
             return result
