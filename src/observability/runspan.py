@@ -15,12 +15,15 @@ Usage::
 from __future__ import annotations
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Iterator
 
 from .attributes import (
     AGENT_ANSWER_LENGTH,
     AGENT_QUESTION_LENGTH,
+    AGENT_RUN_ID,
     AGENT_RUNNER,
+    AGENT_SCENARIO_ID,
     AGENT_TOOL_CALLS,
     AGENT_TURNS,
     GEN_AI_REQUEST_MODEL,
@@ -29,6 +32,25 @@ from .attributes import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from .tracing import get_tracer
+
+_run_id_var: ContextVar[str | None] = ContextVar("agent_run_id", default=None)
+_scenario_id_var: ContextVar[str | None] = ContextVar("agent_scenario_id", default=None)
+
+
+def set_run_context(
+    *, run_id: str | None = None, scenario_id: str | None = None
+) -> None:
+    """Set the ambient run/scenario IDs read by the next :func:`agent_run_span`.
+
+    CLIs and scenario harnesses call this once before invoking
+    ``runner.run(...)``; the runner itself does not need to know about these
+    identifiers.  Values persist for the current task / thread until the
+    process exits or the callee overwrites them.
+    """
+    if run_id is not None:
+        _run_id_var.set(run_id)
+    if scenario_id is not None:
+        _scenario_id_var.set(scenario_id)
 
 
 def _system_from_model(model_id: str) -> str:
@@ -57,29 +79,43 @@ def agent_run_span(
     runner_name: str,
     model: str,
     question: str,
+    *,
+    run_id: str | None = None,
+    scenario_id: str | None = None,
 ) -> Iterator[Any]:
     """Start a root span for an agent ``run()`` call.
 
     Sets canonical attributes (``agent.runner``, ``gen_ai.system``,
-    ``gen_ai.request.model``, ``agent.question.length``) and records
-    exceptions on the span before re-raising.
+    ``gen_ai.request.model``, ``agent.question.length``, plus ``agent.run_id``
+    and ``agent.scenario_id`` when provided) and records exceptions on the
+    span before re-raising.
 
     Args:
         runner_name: Runner identifier for the ``agent.runner`` attribute.
         model: Full model ID, used to derive ``gen_ai.system`` and stored as
                ``gen_ai.request.model``.
         question: Incoming question (only its length is stored).
+        run_id: Unique identifier for this invocation; persisted saved traces
+                can be joined back to an evaluation record via this value.
+        scenario_id: Optional benchmark scenario identifier when the runner
+                     is executing against a known fixture.
 
     Yields:
         The underlying OTEL span (or a no-op shim) so callers can annotate
         it further via :func:`annotate_result` or ad-hoc ``set_attribute``.
     """
     tracer = get_tracer()
+    effective_run_id = run_id or _run_id_var.get()
+    effective_scenario_id = scenario_id or _scenario_id_var.get()
     with tracer.start_as_current_span(f"agent.run {runner_name}") as span:
         span.set_attribute(AGENT_RUNNER, runner_name)
         span.set_attribute(GEN_AI_SYSTEM, _system_from_model(model))
         span.set_attribute(GEN_AI_REQUEST_MODEL, model)
         span.set_attribute(AGENT_QUESTION_LENGTH, len(question))
+        if effective_run_id:
+            span.set_attribute(AGENT_RUN_ID, effective_run_id)
+        if effective_scenario_id:
+            span.set_attribute(AGENT_SCENARIO_ID, effective_scenario_id)
         try:
             yield span
         except Exception as exc:

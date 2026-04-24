@@ -90,6 +90,21 @@ examples:
         action="store_true",
         help="Show INFO-level progress logs on stderr (default: WARNING+ only).",
     )
+    parser.add_argument(
+        "--run-id",
+        metavar="ID",
+        default=None,
+        help=(
+            "Identifier recorded on the root OTEL span for this run. "
+            "Auto-generated (UUID4) if omitted."
+        ),
+    )
+    parser.add_argument(
+        "--scenario-id",
+        metavar="ID",
+        default=None,
+        help="Benchmark scenario identifier recorded on the root OTEL span.",
+    )
     return parser
 
 
@@ -206,14 +221,19 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    import uuid
+
     from dotenv import load_dotenv
 
-    from observability import init_tracing
+    from observability import init_tracing, set_run_context
 
     load_dotenv()
     args = _build_parser().parse_args()
     _setup_logging(args.verbose)
     init_tracing("plan-execute")
+    if args.run_id is None:
+        args.run_id = str(uuid.uuid4())
+    set_run_context(run_id=args.run_id, scenario_id=args.scenario_id)
     asyncio.run(_run(args))
 
 

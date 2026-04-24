@@ -16,6 +16,7 @@ import dataclasses
 import json
 import logging
 import sys
+import uuid
 from typing import Awaitable, Callable
 
 LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
@@ -62,6 +63,21 @@ def add_common_args(parser: argparse.ArgumentParser, default_model: str) -> None
         "--verbose",
         action="store_true",
         help="Show INFO-level logs on stderr.",
+    )
+    parser.add_argument(
+        "--run-id",
+        metavar="ID",
+        default=None,
+        help=(
+            "Identifier recorded on the root OTEL span for this run. "
+            "Auto-generated (UUID4) if omitted."
+        ),
+    )
+    parser.add_argument(
+        "--scenario-id",
+        metavar="ID",
+        default=None,
+        help="Benchmark scenario identifier recorded on the root OTEL span.",
     )
 
 
@@ -119,15 +135,21 @@ def run_sdk_cli(
     """Run the standard SDK-CLI lifecycle.
 
     Loads ``.env``, parses args with the caller's parser factory, configures
-    stderr logging, initialises OTEL tracing under *service_name*, and runs
-    *run_coro* to completion via :func:`asyncio.run`.
+    stderr logging, initialises OTEL tracing under *service_name*, auto-fills
+    ``args.run_id`` with a UUID4 when the user omitted ``--run-id``, seeds
+    the ambient run context so the root span gets
+    ``agent.run_id`` / ``agent.scenario_id`` attributes, and runs *run_coro*
+    to completion via :func:`asyncio.run`.
     """
     from dotenv import load_dotenv
 
-    from observability import init_tracing
+    from observability import init_tracing, set_run_context
 
     load_dotenv()
     args = build_parser().parse_args()
     setup_logging(args.verbose)
     init_tracing(service_name)
+    if getattr(args, "run_id", None) is None:
+        args.run_id = str(uuid.uuid4())
+    set_run_context(run_id=args.run_id, scenario_id=getattr(args, "scenario_id", None))
     asyncio.run(run_coro(args))

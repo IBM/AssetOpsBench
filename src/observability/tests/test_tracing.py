@@ -13,8 +13,15 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from observability import agent_run_span, annotate_result, get_tracer, init_tracing
+from observability import (
+    agent_run_span,
+    annotate_result,
+    get_tracer,
+    init_tracing,
+    set_run_context,
+)
 from observability import tracing as _tracing
+from observability import runspan as _runspan
 from observability.runspan import _system_from_model
 
 
@@ -127,6 +134,53 @@ def test_annotate_result_without_trajectory(memory_exporter):
 
     s = memory_exporter.get_finished_spans()[0]
     assert s.attributes["agent.answer.length"] == 2
+    # When neither kwarg nor context is set, run_id is absent.
+    assert "agent.run_id" not in s.attributes
+    assert "agent.scenario_id" not in s.attributes
+
+
+def test_agent_run_span_kwargs_set_run_ids(memory_exporter):
+    """Explicit run_id / scenario_id kwargs land on the span."""
+    with agent_run_span(
+        "deep-agent",
+        model="aws/claude",
+        question="q",
+        run_id="run-42",
+        scenario_id="301",
+    ):
+        pass
+
+    s = memory_exporter.get_finished_spans()[0]
+    assert s.attributes["agent.run_id"] == "run-42"
+    assert s.attributes["agent.scenario_id"] == "301"
+
+
+def test_set_run_context_seeds_span(memory_exporter):
+    """set_run_context values propagate when kwargs are omitted."""
+    # Reset context so the test is independent of ordering.
+    _runspan._run_id_var.set(None)
+    _runspan._scenario_id_var.set(None)
+
+    set_run_context(run_id="ctx-run", scenario_id="scn-9")
+    with agent_run_span("claude-agent", model="anthropic/claude", question="q"):
+        pass
+
+    s = memory_exporter.get_finished_spans()[0]
+    assert s.attributes["agent.run_id"] == "ctx-run"
+    assert s.attributes["agent.scenario_id"] == "scn-9"
+
+
+def test_kwarg_overrides_context(memory_exporter):
+    """Explicit kwarg wins over set_run_context ambient value."""
+    _runspan._run_id_var.set(None)
+    set_run_context(run_id="ambient")
+    with agent_run_span(
+        "plan-execute", model="openai/gpt-5", question="q", run_id="explicit"
+    ):
+        pass
+
+    s = memory_exporter.get_finished_spans()[0]
+    assert s.attributes["agent.run_id"] == "explicit"
     assert "gen_ai.usage.input_tokens" not in s.attributes
 
 

@@ -28,6 +28,14 @@ GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 AGENT_RUNNER = "agent.runner"
 """Runner identifier: ``"plan-execute"``, ``"claude-agent"``, etc."""
 
+AGENT_RUN_ID = "agent.run_id"
+"""Unique identifier for a single agent invocation.  Set per-call so saved
+traces can be joined back to an evaluation record or scenario artifact."""
+
+AGENT_SCENARIO_ID = "agent.scenario_id"
+"""Optional benchmark scenario identifier (e.g. ``"301"`` for a vibration
+scenario).  Absent when the runner is driven ad-hoc via the CLI."""
+
 AGENT_QUESTION_LENGTH = "agent.question.length"
 """Character length of the incoming question (avoids putting PII on spans)."""
 
