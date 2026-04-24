@@ -22,24 +22,32 @@ trajectory.  Nothing is repeated.
 
 Metadata + aggregate metrics — always written when tracing is enabled:
 
+"SDK runners" below means claude-agent, openai-agent, deep-agent (which all
+expose turn/tool-call/token bookkeeping); plan-execute's loop is step-shaped
+and surfaces different attributes.
+
 | Attribute                     | Runner coverage   | Notes                                  |
 | ----------------------------- | ----------------- | -------------------------------------- |
 | `agent.runner`                | all               | `plan-execute` / `claude-agent` / …    |
 | `gen_ai.system`               | all               | Provider family (anthropic, openai…)   |
 | `gen_ai.request.model`        | all               | Full model ID                          |
-| `gen_ai.usage.input_tokens`   | all               | Sum across the run                     |
-| `gen_ai.usage.output_tokens`  | all               | Sum across the run                     |
-| `agent.turns`                 | all               | Number of turns                        |
-| `agent.tool_calls`            | all               | Total tool calls                       |
-| `agent.duration_ms`           | all               | Wall-clock of `run()`                  |
 | `agent.question.length`       | all               | Character length of the question       |
 | `agent.answer.length`         | all               | Character length of the final answer   |
+| `agent.duration_ms`           | all               | Wall-clock of `run()`                  |
 | `agent.run_id`                | all               | `--run-id` or auto-generated UUID4     |
 | `agent.scenario_id`           | all               | `--scenario-id` (omitted if unset)     |
+| `gen_ai.usage.input_tokens`   | SDK runners       | Sum across the run                     |
+| `gen_ai.usage.output_tokens`  | SDK runners       | Sum across the run                     |
+| `agent.turns`                 | SDK runners       | Number of turns                        |
+| `agent.tool_calls`            | SDK runners       | Total tool calls                       |
 | `agent.llm_time_ms`           | plan-execute      | Planning + summarisation LLM time      |
 | `agent.planning_time_ms`      | plan-execute      | `Planner.generate_plan` wall-clock     |
 | `agent.summarization_time_ms` | plan-execute      | Final summarise-LLM wall-clock         |
 | `agent.plan.steps`            | plan-execute      | Number of generated plan steps         |
+
+For plan-execute, token counts and turn/tool-call totals are not on the span
+— derive them from the trajectory file if needed (each `StepResult` records
+its own `duration_ms`; token usage is not currently surfaced).
 
 Per-tool timing is not captured for the three SDK runners — the
 `PreToolUse` hook that claude-agent needed broke compatibility with
@@ -55,7 +63,11 @@ redundant for OTEL UIs but convenient for jq on the JSONL file.
 ## Trajectory file layout
 
 When ``AGENT_TRAJECTORY_DIR`` is set, each runner writes
-``{AGENT_TRAJECTORY_DIR}/{run_id}.json``:
+``{AGENT_TRAJECTORY_DIR}/{run_id}.json``.  The `trajectory` field's shape
+depends on the runner.
+
+**SDK runners** (claude-agent, openai-agent, deep-agent) — object with
+`started_at` and `turns`:
 
 ```json
 {
@@ -81,6 +93,33 @@ When ``AGENT_TRAJECTORY_DIR`` is set, each runner writes
       ...
     ]
   }
+}
+```
+
+**plan-execute** — flat list of `StepResult` records (no `started_at`, no
+`turns` wrapper):
+
+```json
+{
+  "run_id": "bench-001",
+  "scenario_id": "304",
+  "runner": "plan-execute",
+  "model": "watsonx/meta-llama/llama-3-3-70b-instruct",
+  "question": "...",
+  "answer": "...",
+  "trajectory": [
+    {
+      "step_number": 1,
+      "task": "List sensors on Chiller 6",
+      "server": "iot",
+      "response": "...",
+      "error": null,
+      "tool": "sensors",
+      "tool_args": {"asset": "Chiller 6"},
+      "duration_ms": 412.8
+    },
+    ...
+  ]
 }
 ```
 
