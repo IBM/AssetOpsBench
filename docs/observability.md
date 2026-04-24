@@ -45,9 +45,10 @@ and surfaces different attributes.
 | `agent.summarization_time_ms` | plan-execute      | Final summarise-LLM wall-clock         |
 | `agent.plan.steps`            | plan-execute      | Number of generated plan steps         |
 
-For plan-execute, token counts and turn/tool-call totals are not on the span
-— derive them from the trajectory file if needed (each `StepResult` records
-its own `duration_ms`; token usage is not currently surfaced).
+plan-execute does not track token usage at all — `LLMBackend.generate()`
+returns only the completion text, so `gen_ai.usage.*` is absent from both
+the span and the trajectory.  Turn/tool-call totals are likewise not
+surfaced; per-step wall-clock is available on each `StepResult.duration_ms`.
 
 Per-tool timing is not captured for the three SDK runners — the
 `PreToolUse` hook that claude-agent needed broke compatibility with
