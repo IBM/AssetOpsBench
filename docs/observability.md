@@ -8,8 +8,9 @@ Each agent run produces two artifacts, joined by ``run_id``:
    and recognised by every OTEL-aware backend (Jaeger, Tempo, Langfuse,
    Grafana Cloud AI, Honeycomb).
 2. **Trajectory** — a per-run JSON file with *per-turn content*: turn
-   text, tool call inputs / outputs, per-turn token usage.  Written
-   directly by the agent runner alongside the trace.
+   text, tool call inputs / outputs, and (for SDK runners) per-turn
+   token usage.  Written directly by the agent runner alongside the
+   trace.
 
 Spans and trajectories complement each other without duplicating
 content: the span holds everything an observability UI needs to
@@ -45,12 +46,12 @@ surfaces different attributes.
 | `agent.summarization_time_ms` | plan-execute      | Final summarise-LLM wall-clock         |
 | `agent.plan.steps`            | plan-execute      | Number of generated plan steps         |
 
-For plan-execute, token counts are the run-wide sum across plan, per-step
-arg resolution, and summarise LLM calls — reported by a ``_TokenMeter``
-that wraps the backend and reads ``LLMResult`` from
-``LLMBackend.generate_with_usage``.  Turn/tool-call totals have no clean
-mapping to the step-shaped loop and are not surfaced (per-step wall-clock
-lives on each ``StepResult.duration_ms`` in the trajectory).
+For plan-execute, ``gen_ai.usage.*`` is the run-wide sum across planning,
+per-step arg-resolution, and summarisation LLM calls (provided the backend
+reports usage — ``LiteLLMBackend`` does; mocks return zero).  Turn and
+tool-call counts have no clean mapping to the step-shaped loop and are
+not surfaced; per-step wall-clock lives on each ``StepResult.duration_ms``
+in the trajectory.
 
 Per-tool timing is not captured for the three SDK runners — the
 `PreToolUse` hook that claude-agent needed broke compatibility with
