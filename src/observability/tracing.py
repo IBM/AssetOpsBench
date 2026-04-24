@@ -1,10 +1,17 @@
 """OpenTelemetry tracing setup for agent runners.
 
-Tracing is enabled iff ``OTEL_EXPORTER_OTLP_ENDPOINT`` (or its traces-specific
-variant) is set and ``OTEL_SDK_DISABLED`` is not ``"true"``.  Otherwise
-:func:`init_tracing` is a no-op and :func:`get_tracer` falls back to
-OTel's built-in ``ProxyTracer`` (whose spans are non-recording), so
-runner-side instrumentation code is safe to invoke unconditionally.
+Two independent sinks are supported; either or both can be enabled:
+
+* ``OTEL_TRACES_FILE`` — path to append OTLP-JSON lines to.  Writes happen
+  in-process; no Docker or Collector required.  The output format is
+  identical to the OpenTelemetry Collector's ``file`` exporter, so it can
+  be replayed into any OTLP backend later.
+* ``OTEL_EXPORTER_OTLP_ENDPOINT`` (or ``OTEL_EXPORTER_OTLP_TRACES_ENDPOINT``)
+  — ship spans over HTTP to a live collector (Jaeger, Tempo, Honeycomb, …).
+
+When neither is set, :func:`init_tracing` is a no-op and :func:`get_tracer`
+returns OTel's built-in proxy tracer (non-recording spans), so runner-side
+instrumentation code is safe to invoke unconditionally.
 
 ``BatchSpanProcessor`` buffers spans; an :func:`atexit` hook flushes the
 provider on process exit so the final agent run's spans are not dropped.
@@ -25,20 +32,28 @@ _initialized = False
 _init_lock = threading.Lock()
 
 
-def _tracing_enabled() -> bool:
-    if os.environ.get("OTEL_SDK_DISABLED", "").lower() == "true":
-        return False
+def _traces_file_path() -> str | None:
+    return os.environ.get("OTEL_TRACES_FILE") or None
+
+
+def _http_endpoint_set() -> bool:
     return bool(
         os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
         or os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
     )
 
 
+def _tracing_enabled() -> bool:
+    if os.environ.get("OTEL_SDK_DISABLED", "").lower() == "true":
+        return False
+    return bool(_traces_file_path()) or _http_endpoint_set()
+
+
 def init_tracing(service_name: str) -> None:
     """Initialize the global OTEL tracer provider.
 
-    Idempotent.  Silently does nothing when OTEL is disabled via env, so it
-    is safe to call unconditionally from CLI entry points.
+    Idempotent.  No-op when tracing isn't configured, so callers can invoke
+    unconditionally from CLI entry points.
     """
     global _initialized
     if _initialized:
@@ -47,9 +62,6 @@ def init_tracing(service_name: str) -> None:
         return
 
     try:
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-            OTLPSpanExporter,
-        )
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -62,9 +74,28 @@ def init_tracing(service_name: str) -> None:
             return
 
         provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
-        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+
+        if (path := _traces_file_path()) is not None:
+            from .file_exporter import OTLPJsonFileExporter
+
+            provider.add_span_processor(BatchSpanProcessor(OTLPJsonFileExporter(path)))
+            _log.info("OTEL file exporter enabled (path=%s).", path)
+
+        if _http_endpoint_set():
+            try:
+                from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                    OTLPSpanExporter,
+                )
+            except ImportError:
+                _log.warning(
+                    "opentelemetry-exporter-otlp-proto-http not installed; "
+                    "HTTP export disabled."
+                )
+            else:
+                provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+                _log.info("OTEL HTTP exporter enabled.")
+
         trace.set_tracer_provider(provider)
-        # Flush buffered spans on exit so the last run's root span isn't lost.
         atexit.register(provider.shutdown)
 
         try:

@@ -52,6 +52,20 @@ def test_init_tracing_skips_when_disabled(monkeypatch):
     assert _tracing._initialized is False
 
 
+def test_init_tracing_enables_with_file_only(monkeypatch, tmp_path):
+    """OTEL_TRACES_FILE alone is enough to activate tracing."""
+    monkeypatch.setattr(_tracing, "_initialized", False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    monkeypatch.setenv("OTEL_TRACES_FILE", str(tmp_path / "traces.jsonl"))
+    trace._TRACER_PROVIDER_SET_ONCE = type(trace._TRACER_PROVIDER_SET_ONCE)()  # type: ignore[attr-defined]
+    trace._TRACER_PROVIDER = None  # type: ignore[attr-defined]
+
+    init_tracing("test-service")
+    assert _tracing._initialized is True
+
+
 def test_get_tracer_returns_tracer():
     """get_tracer() always returns a usable tracer; no-op spans work too."""
     tracer = get_tracer()
