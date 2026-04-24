@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 
-from .base import LLMBackend
+from .base import LLMBackend, LLMResult
 
 _WATSONX_PREFIX = "watsonx/"
 
@@ -34,6 +34,11 @@ class LiteLLMBackend(LLMBackend):
         self._model_id = model_id
 
     def generate(self, prompt: str, temperature: float = 0.0) -> str:
+        return self.generate_with_usage(prompt, temperature).text
+
+    def generate_with_usage(
+        self, prompt: str, temperature: float = 0.0
+    ) -> LLMResult:
         import litellm
 
         kwargs: dict = {
@@ -53,4 +58,9 @@ class LiteLLMBackend(LLMBackend):
             kwargs["api_base"] = os.environ["LITELLM_BASE_URL"]
 
         response = litellm.completion(**kwargs)
-        return response.choices[0].message.content
+        usage = getattr(response, "usage", None)
+        return LLMResult(
+            text=response.choices[0].message.content,
+            input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
+            output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+        )

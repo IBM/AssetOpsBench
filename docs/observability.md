@@ -23,21 +23,21 @@ trajectory.  Nothing is repeated.
 Metadata + aggregate metrics — always written when tracing is enabled:
 
 "SDK runners" below means claude-agent, openai-agent, deep-agent (which all
-expose turn/tool-call/token bookkeeping); plan-execute's loop is step-shaped
-and surfaces different attributes.
+expose turn/tool-call bookkeeping); plan-execute's loop is step-shaped and
+surfaces different attributes.
 
 | Attribute                     | Runner coverage   | Notes                                  |
 | ----------------------------- | ----------------- | -------------------------------------- |
 | `agent.runner`                | all               | `plan-execute` / `claude-agent` / …    |
 | `gen_ai.system`               | all               | Provider family (anthropic, openai…)   |
 | `gen_ai.request.model`        | all               | Full model ID                          |
+| `gen_ai.usage.input_tokens`   | all               | Sum across the run                     |
+| `gen_ai.usage.output_tokens`  | all               | Sum across the run                     |
 | `agent.question.length`       | all               | Character length of the question       |
 | `agent.answer.length`         | all               | Character length of the final answer   |
 | `agent.duration_ms`           | all               | Wall-clock of `run()`                  |
 | `agent.run_id`                | all               | `--run-id` or auto-generated UUID4     |
 | `agent.scenario_id`           | all               | `--scenario-id` (omitted if unset)     |
-| `gen_ai.usage.input_tokens`   | SDK runners       | Sum across the run                     |
-| `gen_ai.usage.output_tokens`  | SDK runners       | Sum across the run                     |
 | `agent.turns`                 | SDK runners       | Number of turns                        |
 | `agent.tool_calls`            | SDK runners       | Total tool calls                       |
 | `agent.llm_time_ms`           | plan-execute      | Planning + summarisation LLM time      |
@@ -45,10 +45,12 @@ and surfaces different attributes.
 | `agent.summarization_time_ms` | plan-execute      | Final summarise-LLM wall-clock         |
 | `agent.plan.steps`            | plan-execute      | Number of generated plan steps         |
 
-plan-execute does not track token usage at all — `LLMBackend.generate()`
-returns only the completion text, so `gen_ai.usage.*` is absent from both
-the span and the trajectory.  Turn/tool-call totals are likewise not
-surfaced; per-step wall-clock is available on each `StepResult.duration_ms`.
+For plan-execute, token counts are the run-wide sum across plan, per-step
+arg resolution, and summarise LLM calls — reported by a ``_TokenMeter``
+that wraps the backend and reads ``LLMResult`` from
+``LLMBackend.generate_with_usage``.  Turn/tool-call totals have no clean
+mapping to the step-shaped loop and are not surfaced (per-step wall-clock
+lives on each ``StepResult.duration_ms`` in the trajectory).
 
 Per-tool timing is not captured for the three SDK runners — the
 `PreToolUse` hook that claude-agent needed broke compatibility with
