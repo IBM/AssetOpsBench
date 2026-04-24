@@ -66,67 +66,6 @@ When ``AGENT_TRAJECTORY_DIR`` is set, each runner writes
 ``{AGENT_TRAJECTORY_DIR}/{run_id}.json``.  The `trajectory` field's shape
 depends on the runner.
 
-**SDK runners** (claude-agent, openai-agent, deep-agent) — object with
-`started_at` and `turns`:
-
-```json
-{
-  "run_id": "bench-001",
-  "scenario_id": "304",
-  "runner": "deep-agent",
-  "model": "litellm_proxy/aws/claude-opus-4-6",
-  "question": "...",
-  "answer": "...",
-  "trajectory": {
-    "started_at": "2026-04-24T15:39:45.123456+00:00",
-    "turns": [
-      {
-        "index": 0,
-        "text": "",
-        "tool_calls": [
-          {"name": "sensors", "input": {...}, "output": {...}}
-        ],
-        "input_tokens": 14248,
-        "output_tokens": 41,
-        "duration_ms": 1872.5
-      },
-      ...
-    ]
-  }
-}
-```
-
-**plan-execute** — flat list of `StepResult` records (no `started_at`, no
-`turns` wrapper):
-
-```json
-{
-  "run_id": "bench-001",
-  "scenario_id": "304",
-  "runner": "plan-execute",
-  "model": "watsonx/meta-llama/llama-3-3-70b-instruct",
-  "question": "...",
-  "answer": "...",
-  "trajectory": [
-    {
-      "step_number": 1,
-      "task": "List sensors on Chiller 6",
-      "server": "iot",
-      "response": "...",
-      "error": null,
-      "tool": "sensors",
-      "tool_args": {"asset": "Chiller 6"},
-      "duration_ms": 412.8
-    },
-    ...
-  ]
-}
-```
-
-Timing fields (``duration_ms`` on tool calls / turns, ``started_at`` on
-the trajectory) are nullable — populated where the runner's SDK gives
-clean boundaries, ``null`` otherwise:
-
 | Field                         | claude-agent | openai-agent | deep-agent | plan-execute |
 | ----------------------------- | ------------ | ------------ | ---------- | ------------ |
 | `Trajectory.started_at`       | ✓            | ✓            | ✓          | (n/a)        |
