@@ -130,17 +130,9 @@ class ClaudeAgentRunner(AgentRunner):
             trajectory = Trajectory(started_at=_dt.datetime.now(_dt.UTC).isoformat())
             turn_index = 0
             last_turn_start = run_started
-            tool_starts: dict[str, float] = {}
             tool_outputs: dict[str, object] = {}
-            tool_durations: dict[str, float] = {}
-
-            async def _on_pre_tool(input_data, tool_use_id: str, context) -> dict:
-                tool_starts[tool_use_id] = time.perf_counter()
-                return {}
 
             async def _capture_tool_output(input_data, tool_use_id: str, context) -> dict:
-                if (start := tool_starts.pop(tool_use_id, None)) is not None:
-                    tool_durations[tool_use_id] = (time.perf_counter() - start) * 1000
                 resp = input_data.get("tool_response") if isinstance(input_data, dict) else input_data
                 if isinstance(resp, dict):
                     tool_outputs[tool_use_id] = resp.get("content", resp)
@@ -148,20 +140,21 @@ class ClaudeAgentRunner(AgentRunner):
                     tool_outputs[tool_use_id] = resp
                 return {}
 
+            # Only PostToolUse is registered.  Adding PreToolUse made older
+            # ``@anthropic-ai/claude-code`` CLI binaries exit on config parse;
+            # per-tool duration for claude-agent is therefore not captured
+            # (matches openai-agent / deep-agent).
             options.hooks = {
-                "PreToolUse": [HookMatcher(matcher=".*", hooks=[_on_pre_tool])],
                 "PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])],
             }
 
             def _flush_tool_outputs() -> None:
-                """Patch any pending hook outputs / durations onto the last turn's tool calls."""
+                """Patch any pending hook outputs onto the last turn's tool calls."""
                 if not trajectory.turns:
                     return
                 for tc in trajectory.turns[-1].tool_calls:
                     if tc.id in tool_outputs:
                         tc.output = tool_outputs.pop(tc.id)
-                    if tc.id in tool_durations:
-                        tc.duration_ms = tool_durations.pop(tc.id)
 
             async for message in query(prompt=question, options=options):
                 if isinstance(message, AssistantMessage):
@@ -203,16 +196,12 @@ class ClaudeAgentRunner(AgentRunner):
                     )
 
             duration_ms = (time.perf_counter() - run_started) * 1000
-            tool_time_ms = sum(
-                tc.duration_ms or 0 for tc in trajectory.all_tool_calls
-            )
             span.set_attribute("agent.answer.length", len(answer))
             span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
             span.set_attribute("agent.turns", len(trajectory.turns))
             span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
             span.set_attribute("agent.duration_ms", duration_ms)
-            span.set_attribute("agent.tool_time_ms", tool_time_ms)
             persist_trajectory(
                 runner_name="claude-agent",
                 model=self._model,

@@ -36,15 +36,16 @@ Metadata + aggregate metrics — always written when tracing is enabled:
 | `agent.answer.length`         | all               | Character length of the final answer   |
 | `agent.run_id`                | all               | `--run-id` or auto-generated UUID4     |
 | `agent.scenario_id`           | all               | `--scenario-id` (omitted if unset)     |
-| `agent.tool_time_ms`          | claude-agent      | Sum of per-tool wall-clock durations   |
 | `agent.llm_time_ms`           | plan-execute      | Planning + summarisation LLM time      |
 | `agent.planning_time_ms`      | plan-execute      | `Planner.generate_plan` wall-clock     |
 | `agent.summarization_time_ms` | plan-execute      | Final summarise-LLM wall-clock         |
 | `agent.plan.steps`            | plan-execute      | Number of generated plan steps         |
 
-Per-turn and per-tool timing for openai-agent / deep-agent is not yet
-captured — their SDKs don't expose clean callbacks at that granularity.
-Follow-up when needed.
+Per-tool timing is not captured for the three SDK runners — the
+`PreToolUse` hook that claude-agent needed broke compatibility with
+some `@anthropic-ai/claude-code` CLI versions, and the openai / deep
+SDKs do not expose clean per-tool callback surfaces either.  Follow-up
+when needed.
 
 Plus automatic child spans from the `HTTPXClientInstrumentor` — one per
 outbound HTTP request to the LiteLLM proxy (URL, status, latency).  The
@@ -71,7 +72,7 @@ When ``AGENT_TRAJECTORY_DIR`` is set, each runner writes
         "index": 0,
         "text": "",
         "tool_calls": [
-          {"name": "sensors", "input": {...}, "output": {...}, "duration_ms": 142.3}
+          {"name": "sensors", "input": {...}, "output": {...}}
         ],
         "input_tokens": 14248,
         "output_tokens": 41,
@@ -91,7 +92,7 @@ clean boundaries, ``null`` otherwise:
 | ----------------------------- | ------------ | ------------ | ---------- | ------------ |
 | `Trajectory.started_at`       | ✓            | ✓            | ✓          | (n/a)        |
 | `TurnRecord.duration_ms`      | ✓            | ✗            | ✗          | (n/a)        |
-| `ToolCall.duration_ms`        | ✓            | ✗            | ✗          | (n/a)        |
+| `ToolCall.duration_ms`        | ✗            | ✗            | ✗          | (n/a)        |
 | `StepResult.duration_ms`      | (n/a)        | (n/a)        | (n/a)      | ✓            |
 
 plan-execute's trajectory is a list of ``StepResult`` records instead
