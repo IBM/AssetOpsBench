@@ -1,0 +1,50 @@
+# OpenTelemetry Collector config for AssetOpsBench.
+#
+# Receives OTLP over HTTP on :4318 and writes spans to ./traces/traces.jsonl
+# in OTLP-JSON format, one ExportTraceServiceRequest per line.  That format
+# is replayable back into any OTLP backend (Jaeger, Tempo, Honeycomb, …) via
+# the Collector's own `otlpjsonfile` receiver.
+#
+# Usage:
+#   mkdir -p traces
+#   docker run --rm --name otel-collector \
+#     -p 4318:4318 \
+#     -v "$(pwd)/traces:/traces" \
+#     -v "$(pwd)/otel-collector.yaml:/etc/otelcol-contrib/config.yaml" \
+#     otel/opentelemetry-collector-contrib
+#
+#   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+#     uv run deep-agent --run-id smoke-1 "What time is it?"
+#
+#   tail -f traces/traces.jsonl | jq .
+#
+# To also forward to a live Jaeger UI while persisting, add Jaeger to the
+# `exporters` section below and to the `traces` pipeline's exporter list.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 2s
+
+exporters:
+  file:
+    path: /traces/traces.jsonl
+    format: json
+    rotation:
+      max_megabytes: 100
+      max_days: 30
+      max_backups: 10
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file]
