@@ -23,7 +23,7 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from observability import agent_run_span
+from observability import agent_run_span, persist_trajectory
 
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
@@ -240,8 +240,11 @@ class DeepAgentRunner(AgentRunner):
             )
 
             span.set_attribute("agent.answer.length", len(answer))
-            span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
-            span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
-            span.set_attribute("agent.turns", len(trajectory.turns))
-            span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
+            persist_trajectory(
+                runner_name="deep-agent",
+                model=self._model_id,
+                question=question,
+                answer=answer,
+                trajectory=trajectory,
+            )
             return AgentResult(question=question, answer=answer, trajectory=trajectory)

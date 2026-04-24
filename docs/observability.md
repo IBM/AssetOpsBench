@@ -1,56 +1,89 @@
 # Observability
 
-AssetOpsBench instruments every agent run with OpenTelemetry tracing so each
-benchmark invocation produces a durable, standards-based trace record.  The
-primary use case is **saving traces as evaluation artifacts** — no Docker,
-no collector, no network dependency.  Live observability (Jaeger / Tempo)
-is a secondary mode for teams that want it.
+Each agent run produces two artifacts, joined by ``run_id``:
 
-## What gets recorded
+1. **Trace** — an OpenTelemetry span with *metadata* (runner, model, IDs,
+   timing, outbound HTTP calls to the LiteLLM proxy).  Written as
+   canonical OTLP-JSON, replayable into any OTLP backend.
+2. **Trajectory** — a per-run JSON file with *content* (per-turn text,
+   tool call inputs / outputs, per-turn token usage).  Written
+   directly by the agent runner.
 
-One root span per `runner.run(question)` call, tagged with:
+Spans and trajectories intentionally **do not overlap**: spans don't
+carry token totals or turn counts (which would duplicate what's in the
+trajectory), and trajectories don't carry runner/model metadata
+(which is the span's job).  To reconstruct a full picture of a run,
+join by ``run_id``.
 
-| Attribute                     | Source                               |
-| ----------------------------- | ------------------------------------ |
-| `agent.runner`                | `plan-execute` / `claude-agent` / …  |
-| `gen_ai.system`               | Provider family (anthropic, openai…) |
-| `gen_ai.request.model`        | Full model ID                        |
-| `gen_ai.usage.input_tokens`   | Total across the run                 |
-| `gen_ai.usage.output_tokens`  | Total across the run                 |
-| `agent.turns`                 | Number of turns                      |
-| `agent.tool_calls`            | Number of tool calls                 |
-| `agent.question.length`       | Character length of the question     |
-| `agent.answer.length`         | Character length of the final answer |
-| `agent.run_id`                | `--run-id` or auto-generated UUID4   |
-| `agent.scenario_id`           | `--scenario-id` (omitted if unset)   |
+## Root span attributes
+
+| Attribute                   | Notes                                 |
+| --------------------------- | ------------------------------------- |
+| `agent.runner`              | `plan-execute` / `claude-agent` / …   |
+| `gen_ai.system`             | Provider family (anthropic, openai…)  |
+| `gen_ai.request.model`      | Full model ID                         |
+| `agent.question.length`     | Character length of the question      |
+| `agent.answer.length`       | Character length of the final answer  |
+| `agent.run_id`              | `--run-id` or auto-generated UUID4    |
+| `agent.scenario_id`         | `--scenario-id` (omitted if unset)    |
+| `agent.plan.steps`          | *plan-execute only*                   |
 
 Plus automatic child spans from the `HTTPXClientInstrumentor` — one per
 outbound HTTP request to the LiteLLM proxy (URL, status, latency).
 
-**Not recorded**: raw prompt / response text, per-turn tool inputs / outputs.
-The trajectory on `AgentResult` still carries that information in-process.
+## Trajectory file layout
 
-## Enabling tracing
+When ``AGENT_TRAJECTORY_DIR`` is set, each runner writes
+``{AGENT_TRAJECTORY_DIR}/{run_id}.json``:
 
-Install the optional dependency group:
+```json
+{
+  "run_id": "bench-001",
+  "scenario_id": "304",
+  "runner": "deep-agent",
+  "model": "litellm_proxy/aws/claude-opus-4-6",
+  "question": "...",
+  "answer": "...",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [{"name": "sensors", "input": {...}, "output": {...}}],
+        "input_tokens": 14248,
+        "output_tokens": 41
+      },
+      ...
+    ]
+  }
+}
+```
+
+plan-execute's trajectory is a list of ``StepResult`` records instead
+of turns; the structure is otherwise analogous.
+
+## Enabling persistence
+
+Install the optional tracing deps (trajectories need no extra deps):
 
 ```bash
 uv sync --group otel
 ```
 
-Tracing activates when either of these env vars is set:
+Each artifact has its own env var; set either, both, or neither:
 
 | Env var                           | Effect                                              |
 | --------------------------------- | --------------------------------------------------- |
+| `AGENT_TRAJECTORY_DIR`            | Directory for ``{run_id}.json`` trajectory records. |
 | `OTEL_TRACES_FILE`                | Append OTLP-JSON lines to this path (in-process).   |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`     | Ship spans over HTTP to a live collector endpoint.  |
 
-Both can be set simultaneously.  If neither is set, `init_tracing()` is a
-no-op and runs work normally with zero overhead.
+When none are set, runs work normally with zero persistence overhead.
 
-## Saving traces to disk (recommended)
+## Recommended: save both traces and trajectories
 
 ```bash
+AGENT_TRAJECTORY_DIR=./traces/trajectories \
 OTEL_TRACES_FILE=./traces/traces.jsonl \
   uv run deep-agent --run-id bench-001 --scenario-id 304 \
   "Calculate bearing characteristic frequencies for a 6205 bearing at 1800 RPM."
@@ -63,23 +96,28 @@ canonical OTLP-JSON format — the same format the OpenTelemetry Collector's
 
 ### Query with `jq`
 
-```bash
-# All spans for a particular run
-jq -c '.resourceSpans[].scopeSpans[].spans[]
-       | select(.attributes[]
-                | select(.key == "agent.run_id" and .value.stringValue == "bench-001"))' \
-   traces/traces.jsonl
+Use the trace for metadata queries (which model, which runner, how long);
+use the trajectory for content queries (token totals, per-turn detail,
+tool call arguments):
 
-# Token totals per run
+```bash
+# List run metadata from traces
 jq -c '.resourceSpans[].scopeSpans[].spans[]
        | select(.name | startswith("agent.run"))
        | {
            run: (.attributes[] | select(.key == "agent.run_id") | .value.stringValue),
+           runner: (.attributes[] | select(.key == "agent.runner") | .value.stringValue),
            model: (.attributes[] | select(.key == "gen_ai.request.model") | .value.stringValue),
-           input: (.attributes[] | select(.key == "gen_ai.usage.input_tokens") | .value.intValue),
-           output: (.attributes[] | select(.key == "gen_ai.usage.output_tokens") | .value.intValue),
-         }' \
-   traces/traces.jsonl
+         }' traces/traces.jsonl
+
+# Token totals across trajectories (sums per-turn usage)
+for f in traces/trajectories/*.json; do
+  jq -c '{
+    run_id,
+    input: ([.trajectory.turns[].input_tokens] | add),
+    output: ([.trajectory.turns[].output_tokens] | add),
+  }' "$f"
+done
 ```
 
 ### Rotation
@@ -151,6 +189,11 @@ init_tracing("my-harness")
 set_run_context(run_id="...", scenario_id="...")
 await runner.run(question)
 ```
+
+**No trajectory file in `AGENT_TRAJECTORY_DIR`** — the runner skips
+persistence when no `run_id` is set.  Use the CLI (which seeds a UUID4
+automatically), or call `set_run_context(run_id=...)` before invoking
+the runner programmatically.
 
 **Exporter silently failing** — set `OTEL_LOG_LEVEL=debug` for the SDK's
 internal logs.
