@@ -181,6 +181,10 @@ class ClaudeAgentRunner(AgentRunner):
                     )
 
             span.set_attribute("agent.answer.length", len(answer))
+            span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
+            span.set_attribute("agent.turns", len(trajectory.turns))
+            span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
             persist_trajectory(
                 runner_name="claude-agent",
                 model=self._model,

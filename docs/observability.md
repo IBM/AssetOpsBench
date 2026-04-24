@@ -2,31 +2,38 @@
 
 Each agent run produces two artifacts, joined by ``run_id``:
 
-1. **Trace** — an OpenTelemetry span with *metadata* (runner, model, IDs,
-   timing, outbound HTTP calls to the LiteLLM proxy).  Written as
-   canonical OTLP-JSON, replayable into any OTLP backend.
-2. **Trajectory** — a per-run JSON file with *content* (per-turn text,
-   tool call inputs / outputs, per-turn token usage).  Written
-   directly by the agent runner.
+1. **Trace** — an OpenTelemetry span with *metadata* and *aggregate
+   metrics* (runner, model, IDs, latency via span duration, token
+   totals, turn and tool-call counts).  Written as canonical OTLP-JSON
+   and recognised by every OTEL-aware backend (Jaeger, Tempo, Langfuse,
+   Grafana Cloud AI, Honeycomb).
+2. **Trajectory** — a per-run JSON file with *per-turn content*: turn
+   text, tool call inputs / outputs, per-turn token usage.  Written
+   directly by the agent runner alongside the trace.
 
-Spans and trajectories intentionally **do not overlap**: spans don't
-carry token totals or turn counts (which would duplicate what's in the
-trajectory), and trajectories don't carry runner/model metadata
-(which is the span's job).  To reconstruct a full picture of a run,
-join by ``run_id``.
+Spans and trajectories complement each other without duplicating
+content: the span holds everything an observability UI needs to
+summarise or bill a run, the trajectory holds the raw per-turn data
+needed for offline evaluation.  Aggregate numbers (totals) live on the
+span; per-turn numbers (from which the totals are derived) live on the
+trajectory.  Nothing is repeated.
 
 ## Root span attributes
 
-| Attribute                   | Notes                                 |
-| --------------------------- | ------------------------------------- |
-| `agent.runner`              | `plan-execute` / `claude-agent` / …   |
-| `gen_ai.system`             | Provider family (anthropic, openai…)  |
-| `gen_ai.request.model`      | Full model ID                         |
-| `agent.question.length`     | Character length of the question      |
-| `agent.answer.length`       | Character length of the final answer  |
-| `agent.run_id`              | `--run-id` or auto-generated UUID4    |
-| `agent.scenario_id`         | `--scenario-id` (omitted if unset)    |
-| `agent.plan.steps`          | *plan-execute only*                   |
+| Attribute                     | Notes                                  |
+| ----------------------------- | -------------------------------------- |
+| `agent.runner`                | `plan-execute` / `claude-agent` / …    |
+| `gen_ai.system`               | Provider family (anthropic, openai…)   |
+| `gen_ai.request.model`        | Full model ID                          |
+| `gen_ai.usage.input_tokens`   | Sum across the run                     |
+| `gen_ai.usage.output_tokens`  | Sum across the run                     |
+| `agent.turns`                 | Number of turns                        |
+| `agent.tool_calls`            | Total tool calls                       |
+| `agent.question.length`       | Character length of the question       |
+| `agent.answer.length`         | Character length of the final answer   |
+| `agent.run_id`                | `--run-id` or auto-generated UUID4     |
+| `agent.scenario_id`           | `--scenario-id` (omitted if unset)     |
+| `agent.plan.steps`            | *plan-execute only*                    |
 
 Plus automatic child spans from the `HTTPXClientInstrumentor` — one per
 outbound HTTP request to the LiteLLM proxy (URL, status, latency).
@@ -96,28 +103,28 @@ canonical OTLP-JSON format — the same format the OpenTelemetry Collector's
 
 ### Query with `jq`
 
-Use the trace for metadata queries (which model, which runner, how long);
-use the trajectory for content queries (token totals, per-turn detail,
-tool call arguments):
+For metadata + aggregate metrics (run_id, runner, model, token totals,
+latency) read the trace alone — token totals are on the span:
 
 ```bash
-# List run metadata from traces
 jq -c '.resourceSpans[].scopeSpans[].spans[]
        | select(.name | startswith("agent.run"))
        | {
-           run: (.attributes[] | select(.key == "agent.run_id") | .value.stringValue),
+           run_id: (.attributes[] | select(.key == "agent.run_id") | .value.stringValue),
            runner: (.attributes[] | select(.key == "agent.runner") | .value.stringValue),
            model: (.attributes[] | select(.key == "gen_ai.request.model") | .value.stringValue),
+           input_tokens: (.attributes[] | select(.key == "gen_ai.usage.input_tokens") | .value.intValue),
+           output_tokens: (.attributes[] | select(.key == "gen_ai.usage.output_tokens") | .value.intValue),
+           turns: (.attributes[] | select(.key == "agent.turns") | .value.intValue),
          }' traces/traces.jsonl
+```
 
-# Token totals across trajectories (sums per-turn usage)
-for f in traces/trajectories/*.json; do
-  jq -c '{
-    run_id,
-    input: ([.trajectory.turns[].input_tokens] | add),
-    output: ([.trajectory.turns[].output_tokens] | add),
-  }' "$f"
-done
+For per-turn content (text, tool call inputs/outputs, per-turn tokens)
+read the matching trajectory file:
+
+```bash
+jq '.trajectory.turns[] | {index, input_tokens, tool_calls: [.tool_calls[].name]}' \
+   traces/trajectories/bench-001.json
 ```
 
 ### Rotation
