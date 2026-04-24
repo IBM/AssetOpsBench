@@ -27,7 +27,6 @@ from observability import agent_run_span, annotate_result
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
-from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
@@ -100,9 +99,6 @@ class ClaudeAgentRunner(AgentRunner):
         self._sdk_env = _sdk_env(model)
         self._max_turns = max_turns
         self._permission_mode = permission_mode
-        self._resolved_server_paths: dict[str, Path | str] = (
-            server_paths if server_paths is not None else dict(DEFAULT_SERVER_PATHS)
-        )
 
     async def run(self, question: str) -> AgentResult:
         """Run the claude-agent-sdk loop for *question*.
@@ -116,7 +112,7 @@ class ClaudeAgentRunner(AgentRunner):
         with agent_run_span(
             "claude-agent", model=self._model, question=question
         ) as span:
-            mcp_servers = _build_mcp_servers(self._resolved_server_paths)
+            mcp_servers = _build_mcp_servers(self._server_paths)
 
             options = ClaudeAgentOptions(
                 model=self._model,

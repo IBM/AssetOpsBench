@@ -80,7 +80,7 @@ def test_runner_defaults(monkeypatch):
     assert runner._model == "azure/gpt-5.4"
     assert runner._run_config is not None
     assert runner._max_turns == 30
-    assert "iot" in runner._resolved_server_paths
+    assert "iot" in runner._server_paths
 
 
 def test_runner_custom_server_paths(monkeypatch):
@@ -88,7 +88,7 @@ def test_runner_custom_server_paths(monkeypatch):
     monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
     paths = {"iot": "iot-mcp-server"}
     runner = OpenAIAgentRunner(server_paths=paths)
-    assert runner._resolved_server_paths == paths
+    assert runner._server_paths == paths
 
 
 def test_runner_custom_model():
@@ -236,11 +236,8 @@ async def test_run_returns_agent_result():
         patch("agent.openai_agent.runner.Runner") as MockRunner,
         patch("agent.openai_agent.runner._build_mcp_servers", return_value=[]),
         patch("agent.openai_agent.runner._build_run_config", return_value=None),
-        patch("agent.openai_agent.runner._managed_servers") as MockCtx,
     ):
         MockRunner.run = AsyncMock(return_value=fake_result)
-        MockCtx.return_value.__aenter__ = AsyncMock(return_value=[])
-        MockCtx.return_value.__aexit__ = AsyncMock(return_value=False)
 
         runner = OpenAIAgentRunner(server_paths={})
         result = await runner.run("How many sensors are there?")
@@ -269,11 +266,8 @@ async def test_run_collects_trajectory():
         patch("agent.openai_agent.runner.Runner") as MockRunner,
         patch("agent.openai_agent.runner._build_mcp_servers", return_value=[]),
         patch("agent.openai_agent.runner._build_run_config", return_value=None),
-        patch("agent.openai_agent.runner._managed_servers") as MockCtx,
     ):
         MockRunner.run = AsyncMock(return_value=fake_result)
-        MockCtx.return_value.__aenter__ = AsyncMock(return_value=[])
-        MockCtx.return_value.__aexit__ = AsyncMock(return_value=False)
 
         runner = OpenAIAgentRunner(server_paths={})
         result = await runner.run("What sensors are on Chiller 6?")
@@ -295,11 +289,8 @@ async def test_run_empty_result():
         patch("agent.openai_agent.runner.Runner") as MockRunner,
         patch("agent.openai_agent.runner._build_mcp_servers", return_value=[]),
         patch("agent.openai_agent.runner._build_run_config", return_value=None),
-        patch("agent.openai_agent.runner._managed_servers") as MockCtx,
     ):
         MockRunner.run = AsyncMock(return_value=fake_result)
-        MockCtx.return_value.__aenter__ = AsyncMock(return_value=[])
-        MockCtx.return_value.__aexit__ = AsyncMock(return_value=False)
 
         runner = OpenAIAgentRunner(server_paths={})
         result = await runner.run("What time is it?")

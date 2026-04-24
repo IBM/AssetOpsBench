@@ -75,13 +75,13 @@ def test_runner_defaults():
     runner = DeepAgentRunner()
     assert runner._model_id == "litellm_proxy/aws/claude-opus-4-6"
     assert runner._recursion_limit == 100
-    assert "iot" in runner._resolved_server_paths
+    assert "iot" in runner._server_paths
 
 
 def test_runner_custom_server_paths():
     paths = {"iot": "iot-mcp-server"}
     runner = DeepAgentRunner(server_paths=paths)
-    assert runner._resolved_server_paths == paths
+    assert runner._server_paths == paths
 
 
 def test_runner_custom_model():

@@ -14,23 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from llm import LLMBackend
+from ..runner import DEFAULT_SERVER_PATHS
 from .models import Plan, PlanStep, StepResult
 
 _log = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
-
-# Maps agent names to either a uv entry-point name (str) or a script Path.
-# Entry-point names are invoked as ``uv run <name>``; Paths fall back to
-# ``python -m module.path`` (supports relative imports).
-DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
-    "iot": "iot-mcp-server",
-    "utilities": "utilities-mcp-server",
-    "fmsr": "fmsr-mcp-server",
-    "tsfm": "tsfm-mcp-server",
-    "wo": "wo-mcp-server",
-    "vibration": "vibration-mcp-server",
-}
 
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
 

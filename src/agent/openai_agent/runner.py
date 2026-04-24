@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -30,7 +31,6 @@ from observability import agent_run_span, annotate_result
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
-from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
@@ -197,9 +197,6 @@ class OpenAIAgentRunner(AgentRunner):
         self._model = resolve_model(model)
         self._run_config = _build_run_config(model)
         self._max_turns = max_turns
-        self._resolved_server_paths: dict[str, Path | str] = (
-            server_paths if server_paths is not None else dict(DEFAULT_SERVER_PATHS)
-        )
 
     async def run(self, question: str) -> AgentResult:
         """Run the OpenAI Agents SDK loop for *question*.
@@ -213,10 +210,14 @@ class OpenAIAgentRunner(AgentRunner):
         with agent_run_span(
             "openai-agent", model=self._model_id, question=question
         ) as span:
-            mcp_servers = _build_mcp_servers(self._resolved_server_paths)
+            mcp_servers = _build_mcp_servers(self._server_paths)
 
-            # Use async context managers to manage MCP server lifecycle
-            async with _managed_servers(mcp_servers) as active_servers:
+            # AsyncExitStack enters every server and closes them in LIFO order
+            # on exit (success or exception).
+            async with AsyncExitStack() as stack:
+                active_servers = [
+                    await stack.enter_async_context(s) for s in mcp_servers
+                ]
                 agent = Agent(
                     name="AssetOps Assistant",
                     instructions=AGENT_SYSTEM_PROMPT,
@@ -259,22 +260,3 @@ class OpenAIAgentRunner(AgentRunner):
                 )
 
 
-class _managed_servers:
-    """Async context manager that enters all MCP server contexts."""
-
-    def __init__(self, servers: list[MCPServerStdio]) -> None:
-        self._servers = servers
-        self._entered: list[MCPServerStdio] = []
-
-    async def __aenter__(self) -> list[MCPServerStdio]:
-        for server in self._servers:
-            await server.__aenter__()
-            self._entered.append(server)
-        return self._entered
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        for server in reversed(self._entered):
-            try:
-                await server.__aexit__(exc_type, exc_val, exc_tb)
-            except Exception:
-                _log.warning("Failed to close MCP server %s", server.name, exc_info=True)

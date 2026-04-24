@@ -74,13 +74,13 @@ def test_runner_defaults():
     assert runner._model == "aws/claude-opus-4-6"
     assert runner._max_turns == 30
     assert runner._permission_mode == "bypassPermissions"
-    assert "iot" in runner._resolved_server_paths
+    assert "iot" in runner._server_paths
 
 
 def test_runner_custom_server_paths():
     paths = {"iot": "iot-mcp-server"}
     runner = ClaudeAgentRunner(server_paths=paths)
-    assert runner._resolved_server_paths == paths
+    assert runner._server_paths == paths
 
 
 # ---------------------------------------------------------------------------

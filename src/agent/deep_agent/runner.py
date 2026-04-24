@@ -28,7 +28,6 @@ from observability import agent_run_span, annotate_result
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
-from ..plan_execute.executor import DEFAULT_SERVER_PATHS
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
@@ -171,9 +170,6 @@ class DeepAgentRunner(AgentRunner):
         super().__init__(llm, server_paths)
         self._model_id = model
         self._recursion_limit = recursion_limit
-        self._resolved_server_paths: dict[str, Path | str] = (
-            server_paths if server_paths is not None else dict(DEFAULT_SERVER_PATHS)
-        )
 
     @cached_property
     def _chat_model(self):
@@ -195,7 +191,7 @@ class DeepAgentRunner(AgentRunner):
             from deepagents import create_deep_agent
             from langchain_mcp_adapters.client import MultiServerMCPClient
 
-            connections = _build_mcp_connections(self._resolved_server_paths)
+            connections = _build_mcp_connections(self._server_paths)
             client = MultiServerMCPClient(connections) if connections else None
             tools = await client.get_tools() if client is not None else []
 
