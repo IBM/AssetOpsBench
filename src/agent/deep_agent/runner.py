@@ -16,8 +16,10 @@ Usage::
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import os
+import time
 from functools import cached_property
 from pathlib import Path
 
@@ -188,6 +190,8 @@ class DeepAgentRunner(AgentRunner):
         with agent_run_span(
             "deep-agent", model=self._model_id, question=question
         ) as span:
+            run_started = time.perf_counter()
+            started_at = _dt.datetime.now(_dt.UTC).isoformat()
             from deepagents import create_deep_agent
             from langchain_mcp_adapters.client import MultiServerMCPClient
 
@@ -214,6 +218,7 @@ class DeepAgentRunner(AgentRunner):
 
             messages = state.get("messages", []) if isinstance(state, dict) else []
             trajectory = _build_trajectory(messages)
+            trajectory.started_at = started_at
 
             answer = ""
             for msg in reversed(messages):
@@ -244,6 +249,9 @@ class DeepAgentRunner(AgentRunner):
             span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
             span.set_attribute("agent.turns", len(trajectory.turns))
             span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
+            span.set_attribute(
+                "agent.duration_ms", (time.perf_counter() - run_started) * 1000
+            )
             persist_trajectory(
                 runner_name="deep-agent",
                 model=self._model_id,

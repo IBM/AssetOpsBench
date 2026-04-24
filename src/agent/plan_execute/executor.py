@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -110,7 +111,9 @@ class Executor:
                 step.task,
             )
             schema = tool_schemas.get(step.server, {}).get(step.tool, "")
+            step_started = time.perf_counter()
             result = await self.execute_step(step, context, question, tool_schema=schema)
+            result.duration_ms = (time.perf_counter() - step_started) * 1000
             if result.success:
                 _log.info("Step %d OK.", step.step_number)
             else:

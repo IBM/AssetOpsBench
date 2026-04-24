@@ -15,8 +15,10 @@ Usage::
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import os
+import time
 from pathlib import Path
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, HookMatcher, ResultMessage, query
@@ -124,11 +126,21 @@ class ClaudeAgentRunner(AgentRunner):
 
             _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
             answer = ""
-            trajectory = Trajectory()
+            run_started = time.perf_counter()
+            trajectory = Trajectory(started_at=_dt.datetime.now(_dt.UTC).isoformat())
             turn_index = 0
+            last_turn_start = run_started
+            tool_starts: dict[str, float] = {}
             tool_outputs: dict[str, object] = {}
+            tool_durations: dict[str, float] = {}
+
+            async def _on_pre_tool(input_data, tool_use_id: str, context) -> dict:
+                tool_starts[tool_use_id] = time.perf_counter()
+                return {}
 
             async def _capture_tool_output(input_data, tool_use_id: str, context) -> dict:
+                if (start := tool_starts.pop(tool_use_id, None)) is not None:
+                    tool_durations[tool_use_id] = (time.perf_counter() - start) * 1000
                 resp = input_data.get("tool_response") if isinstance(input_data, dict) else input_data
                 if isinstance(resp, dict):
                     tool_outputs[tool_use_id] = resp.get("content", resp)
@@ -136,18 +148,27 @@ class ClaudeAgentRunner(AgentRunner):
                     tool_outputs[tool_use_id] = resp
                 return {}
 
-            options.hooks = {"PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])]}
+            options.hooks = {
+                "PreToolUse": [HookMatcher(matcher=".*", hooks=[_on_pre_tool])],
+                "PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])],
+            }
 
             def _flush_tool_outputs() -> None:
-                """Patch any pending hook outputs onto the last turn's tool calls."""
-                if tool_outputs and trajectory.turns:
-                    for tc in trajectory.turns[-1].tool_calls:
-                        if tc.id in tool_outputs:
-                            tc.output = tool_outputs.pop(tc.id)
+                """Patch any pending hook outputs / durations onto the last turn's tool calls."""
+                if not trajectory.turns:
+                    return
+                for tc in trajectory.turns[-1].tool_calls:
+                    if tc.id in tool_outputs:
+                        tc.output = tool_outputs.pop(tc.id)
+                    if tc.id in tool_durations:
+                        tc.duration_ms = tool_durations.pop(tc.id)
 
             async for message in query(prompt=question, options=options):
                 if isinstance(message, AssistantMessage):
                     _flush_tool_outputs()
+                    now = time.perf_counter()
+                    turn_duration_ms = (now - last_turn_start) * 1000
+                    last_turn_start = now
                     text = ""
                     tool_calls: list[ToolCall] = []
                     for block in message.content:
@@ -165,6 +186,7 @@ class ClaudeAgentRunner(AgentRunner):
                             tool_calls=tool_calls,
                             input_tokens=usage.get("input_tokens", 0),
                             output_tokens=usage.get("output_tokens", 0),
+                            duration_ms=turn_duration_ms,
                         )
                     )
                     turn_index += 1
@@ -180,11 +202,17 @@ class ClaudeAgentRunner(AgentRunner):
                         trajectory.total_output_tokens,
                     )
 
+            duration_ms = (time.perf_counter() - run_started) * 1000
+            tool_time_ms = sum(
+                tc.duration_ms or 0 for tc in trajectory.all_tool_calls
+            )
             span.set_attribute("agent.answer.length", len(answer))
             span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
             span.set_attribute("agent.turns", len(trajectory.turns))
             span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
+            span.set_attribute("agent.duration_ms", duration_ms)
+            span.set_attribute("agent.tool_time_ms", tool_time_ms)
             persist_trajectory(
                 runner_name="claude-agent",
                 model=self._model,

@@ -61,6 +61,7 @@ class StepResult:
     error: Optional[str] = None
     tool: str = ""
     tool_args: dict = field(default_factory=dict)
+    duration_ms: float | None = None
 
     @property
     def success(self) -> bool:

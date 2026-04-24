@@ -13,6 +13,7 @@ an MCP-native implementation:
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from llm import LLMBackend
@@ -87,13 +88,17 @@ class PlanExecuteRunner(AgentRunner):
         with agent_run_span(
             "plan-execute", model=self._llm.model_id, question=question
         ) as span:
+            run_started = time.perf_counter()
+
             # 1. Discover
             _log.info("Discovering server capabilities...")
             server_descriptions = await self._executor.get_server_descriptions()
 
             # 2. Plan
             _log.info("Planning...")
+            planning_started = time.perf_counter()
             plan = self._planner.generate_plan(question, server_descriptions)
+            planning_ms = (time.perf_counter() - planning_started) * 1000
             _log.info("Plan has %d step(s).", len(plan.steps))
 
             # 3. Execute
@@ -106,9 +111,12 @@ class PlanExecuteRunner(AgentRunner):
                 + (r.response if r.success else f"ERROR: {r.error}")
                 for r in trajectory
             )
+            summarization_started = time.perf_counter()
             answer = self._llm.generate(
                 _SUMMARIZE_PROMPT.format(question=question, results=results_text)
             )
+            summarization_ms = (time.perf_counter() - summarization_started) * 1000
+            duration_ms = (time.perf_counter() - run_started) * 1000
 
             result = OrchestratorResult(
                 question=question,
@@ -118,6 +126,14 @@ class PlanExecuteRunner(AgentRunner):
             )
             span.set_attribute("agent.plan.steps", len(plan.steps))
             span.set_attribute("agent.answer.length", len(answer or ""))
+            span.set_attribute("agent.duration_ms", duration_ms)
+            span.set_attribute("agent.planning_time_ms", planning_ms)
+            span.set_attribute("agent.summarization_time_ms", summarization_ms)
+            # plan-execute's "LLM time" is the time spent on direct LLM calls
+            # controlled by the runner (planning + summarisation).  Per-step
+            # arg-resolution LLM calls are included in each StepResult's
+            # duration_ms instead.
+            span.set_attribute("agent.llm_time_ms", planning_ms + summarization_ms)
             persist_trajectory(
                 runner_name="plan-execute",
                 model=self._llm.model_id,

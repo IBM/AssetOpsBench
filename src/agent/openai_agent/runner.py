@@ -15,9 +15,11 @@ Usage::
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import logging
 import os
+import time
 from contextlib import AsyncExitStack
 from pathlib import Path
 
@@ -210,6 +212,8 @@ class OpenAIAgentRunner(AgentRunner):
         with agent_run_span(
             "openai-agent", model=self._model_id, question=question
         ) as span:
+            run_started = time.perf_counter()
+            started_at = _dt.datetime.now(_dt.UTC).isoformat()
             mcp_servers = _build_mcp_servers(self._server_paths)
 
             # AsyncExitStack enters every server and closes them in LIFO order
@@ -243,6 +247,7 @@ class OpenAIAgentRunner(AgentRunner):
 
                 answer = result.final_output or ""
                 trajectory = _build_trajectory(result)
+                trajectory.started_at = started_at
 
                 _log.info(
                     "OpenAIAgentRunner: done (turns=%d, input_tokens=%d, "
@@ -257,6 +262,9 @@ class OpenAIAgentRunner(AgentRunner):
                 span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
                 span.set_attribute("agent.turns", len(trajectory.turns))
                 span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
+                span.set_attribute(
+                    "agent.duration_ms", (time.perf_counter() - run_started) * 1000
+                )
                 persist_trajectory(
                     runner_name="openai-agent",
                     model=self._model_id,

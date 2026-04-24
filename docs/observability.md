@@ -20,23 +20,36 @@ trajectory.  Nothing is repeated.
 
 ## Root span attributes
 
-| Attribute                     | Notes                                  |
-| ----------------------------- | -------------------------------------- |
-| `agent.runner`                | `plan-execute` / `claude-agent` / …    |
-| `gen_ai.system`               | Provider family (anthropic, openai…)   |
-| `gen_ai.request.model`        | Full model ID                          |
-| `gen_ai.usage.input_tokens`   | Sum across the run                     |
-| `gen_ai.usage.output_tokens`  | Sum across the run                     |
-| `agent.turns`                 | Number of turns                        |
-| `agent.tool_calls`            | Total tool calls                       |
-| `agent.question.length`       | Character length of the question       |
-| `agent.answer.length`         | Character length of the final answer   |
-| `agent.run_id`                | `--run-id` or auto-generated UUID4     |
-| `agent.scenario_id`           | `--scenario-id` (omitted if unset)     |
-| `agent.plan.steps`            | *plan-execute only*                    |
+Metadata + aggregate metrics — always written when tracing is enabled:
+
+| Attribute                     | Runner coverage   | Notes                                  |
+| ----------------------------- | ----------------- | -------------------------------------- |
+| `agent.runner`                | all               | `plan-execute` / `claude-agent` / …    |
+| `gen_ai.system`               | all               | Provider family (anthropic, openai…)   |
+| `gen_ai.request.model`        | all               | Full model ID                          |
+| `gen_ai.usage.input_tokens`   | all               | Sum across the run                     |
+| `gen_ai.usage.output_tokens`  | all               | Sum across the run                     |
+| `agent.turns`                 | all               | Number of turns                        |
+| `agent.tool_calls`            | all               | Total tool calls                       |
+| `agent.duration_ms`           | all               | Wall-clock of `run()`                  |
+| `agent.question.length`       | all               | Character length of the question       |
+| `agent.answer.length`         | all               | Character length of the final answer   |
+| `agent.run_id`                | all               | `--run-id` or auto-generated UUID4     |
+| `agent.scenario_id`           | all               | `--scenario-id` (omitted if unset)     |
+| `agent.tool_time_ms`          | claude-agent      | Sum of per-tool wall-clock durations   |
+| `agent.llm_time_ms`           | plan-execute      | Planning + summarisation LLM time      |
+| `agent.planning_time_ms`      | plan-execute      | `Planner.generate_plan` wall-clock     |
+| `agent.summarization_time_ms` | plan-execute      | Final summarise-LLM wall-clock         |
+| `agent.plan.steps`            | plan-execute      | Number of generated plan steps         |
+
+Per-turn and per-tool timing for openai-agent / deep-agent is not yet
+captured — their SDKs don't expose clean callbacks at that granularity.
+Follow-up when needed.
 
 Plus automatic child spans from the `HTTPXClientInstrumentor` — one per
-outbound HTTP request to the LiteLLM proxy (URL, status, latency).
+outbound HTTP request to the LiteLLM proxy (URL, status, latency).  The
+root span's own duration = agent wall-clock, so ``agent.duration_ms`` is
+redundant for OTEL UIs but convenient for jq on the JSONL file.
 
 ## Trajectory file layout
 
@@ -52,13 +65,17 @@ When ``AGENT_TRAJECTORY_DIR`` is set, each runner writes
   "question": "...",
   "answer": "...",
   "trajectory": {
+    "started_at": "2026-04-24T15:39:45.123456+00:00",
     "turns": [
       {
         "index": 0,
         "text": "",
-        "tool_calls": [{"name": "sensors", "input": {...}, "output": {...}}],
+        "tool_calls": [
+          {"name": "sensors", "input": {...}, "output": {...}, "duration_ms": 142.3}
+        ],
         "input_tokens": 14248,
-        "output_tokens": 41
+        "output_tokens": 41,
+        "duration_ms": 1872.5
       },
       ...
     ]
@@ -66,8 +83,19 @@ When ``AGENT_TRAJECTORY_DIR`` is set, each runner writes
 }
 ```
 
+Timing fields (``duration_ms`` on tool calls / turns, ``started_at`` on
+the trajectory) are nullable — populated where the runner's SDK gives
+clean boundaries, ``null`` otherwise:
+
+| Field                         | claude-agent | openai-agent | deep-agent | plan-execute |
+| ----------------------------- | ------------ | ------------ | ---------- | ------------ |
+| `Trajectory.started_at`       | ✓            | ✓            | ✓          | (n/a)        |
+| `TurnRecord.duration_ms`      | ✓            | ✗            | ✗          | (n/a)        |
+| `ToolCall.duration_ms`        | ✓            | ✗            | ✗          | (n/a)        |
+| `StepResult.duration_ms`      | (n/a)        | (n/a)        | (n/a)      | ✓            |
+
 plan-execute's trajectory is a list of ``StepResult`` records instead
-of turns; the structure is otherwise analogous.
+of turns, each carrying its own ``duration_ms`` populated by the executor.
 
 ## Enabling persistence
 

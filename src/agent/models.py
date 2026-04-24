@@ -24,6 +24,9 @@ class ToolCall:
     input: dict
     id: str = ""
     output: object = None
+    duration_ms: float | None = None
+    """Wall-clock time spent inside the tool.  ``None`` when the runner's
+    SDK does not expose per-tool timing hooks."""
 
 
 @dataclass
@@ -35,6 +38,9 @@ class TurnRecord:
     tool_calls: list[ToolCall] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
+    duration_ms: float | None = None
+    """Wall-clock time from turn start to turn end.  ``None`` when the
+    runner cannot observe per-turn boundaries cleanly."""
 
 
 @dataclass
@@ -42,6 +48,9 @@ class Trajectory:
     """Full execution trace across all agent turns."""
 
     turns: list[TurnRecord] = field(default_factory=list)
+    started_at: str | None = None
+    """ISO-8601 UTC timestamp of when ``run()`` began, for replay
+    alignment with the corresponding trace.  Populated by the runner."""
 
     @property
     def total_input_tokens(self) -> int:
