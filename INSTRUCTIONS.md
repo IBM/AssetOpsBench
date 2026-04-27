@@ -7,26 +7,12 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
-- [MCP Servers](#mcp-servers)
-  - [iot](#iot)
-  - [utilities](#utilities)
-  - [fmsr](#fmsr)
-  - [tsfm](#tsfm)
-  - [wo](#wo)
-  - [vibration](#vibration)
+- [MCP Servers](#mcp-servers) — full reference in [docs/mcp-servers.md](docs/mcp-servers.md)
 - [Example queries](#example-queries)
 - [Plan-Execute Agent](#plan-execute-agent)
-  - [How it works](#how-it-works)
-  - [CLI](#cli)
 - [Claude Agent](#claude-agent)
-  - [How it works](#how-it-works-1)
-  - [CLI](#cli-1)
 - [OpenAI Agent](#openai-agent)
-  - [How it works](#how-it-works-2)
-  - [CLI](#cli-2)
 - [Deep Agent](#deep-agent)
-  - [How it works](#how-it-works-3)
-  - [CLI](#cli-3)
 - [Observability](#observability)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
@@ -83,20 +69,15 @@ Verify CouchDB is running:
 curl -X GET http://localhost:5984/
 ```
 
-### 4. Run servers
+### 4. Run an agent
 
-> **Note:** MCP servers use stdio transport — they are spawned on-demand by clients (Claude Desktop, `plan-execute`) and exit when the client disconnects. They are not long-running daemons.
-
-To start a server manually for testing:
+Servers are stdio processes spawned on-demand by the agent CLIs — no manual startup needed. Pick a runner and pass it a question:
 
 ```bash
-uv run utilities-mcp-server
-uv run iot-mcp-server
-uv run fmsr-mcp-server
-uv run tsfm-mcp-server
-uv run wo-mcp-server
-uv run vibration-mcp-server
+uv run plan-execute "What sensors are on Chiller 6?"
 ```
+
+See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](docs/mcp-servers.md) for launching a server directly.
 
 ---
 
@@ -121,107 +102,29 @@ uv run vibration-mcp-server
 | `WATSONX_PROJECT_ID` | _(required)_                        | IBM WatsonX project ID      |
 | `WATSONX_URL`        | `https://us-south.ml.cloud.ibm.com` | WatsonX endpoint (optional) |
 
-**LiteLLM** — plan-execute runner (when `--model-id` does not start with `watsonx/`, e.g. `litellm_proxy/…`)
+**LiteLLM proxy** — used by every runner whenever `--model-id` carries the `litellm_proxy/` prefix (the default for claude-agent, openai-agent, deep-agent)
 
 | Variable           | Default      | Description                                                          |
 | ------------------ | ------------ | -------------------------------------------------------------------- |
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
-**OpenAI Agents SDK** — openai-agent runner (always routed through LiteLLM proxy via `litellm_proxy/` prefix)
-
-> Uses the same `LITELLM_API_KEY` and `LITELLM_BASE_URL` variables as the plan-execute runner above.
-
-**LangChain deep-agents** — deep-agent runner (defaults to LiteLLM proxy via `litellm_proxy/` prefix)
-
-> Uses the same `LITELLM_API_KEY` and `LITELLM_BASE_URL` variables as the plan-execute runner above.
-
 ---
 
 ## MCP Servers
 
-### iot — IoT Sensor Data
+Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagnostics, failure-mode reasoning, and utility tools. They speak MCP over stdio and are spawned on-demand by the agent runners — no manual startup needed.
 
-**Path:** `src/servers/iot/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `IOT_DBNAME`)
+| Server      | Tools | Backing service                        |
+| ----------- | ----- | -------------------------------------- |
+| `iot`       | 4     | CouchDB                                |
+| `utilities` | 3     | none                                   |
+| `fmsr`      | 2     | LiteLLM + `failure_modes.yaml`         |
+| `wo`        | 8     | CouchDB                                |
+| `tsfm`      | 6     | IBM Granite TinyTimeMixer (torch)      |
+| `vibration` | 8     | CouchDB + numpy/scipy DSP              |
 
-| Tool      | Arguments                                  | Description                                                             |
-| --------- | ------------------------------------------ | ----------------------------------------------------------------------- |
-| `sites`   | —                                          | List all available sites                                                |
-| `assets`  | `site_name`                                | List all asset IDs for a site                                           |
-| `sensors` | `site_name`, `asset_id`                    | List sensor names for an asset                                          |
-| `history` | `site_name`, `asset_id`, `start`, `final?` | Fetch historical sensor readings for a time range (ISO 8601 timestamps) |
-
-### utilities — Utilities
-
-**Path:** `src/servers/utilities/main.py`
-**Requires:** nothing (no external services)
-
-| Tool                   | Arguments   | Description                                            |
-| ---------------------- | ----------- | ------------------------------------------------------ |
-| `json_reader`          | `file_name` | Read and parse a JSON file from disk                   |
-| `current_date_time`    | —           | Return the current UTC date and time as JSON           |
-| `current_time_english` | —           | Return the current UTC time as a human-readable string |
-
-### fmsr — Failure Mode and Sensor Relations
-
-**Path:** `src/servers/fmsr/main.py`
-**Requires:** `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` for unknown assets; curated lists for `chiller` and `ahu` work without credentials.
-**Failure-mode data:** `src/servers/fmsr/failure_modes.yaml` (edit to add/change asset entries)
-
-| Tool                              | Arguments                                | Description                                                                                                                                             |
-| --------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_failure_modes`               | `asset_name`                             | Return known failure modes for an asset. Uses a curated YAML list for chillers and AHUs; falls back to the LLM for other types.                         |
-| `get_failure_mode_sensor_mapping` | `asset_name`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns bidirectional `fm→sensors` and `sensor→fms` maps plus full per-pair details. |
-
-### wo — Work Order
-
-**Path:** `src/servers/wo/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`)
-**Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on every start — database is dropped and reloaded each time)
-
-| Tool                          | Arguments                                             | Description                                                                              |
-| ----------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `get_work_orders`             | `equipment_id`, `start_date?`, `end_date?`            | Retrieve all work orders for an equipment within an optional date range                  |
-| `get_preventive_work_orders`  | `equipment_id`, `start_date?`, `end_date?`            | Retrieve only preventive (PM) work orders                                                |
-| `get_corrective_work_orders`  | `equipment_id`, `start_date?`, `end_date?`            | Retrieve only corrective (CM) work orders                                                |
-| `get_events`                  | `equipment_id`, `start_date?`, `end_date?`            | Retrieve all events (work orders, alerts, anomalies)                                     |
-| `get_failure_codes`           | —                                                     | List all failure codes with categories and descriptions                                  |
-| `get_work_order_distribution` | `equipment_id`, `start_date?`, `end_date?`            | Count work orders per (primary, secondary) failure code pair, sorted by frequency        |
-| `predict_next_work_order`     | `equipment_id`, `start_date?`, `end_date?`            | Predict next work order type via Markov transition matrix built from historical sequence |
-| `analyze_alert_to_failure`    | `equipment_id`, `rule_id`, `start_date?`, `end_date?` | Probability that an alert rule leads to a work order; average hours to maintenance       |
-
-### tsfm — Time Series Foundation Model
-
-**Path:** `src/servers/tsfm/main.py`
-**Requires:** `tsfm_public` (IBM Granite TSFM), `transformers`, `torch` for ML tools — imported lazily; static tools work without them.
-**Model checkpoints:** resolved relative to `PATH_TO_MODELS_DIR` (default: `src/servers/tsfm/artifacts/output/tuned_models`)
-
-| Tool                   | Arguments                                                                                                                   | Description                                                                                      |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `get_ai_tasks`         | —                                                                                                                           | List supported AI task types for time-series analysis                                            |
-| `get_tsfm_models`      | —                                                                                                                           | List available pre-trained TinyTimeMixer (TTM) model checkpoints                                 |
-| `run_tsfm_forecasting` | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `forecast_horizon?`, `frequency_sampling?`, ...  | Zero-shot TTM inference; returns path to a JSON predictions file                                 |
-| `run_tsfm_finetuning`  | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `save_model_dir?`, `n_finetune?`, `n_test?`, ... | Few-shot fine-tune a TTM model; returns saved checkpoint path and metrics file                   |
-| `run_tsad`             | `dataset_path`, `tsfm_output_json`, `timestamp_column`, `target_columns`, `task?`, `false_alarm?`, `ad_model_type?`, ...    | Conformal anomaly detection on top of a forecasting output JSON; returns CSV with anomaly labels |
-| `run_integrated_tsad`  | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `false_alarm?`, `n_calibration?`, ...            | End-to-end forecasting + anomaly detection in one call; returns combined CSV                     |
-
-### vibration — Vibration Diagnostics
-
-**Path:** `src/servers/vibration/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `VIBRATION_DBNAME` (default `vibration`), `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`); `numpy`, `scipy`
-**DSP core:** `src/servers/vibration/dsp/` — adapted from [vibration-analysis-mcp](https://github.com/LGDiMaggio/claude-stwinbox-diagnostics/tree/main/mcp-servers/vibration-analysis-mcp) (Apache-2.0)
-
-| Tool | Arguments | Description |
-|---|---|---|
-| `get_vibration_data` | `site_name`, `asset_id`, `sensor_name`, `start`, `final?` | Fetch vibration time-series from CouchDB and load into the analysis store. Returns a `data_id`. |
-| `list_vibration_sensors` | `site_name`, `asset_id` | List available sensor fields for an asset. |
-| `compute_fft_spectrum` | `data_id`, `window?`, `top_n?` | Compute FFT amplitude spectrum (top-N peaks + statistics). |
-| `compute_envelope_spectrum` | `data_id`, `band_low_hz?`, `band_high_hz?`, `top_n?` | Compute envelope spectrum for bearing fault detection (Hilbert transform). |
-| `assess_vibration_severity` | `rms_velocity_mm_s`, `machine_group?` | Classify vibration severity per ISO 10816 (Zones A–D). |
-| `calculate_bearing_frequencies` | `rpm`, `n_balls`, `ball_diameter_mm`, `pitch_diameter_mm`, `contact_angle_deg?`, `bearing_name?` | Compute bearing characteristic frequencies (BPFO, BPFI, BSF, FTF). |
-| `list_known_bearings` | — | List all bearings in the built-in database. |
-| `diagnose_vibration` | `data_id`, `rpm?`, `bearing_designation?`, `bearing_*?`, `bpfo_hz?`, `bpfi_hz?`, `bsf_hz?`, `ftf_hz?`, `machine_group?`, `machine_description?` | Full automated diagnosis: FFT + shaft features + bearing envelope + ISO 10816 + fault classification + markdown report. |
+Tool signatures, required env vars, and how to launch a server directly: **[docs/mcp-servers.md](docs/mcp-servers.md)**.
 
 ---
 
