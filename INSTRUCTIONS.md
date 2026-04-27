@@ -175,7 +175,6 @@ uv run deep-agent   "$query"
 | Flag                  | Runner                     | Description                                                       |
 | --------------------- | -------------------------- | ----------------------------------------------------------------- |
 | `--show-plan`         | plan-execute               | Print the generated plan before execution                         |
-| `--server NAME=SPEC`  | plan-execute               | Override an MCP server (repeatable); SPEC is entry-point name or path |
 | `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
 | `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
 

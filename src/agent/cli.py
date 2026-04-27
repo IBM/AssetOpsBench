@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from ._cli_common import HR, add_common_args, run_sdk_cli
 
@@ -49,14 +48,6 @@ examples:
     )
     add_common_args(parser, default_model=_DEFAULT_MODEL)
     parser.add_argument(
-        "--server",
-        action="append",
-        metavar="NAME=PATH",
-        dest="servers",
-        default=[],
-        help="Register an MCP server as NAME=PATH. Overrides the default servers. Repeatable.",
-    )
-    parser.add_argument(
         "--show-plan",
         action="store_true",
         help="Print the generated plan before execution.",
@@ -77,22 +68,6 @@ def _build_llm(model_id: str):
         sys.exit(1)
 
 
-def _parse_servers(entries: list[str]) -> dict[str, Path] | None:
-    if not entries:
-        return None
-    result: dict[str, Path] = {}
-    for entry in entries:
-        if "=" not in entry:
-            print(
-                f"error: --server requires NAME=PATH format, got: {entry!r}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        name, _, path = entry.partition("=")
-        result[name.strip()] = Path(path.strip())
-    return result
-
-
 def _print_section(title: str) -> None:
     print(f"\n{HR}")
     print(f"  {title}")
@@ -103,8 +78,7 @@ async def _run(args: argparse.Namespace) -> None:
     from agent.plan_execute.runner import PlanExecuteRunner
 
     llm = _build_llm(args.model_id)
-    server_paths = _parse_servers(args.servers)
-    runner = PlanExecuteRunner(llm=llm, server_paths=server_paths)
+    runner = PlanExecuteRunner(llm=llm)
     result = await runner.run(args.question)
 
     if args.output_json:
