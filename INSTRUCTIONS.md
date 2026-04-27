@@ -222,48 +222,25 @@ See [docs/observability.md](docs/observability.md) for span attribute reference,
 
 ## Running Tests
 
-Run the full suite from the repo root (unit + integration where services are available):
-
 ```bash
-uv run pytest src/ -v
+uv run pytest src/ -k "not integration"   # unit tests only — no services required
+uv run pytest src/                        # full suite — integration tests auto-skip if their service is unavailable
 ```
 
-Integration tests are auto-skipped when the required service is not available:
+Each integration suite is gated by a `skipif` mark; missing service ⇒ silently skipped, not failed:
 
-- IoT integration tests require `COUCHDB_URL` (set in `.env`)
-- Work order integration tests require `COUCHDB_URL` (set in `.env`)
-- FMSR integration tests require `WATSONX_APIKEY` (set in `.env`)
-- TSFM integration tests require `PATH_TO_MODELS_DIR` and `PATH_TO_DATASETS_DIR` (set in `.env`)
+| Suite              | Skip unless                                                                  |
+| ------------------ | ---------------------------------------------------------------------------- |
+| iot, wo, vibration | CouchDB reachable — `docker compose -f src/couchdb/docker-compose.yaml up -d` |
+| fmsr               | `WATSONX_APIKEY`, `WATSONX_PROJECT_ID` set in `.env`                          |
+| tsfm               | `PATH_TO_MODELS_DIR`, `PATH_TO_DATASETS_DIR` set in `.env`                    |
 
-### Unit tests only (no services required)
-
-```bash
-uv run pytest src/ -v -k "not integration"
-```
-
-### Per-server
+Narrow scope by path or name pattern:
 
 ```bash
-uv run pytest src/servers/iot/tests/test_tools.py -k "not integration"
-uv run pytest src/servers/utilities/tests/
-uv run pytest src/servers/fmsr/tests/ -k "not integration"
-uv run pytest src/servers/tsfm/tests/ -k "not integration"
-uv run pytest src/servers/wo/tests/test_tools.py -k "not integration"
-uv run pytest src/agent/tests/
-```
-
-### Work order integration tests (requires CouchDB + populated `workorder` db)
-
-```bash
-docker compose -f src/couchdb/docker-compose.yaml up -d
-uv run pytest src/servers/wo/tests/test_integration.py -v
-```
-
-### Integration tests (requires CouchDB + WatsonX)
-
-```bash
-docker compose -f src/couchdb/docker-compose.yaml up -d
-uv run pytest src/ -v
+uv run pytest src/servers/wo/tests/                # one package's full suite
+uv run pytest src/servers/wo/tests/test_integration.py -v   # one file
+uv run pytest src/ -k "integration"                # only files / tests with "integration" in the name
 ```
 
 ---
