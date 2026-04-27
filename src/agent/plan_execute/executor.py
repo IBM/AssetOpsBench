@@ -10,27 +10,17 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 from llm import LLMBackend
+from ..runner import DEFAULT_SERVER_PATHS
 from .models import Plan, PlanStep, StepResult
 
 _log = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
-
-# Maps agent names to either a uv entry-point name (str) or a script Path.
-# Entry-point names are invoked as ``uv run <name>``; Paths fall back to
-# ``python -m module.path`` (supports relative imports).
-DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
-    "iot": "iot-mcp-server",
-    "utilities": "utilities-mcp-server",
-    "fmsr": "fmsr-mcp-server",
-    "tsfm": "tsfm-mcp-server",
-    "wo": "wo-mcp-server",
-    "vibration": "vibration-mcp-server",
-}
 
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
 
@@ -121,7 +111,9 @@ class Executor:
                 step.task,
             )
             schema = tool_schemas.get(step.server, {}).get(step.tool, "")
+            step_started = time.perf_counter()
             result = await self.execute_step(step, context, question, tool_schema=schema)
+            result.duration_ms = (time.perf_counter() - step_started) * 1000
             if result.success:
                 _log.info("Step %d OK.", step.step_number)
             else:

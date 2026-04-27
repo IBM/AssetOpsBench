@@ -16,36 +16,27 @@ Usage::
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import os
+import time
+from functools import cached_property
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from ..models import AgentResult
-from ..plan_execute.executor import DEFAULT_SERVER_PATHS
+from observability import agent_run_span, persist_trajectory
+
+from .._litellm import LITELLM_PREFIX, resolve_model
+from .._prompts import AGENT_SYSTEM_PROMPT
+from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
-from .models import ToolCall, Trajectory, TurnRecord
 
 _log = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 
 _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
-_LITELLM_PREFIX = "litellm_proxy/"
-
-
-def _resolve_model(model_id: str) -> str:
-    """Strip the ``litellm_proxy/`` prefix from a model ID.
-
-    Examples::
-
-        "litellm_proxy/aws/claude-opus-4-6"  ->  "aws/claude-opus-4-6"
-        "gpt-4o"                             ->  "gpt-4o"
-    """
-    if model_id.startswith(_LITELLM_PREFIX):
-        return model_id[len(_LITELLM_PREFIX):]
-    return model_id
 
 
 def _build_chat_model(model_id: str):
@@ -56,18 +47,18 @@ def _build_chat_model(model_id: str):
     ``LITELLM_API_KEY``).  Otherwise the model string is passed to
     ``init_chat_model`` so any provider supported by LangChain can be used.
     """
-    if model_id.startswith(_LITELLM_PREFIX):
+    if model_id.startswith(LITELLM_PREFIX):
         base_url = os.environ.get("LITELLM_BASE_URL")
         api_key = os.environ.get("LITELLM_API_KEY")
         if not base_url or not api_key:
             raise ValueError(
                 "LITELLM_BASE_URL and LITELLM_API_KEY must be set "
-                f"when using {_LITELLM_PREFIX!r} model prefix"
+                f"when using {LITELLM_PREFIX!r} model prefix"
             )
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(
-            model=_resolve_model(model_id),
+            model=resolve_model(model_id),
             base_url=base_url,
             api_key=api_key,
         )
@@ -75,16 +66,6 @@ def _build_chat_model(model_id: str):
     from langchain.chat_models import init_chat_model
 
     return init_chat_model(model_id)
-
-
-_SYSTEM_PROMPT = """\
-You are an industrial asset operations assistant with access to MCP tools for
-querying IoT sensor data, failure mode and symptom records, time-series
-forecasting models, and work order management.
-
-Answer the user's question concisely and accurately using the available tools.
-When you retrieve data, include the key numbers or names in your answer.
-"""
 
 
 def _build_mcp_connections(
@@ -191,9 +172,11 @@ class DeepAgentRunner(AgentRunner):
         super().__init__(llm, server_paths)
         self._model_id = model
         self._recursion_limit = recursion_limit
-        self._resolved_server_paths: dict[str, Path | str] = (
-            server_paths if server_paths is not None else dict(DEFAULT_SERVER_PATHS)
-        )
+
+    @cached_property
+    def _chat_model(self):
+        """LangChain chat model, built once per runner instance."""
+        return _build_chat_model(self._model_id)
 
     async def run(self, question: str) -> AgentResult:
         """Run the deep-agents loop for *question*.
@@ -204,56 +187,76 @@ class DeepAgentRunner(AgentRunner):
         Returns:
             :class:`AgentResult` with the final answer and full trajectory.
         """
-        from deepagents import create_deep_agent
-        from langchain_mcp_adapters.client import MultiServerMCPClient
+        with agent_run_span(
+            "deep-agent", model=self._model_id, question=question
+        ) as span:
+            run_started = time.perf_counter()
+            started_at = _dt.datetime.now(_dt.UTC).isoformat()
+            from deepagents import create_deep_agent
+            from langchain_mcp_adapters.client import MultiServerMCPClient
 
-        connections = _build_mcp_connections(self._resolved_server_paths)
-        client = MultiServerMCPClient(connections) if connections else None
-        tools = await client.get_tools() if client is not None else []
+            connections = _build_mcp_connections(self._server_paths)
+            client = MultiServerMCPClient(connections) if connections else None
+            tools = await client.get_tools() if client is not None else []
 
-        chat_model = _build_chat_model(self._model_id)
-        agent = create_deep_agent(
-            model=chat_model,
-            tools=tools,
-            system_prompt=_SYSTEM_PROMPT,
-        )
+            agent = create_deep_agent(
+                model=self._chat_model,
+                tools=tools,
+                system_prompt=AGENT_SYSTEM_PROMPT,
+            )
 
-        _log.info(
-            "DeepAgentRunner: starting query (model=%s, tools=%d)",
-            self._model_id,
-            len(tools),
-        )
+            _log.info(
+                "DeepAgentRunner: starting query (model=%s, tools=%d)",
+                self._model_id,
+                len(tools),
+            )
 
-        state = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": question}]},
-            config={"recursion_limit": self._recursion_limit},
-        )
+            state = await agent.ainvoke(
+                {"messages": [{"role": "user", "content": question}]},
+                config={"recursion_limit": self._recursion_limit},
+            )
 
-        messages = state.get("messages", []) if isinstance(state, dict) else []
-        trajectory = _build_trajectory(messages)
+            messages = state.get("messages", []) if isinstance(state, dict) else []
+            trajectory = _build_trajectory(messages)
+            trajectory.started_at = started_at
 
-        answer = ""
-        for msg in reversed(messages):
-            if isinstance(msg, AIMessage):
-                if isinstance(msg.content, str) and msg.content.strip():
-                    answer = msg.content
-                    break
-                if isinstance(msg.content, list):
-                    parts = [
-                        p.get("text", "")
-                        for p in msg.content
-                        if isinstance(p, dict) and p.get("type") == "text"
-                    ]
-                    joined = "".join(parts).strip()
-                    if joined:
-                        answer = joined
+            answer = ""
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage):
+                    if isinstance(msg.content, str) and msg.content.strip():
+                        answer = msg.content
                         break
+                    if isinstance(msg.content, list):
+                        parts = [
+                            p.get("text", "")
+                            for p in msg.content
+                            if isinstance(p, dict) and p.get("type") == "text"
+                        ]
+                        joined = "".join(parts).strip()
+                        if joined:
+                            answer = joined
+                            break
 
-        _log.info(
-            "DeepAgentRunner: done (turns=%d, input_tokens=%d, output_tokens=%d)",
-            len(trajectory.turns),
-            trajectory.total_input_tokens,
-            trajectory.total_output_tokens,
-        )
+            _log.info(
+                "DeepAgentRunner: done (turns=%d, input_tokens=%d, output_tokens=%d)",
+                len(trajectory.turns),
+                trajectory.total_input_tokens,
+                trajectory.total_output_tokens,
+            )
 
-        return AgentResult(question=question, answer=answer, trajectory=trajectory)
+            span.set_attribute("agent.answer.length", len(answer))
+            span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
+            span.set_attribute("agent.turns", len(trajectory.turns))
+            span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
+            span.set_attribute(
+                "agent.duration_ms", (time.perf_counter() - run_started) * 1000
+            )
+            persist_trajectory(
+                runner_name="deep-agent",
+                model=self._model_id,
+                question=question,
+                answer=answer,
+                trajectory=trajectory,
+            )
+            return AgentResult(question=question, answer=answer, trajectory=trajectory)

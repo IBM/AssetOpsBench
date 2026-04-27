@@ -15,35 +15,25 @@ Usage::
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 import os
+import time
 from pathlib import Path
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, HookMatcher, ResultMessage, query
 from claude_agent_sdk import TextBlock, ToolUseBlock
 
-from ..models import AgentResult
-from .models import ToolCall, Trajectory, TurnRecord
-from ..plan_execute.executor import DEFAULT_SERVER_PATHS
+from observability import agent_run_span, persist_trajectory
+
+from .._litellm import LITELLM_PREFIX, resolve_model
+from .._prompts import AGENT_SYSTEM_PROMPT
+from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
-_LITELLM_PREFIX = "litellm_proxy/"
-
-
-def _resolve_model(model_id: str) -> str:
-    """Strip the ``litellm_proxy/`` prefix from a model ID.
-
-    Examples::
-
-        "litellm_proxy/aws/claude-opus-4-6"  ->  "aws/claude-opus-4-6"
-        "claude-opus-4-6"                    ->  "claude-opus-4-6"
-    """
-    if model_id.startswith(_LITELLM_PREFIX):
-        return model_id[len(_LITELLM_PREFIX):]
-    return model_id
 
 
 def _sdk_env(model_id: str) -> dict[str, str] | None:
@@ -53,7 +43,7 @@ def _sdk_env(model_id: str) -> dict[str, str] | None:
     under its own env var names.  We derive them from the LITELLM_* vars so
     the user never has to set SDK-internal vars directly.
     """
-    if not model_id.startswith(_LITELLM_PREFIX):
+    if not model_id.startswith(LITELLM_PREFIX):
         return None
     env: dict[str, str] = {}
     if base_url := os.environ.get("LITELLM_BASE_URL"):
@@ -61,15 +51,6 @@ def _sdk_env(model_id: str) -> dict[str, str] | None:
     if api_key := os.environ.get("LITELLM_API_KEY"):
         env["ANTHROPIC_API_KEY"] = api_key
     return env or None
-
-_SYSTEM_PROMPT = """\
-You are an industrial asset operations assistant with access to MCP tools for
-querying IoT sensor data, failure mode and symptom records, time-series
-forecasting models, and work order management.
-
-Answer the user's question concisely and accurately using the available tools.
-When you retrieve data, include the key numbers or names in your answer.
-"""
 
 
 def _build_mcp_servers(
@@ -116,13 +97,11 @@ class ClaudeAgentRunner(AgentRunner):
         permission_mode: str = "bypassPermissions",
     ) -> None:
         super().__init__(llm, server_paths)
-        self._model = _resolve_model(model)
+        self._model = resolve_model(model)
         self._sdk_env = _sdk_env(model)
         self._max_turns = max_turns
         self._permission_mode = permission_mode
-        self._resolved_server_paths: dict[str, Path | str] = (
-            server_paths if server_paths is not None else dict(DEFAULT_SERVER_PATHS)
-        )
+        self._mcp_servers = _build_mcp_servers(self._server_paths)
 
     async def run(self, question: str) -> AgentResult:
         """Run the claude-agent-sdk loop for *question*.
@@ -133,73 +112,101 @@ class ClaudeAgentRunner(AgentRunner):
         Returns:
             AgentResult with the final answer and full execution trajectory.
         """
-        mcp_servers = _build_mcp_servers(self._resolved_server_paths)
+        with agent_run_span(
+            "claude-agent", model=self._model, question=question
+        ) as span:
+            options = ClaudeAgentOptions(
+                model=self._model,
+                system_prompt=AGENT_SYSTEM_PROMPT,
+                mcp_servers=self._mcp_servers,
+                max_turns=self._max_turns,
+                permission_mode=self._permission_mode,
+                env=self._sdk_env,
+            )
 
-        options = ClaudeAgentOptions(
-            model=self._model,
-            system_prompt=_SYSTEM_PROMPT,
-            mcp_servers=mcp_servers,
-            max_turns=self._max_turns,
-            permission_mode=self._permission_mode,
-            env=self._sdk_env,
-        )
+            _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
+            answer = ""
+            run_started = time.perf_counter()
+            trajectory = Trajectory(started_at=_dt.datetime.now(_dt.UTC).isoformat())
+            turn_index = 0
+            last_turn_start = run_started
+            tool_outputs: dict[str, object] = {}
 
-        _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
-        answer = ""
-        trajectory = Trajectory()
-        turn_index = 0
-        tool_outputs: dict[str, object] = {}
+            async def _capture_tool_output(input_data, tool_use_id: str, context) -> dict:
+                resp = input_data.get("tool_response") if isinstance(input_data, dict) else input_data
+                if isinstance(resp, dict):
+                    tool_outputs[tool_use_id] = resp.get("content", resp)
+                else:
+                    tool_outputs[tool_use_id] = resp
+                return {}
 
-        async def _capture_tool_output(input_data, tool_use_id: str, context) -> dict:
-            resp = input_data.get("tool_response") if isinstance(input_data, dict) else input_data
-            if isinstance(resp, dict):
-                tool_outputs[tool_use_id] = resp.get("content", resp)
-            else:
-                tool_outputs[tool_use_id] = resp
-            return {}
+            # Only PostToolUse is registered.  Adding PreToolUse made older
+            # ``@anthropic-ai/claude-code`` CLI binaries exit on config parse;
+            # per-tool duration for claude-agent is therefore not captured
+            # (matches openai-agent / deep-agent).
+            options.hooks = {
+                "PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])],
+            }
 
-        options.hooks = {"PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])]}
-
-        def _flush_tool_outputs() -> None:
-            """Patch any pending hook outputs onto the last turn's tool calls."""
-            if tool_outputs and trajectory.turns:
+            def _flush_tool_outputs() -> None:
+                """Patch any pending hook outputs onto the last turn's tool calls."""
+                if not trajectory.turns:
+                    return
                 for tc in trajectory.turns[-1].tool_calls:
                     if tc.id in tool_outputs:
                         tc.output = tool_outputs.pop(tc.id)
 
-        async for message in query(prompt=question, options=options):
-            if isinstance(message, AssistantMessage):
-                _flush_tool_outputs()
-                text = ""
-                tool_calls: list[ToolCall] = []
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        text += block.text
-                    elif isinstance(block, ToolUseBlock):
-                        tool_calls.append(
-                            ToolCall(name=block.name, input=block.input, id=block.id)
+            async for message in query(prompt=question, options=options):
+                if isinstance(message, AssistantMessage):
+                    _flush_tool_outputs()
+                    now = time.perf_counter()
+                    turn_duration_ms = (now - last_turn_start) * 1000
+                    last_turn_start = now
+                    text = ""
+                    tool_calls: list[ToolCall] = []
+                    for block in message.content:
+                        if isinstance(block, TextBlock):
+                            text += block.text
+                        elif isinstance(block, ToolUseBlock):
+                            tool_calls.append(
+                                ToolCall(name=block.name, input=block.input, id=block.id)
+                            )
+                    usage = message.usage or {}
+                    trajectory.turns.append(
+                        TurnRecord(
+                            index=turn_index,
+                            text=text,
+                            tool_calls=tool_calls,
+                            input_tokens=usage.get("input_tokens", 0),
+                            output_tokens=usage.get("output_tokens", 0),
+                            duration_ms=turn_duration_ms,
                         )
-                usage = message.usage or {}
-                trajectory.turns.append(
-                    TurnRecord(
-                        index=turn_index,
-                        text=text,
-                        tool_calls=tool_calls,
-                        input_tokens=usage.get("input_tokens", 0),
-                        output_tokens=usage.get("output_tokens", 0),
                     )
-                )
-                turn_index += 1
-            elif isinstance(message, ResultMessage):
-                _flush_tool_outputs()
-                answer = message.result or ""
-                _log.info(
-                    "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "
-                    "input_tokens=%d, output_tokens=%d)",
-                    message.stop_reason,
-                    len(trajectory.turns),
-                    trajectory.total_input_tokens,
-                    trajectory.total_output_tokens,
-                )
+                    turn_index += 1
+                elif isinstance(message, ResultMessage):
+                    _flush_tool_outputs()
+                    answer = message.result or ""
+                    _log.info(
+                        "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "
+                        "input_tokens=%d, output_tokens=%d)",
+                        message.stop_reason,
+                        len(trajectory.turns),
+                        trajectory.total_input_tokens,
+                        trajectory.total_output_tokens,
+                    )
 
-        return AgentResult(question=question, answer=answer, trajectory=trajectory)
+            duration_ms = (time.perf_counter() - run_started) * 1000
+            span.set_attribute("agent.answer.length", len(answer))
+            span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
+            span.set_attribute("agent.turns", len(trajectory.turns))
+            span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
+            span.set_attribute("agent.duration_ms", duration_ms)
+            persist_trajectory(
+                runner_name="claude-agent",
+                model=self._model,
+                question=question,
+                answer=answer,
+                trajectory=trajectory,
+            )
+            return AgentResult(question=question, answer=answer, trajectory=trajectory)

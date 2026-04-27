@@ -10,22 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent.claude_agent.models import Trajectory
-from agent.claude_agent.runner import ClaudeAgentRunner, _build_mcp_servers, _resolve_model, _sdk_env
-from agent.models import AgentResult
-
-
-# ---------------------------------------------------------------------------
-# _resolve_model
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_model_strips_litellm_prefix():
-    assert _resolve_model("litellm_proxy/aws/claude-opus-4-6") == "aws/claude-opus-4-6"
-
-
-def test_resolve_model_passthrough():
-    assert _resolve_model("claude-opus-4-6") == "claude-opus-4-6"
+from agent.claude_agent.runner import ClaudeAgentRunner, _build_mcp_servers, _sdk_env
+from agent.models import AgentResult, Trajectory
 
 
 def test_resolve_model_stored_on_runner():
@@ -88,13 +74,13 @@ def test_runner_defaults():
     assert runner._model == "aws/claude-opus-4-6"
     assert runner._max_turns == 30
     assert runner._permission_mode == "bypassPermissions"
-    assert "iot" in runner._resolved_server_paths
+    assert "iot" in runner._server_paths
 
 
 def test_runner_custom_server_paths():
     paths = {"iot": "iot-mcp-server"}
     runner = ClaudeAgentRunner(server_paths=paths)
-    assert runner._resolved_server_paths == paths
+    assert runner._server_paths == paths
 
 
 # ---------------------------------------------------------------------------

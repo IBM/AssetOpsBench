@@ -15,9 +15,12 @@ Usage::
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import logging
 import os
+import time
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -25,27 +28,16 @@ from openai import AsyncOpenAI
 from agents import Agent, ModelProvider, OpenAIChatCompletionsModel, RunConfig, Runner, set_tracing_disabled
 from agents.mcp import MCPServerStdio
 
-from ..models import AgentResult
-from ..plan_execute.executor import DEFAULT_SERVER_PATHS
+from observability import agent_run_span, persist_trajectory
+
+from .._litellm import LITELLM_PREFIX, resolve_model
+from .._prompts import AGENT_SYSTEM_PROMPT
+from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
-from .models import ToolCall, Trajectory, TurnRecord
 
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
-_LITELLM_PREFIX = "litellm_proxy/"
-
-def _resolve_model(model_id: str) -> str:
-    """Strip the ``litellm_proxy/`` prefix from a model ID.
-
-    Examples::
-
-        "litellm_proxy/Azure/gpt-5-2025-08-07"  ->  "Azure/gpt-5-2025-08-07"
-        "gpt-4o"                                 ->  "gpt-4o"
-    """
-    if model_id.startswith(_LITELLM_PREFIX):
-        return model_id[len(_LITELLM_PREFIX):]
-    return model_id
 
 
 def _build_run_config(model_id: str) -> RunConfig | None:
@@ -58,7 +50,7 @@ def _build_run_config(model_id: str) -> RunConfig | None:
 
     Returns ``None`` for direct OpenAI API usage.
     """
-    if not model_id.startswith(_LITELLM_PREFIX):
+    if not model_id.startswith(LITELLM_PREFIX):
         return None
 
     base_url = os.environ.get("LITELLM_BASE_URL")
@@ -66,10 +58,10 @@ def _build_run_config(model_id: str) -> RunConfig | None:
     if not base_url or not api_key:
         raise ValueError(
             "LITELLM_BASE_URL and LITELLM_API_KEY must be set "
-            f"when using {_LITELLM_PREFIX!r} model prefix"
+            f"when using {LITELLM_PREFIX!r} model prefix"
         )
 
-    resolved = _resolve_model(model_id)
+    resolved = resolve_model(model_id)
     client = AsyncOpenAI(base_url=base_url, api_key=api_key)
     set_tracing_disabled(disabled=True)
 
@@ -81,16 +73,6 @@ def _build_run_config(model_id: str) -> RunConfig | None:
             )
 
     return RunConfig(model_provider=_LiteLLMModelProvider())
-
-
-_SYSTEM_PROMPT = """\
-You are an industrial asset operations assistant with access to MCP tools for
-querying IoT sensor data, failure mode and symptom records, time-series
-forecasting models, and work order management.
-
-Answer the user's question concisely and accurately using the available tools.
-When you retrieve data, include the key numbers or names in your answer.
-"""
 
 
 def _build_mcp_servers(
@@ -214,12 +196,9 @@ class OpenAIAgentRunner(AgentRunner):
     ) -> None:
         super().__init__(llm, server_paths)
         self._model_id = model
-        self._model = _resolve_model(model)
+        self._model = resolve_model(model)
         self._run_config = _build_run_config(model)
         self._max_turns = max_turns
-        self._resolved_server_paths: dict[str, Path | str] = (
-            server_paths if server_paths is not None else dict(DEFAULT_SERVER_PATHS)
-        )
 
     async def run(self, question: str) -> AgentResult:
         """Run the OpenAI Agents SDK loop for *question*.
@@ -230,67 +209,73 @@ class OpenAIAgentRunner(AgentRunner):
         Returns:
             AgentResult with the final answer and full execution trajectory.
         """
-        mcp_servers = _build_mcp_servers(self._resolved_server_paths)
+        with agent_run_span(
+            "openai-agent", model=self._model_id, question=question
+        ) as span:
+            run_started = time.perf_counter()
+            started_at = _dt.datetime.now(_dt.UTC).isoformat()
+            mcp_servers = _build_mcp_servers(self._server_paths)
 
-        # Use async context managers to manage MCP server lifecycle
-        async with _managed_servers(mcp_servers) as active_servers:
-            agent = Agent(
-                name="AssetOps Assistant",
-                instructions=_SYSTEM_PROMPT,
-                mcp_servers=active_servers,
-                model=self._model,
-            )
+            # AsyncExitStack enters every server and closes them in LIFO order
+            # on exit (success or exception).
+            async with AsyncExitStack() as stack:
+                active_servers = [
+                    await stack.enter_async_context(s) for s in mcp_servers
+                ]
+                agent = Agent(
+                    name="AssetOps Assistant",
+                    instructions=AGENT_SYSTEM_PROMPT,
+                    mcp_servers=active_servers,
+                    model=self._model,
+                )
 
-            _log.info(
-                "OpenAIAgentRunner: starting query (model=%s, servers=%d)",
-                self._model,
-                len(active_servers),
-            )
+                _log.info(
+                    "OpenAIAgentRunner: starting query (model=%s, servers=%d)",
+                    self._model,
+                    len(active_servers),
+                )
 
-            run_kwargs: dict = dict(max_turns=self._max_turns)
-            if self._run_config is not None:
-                run_kwargs["run_config"] = self._run_config
+                run_kwargs: dict = dict(max_turns=self._max_turns)
+                if self._run_config is not None:
+                    run_kwargs["run_config"] = self._run_config
 
-            result = await Runner.run(
-                agent,
-                question,
-                **run_kwargs,
-            )
+                result = await Runner.run(
+                    agent,
+                    question,
+                    **run_kwargs,
+                )
 
-            answer = result.final_output or ""
-            trajectory = _build_trajectory(result)
+                answer = result.final_output or ""
+                trajectory = _build_trajectory(result)
+                trajectory.started_at = started_at
 
-            _log.info(
-                "OpenAIAgentRunner: done (turns=%d, input_tokens=%d, "
-                "output_tokens=%d)",
-                len(trajectory.turns),
-                trajectory.total_input_tokens,
-                trajectory.total_output_tokens,
-            )
+                _log.info(
+                    "OpenAIAgentRunner: done (turns=%d, input_tokens=%d, "
+                    "output_tokens=%d)",
+                    len(trajectory.turns),
+                    trajectory.total_input_tokens,
+                    trajectory.total_output_tokens,
+                )
 
-            return AgentResult(
-                question=question,
-                answer=answer,
-                trajectory=trajectory,
-            )
+                span.set_attribute("agent.answer.length", len(answer))
+                span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
+                span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
+                span.set_attribute("agent.turns", len(trajectory.turns))
+                span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
+                span.set_attribute(
+                    "agent.duration_ms", (time.perf_counter() - run_started) * 1000
+                )
+                persist_trajectory(
+                    runner_name="openai-agent",
+                    model=self._model_id,
+                    question=question,
+                    answer=answer,
+                    trajectory=trajectory,
+                )
+                return AgentResult(
+                    question=question,
+                    answer=answer,
+                    trajectory=trajectory,
+                )
 
 
-class _managed_servers:
-    """Async context manager that enters all MCP server contexts."""
-
-    def __init__(self, servers: list[MCPServerStdio]) -> None:
-        self._servers = servers
-        self._entered: list[MCPServerStdio] = []
-
-    async def __aenter__(self) -> list[MCPServerStdio]:
-        for server in self._servers:
-            await server.__aenter__()
-            self._entered.append(server)
-        return self._entered
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        for server in reversed(self._entered):
-            try:
-                await server.__aexit__(exc_type, exc_val, exc_tb)
-            except Exception:
-                _log.warning("Failed to close MCP server %s", server.name, exc_info=True)

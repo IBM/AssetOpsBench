@@ -16,6 +16,7 @@ from agent.plan_execute.executor import (
 )
 from agent.plan_execute.models import Plan, PlanStep, StepResult
 from agent.plan_execute.runner import PlanExecuteRunner
+from llm import LLMBackend, LLMResult
 
 # ── shared plan strings ───────────────────────────────────────────────────────
 
@@ -133,6 +134,39 @@ async def test_orchestrator_unknown_server_recorded_as_error(sequential_llm):
     assert len(result.trajectory) == 1
     assert result.trajectory[0].success is False
     assert "ghost" in result.trajectory[0].error
+
+
+class _UsageReportingLLM(LLMBackend):
+    """Sequential LLM that reports per-call token usage via LLMResult."""
+
+    def __init__(self, items: list[tuple[str, int, int]]) -> None:
+        self._items = iter(items)
+
+    def generate(self, prompt: str, temperature: float = 0.0) -> str:
+        return self.generate_with_usage(prompt, temperature).text
+
+    def generate_with_usage(
+        self, prompt: str, temperature: float = 0.0
+    ) -> LLMResult:
+        text, in_tok, out_tok = next(self._items, ("", 0, 0))
+        return LLMResult(text=text, input_tokens=in_tok, output_tokens=out_tok)
+
+
+@pytest.mark.anyio
+async def test_orchestrator_accumulates_token_usage_across_llm_calls():
+    """Plan + 2 arg-resolution + summarise → summed input/output tokens."""
+    llm = _UsageReportingLLM([
+        (_TWO_STEP_PLAN, 100, 50),   # planner
+        (_STEP1_ARGS, 20, 5),        # step 1 arg resolution
+        (_STEP2_ARGS, 30, 5),        # step 2 arg resolution
+        (_FINAL_ANSWER, 200, 40),    # summarise
+    ])
+    runner = PlanExecuteRunner(llm)
+    with _patch_mcp()[0], _patch_mcp()[1]:
+        await runner.run("Q")
+
+    assert runner._meter.input_tokens == 350
+    assert runner._meter.output_tokens == 100
 
 
 @pytest.mark.anyio
