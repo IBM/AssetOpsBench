@@ -188,22 +188,6 @@ Provider is encoded in the `--model-id` prefix:
 | `litellm_proxy/` | LiteLLM proxy                             | `LITELLM_API_KEY`, `LITELLM_BASE_URL`                            |
 | _(none)_         | Direct provider (claude-agent → Anthropic API) | `LITELLM_API_KEY`                                           |
 
-### Plan-Execute loop
-
-The three SDK runners delegate their loop to upstream code; only plan-execute's loop is custom and worth diagramming:
-
-```
-PlanExecuteRunner.run(question)
-  ├─ 1. Discover   query each MCP server for its available tools
-  ├─ 2. Plan       LLM decomposes the question into ordered steps,
-  │                each assigned to an MCP server
-  ├─ 3. Execute    for each step (in dependency order):
-  │                  • LLM picks tool + generates arguments
-  │                  • tool is called via MCP stdio
-  │                  • result is passed as context to later steps
-  └─ 4. Summarise  LLM synthesises step results into a final answer
-```
-
 ### Examples
 
 ```bash
