@@ -178,16 +178,6 @@ uv run deep-agent   "$query"
 | `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
 | `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
 
-### Model selection
-
-Provider is encoded in the `--model-id` prefix:
-
-| Prefix           | Provider                                  | Required env vars                                                |
-| ---------------- | ----------------------------------------- | ---------------------------------------------------------------- |
-| `watsonx/`       | IBM WatsonX (plan-execute only)           | `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` (optional) |
-| `litellm_proxy/` | LiteLLM proxy                             | `LITELLM_API_KEY`, `LITELLM_BASE_URL`                            |
-| _(none)_         | Direct provider (claude-agent → Anthropic API) | `LITELLM_API_KEY`                                           |
-
 ### Examples
 
 ```bash
