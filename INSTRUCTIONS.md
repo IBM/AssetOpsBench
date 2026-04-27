@@ -444,34 +444,9 @@ uv run pytest src/ -v
 ┌──────────────────────────────────────────────────────────────┐
 │                          agent/                              │
 │                                                              │
-│  PlanExecuteRunner.run(question)                             │
-│  ┌────────────┐   ┌────────────┐   ┌──────────────┐         │
-│  │  Planner   │ → │  Executor  │ → │  Summariser  │         │
-│  │ LLM breaks │   │ Routes each│   │ LLM combines │         │
-│  │ question   │   │ step to MCP│   │ step results │         │
-│  │ into steps │   │ via stdio  │   │ into answer  │         │
-│  └────────────┘   └────────────┘   └──────────────┘         │
+│   PlanExecuteRunner   ClaudeAgentRunner                      │
+│   OpenAIAgentRunner   DeepAgentRunner                        │
 │                                                              │
-│  ClaudeAgentRunner.run(question)                             │
-│  ┌─────────────────────────────────────────┐                 │
-│  │  claude-agent-sdk agentic loop          │                 │
-│  │  Claude decides tools + order autonomously               │
-│  │  Trajectory (turns, tool calls, tokens) collected        │
-│  └─────────────────────────────────────────┘                 │
-│                                                              │
-│  OpenAIAgentRunner.run(question)                             │
-│  ┌─────────────────────────────────────────┐                 │
-│  │  openai-agents SDK Runner.run loop      │                 │
-│  │  GPT decides tools + order autonomously                  │
-│  │  Trajectory (turns, tool calls, tokens) collected        │
-│  └─────────────────────────────────────────┘                 │
-│                                                              │
-│  DeepAgentRunner.run(question)                               │
-│  ┌─────────────────────────────────────────┐                 │
-│  │  LangChain deep-agents LangGraph loop   │                 │
-│  │  MCP tools bridged via langchain-mcp-adapters            │
-│  │  Trajectory (turns, tool calls, tokens) collected        │
-│  └─────────────────────────────────────────┘                 │
 └──────────────────────────┬───────────────────────────────────┘
                            │ MCP protocol (stdio)
          ┌─────────────────┼───────────┬──────────┬──────┬───────────┐
