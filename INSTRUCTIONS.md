@@ -27,6 +27,7 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [Deep Agent](#deep-agent)
   - [How it works](#how-it-works-3)
   - [CLI](#cli-3)
+- [Observability](#observability)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
 
@@ -460,6 +461,29 @@ uv run deep-agent --show-trajectory "$query"
 # Machine-readable trajectory
 uv run deep-agent --json "$query" | jq .turns
 ```
+
+---
+
+## Observability
+
+Each agent run can persist two artifacts joined by `run_id`:
+
+- **Trace** — OpenTelemetry root span with metadata + aggregate metrics (runner, model, IDs, span duration, token totals, turn / tool-call counts).
+- **Trajectory** — per-run JSON with per-turn content (text, tool inputs/outputs, per-turn tokens and timing).
+
+Install the optional deps and set either / both / neither env var:
+
+```bash
+uv sync --group otel
+
+AGENT_TRAJECTORY_DIR=./traces/trajectories \
+OTEL_TRACES_FILE=./traces/traces.jsonl \
+  uv run deep-agent --run-id bench-001 --scenario-id 304 "$query"
+```
+
+`--run-id` (auto-UUID4 if omitted) and `--scenario-id` are available on every runner. With nothing set, runs work normally with zero persistence overhead.
+
+See [docs/observability.md](docs/observability.md) for span attribute reference, trajectory layout, `jq` recipes, log rotation, and optional Jaeger / Collector replay.
 
 ---
 
