@@ -4,7 +4,8 @@ These tests patch claude_agent_sdk.query so no real API calls are made.
 """
 
 from __future__ import annotations
-
+import sys
+import io
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -253,3 +254,24 @@ async def test_run_empty_result():
     assert result.answer == ""
     assert isinstance(result.trajectory, Trajectory)
     assert result.trajectory.turns == []
+
+@pytest.mark.anyio
+async def test_run_surfaces_stderr():
+    from claude_agent_sdk import ResultMessage
+
+    # Simulate a ResultMessage with an error
+    mock_result = MagicMock(spec=ResultMessage)
+    mock_result.result = None
+    mock_result.stop_reason = "error"
+
+    async def fake_query(prompt, options):
+        # Simulate writing to stderr
+        print("Simulated error from subprocess", file=options.stderr)
+        yield mock_result
+
+    with patch("agent.claude_agent.runner.query", side_effect=fake_query):
+        runner = ClaudeAgentRunner(server_paths={})
+        stderr_capture = io.StringIO()
+        with patch("sys.stderr", stderr_capture):
+            await runner.run("Trigger error")
+        assert "Simulated error from subprocess" in stderr_capture.getvalue()

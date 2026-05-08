@@ -115,6 +115,7 @@ class ClaudeAgentRunner(AgentRunner):
         with agent_run_span(
             "claude-agent", model=self._model, question=question
         ) as span:
+            import sys
             options = ClaudeAgentOptions(
                 model=self._model,
                 system_prompt=AGENT_SYSTEM_PROMPT,
@@ -122,12 +123,13 @@ class ClaudeAgentRunner(AgentRunner):
                 max_turns=self._max_turns,
                 permission_mode=self._permission_mode,
                 env=self._sdk_env,
+                stderr=sys.stderr,  # Pipe subprocess stderr through
             )
 
             _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
             answer = ""
             run_started = time.perf_counter()
-            trajectory = Trajectory(started_at=_dt.datetime.now(_dt.UTC).isoformat())
+            trajectory = Trajectory(started_at=_dt.datetime.now(_dt.timezone.utc).isoformat())
             turn_index = 0
             last_turn_start = run_started
             tool_outputs: dict[str, object] = {}
