@@ -24,24 +24,6 @@
 
 ---
 
-## 📢 Call for Scenario Contribution
-We are expanding **AssetOpsBench** to cover a broader range of industrial challenges. We invite researchers and practitioners to contribute new scenarios, particularly in the following areas:
-
-* **Asset Classes:** Turbines, HVAC Systems, Pumps, Transformers, CNC Machines, Robotics, Engines, and so on.
-* **Task Domains:** Prognostics and Health Management, Remaining Useful Life (RUL) estimation, or Root Cause Analysis (RCA), Diagnostic Analysis and Predictive Maintenance.
-
-**How to contribute:**
-1.  **Define** your scenario following our [Utterance Guideline](docs/guideline/utterance_design_guideline.md), 
-[Ground Truth Guideline](docs/guideline/ground_truth_design_guideline.md)
-
-1.  **Explore** the [Hugging Face dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) as examples.
-3.  **Submit** a Pull Request or open an [Issue](https://github.com/IBM/AssetOpsBench/issues) with the tag `new-scenario`.
-4. **Contact us** via email if any question:
-   * Dhaval Patel ([pateldha@us.ibm.com](mailto:pateldha@us.ibm.com))
-   * Nianjun Zhou ([jzhou@us.ibm.com](mailto:jzhou@us.ibm.com))
-
----
-
 ## Resources
 - **Video Overview:** [AssetOpsBench - AI Agents for Industrial Asset Operations & Maintenance](https://www.youtube.com/watch?v=kXmBDMrKFjs) by Reliability Odyssey.
   
@@ -58,7 +40,9 @@ We are expanding **AssetOpsBench** to cover a broader range of industrial challe
 8. [Docker Setup](#run-assetopsbench-in-docker)
 9. [Talks & Events](#talks--events)
 10. [External Resources](#external-resources)
-11. [Contributors](#contributors)
+11. [University Projects & Extensions](#university-projects--extensions)
+11. [Call for Scenario Contribution](#call-for-scenario-contribution)
+12. [Contributors](#contributors)
 
 ---
 
@@ -182,6 +166,35 @@ docker-compose -f benchmark/docker-compose.yml up
 - 🤗 **HuggingFace**: [Scenario & Model Hub](https://huggingface.co/papers/2506.03828)  
 - 📢 **Blog**: [Insights, Tutorials, and Updates](https://research.ibm.com/blog/asset-ops-benchmark)  
 - 🎥 **Recorded Talks**: Link coming soon.
+
+---
+
+## University Projects & Extensions
+
+AssetOpsBench is being extended by university research groups exploring new asset classes, evaluation paradigms, and agentic architectures. To list your project, open a PR.
+
+- **Project Name** — short description (such as paper title). [Contributor Name](url), University · [repo](url)
+
+- **Project Name** — Prognostics & Health Management benchmark for MCP agents (rotating equipment, aero-engines, lithium-ion cells). [Contributor Name](https://github.com/handle), University of XYZ · [repo](https://github.com/contributor/phmforge)
+
+---
+
+## Call for Scenario Contribution
+We are expanding **AssetOpsBench** to cover a broader range of industrial challenges. We invite researchers and practitioners to contribute new scenarios, particularly in the following areas:
+
+* **Asset Classes:** Turbines, HVAC Systems, Pumps, Transformers, CNC Machines, Robotics, Engines, and so on.
+* **Task Domains:** Prognostics and Health Management, Remaining Useful Life (RUL) estimation, or Root Cause Analysis (RCA), Diagnostic Analysis and Predictive Maintenance.
+
+**How to contribute:**
+1.  **Define** your scenario following our [Utterance Guideline](docs/guideline/utterance_design_guideline.md), 
+[Ground Truth Guideline](docs/guideline/ground_truth_design_guideline.md)
+
+1.  **Explore** the [Hugging Face dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) as examples.
+3.  **Submit** a Pull Request or open an [Issue](https://github.com/IBM/AssetOpsBench/issues) with the tag `new-scenario`.
+4. **Contact us** via email if any question:
+   * Dhaval Patel ([pateldha@us.ibm.com](mailto:pateldha@us.ibm.com))
+   * Nianjun Zhou ([jzhou@us.ibm.com](mailto:jzhou@us.ibm.com))
+
 
 ---
 
