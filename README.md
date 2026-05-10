@@ -1,26 +1,28 @@
-# HPML Final Project: [Project Title]
+# HPML Final Project: Profiling and Optimizing the AssetOpsBench Plan-Execute Pipeline
 
-> **Course:** High Performance Machine Learning
-> **Semester:** Spring 2026
+*Note: The original README for AssetOpsBench can be found at [README_AssetOpsBench.md](README_AssetOpsBench.md)*
+
+> **Course:** High Performance Machine Learning\
+> **Semester:** Spring 2026\
 > **Instructor:** Dr. Kaoutar El Maghraoui
 
 ---
 
 ## Team Information
 
-- **Team Name:** [Team Name]
+- **Team Name:** Team 21
 - **Members:**
-  - Full Name 1 (UNI) — *role / area of contribution*
-  - Full Name 2 (UNI) — *role / area of contribution*
-  - Full Name 3 (UNI) — *role / area of contribution*
-  - Full Name 4 (UNI) — *role / area of contribution*
+  - Shen Li (sl6008) — *Profiling script, thinking mode integration*
+  - Charles Xu (tx2263) — *Thinking mode classifier training, model-based router*
+  - Ann Li (acl2246) — *Rule-based router, updated proposal for mentor project resubmission, general documentation & reports*
+  - Caroline Cahill (clc2240) — *Data preparation (label data with llm), trained thinking mode classifier on labeled data, W&B logging, presentations*
 
 ## Submission
 
-- **GitHub repository:** [https://github.com/&lt;org&gt;/&lt;repo&gt;](https://github.com/org/repo)
+- **GitHub repository:** [https://github.com/jasonlee-1024/AssetOpsBench](https://github.com/jasonlee-1024/AssetOpsBench/tree/main)
 - **Final report:** [`deliverables/HPML_Final_Report.pdf`](deliverables/HPML_Final_Report.pdf)
-- **Final presentation:** [`deliverables/HPML_Final_Presentation.pptx`](deliverables/HPML_Final_Presentation.pptx)
-- **Experiment-tracking dashboard:** [link to public Wandb / MLflow / TensorBoard / Comet / Neptune dashboard]
+- **Final presentation:** [`deliverables/HPML_Final_Presentation.pdf`](deliverables/HPML_Final_Presentation.pdf)
+- **Experiment-tracking dashboard:** [https://api.wandb.ai/links/ccahill19-columbia-university/pi21cc6x](https://api.wandb.ai/links/ccahill19-columbia-university/pi21cc6x)
 
 The final report PDF and the presentation file are checked into the `deliverables/` folder of this repository **and** uploaded to CourseWorks.
 
@@ -226,11 +228,11 @@ If you build on this work, please cite:
 
 ```bibtex
 @misc{teamname2026hpml,
-  title  = {[Project Title]},
-  author = {Last1, First1 and Last2, First2 and Last3, First3},
+  title  = {[Profiling and Optimizing the AssetOpsBench Plan-Execute Pipeline]},
+  author = {Li, Shen and Xu, Charles and Li, Ann and Cahill, Caroline},
   year   = {2026},
   note   = {HPML Spring 2026 Final Project, Columbia University},
-  url    = {https://github.com/<org>/<repo>}
+  url    = {https://github.com/jasonlee-1024/AssetOpsBench/tree/main}
 }
 ```
 
