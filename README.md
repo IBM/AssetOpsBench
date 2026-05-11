@@ -146,6 +146,15 @@ Example: MetaAgent leaderboard
 
 ---
 
+## Talks & Events
+
+- **2026-05-10:** [NUS Seminar: AssetOpsBench Applications](https://events.comp.nus.edu.sg/view/25423)
+- **2025-10-03:** 2-Hour Workshop: *AI Agents and Their Role in Industry 4.0 Applications* (Host: NJIT ACM)
+- **2025-09-01:** [CODS 2025 Competition Launch – AssetOpsBench-Live](https://ikdd.acm.org/cods-2025/)
+- **2025-06-01:** AssetOpsBench v1.0 released with 141 industrial scenarios
+- **2025:** Multiple invited talks and accepted papers at NeurIPS, EMNLP, AAAI (see Announcements above)
+
+
 ## Run AssetOpsBench in Docker
 - Please Refer to the 
 - Pre-built Docker Images: `assetopsbench-basic` (minimal) & `assetopsbench-extra` (full)  
