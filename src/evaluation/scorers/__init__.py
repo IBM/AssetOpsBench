@@ -40,5 +40,9 @@ def names() -> list[str]:
     return sorted(_REGISTRY)
 
 
-from . import code_based  # noqa: E402,F401  — register-on-import
-from . import semantic  # noqa: E402,F401  — register-on-import
+# Code-Based and Semantic-Score families ship as skeletons — their
+# modules are importable but register no scorers until an
+# implementation is filled in.  LLM-As-Judge is registered explicitly
+# via :func:`evaluation.scorers.llm_judge.install`.
+from . import code_based  # noqa: E402,F401
+from . import semantic  # noqa: E402,F401

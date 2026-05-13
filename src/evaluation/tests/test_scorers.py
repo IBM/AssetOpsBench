@@ -36,42 +36,22 @@ class TestCodeBasedSkeletons:
         raise AssertionError("expected NotImplementedError")
 
 
-class TestSemanticSimilarity:
-    def test_close_text_passes_default_threshold(self, make_scenario):
-        s = make_scenario(
-            characteristic_form="Lists temperature, pressure, and vibration sensors."
-        )
-        r = semantic_similarity(
-            s, "lists temperature pressure and vibration sensors", ""
-        )
-        assert r.passed
-        assert r.score >= 0.6
-
-    def test_unrelated_text_fails(self, make_scenario):
-        s = make_scenario(characteristic_form="lists three iot sensors")
-        r = semantic_similarity(s, "the chiller is operating normally", "")
-        assert not r.passed
-        assert "below threshold" in r.rationale
-
-    def test_custom_threshold_override(self, make_scenario):
-        s = make_scenario(
-            characteristic_form="lists three iot sensors",
-            similarity_threshold=0.05,
-        )
-        r = semantic_similarity(s, "completely different answer text", "")
-        # Threshold lowered enough that even weak overlap passes.
-        assert r.passed
-
-    def test_missing_reference_short_circuits(self, make_scenario):
-        s = make_scenario(characteristic_form=None, expected_answer=None)
-        r = semantic_similarity(s, "anything", "")
-        assert not r.passed
-        assert "characteristic_form" in r.rationale
+class TestSemanticSkeleton:
+    def test_semantic_similarity_not_implemented(self, make_scenario):
+        try:
+            semantic_similarity(make_scenario(), "a", "")
+        except NotImplementedError:
+            return
+        raise AssertionError("expected NotImplementedError")
 
 
 class TestRegistry:
-    def test_semantic_scorer_registered(self):
-        assert "semantic_similarity" in registry.names()
+    def test_skeleton_scorers_not_auto_registered(self):
+        # code_based and semantic ship as skeletons; only llm_judge is
+        # registered (lazily, via install()).
+        assert "exact_string_match" not in registry.names()
+        assert "numeric_match" not in registry.names()
+        assert "semantic_similarity" not in registry.names()
 
     def test_get_unknown_raises(self):
         try:

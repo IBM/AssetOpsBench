@@ -35,9 +35,13 @@ def test_evaluator_routes_to_default_scorer(tmp_path: Path, make_persisted_recor
     assert report.results[0].grade.scorer == "stub-evaluator"
 
 
+def _fail_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
+    return ScorerResult(scorer="fail-default", passed=False, score=0.0)
+
+
 def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_record):
     # The scenario-level grading_method must route around the default
-    # scorer, even when the default is a placeholder that would fail.
+    # scorer, even when the default scorer would reject the answer.
     rec = make_persisted_record(run_id="run-1", scenario_id=1, answer="answer text")
     (tmp_path / "run-1.json").write_text(json.dumps(rec), encoding="utf-8")
 
@@ -49,18 +53,20 @@ def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_rec
                     "id": 1,
                     "text": "Q",
                     "type": "tsfm",
-                    "characteristic_form": "answer text",
-                    "grading_method": "semantic_similarity",
+                    "grading_method": "stub-evaluator",
                 }
             ]
         ),
         encoding="utf-8",
     )
 
-    report = Evaluator(default_scorer="llm_judge").evaluate(
+    registry.register("stub-evaluator", _stub_scorer)
+    registry.register("fail-default", _fail_scorer)
+
+    report = Evaluator(default_scorer="fail-default").evaluate(
         trajectories_path=tmp_path,
         scenarios_paths=[scenarios_path],
     )
 
     assert report.totals["passed"] == 1
-    assert report.results[0].grade.scorer == "semantic_similarity"
+    assert report.results[0].grade.scorer == "stub-evaluator"

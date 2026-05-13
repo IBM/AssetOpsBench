@@ -46,6 +46,10 @@ def test_evaluate_end_to_end(tmp_path: Path, make_persisted_record):
     assert report.ops.tokens_in_total > 0
 
 
+def _always_fail_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
+    return ScorerResult(scorer="stub-fail", passed=False, score=0.0)
+
+
 def test_evaluate_uses_per_scenario_grading_method(tmp_path: Path, make_persisted_record):
     rec = make_persisted_record(run_id="run-x", scenario_id=1, answer="A.")
     (tmp_path / "run-x.json").write_text(json.dumps(rec), encoding="utf-8")
@@ -58,22 +62,22 @@ def test_evaluate_uses_per_scenario_grading_method(tmp_path: Path, make_persiste
                     "id": 1,
                     "text": "Q",
                     "type": "iot",
-                    "characteristic_form": "A.",
-                    "similarity_threshold": 0.5,
-                    "grading_method": "semantic_similarity",
+                    "grading_method": "stub-pass",
                 }
             ]
         ),
         encoding="utf-8",
     )
 
-    registry.register("stub", _always_pass_scorer)
+    registry.register("stub-pass", _always_pass_scorer)
+    registry.register("stub-fail", _always_fail_scorer)
 
     report = evaluate(
         trajectories_path=tmp_path,
         scenarios_paths=[scenarios_path],
-        default_grading_method="stub",  # per-scenario override wins
+        default_grading_method="stub-fail",  # per-scenario override wins
     )
 
+    # Override wins: scenario routed to the always-pass stub even though
+    # the default scorer would have failed it.
     assert report.totals["passed"] == 1
-    assert report.results[0].grade.scorer == "semantic_similarity"
