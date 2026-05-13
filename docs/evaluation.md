@@ -40,15 +40,17 @@ The vocabulary follows MLflow's evaluation split:
 
 JSON list, JSON object, or JSONL. Fields the scorer cares about:
 
-| Field                 | Used by              | Notes                                            |
-| --------------------- | -------------------- | ------------------------------------------------ |
-| `id`                  | join                 | Coerced to string at load time                   |
-| `text`                | all                  | The utterance the agent answered                 |
-| `type`                | reporting            | Scenario family (`iot`, `tsfm`, `FMSR`, …)       |
-| `characteristic_form` | llm_judge, semantic  | Expected behaviour, free-form                    |
-| `expected_answer`     | code_based, semantic | Exact target string / number                     |
-| `scoring_method`      | dispatch             | Registered scorer name; overrides CLI default    |
-| `tolerance`           | numeric_match        | Optional relative + absolute tolerance           |
+| Field                 | Used by                                          | Notes                                          |
+| --------------------- | ------------------------------------------------ | ---------------------------------------------- |
+| `id`                  | join                                             | Coerced to string at load time                 |
+| `text`                | all                                              | The utterance the agent answered               |
+| `type`                | reporting                                        | Scenario family (`iot`, `tsfm`, `FMSR`, …)     |
+| `characteristic_form` | `llm_judge`, `semantic_similarity`*              | Expected behaviour, free-form                  |
+| `expected_answer`     | `exact_string_match`*, `numeric_match`*          | Exact target string / number                   |
+| `scoring_method`      | dispatch                                         | Registered scorer name; overrides CLI default  |
+| `tolerance`           | `numeric_match`*                                 | Optional relative + absolute tolerance         |
+
+\* Skeleton in this branch — see [Available scorers](#available-scorers-in-this-branch).
 
 Ground-truth files under `groundtruth/` already match this schema —
 they're a drop-in scenarios input.
@@ -153,9 +155,33 @@ Per-run file (`reports/<run_id>.json`):
 }
 ```
 
-Aggregate (`reports/_aggregate.json`) is the full `EvalReport` (totals,
-runners, models, by-scenario-type breakdown, ops rollup, and the list
-of per-scenario results).
+Aggregate (`reports/_aggregate.json`) is the full `EvalReport`:
+
+```json
+{
+  "generated_at": "<iso8601>",
+  "runners": ["claude-agent"],
+  "models":  ["litellm_proxy/aws/claude-opus-4-6"],
+  "totals": {
+    "scenarios": 1,
+    "scored":    1,
+    "passed":    1,
+    "pass_rate": 1.0
+  },
+  "by_scenario_type": {
+    "FMSR": {"total": 1, "passed": 1, "pass_rate": 1.0}
+  },
+  "ops": {
+    "tokens_in_total":    7,
+    "tokens_out_total":   25,
+    "tool_calls_total":   1,
+    "duration_ms_p50":    14690.6,
+    "duration_ms_p95":    14690.6,
+    "est_cost_usd_total": 0.001959
+  },
+  "results": [ /* one ScenarioResult per run, same shape as the per-run files */ ]
+}
+```
 
 ## CLI reference
 
