@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import scorers as scorer_registry
 from .evaluator import Evaluator
-from .report import render_summary, write_report
+from .report import render_summary, write_reports_dir
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -34,10 +34,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="One or more scenario JSON / JSONL files.",
     )
     p.add_argument(
-        "--output",
+        "--reports-dir",
         type=Path,
-        required=True,
-        help="Path to write the JSON report.",
+        default=Path("reports"),
+        help=(
+            "Directory to write per-run JSON reports (one file per run, "
+            "named '<run_id>.json'), plus '_aggregate.json' for the rollup. "
+            "Default: reports/."
+        ),
     )
     p.add_argument(
         "--scorer-default",
@@ -97,9 +101,10 @@ def main(argv: list[str] | None = None) -> int:
         scenarios_paths=list(args.scenarios),
     )
 
-    out = write_report(report, args.output)
+    out_dir = write_reports_dir(report, args.reports_dir)
     print(render_summary(report))
-    print(f"\nReport written: {out}")
+    print(f"\nReports written: {out_dir}/<run_id>.json ({len(report.results)} files)")
+    print(f"Aggregate:       {out_dir}/_aggregate.json")
     return 0
 
 

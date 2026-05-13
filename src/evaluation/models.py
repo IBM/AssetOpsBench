@@ -84,6 +84,7 @@ class ScorerResult(BaseModel):
 class ScenarioResult(BaseModel):
     scenario_id: str
     scenario_type: str = ""
+    run_id: str = ""
     runner: str
     model: str
     question: str

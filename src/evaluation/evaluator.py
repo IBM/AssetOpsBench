@@ -64,6 +64,7 @@ class Evaluator:
         return ScenarioResult(
             scenario_id=scenario.id,
             scenario_type=scenario.type,
+            run_id=traj.run_id,
             runner=traj.runner,
             model=traj.model,
             question=traj.question,

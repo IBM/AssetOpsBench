@@ -10,6 +10,8 @@ from pathlib import Path
 from .metrics import aggregate_ops
 from .models import EvalReport, ScenarioResult, TypeBreakdown
 
+_AGGREGATE_FILENAME = "_aggregate.json"
+
 
 def build_report(results: list[ScenarioResult]) -> EvalReport:
     total = len(results)
@@ -50,6 +52,32 @@ def write_report(report: EvalReport, output: Path) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
     return output
+
+
+def write_reports_dir(report: EvalReport, reports_dir: Path) -> Path:
+    """Write one JSON file per result (``<run_id>.json``) plus an aggregate.
+
+    Results without a ``run_id`` fall back to ``<scenario_id>.json`` so
+    nothing is dropped.  Returns the directory path.
+    """
+    reports_dir = Path(reports_dir)
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    used: dict[str, int] = {}
+    for r in report.results:
+        stem = r.run_id or f"scenario-{r.scenario_id}"
+        # Disambiguate any collisions deterministically.
+        suffix = used.get(stem, 0)
+        used[stem] = suffix + 1
+        name = stem if suffix == 0 else f"{stem}-{suffix}"
+        (reports_dir / f"{name}.json").write_text(
+            r.model_dump_json(indent=2), encoding="utf-8"
+        )
+
+    (reports_dir / _AGGREGATE_FILENAME).write_text(
+        report.model_dump_json(indent=2), encoding="utf-8"
+    )
+    return reports_dir
 
 
 def render_summary(report: EvalReport) -> str:

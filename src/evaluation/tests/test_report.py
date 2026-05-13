@@ -10,13 +10,19 @@ from evaluation.models import (
     ScenarioResult,
     ScorerResult,
 )
-from evaluation.report import build_report, render_summary, write_report
+from evaluation.report import (
+    build_report,
+    render_summary,
+    write_report,
+    write_reports_dir,
+)
 
 
-def _result(stype: str, passed: bool, **ops_kwargs) -> ScenarioResult:
+def _result(stype: str, passed: bool, run_id: str = "", **ops_kwargs) -> ScenarioResult:
     return ScenarioResult(
         scenario_id="x",
         scenario_type=stype,
+        run_id=run_id,
         runner="plan-execute",
         model="watsonx/ibm/granite",
         question="q",
@@ -61,6 +67,33 @@ def test_write_report_round_trips(tmp_path: Path):
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["totals"]["passed"] == 1
     assert data["by_scenario_type"]["iot"]["pass_rate"] == 1.0
+
+
+def test_write_reports_dir_per_run_files(tmp_path: Path):
+    results = [
+        _result("iot", True, run_id="run-a"),
+        _result("tsfm", False, run_id="run-b"),
+    ]
+    out_dir = write_reports_dir(build_report(results), tmp_path / "reports")
+
+    assert (out_dir / "run-a.json").exists()
+    assert (out_dir / "run-b.json").exists()
+    assert (out_dir / "_aggregate.json").exists()
+
+    per_run = json.loads((out_dir / "run-a.json").read_text())
+    assert per_run["run_id"] == "run-a"
+    assert per_run["grade"]["passed"] is True
+
+    agg = json.loads((out_dir / "_aggregate.json").read_text())
+    assert agg["totals"]["scenarios"] == 2
+
+
+def test_write_reports_dir_falls_back_to_scenario_id(tmp_path: Path):
+    # ScenarioResult.run_id is empty when the trajectory pre-dates the
+    # run_id field; the writer must still produce a file.
+    results = [_result("iot", True)]
+    out_dir = write_reports_dir(build_report(results), tmp_path / "reports")
+    assert (out_dir / "scenario-x.json").exists()
 
 
 def test_render_summary_includes_headlines():
