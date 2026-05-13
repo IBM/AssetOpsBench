@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 
 from evaluation.models import (
-    GradeResult,
     OpsMetrics,
     ScenarioResult,
+    ScorerResult,
 )
 from evaluation.report import build_report, render_summary, write_report
 
@@ -21,7 +21,7 @@ def _result(stype: str, passed: bool, **ops_kwargs) -> ScenarioResult:
         model="watsonx/ibm/granite",
         question="q",
         answer="a",
-        grade=GradeResult(grading_method="llm_judge", passed=passed, score=1.0 if passed else 0.0),
+        grade=ScorerResult(scorer="llm_judge", passed=passed, score=1.0 if passed else 0.0),
         ops=OpsMetrics(**ops_kwargs),
     )
 

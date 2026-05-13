@@ -1,4 +1,4 @@
-"""``uv run evaluate`` — offline grading + report generation."""
+"""``uv run evaluate`` — offline scoring + report generation."""
 
 from __future__ import annotations
 
@@ -7,16 +7,16 @@ import logging
 import sys
 from pathlib import Path
 
-from . import graders as grader_registry
+from . import scorers as scorer_registry
+from .evaluator import Evaluator
 from .report import render_summary, write_report
-from .runner import evaluate
 
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="evaluate",
         description=(
-            "Grade saved agent trajectories against scenario files and "
+            "Score saved agent trajectories against scenario files and "
             "emit a JSON report."
         ),
     )
@@ -40,15 +40,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to write the JSON report.",
     )
     p.add_argument(
+        "--scorer-default",
         "--grader-default",
+        dest="scorer_default",
         default="llm_judge",
-        help="Grader name when scenario.grading_method is unset. "
-        "Default: llm_judge.",
+        help="Scorer name when scenario.grading_method is unset. "
+        "Default: llm_judge. (--grader-default is a legacy alias.)",
     )
     p.add_argument(
         "--judge-model",
         default=None,
-        help="Model id for the LLM judge (e.g. "
+        help="Model id for the LLM-As-Judge scorer (e.g. "
         "litellm_proxy/anthropic/claude-opus-4-5). "
         "Required when any scenario routes to llm_judge.",
     )
@@ -64,18 +66,18 @@ def _build_parser() -> argparse.ArgumentParser:
 def _maybe_install_judge(judge_model: str | None) -> None:
     if not judge_model:
         return
-    # Imported lazily so the CLI works for deterministic-only runs even
-    # if the LiteLLM dep happens to be flaky in the dev environment.
+    # Imported lazily so the CLI works for code-based-only runs even if
+    # the LiteLLM dep happens to be flaky in the dev environment.
     from llm import LiteLLMBackend  # type: ignore[import-not-found]
 
-    from .graders.llm_judge import install
+    from .scorers.llm_judge import install
 
     install(LiteLLMBackend(model=judge_model))
 
 
-def _validate_grader_default(name: str) -> None:
+def _validate_scorer_default(name: str) -> None:
     try:
-        grader_registry.get(name)
+        scorer_registry.get(name)
     except KeyError as exc:
         raise SystemExit(str(exc))
 
@@ -88,12 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     _maybe_install_judge(args.judge_model)
-    _validate_grader_default(args.grader_default)
+    _validate_scorer_default(args.scorer_default)
 
-    report = evaluate(
+    report = Evaluator(default_scorer=args.scorer_default).evaluate(
         trajectories_path=args.trajectories,
         scenarios_paths=list(args.scenarios),
-        default_grading_method=args.grader_default,
     )
 
     out = write_report(report, args.output)

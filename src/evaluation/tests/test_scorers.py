@@ -1,10 +1,11 @@
-"""Tests for deterministic + LLM-judge graders."""
+"""Tests for the three scorer families: code-based, LLM-as-judge, semantic."""
 
 from __future__ import annotations
 
-from evaluation import graders as registry
-from evaluation.graders.deterministic import exact_string_match, numeric_match
-from evaluation.graders.llm_judge import LLMJudgeGrader, install
+from evaluation import scorers as registry
+from evaluation.scorers.code_based import exact_string_match, numeric_match
+from evaluation.scorers.llm_judge import LLMJudgeScorer, install
+from evaluation.scorers.semantic import semantic_similarity
 from llm import LLMBackend
 
 
@@ -53,10 +54,47 @@ class TestNumericMatch:
         assert r.passed
 
 
+class TestSemanticSimilarity:
+    def test_close_text_passes_default_threshold(self, make_scenario):
+        s = make_scenario(
+            characteristic_form="Lists temperature, pressure, and vibration sensors."
+        )
+        r = semantic_similarity(
+            s, "lists temperature pressure and vibration sensors", ""
+        )
+        assert r.passed
+        assert r.score >= 0.6
+
+    def test_unrelated_text_fails(self, make_scenario):
+        s = make_scenario(characteristic_form="lists three iot sensors")
+        r = semantic_similarity(s, "the chiller is operating normally", "")
+        assert not r.passed
+        assert "below threshold" in r.rationale
+
+    def test_custom_threshold_override(self, make_scenario):
+        s = make_scenario(
+            characteristic_form="lists three iot sensors",
+            similarity_threshold=0.05,
+        )
+        r = semantic_similarity(s, "completely different answer text", "")
+        # Threshold lowered enough that even weak overlap passes.
+        assert r.passed
+
+    def test_missing_reference_short_circuits(self, make_scenario):
+        s = make_scenario(characteristic_form=None, expected_answer=None)
+        r = semantic_similarity(s, "anything", "")
+        assert not r.passed
+        assert "characteristic_form" in r.rationale
+
+
 class TestRegistry:
-    def test_deterministic_graders_registered(self):
-        assert "exact_string_match" in registry.names()
-        assert "numeric_match" in registry.names()
+    def test_code_based_scorers_registered(self):
+        names = registry.names()
+        assert "exact_string_match" in names
+        assert "numeric_match" in names
+
+    def test_semantic_scorer_registered(self):
+        assert "semantic_similarity" in registry.names()
 
     def test_get_unknown_raises(self):
         try:
@@ -67,7 +105,7 @@ class TestRegistry:
             raise AssertionError("expected KeyError")
 
 
-class TestLLMJudgeGrader:
+class TestLLMJudgeScorer:
     def _all_pass_response(self) -> str:
         return (
             '{"task_completion": true, "data_retrieval_accuracy": true, '
@@ -77,8 +115,8 @@ class TestLLMJudgeGrader:
         )
 
     def test_passes_when_all_criteria_true(self, make_scenario):
-        grader = LLMJudgeGrader(_StubLLM(self._all_pass_response()))
-        r = grader(make_scenario(), "answer", "trajectory")
+        scorer = LLMJudgeScorer(_StubLLM(self._all_pass_response()))
+        r = scorer(make_scenario(), "answer", "trajectory")
         assert r.passed
         assert r.score == 1.0
         assert r.rationale == "Looks good."
@@ -87,34 +125,34 @@ class TestLLMJudgeGrader:
         resp = self._all_pass_response().replace(
             '"hallucinations": false', '"hallucinations": true'
         )
-        grader = LLMJudgeGrader(_StubLLM(resp))
-        r = grader(make_scenario(), "answer", "trajectory")
+        scorer = LLMJudgeScorer(_StubLLM(resp))
+        r = scorer(make_scenario(), "answer", "trajectory")
         assert not r.passed
         # Score is penalized but not zeroed when 5/5 criteria pass.
         assert r.score < 1.0
 
     def test_handles_unparseable_response(self, make_scenario):
-        grader = LLMJudgeGrader(_StubLLM("not json at all"))
-        r = grader(make_scenario(), "a", "t")
+        scorer = LLMJudgeScorer(_StubLLM("not json at all"))
+        r = scorer(make_scenario(), "a", "t")
         assert not r.passed
         assert "unparseable" in r.rationale
 
     def test_handles_markdown_fenced_response(self, make_scenario):
         wrapped = "Here you go:\n```json\n" + self._all_pass_response() + "\n```"
-        grader = LLMJudgeGrader(_StubLLM(wrapped))
-        r = grader(make_scenario(), "a", "t")
+        scorer = LLMJudgeScorer(_StubLLM(wrapped))
+        r = scorer(make_scenario(), "a", "t")
         assert r.passed
 
     def test_missing_characteristic_short_circuits(self, make_scenario):
-        grader = LLMJudgeGrader(_StubLLM(self._all_pass_response()))
+        scorer = LLMJudgeScorer(_StubLLM(self._all_pass_response()))
         s = make_scenario(characteristic_form=None, expected_answer=None)
-        r = grader(s, "a", "t")
+        r = scorer(s, "a", "t")
         assert not r.passed
         assert "characteristic_form" in r.rationale
 
     def test_install_registers_under_default_name(self, make_scenario):
         install(_StubLLM(self._all_pass_response()))
         assert "llm_judge" in registry.names()
-        grader = registry.get("llm_judge")
-        r = grader(make_scenario(), "a", "t")
+        scorer = registry.get("llm_judge")
+        r = scorer(make_scenario(), "a", "t")
         assert r.passed

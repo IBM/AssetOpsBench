@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from evaluation.models import GradeResult, Scenario
+from evaluation.models import Scenario, ScorerResult
 from evaluation.runner import evaluate
-from evaluation import graders as registry
+from evaluation import scorers as registry
 
 
-def _always_pass_grader(scenario: Scenario, answer: str, trajectory_text: str) -> GradeResult:
-    return GradeResult(grading_method="stub", passed=True, score=1.0)
+def _always_pass_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
+    return ScorerResult(scorer="stub", passed=True, score=1.0)
 
 
 def test_evaluate_end_to_end(tmp_path: Path, make_persisted_record):
@@ -32,7 +32,7 @@ def test_evaluate_end_to_end(tmp_path: Path, make_persisted_record):
         encoding="utf-8",
     )
 
-    registry.register("stub", _always_pass_grader)
+    registry.register("stub", _always_pass_scorer)
 
     report = evaluate(
         trajectories_path=tmp_path,
@@ -73,4 +73,4 @@ def test_evaluate_uses_per_scenario_grading_method(tmp_path: Path, make_persiste
     )
 
     assert report.totals["passed"] == 1
-    assert report.results[0].grade.grading_method == "exact_string_match"
+    assert report.results[0].grade.scorer == "exact_string_match"

@@ -1,4 +1,4 @@
-"""LLM-judge grader.
+"""LLM-As-Judge scorer.
 
 Free-form answers are scored against ``scenario.characteristic_form``
 using a six-criterion rubric (task completion, data retrieval accuracy,
@@ -16,7 +16,7 @@ import re
 
 from llm import LLMBackend
 
-from ..models import GradeResult, Scenario
+from ..models import Scenario, ScorerResult
 from . import register
 
 _log = logging.getLogger(__name__)
@@ -61,8 +61,8 @@ Return JSON with these boolean fields plus a one-sentence reason:
 The agent passes overall iff the first five are true AND hallucinations is false."""
 
 
-class LLMJudgeGrader:
-    """Closure-style grader that holds an :class:`LLMBackend`."""
+class LLMJudgeScorer:
+    """Closure-style scorer that holds an :class:`LLMBackend`."""
 
     def __init__(self, llm: LLMBackend, name: str = "llm_judge") -> None:
         self._llm = llm
@@ -70,11 +70,11 @@ class LLMJudgeGrader:
 
     def __call__(
         self, scenario: Scenario, answer: str, trajectory_text: str
-    ) -> GradeResult:
+    ) -> ScorerResult:
         characteristic = scenario.characteristic_form or scenario.expected_answer or ""
         if not characteristic:
-            return GradeResult(
-                grading_method=self.name,
+            return ScorerResult(
+                scorer=self.name,
                 passed=False,
                 rationale="scenario has neither characteristic_form nor expected_answer",
             )
@@ -88,18 +88,18 @@ class LLMJudgeGrader:
 
         try:
             raw = self._llm.generate(prompt)
-        except Exception as exc:  # judge call failure is a grading failure, not a crash
+        except Exception as exc:  # judge call failure is a scoring failure, not a crash
             _log.exception("llm_judge: backend error")
-            return GradeResult(
-                grading_method=self.name,
+            return ScorerResult(
+                scorer=self.name,
                 passed=False,
                 rationale=f"judge backend error: {exc}",
             )
 
         review = _parse_review(raw)
         if review is None:
-            return GradeResult(
-                grading_method=self.name,
+            return ScorerResult(
+                scorer=self.name,
                 passed=False,
                 rationale="judge returned unparseable JSON",
                 details={"raw": raw[:2000]},
@@ -117,8 +117,8 @@ class LLMJudgeGrader:
         if review.get("hallucinations") is True:
             score = max(0.0, score - 0.2)
 
-        return GradeResult(
-            grading_method=self.name,
+        return ScorerResult(
+            scorer=self.name,
             passed=passed,
             score=round(score, 3),
             rationale=str(review.get("reason", ""))[:500],
@@ -140,5 +140,5 @@ def _parse_review(raw: str) -> dict | None:
 
 
 def install(llm: LLMBackend, name: str = "llm_judge") -> None:
-    """Register an LLM-judge grader bound to ``llm`` under ``name``."""
-    register(name, LLMJudgeGrader(llm, name=name))
+    """Register an LLM-As-Judge scorer bound to ``llm`` under ``name``."""
+    register(name, LLMJudgeScorer(llm, name=name))

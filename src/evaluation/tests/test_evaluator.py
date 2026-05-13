@@ -1,0 +1,67 @@
+"""Tests for the Evaluator class — the orchestration layer."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from evaluation import scorers as registry
+from evaluation.evaluator import Evaluator
+from evaluation.models import Scenario, ScorerResult
+
+
+def _stub_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
+    return ScorerResult(scorer="stub-evaluator", passed=True, score=1.0)
+
+
+def test_evaluator_routes_to_default_scorer(tmp_path: Path, make_persisted_record):
+    rec = make_persisted_record(run_id="run-1", scenario_id=1)
+    (tmp_path / "run-1.json").write_text(json.dumps(rec), encoding="utf-8")
+
+    scenarios_path = tmp_path / "scenarios.json"
+    scenarios_path.write_text(
+        json.dumps([{"id": 1, "text": "Q", "type": "iot"}]),
+        encoding="utf-8",
+    )
+
+    registry.register("stub-evaluator", _stub_scorer)
+
+    report = Evaluator(default_scorer="stub-evaluator").evaluate(
+        trajectories_path=tmp_path,
+        scenarios_paths=[scenarios_path],
+    )
+
+    assert report.totals["passed"] == 1
+    assert report.results[0].grade.scorer == "stub-evaluator"
+
+
+def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_record):
+    # Default scorer would crash on a missing registration; the
+    # scenario-level grading_method must win and route to a code-based
+    # scorer instead.
+    rec = make_persisted_record(run_id="run-1", scenario_id=1, answer="3.14")
+    (tmp_path / "run-1.json").write_text(json.dumps(rec), encoding="utf-8")
+
+    scenarios_path = tmp_path / "scenarios.json"
+    scenarios_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": 1,
+                    "text": "Q",
+                    "type": "tsfm",
+                    "expected_answer": "3.14",
+                    "grading_method": "numeric_match",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    report = Evaluator(default_scorer="llm_judge").evaluate(
+        trajectories_path=tmp_path,
+        scenarios_paths=[scenarios_path],
+    )
+
+    assert report.totals["passed"] == 1
+    assert report.results[0].grade.scorer == "numeric_match"

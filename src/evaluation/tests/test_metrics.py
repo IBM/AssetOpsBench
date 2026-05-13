@@ -8,10 +8,10 @@ from evaluation.metrics import (
     metrics_from_trajectory,
 )
 from evaluation.models import (
-    GradeResult,
     OpsMetrics,
     PersistedTrajectory,
     ScenarioResult,
+    ScorerResult,
 )
 
 
@@ -23,7 +23,7 @@ def _result(passed: bool = True, ops: OpsMetrics | None = None) -> ScenarioResul
         model="watsonx/ibm/granite",
         question="q",
         answer="a",
-        grade=GradeResult(grading_method="exact_string_match", passed=passed),
+        grade=ScorerResult(scorer="exact_string_match", passed=passed),
         ops=ops or OpsMetrics(),
     )
 

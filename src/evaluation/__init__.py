@@ -9,26 +9,36 @@ The shape mirrors conventions from SWE-bench, HELM, and τ-bench:
 ``run`` (executes the agent — already exists) → ``evaluate`` (this
 module) → ``report.json``.  Re-grading from saved trajectories is
 first-class.
+
+The evaluation concept follows MLflow's vocabulary: an
+:class:`Evaluator` orchestrates one or more :data:`Scorer` callables
+(:class:`ScorerResult` records the outcome).  Scorers fall into three
+families — Code-Based, LLM-As-Judge, and Semantic-Score — registered
+under :mod:`evaluation.scorers`.
 """
 
+from .evaluator import Evaluator
 from .models import (
     AggregateOps,
     EvalReport,
-    GradeResult,
     OpsMetrics,
     PersistedTrajectory,
     Scenario,
     ScenarioResult,
+    ScorerResult,
     TypeBreakdown,
 )
+from .scorers import Scorer
 
 __all__ = [
     "AggregateOps",
     "EvalReport",
-    "GradeResult",
+    "Evaluator",
     "OpsMetrics",
     "PersistedTrajectory",
     "Scenario",
     "ScenarioResult",
+    "Scorer",
+    "ScorerResult",
     "TypeBreakdown",
 ]

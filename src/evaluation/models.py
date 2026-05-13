@@ -66,8 +66,15 @@ class OpsMetrics(BaseModel):
     est_cost_usd: float | None = None
 
 
-class GradeResult(BaseModel):
-    grading_method: str
+class ScorerResult(BaseModel):
+    """Output of a single :class:`Scorer` invocation.
+
+    ``scorer`` is the registered name of the scorer that produced this
+    result — distinct from ``Scenario.grading_method``, which is the
+    *requested* scorer on the input side.
+    """
+
+    scorer: str
     passed: bool
     score: float = 0.0
     rationale: str = ""
@@ -81,7 +88,7 @@ class ScenarioResult(BaseModel):
     model: str
     question: str
     answer: str
-    grade: GradeResult
+    grade: ScorerResult
     ops: OpsMetrics
 
 
