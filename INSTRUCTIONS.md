@@ -223,7 +223,7 @@ See [docs/observability.md](docs/observability.md) for span attribute reference,
 
 ## Evaluation
 
-Offline grading of saved trajectories against ground-truth scenarios. Three-stage flow:
+Offline scoring of saved trajectories against ground-truth scenarios. Three-stage flow:
 
 ```
 agent run  →  trajectory (run_id)  →  uv run evaluate  →  reports/<run_id>.json

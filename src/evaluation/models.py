@@ -23,7 +23,7 @@ class Scenario(BaseModel):
     category: str = ""
     characteristic_form: str | None = None
     expected_answer: str | None = None
-    grading_method: str | None = None
+    scoring_method: str | None = None
 
     @classmethod
     def from_raw(cls, raw: dict) -> "Scenario":
@@ -70,7 +70,7 @@ class ScorerResult(BaseModel):
     """Output of a single :class:`Scorer` invocation.
 
     ``scorer`` is the registered name of the scorer that produced this
-    result — distinct from ``Scenario.grading_method``, which is the
+    result — distinct from ``Scenario.scoring_method``, which is the
     *requested* scorer on the input side.
     """
 
@@ -89,7 +89,7 @@ class ScenarioResult(BaseModel):
     model: str
     question: str
     answer: str
-    grade: ScorerResult
+    score: ScorerResult
     ops: OpsMetrics
 
 

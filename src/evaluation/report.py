@@ -1,4 +1,4 @@
-"""Build an :class:`EvalReport` from graded scenario results."""
+"""Build an :class:`EvalReport` from scored scenario results."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ _AGGREGATE_FILENAME = "_aggregate.json"
 
 def build_report(results: list[ScenarioResult]) -> EvalReport:
     total = len(results)
-    passed = sum(1 for r in results if r.grade.passed)
+    passed = sum(1 for r in results if r.score.passed)
 
     by_type: dict[str, list[ScenarioResult]] = defaultdict(list)
     for r in results:
@@ -24,7 +24,7 @@ def build_report(results: list[ScenarioResult]) -> EvalReport:
     breakdown: dict[str, TypeBreakdown] = {}
     for stype, items in by_type.items():
         n = len(items)
-        p = sum(1 for r in items if r.grade.passed)
+        p = sum(1 for r in items if r.score.passed)
         breakdown[stype] = TypeBreakdown(
             total=n,
             passed=p,
@@ -37,7 +37,7 @@ def build_report(results: list[ScenarioResult]) -> EvalReport:
         models=sorted({r.model for r in results}),
         totals={
             "scenarios": total,
-            "graded": total,
+            "scored": total,
             "passed": passed,
             "pass_rate": round(passed / total, 4) if total else 0.0,
         },

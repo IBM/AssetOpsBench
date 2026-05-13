@@ -32,7 +32,7 @@ def test_evaluator_routes_to_default_scorer(tmp_path: Path, make_persisted_recor
     )
 
     assert report.totals["passed"] == 1
-    assert report.results[0].grade.scorer == "stub-evaluator"
+    assert report.results[0].score.scorer == "stub-evaluator"
 
 
 def _fail_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
@@ -40,7 +40,7 @@ def _fail_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> Score
 
 
 def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_record):
-    # The scenario-level grading_method must route around the default
+    # The scenario-level scoring_method must route around the default
     # scorer, even when the default scorer would reject the answer.
     rec = make_persisted_record(run_id="run-1", scenario_id=1, answer="answer text")
     (tmp_path / "run-1.json").write_text(json.dumps(rec), encoding="utf-8")
@@ -53,7 +53,7 @@ def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_rec
                     "id": 1,
                     "text": "Q",
                     "type": "tsfm",
-                    "grading_method": "stub-evaluator",
+                    "scoring_method": "stub-evaluator",
                 }
             ]
         ),
@@ -69,4 +69,4 @@ def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_rec
     )
 
     assert report.totals["passed"] == 1
-    assert report.results[0].grade.scorer == "stub-evaluator"
+    assert report.results[0].score.scorer == "stub-evaluator"

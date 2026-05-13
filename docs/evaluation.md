@@ -1,6 +1,6 @@
 # Evaluation
 
-Offline grading of saved agent trajectories against ground-truth scenarios.
+Offline scoring of saved agent trajectories against ground-truth scenarios.
 
 The evaluation module follows the three-stage pattern used by SWE-bench,
 HELM, and τ-bench:
@@ -9,8 +9,8 @@ HELM, and τ-bench:
 agent run  →  trajectory (run_id)  →  evaluate  →  reports/<run_id>.json
 ```
 
-Re-grading from saved trajectories is first-class: re-run scoring with
-a different scorer or judge model without re-invoking the agent.
+Re-scoring from saved trajectories is first-class: re-run with a
+different scorer or judge model without re-invoking the agent.
 
 ## Concepts
 
@@ -18,7 +18,7 @@ The vocabulary follows MLflow's evaluation split:
 
 - **Scenario** — a ground-truth record on disk. Carries `id`, `text`
   (the utterance), `type`, `characteristic_form` (expected behaviour),
-  and optional `grading_method`.
+  and optional `scoring_method`.
 - **Trajectory** — a per-run JSON file persisted by the agent runners
   when `AGENT_TRAJECTORY_DIR` is set. Carries `run_id`, `scenario_id`,
   `question`, `answer`, and per-turn detail.
@@ -47,7 +47,7 @@ JSON list, JSON object, or JSONL. Fields the scorer cares about:
 | `type`                | reporting            | Scenario family (`iot`, `tsfm`, `FMSR`, …)       |
 | `characteristic_form` | llm_judge, semantic  | Expected behaviour, free-form                    |
 | `expected_answer`     | code_based, semantic | Exact target string / number                     |
-| `grading_method`      | dispatch             | Registered scorer name; overrides CLI default    |
+| `scoring_method`      | dispatch             | Registered scorer name; overrides CLI default    |
 | `tolerance`           | numeric_match        | Optional relative + absolute tolerance           |
 
 Ground-truth files under `groundtruth/` already match this schema —
@@ -126,7 +126,7 @@ Per-run file (`reports/<run_id>.json`):
   "model": "litellm_proxy/aws/claude-opus-4-6",
   "question": "List all failure modes of asset Chiller.",
   "answer":   "Here are the 7 failure modes for the Chiller asset: …",
-  "grade": {
+  "score": {
     "scorer": "llm_judge",
     "passed": true,
     "score": 1.0,
@@ -169,7 +169,6 @@ uv run evaluate \
   [-v]
 ```
 
-`--grader-default` is accepted as a legacy alias for `--scorer-default`.
 
 ## Available scorers in this branch
 
@@ -200,7 +199,7 @@ A run passes overall iff the first five are `true` **and**
 `hallucinations` is `false`. The score is the fraction of the first
 five satisfied, minus 0.2 if `hallucinations` is `true`. The judge's
 free-form `suggestions` (or legacy `reason`) lands in
-`grade.rationale`; the full review dict lands in `grade.details`.
+`score.rationale`; the full review dict lands in `score.details`.
 
 To customise: edit `_PROMPT_TEMPLATE` in
 `src/evaluation/scorers/llm_judge.py`.
@@ -221,7 +220,7 @@ report = Evaluator(default_scorer="llm_judge").evaluate(
 )
 
 for r in report.results:
-    print(r.run_id, r.grade.passed, r.grade.score)
+    print(r.run_id, r.score.passed, r.score.score)
 ```
 
 ## Plug in a custom scorer
@@ -242,7 +241,7 @@ def keyword_hit(scenario, answer, trajectory_text) -> ScorerResult:
     )
 
 scorers.register("keyword_hit", keyword_hit)
-# Any scenario with "grading_method": "keyword_hit" now routes here.
+# Any scenario with "scoring_method": "keyword_hit" now routes here.
 ```
 
 ## Loop over all ground-truth files

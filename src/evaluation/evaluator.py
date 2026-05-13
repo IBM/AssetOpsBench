@@ -31,7 +31,7 @@ class Evaluator:
     """Run a batch of scenarios against their saved trajectories.
 
     ``default_scorer`` names the registered scorer to use when a
-    scenario does not set ``grading_method``.  Per-scenario overrides
+    scenario does not set ``scoring_method``.  Per-scenario overrides
     take precedence.
     """
 
@@ -56,10 +56,10 @@ class Evaluator:
     def _score_one(
         self, scenario: Scenario, traj: PersistedTrajectory
     ) -> ScenarioResult:
-        name = scenario.grading_method or self.default_scorer
+        name = scenario.scoring_method or self.default_scorer
         scorer = self._resolve(name)
         trajectory_text = _trajectory_to_text(traj)
-        grade = scorer(scenario, traj.answer, trajectory_text)
+        score = scorer(scenario, traj.answer, trajectory_text)
 
         return ScenarioResult(
             scenario_id=scenario.id,
@@ -69,7 +69,7 @@ class Evaluator:
             model=traj.model,
             question=traj.question,
             answer=traj.answer,
-            grade=grade,
+            score=score,
             ops=metrics_from_trajectory(traj),
         )
 

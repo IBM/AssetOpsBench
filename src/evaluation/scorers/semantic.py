@@ -1,4 +1,4 @@
-"""Semantic-Score scorer — similarity-based grading without an LLM call.
+"""Semantic-Score scorer — similarity-based scoring without an LLM call.
 
 Skeleton only — fill in the implementation (e.g. embedding cosine, BLEU,
 sentence-transformers, or difflib ratio) and re-register with the

@@ -3,11 +3,11 @@
 Consumes saved trajectory files (written by
 :func:`observability.persistence.persist_trajectory`) and scenario files
 (under ``src/scenarios/``) and emits a structured JSON report combining
-graded outcomes with operational metrics.
+scored outcomes with operational metrics.
 
 The shape mirrors conventions from SWE-bench, HELM, and τ-bench:
 ``run`` (executes the agent — already exists) → ``evaluate`` (this
-module) → ``report.json``.  Re-grading from saved trajectories is
+module) → ``report.json``.  Re-scoring from saved trajectories is
 first-class.
 
 The evaluation concept follows MLflow's vocabulary: an

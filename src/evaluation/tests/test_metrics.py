@@ -23,7 +23,7 @@ def _result(passed: bool = True, ops: OpsMetrics | None = None) -> ScenarioResul
         model="watsonx/ibm/granite",
         question="q",
         answer="a",
-        grade=ScorerResult(scorer="exact_string_match", passed=passed),
+        score=ScorerResult(scorer="exact_string_match", passed=passed),
         ops=ops or OpsMetrics(),
     )
 

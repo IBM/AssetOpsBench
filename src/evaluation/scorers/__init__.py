@@ -7,7 +7,7 @@ or more ``Scorer`` s; scorers fall into three families:
 
 * **Code-Based** — deterministic, no model required (string/numeric
   matchers in :mod:`evaluation.scorers.code_based`).
-* **LLM-As-Judge** — model-graded against a rubric
+* **LLM-As-Judge** — model-scored against a rubric
   (:mod:`evaluation.scorers.llm_judge`).
 * **Semantic-Score** — similarity-based, no model call
   (:mod:`evaluation.scorers.semantic`).

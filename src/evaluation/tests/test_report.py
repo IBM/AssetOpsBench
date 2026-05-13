@@ -27,7 +27,7 @@ def _result(stype: str, passed: bool, run_id: str = "", **ops_kwargs) -> Scenari
         model="watsonx/ibm/granite",
         question="q",
         answer="a",
-        grade=ScorerResult(scorer="llm_judge", passed=passed, score=1.0 if passed else 0.0),
+        score=ScorerResult(scorer="llm_judge", passed=passed, score=1.0 if passed else 0.0),
         ops=OpsMetrics(**ops_kwargs),
     )
 
@@ -42,7 +42,7 @@ def test_build_report_totals_and_breakdown():
 
     assert report.totals == {
         "scenarios": 3,
-        "graded": 3,
+        "scored": 3,
         "passed": 2,
         "pass_rate": round(2 / 3, 4),
     }
@@ -82,7 +82,7 @@ def test_write_reports_dir_per_run_files(tmp_path: Path):
 
     per_run = json.loads((out_dir / "run-a.json").read_text())
     assert per_run["run_id"] == "run-a"
-    assert per_run["grade"]["passed"] is True
+    assert per_run["score"]["passed"] is True
 
     agg = json.loads((out_dir / "_aggregate.json").read_text())
     assert agg["totals"]["scenarios"] == 2

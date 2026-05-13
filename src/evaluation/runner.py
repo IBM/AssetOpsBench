@@ -12,14 +12,14 @@ def evaluate(
     *,
     trajectories_path: Path,
     scenarios_paths: list[Path],
-    default_grading_method: str = "llm_judge",
+    default_scoring_method: str = "llm_judge",
 ) -> EvalReport:
     """Load, score, and aggregate.
 
-    Per-scenario scorer is picked from ``scenario.grading_method`` when
-    set, falling back to ``default_grading_method``.
+    Per-scenario scorer is picked from ``scenario.scoring_method`` when
+    set, falling back to ``default_scoring_method``.
     """
-    return Evaluator(default_scorer=default_grading_method).evaluate(
+    return Evaluator(default_scorer=default_scoring_method).evaluate(
         trajectories_path=trajectories_path,
         scenarios_paths=scenarios_paths,
     )
