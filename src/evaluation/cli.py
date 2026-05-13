@@ -72,7 +72,7 @@ def _maybe_install_judge(judge_model: str | None) -> None:
 
     from .scorers.llm_judge import install
 
-    install(LiteLLMBackend(model=judge_model))
+    install(LiteLLMBackend(model_id=judge_model))
 
 
 def _validate_scorer_default(name: str) -> None:
