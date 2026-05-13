@@ -1,4 +1,7 @@
-"""Tests for the three scorer families: code-based, LLM-as-judge, semantic."""
+"""Tests for the three scorer families: code-based, LLM-as-judge, semantic.
+
+Code-Based scorers are skeletons only and have no behaviour tests yet.
+"""
 
 from __future__ import annotations
 
@@ -17,41 +20,20 @@ class _StubLLM(LLMBackend):
         return self._response
 
 
-class TestExactStringMatch:
-    def test_match_case_insensitive(self, make_scenario):
-        s = make_scenario(expected_answer="Hello World")
-        r = exact_string_match(s, "hello world", "")
-        assert r.passed and r.score == 1.0
+class TestCodeBasedSkeletons:
+    def test_exact_string_match_not_implemented(self, make_scenario):
+        try:
+            exact_string_match(make_scenario(expected_answer="x"), "x", "")
+        except NotImplementedError:
+            return
+        raise AssertionError("expected NotImplementedError")
 
-    def test_mismatch(self, make_scenario):
-        s = make_scenario(expected_answer="foo")
-        r = exact_string_match(s, "bar", "")
-        assert not r.passed
-        assert r.details["expected"] == "foo"
-
-    def test_missing_expected(self, make_scenario):
-        s = make_scenario(expected_answer=None)
-        r = exact_string_match(s, "anything", "")
-        assert not r.passed
-        assert "expected_answer" in r.rationale
-
-
-class TestNumericMatch:
-    def test_within_tolerance(self, make_scenario):
-        s = make_scenario(expected_answer="3.14159")
-        r = numeric_match(s, "3.141591", "")
-        assert r.passed
-
-    def test_unparseable(self, make_scenario):
-        s = make_scenario(expected_answer="3.14")
-        r = numeric_match(s, "not a number", "")
-        assert not r.passed
-        assert "could not parse" in r.rationale
-
-    def test_custom_tolerance(self, make_scenario):
-        s = make_scenario(expected_answer="100", tolerance=0.05)
-        r = numeric_match(s, "104", "")
-        assert r.passed
+    def test_numeric_match_not_implemented(self, make_scenario):
+        try:
+            numeric_match(make_scenario(expected_answer="1.0"), "1.0", "")
+        except NotImplementedError:
+            return
+        raise AssertionError("expected NotImplementedError")
 
 
 class TestSemanticSimilarity:
@@ -88,11 +70,6 @@ class TestSemanticSimilarity:
 
 
 class TestRegistry:
-    def test_code_based_scorers_registered(self):
-        names = registry.names()
-        assert "exact_string_match" in names
-        assert "numeric_match" in names
-
     def test_semantic_scorer_registered(self):
         assert "semantic_similarity" in registry.names()
 

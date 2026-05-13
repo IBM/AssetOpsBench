@@ -47,7 +47,7 @@ def test_evaluate_end_to_end(tmp_path: Path, make_persisted_record):
 
 
 def test_evaluate_uses_per_scenario_grading_method(tmp_path: Path, make_persisted_record):
-    rec = make_persisted_record(run_id="run-x", scenario_id=1)
+    rec = make_persisted_record(run_id="run-x", scenario_id=1, answer="A.")
     (tmp_path / "run-x.json").write_text(json.dumps(rec), encoding="utf-8")
 
     scenarios_path = tmp_path / "scenarios.json"
@@ -58,19 +58,22 @@ def test_evaluate_uses_per_scenario_grading_method(tmp_path: Path, make_persiste
                     "id": 1,
                     "text": "Q",
                     "type": "iot",
-                    "expected_answer": "A.",
-                    "grading_method": "exact_string_match",
+                    "characteristic_form": "A.",
+                    "similarity_threshold": 0.5,
+                    "grading_method": "semantic_similarity",
                 }
             ]
         ),
         encoding="utf-8",
     )
 
+    registry.register("stub", _always_pass_scorer)
+
     report = evaluate(
         trajectories_path=tmp_path,
         scenarios_paths=[scenarios_path],
-        default_grading_method="numeric_match",  # would fail; per-scenario override wins
+        default_grading_method="stub",  # per-scenario override wins
     )
 
     assert report.totals["passed"] == 1
-    assert report.results[0].grade.scorer == "exact_string_match"
+    assert report.results[0].grade.scorer == "semantic_similarity"

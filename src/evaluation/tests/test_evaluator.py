@@ -36,10 +36,9 @@ def test_evaluator_routes_to_default_scorer(tmp_path: Path, make_persisted_recor
 
 
 def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_record):
-    # Default scorer would crash on a missing registration; the
-    # scenario-level grading_method must win and route to a code-based
-    # scorer instead.
-    rec = make_persisted_record(run_id="run-1", scenario_id=1, answer="3.14")
+    # The scenario-level grading_method must route around the default
+    # scorer, even when the default is a placeholder that would fail.
+    rec = make_persisted_record(run_id="run-1", scenario_id=1, answer="answer text")
     (tmp_path / "run-1.json").write_text(json.dumps(rec), encoding="utf-8")
 
     scenarios_path = tmp_path / "scenarios.json"
@@ -50,8 +49,8 @@ def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_rec
                     "id": 1,
                     "text": "Q",
                     "type": "tsfm",
-                    "expected_answer": "3.14",
-                    "grading_method": "numeric_match",
+                    "characteristic_form": "answer text",
+                    "grading_method": "semantic_similarity",
                 }
             ]
         ),
@@ -64,4 +63,4 @@ def test_evaluator_per_scenario_override_wins(tmp_path: Path, make_persisted_rec
     )
 
     assert report.totals["passed"] == 1
-    assert report.results[0].grade.scorer == "numeric_match"
+    assert report.results[0].grade.scorer == "semantic_similarity"
