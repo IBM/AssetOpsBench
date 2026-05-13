@@ -11,6 +11,7 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [Example queries](#example-queries)
 - [Agents](#agents)
 - [Observability](#observability)
+- [Evaluation](#evaluation)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
 
@@ -217,6 +218,37 @@ OTEL_TRACES_FILE=./traces/traces.jsonl \
 `--run-id` (auto-UUID4 if omitted) and `--scenario-id` are available on every runner. With nothing set, runs work normally with zero persistence overhead.
 
 See [docs/observability.md](docs/observability.md) for span attribute reference, trajectory layout, `jq` recipes, log rotation, and optional Jaeger / Collector replay.
+
+---
+
+## Evaluation
+
+Offline scoring of saved trajectories against ground-truth scenarios. Three-stage flow:
+
+```
+agent run  →  trajectory (run_id)  →  uv run evaluate  →  reports/<run_id>.json
+```
+
+End-to-end against a ground-truth file:
+
+```bash
+# 1. Persist trajectories
+export AGENT_TRAJECTORY_DIR=$(pwd)/traces/trajectories
+uv run claude-agent "List all failure modes of asset Chiller." --scenario-id 101
+
+# 2. Score with LLM-As-Judge
+uv run evaluate \
+  --trajectories traces/trajectories \
+  --scenarios groundtruth/101.json \
+  --scorer-default llm_judge \
+  --judge-model litellm_proxy/aws/claude-opus-4-6
+```
+
+Output lands under `reports/` — one `<run_id>.json` per trajectory plus `_aggregate.json` for the rollup.
+
+Scorer families follow MLflow's evaluator/scorer split: `llm_judge` is wired up; `exact_string_match`, `numeric_match`, and `semantic_similarity` ship as skeletons (raise `NotImplementedError`).
+
+Full reference — scenario schema, report layout, custom scorers, looping over ground-truth: **[docs/evaluation.md](docs/evaluation.md)**.
 
 ---
 
