@@ -49,3 +49,13 @@ async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:
     """Helper: call an MCP tool and return parsed JSON response."""
     contents, _ = await mcp_instance.call_tool(tool_name, args)
     return json.loads(contents[0].text)
+
+@pytest.fixture(autouse=True)
+def clear_asset_cache():
+    """Clear the asset list cache between tests to prevent mock data leaking."""
+    import servers.iot.main as iot_main
+    iot_main._asset_list_cache = None
+    iot_main._sensor_list_cache = {}
+    yield
+    iot_main._asset_list_cache = None
+    iot_main._sensor_list_cache = {}
