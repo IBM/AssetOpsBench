@@ -130,10 +130,9 @@ def main() -> None:
 
     logger.info("Loaded %d documents from '%s'", len(docs), args.data_file)
 
-    created = _ensure_db(args.db, drop=args.drop)
-    if created:
-        _bulk_insert(args.db, docs)
-        _create_indexes(args.db)
+    _ensure_db(args.db, drop=args.drop)
+    _bulk_insert(args.db, docs)
+    _create_indexes(args.db)
     logger.info("Done. Database '%s' is ready.", args.db)
 
 
