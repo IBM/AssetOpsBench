@@ -186,6 +186,8 @@ AssetOpsBench is being extended by university research groups exploring new asse
 
 - **Project Name** — Prognostics & Health Management benchmark for MCP agents (rotating equipment, aero-engines, lithium-ion cells). [Contributor Name](https://github.com/handle), University of XYZ · [repo](https://github.com/contributor/phmforge)
 
+- **Internalizing MCP Tool Knowledge in Small LLMs via QLoRA Fine-Tuning** — HPML project using AssetOpsBench to fine-tune ~4B models to internalize MCP tool knowledge and reduce prompt schema overhead. [Ayal Yakobe](https://github.com/yakobeayal), Columbia University · [repo](https://github.com/YuvalShemla/hpml-2026-project)
+
 ---
 
 ## Call for Scenario Contribution
