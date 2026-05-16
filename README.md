@@ -191,6 +191,8 @@ AssetOpsBench is being extended by university research groups exploring new asse
 
 - **SPIN** — Structural LLM Planning via Iterative Navigation for Industrial Tasks. [Yusuke Ozaki](https://github.com/ozatamago), University at Albany · [paper](https://arxiv.org/abs/2605.14051) · [repo](https://github.com/ozatamago/AssetOpsBench/tree/UACap10)
 
+- **Synthetic Scenario Generation for Evaluation of Industry 4.0 Agents** — Automated Scenario Generation, Transformer Asset Integration, and Scenario Quality Evaluation. [Rohith Kanathur](https://github.com/Rohith-Kanathur), Columbia University · [repo](https://github.com/Rohith-Kanathur/AssetOpsBench)
+
 ---
 
 ## Call for Scenario Contribution
