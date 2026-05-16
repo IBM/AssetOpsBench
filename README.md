@@ -188,6 +188,9 @@ AssetOpsBench is being extended by university research groups exploring new asse
 
 - **Internalizing MCP Tool Knowledge in Small LLMs via QLoRA Fine-Tuning** — HPML project using AssetOpsBench to fine-tune ~4B models to internalize MCP tool knowledge and reduce prompt schema overhead. [Ayal Yakobe](https://github.com/yakobeayal), Columbia University · [repo](https://github.com/YuvalShemla/hpml-2026-project)
 
+
+- **SPIN** — Structural LLM Planning via Iterative Navigation for Industrial Tasks. [Yusuke Ozaki](https://github.com/ozatamago), University at Albany · [paper](https://arxiv.org/abs/2605.14051) · [repo](https://github.com/ozatamago/AssetOpsBench/tree/UACap10)
+
 ---
 
 ## Call for Scenario Contribution
