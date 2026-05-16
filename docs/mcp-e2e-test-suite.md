@@ -43,27 +43,24 @@ pytest process
 
 ```bash
 # All 6 scenarios
-pytest test_mcp_e2e.py -v
+pytest src/servers/vibration/tests/test_mcp_e2e.py -v
 
 # Single scenario by keyword
-pytest test_mcp_e2e.py -v -k "sc04"
+pytest src/servers/vibration/tests/test_mcp_e2e.py -v -k "sc04"
 
 # Parallel (xdist-safe)
-pytest -n auto test_mcp_e2e.py
-
-# Legacy standalone (original behavior, backward compatible)
-python test_mcp_e2e.py
+pytest -n auto src/servers/vibration/tests/test_mcp_e2e.py
 ```
 
 Expected output:
 
 ```
-test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc01_tool_listing[asyncio]                              PASSED
-test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc02_static_tool_happy_path[asyncio]                    PASSED
-test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc03_iso_severity_zone_classification[asyncio]           PASSED
-test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc04_pydantic_boundary_missing_required_field[asyncio]   PASSED
-test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc05_data_not_found_returns_error_not_crash[asyncio]     PASSED
-test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc06_session_teardown_exits_cleanly[asyncio]             PASSED
+src/servers/vibration/tests/test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc01_tool_listing[asyncio]                              PASSED
+src/servers/vibration/tests/test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc02_static_tool_happy_path[asyncio]                    PASSED
+src/servers/vibration/tests/test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc03_iso_severity_zone_classification[asyncio]           PASSED
+src/servers/vibration/tests/test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc04_pydantic_boundary_missing_required_field[asyncio]   PASSED
+src/servers/vibration/tests/test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc05_data_not_found_returns_error_not_crash[asyncio]     PASSED
+src/servers/vibration/tests/test_mcp_e2e.py::TestVibrationMCPProtocol::test_sc06_session_teardown_exits_cleanly[asyncio]             PASSED
 
 6 passed; runtime varies by local subprocess startup cost
 ```

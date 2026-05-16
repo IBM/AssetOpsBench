@@ -1,27 +1,29 @@
-"""MCP stdio transport E2E tests — environment-agnostic, CI-safe.
+"""MCP stdio transport E2E tests for the vibration server.
 
-Uses sys.executable so tests run in any venv/conda/pyenv without
-PATH manipulation or shell activation. No CouchDB, API keys, or
-external services required for the core scenarios.
+Environment-agnostic and CI-safe. Each test spawns a real server subprocess
+and communicates over stdin/stdout via MCP JSON-RPC (stdio transport).
+No CouchDB, API keys, or external services required.
+
+Place: src/servers/vibration/tests/test_mcp_e2e.py
 
 Usage:
-    pytest test_mcp_e2e.py -v              # all 6 scenarios
-    pytest test_mcp_e2e.py -v -k "sc04"   # Pydantic boundary only
-    pytest -n auto test_mcp_e2e.py         # parallel (xdist-safe)
-    python test_mcp_e2e.py                 # legacy standalone run
+    pytest src/servers/vibration/tests/test_mcp_e2e.py -v
+    pytest src/servers/vibration/tests/test_mcp_e2e.py -v -k "sc04"
+    pytest -n auto src/servers/vibration/tests/test_mcp_e2e.py
 
 Design decisions
 ----------------
-1. sys.executable     — env-agnostic subprocess spawn, no PATH dependency
-2. anyio.fail_after   — propagates cancellation through anyio task groups,
-                        terminating the server subprocess on deadlock instead
-                        of leaving a zombie process (unlike asyncio.wait_for)
-3. _SENSITIVE_KEYS    — LLM credentials stripped before passing env to server;
-                        prevents billable API calls if server logic changes
-4. OTEL_SDK_DISABLED  — disables OTEL in the subprocess; avoids concurrent
-                        JSONL file writes under pytest-xdist parallel runs
-5. vibration_session  — function-scoped pytest fixture; each test gets its own
-                        subprocess, eliminating cross-test state pollution
+1. sys.executable     -- env-agnostic subprocess spawn; no PATH dependency
+2. anyio.fail_after   -- propagates cancellation through anyio task groups,
+                         terminating the server subprocess on deadlock instead
+                         of leaving a zombie process (unlike asyncio.wait_for)
+3. _SENSITIVE_KEYS    -- LLM credentials stripped before passing env to server;
+                         prevents billable API calls if server logic changes
+4. OTEL_SDK_DISABLED  -- disables OTEL in the subprocess; avoids concurrent
+                         JSONL file writes under pytest-xdist parallel runs
+5. vibration_session  -- function-scoped pytest fixture (scope="function");
+                         each test gets its own subprocess, eliminating
+                         cross-test state pollution
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ from mcp.client.stdio import StdioServerParameters, get_default_environment, std
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
 
 def _find_repo_root(start: Path) -> Path:
     """Locate AssetOpsBench root whether this file is at root or in a suite folder."""
@@ -87,16 +90,13 @@ def _server_params(
     env = get_default_environment()
     env["PYTHONPATH"] = str(_SRC)
 
-    # Air-gap: strip all LLM credentials from the subprocess environment
     for key in _SENSITIVE_KEYS:
         env.pop(key, None)
 
     if otel_dir is not None:
-        # Per-process trace file — safe for xdist and keeps OTEL enabled
         env.pop("OTEL_SDK_DISABLED", None)
         env["OTEL_TRACES_FILE"] = str(otel_dir / "traces.jsonl")
     else:
-        # Default: disable OTEL entirely in test subprocess
         env["OTEL_SDK_DISABLED"] = "true"
 
     return StdioServerParameters(
@@ -115,7 +115,7 @@ async def _mcp_session(
     """Open an MCP session with anyio deadline enforcement.
 
     anyio.fail_after is used instead of asyncio.wait_for because anyio's
-    cancel scopes propagate through anyio task groups — which is how
+    cancel scopes propagate through anyio task groups -- which is how
     stdio_client manages its read/write streams internally. This ensures
     the server subprocess is terminated rather than orphaned on timeout.
 
@@ -142,13 +142,13 @@ def _parse_result(result) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Pytest fixture — function-scoped (fresh subprocess per test)
+# Pytest fixture -- function-scoped (fresh subprocess per test)
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 async def vibration_session() -> AsyncGenerator[ClientSession, None]:
-    """Function-scoped fixture: each test gets a fresh vibration server process.
+    """Each test gets a fresh vibration server process.
 
     Isolation guarantee: no in-memory data store state leaks between tests.
     Teardown: stdio_client.__aexit__ terminates the subprocess via anyio
@@ -159,7 +159,7 @@ async def vibration_session() -> AsyncGenerator[ClientSession, None]:
 
 
 # ---------------------------------------------------------------------------
-# vibration server — no CouchDB required
+# vibration server -- no CouchDB required
 # ---------------------------------------------------------------------------
 
 
@@ -223,6 +223,10 @@ class TestVibrationMCPProtocol:
         Primary MCP schema validation regression test. The FastMCP Pydantic
         layer must catch the missing field and return a structured validation
         error rather than crashing the subprocess.
+
+        Note: accesses result.content[0].text directly (not _parse_result) because
+        the assertion needs raw keyword search on the error string, not a parsed
+        dict -- the validation error response is not guaranteed to be valid JSON.
         """
         result = await asyncio.wait_for(
             vibration_session.call_tool(
@@ -270,7 +274,7 @@ class TestVibrationMCPProtocol:
 
         Regression test for FIND-010 (async teardown deadlock). Uses the
         context manager directly (not the fixture) to test the complete
-        lifecycle. anyio.fail_after wraps the entire block — if teardown
+        lifecycle. anyio.fail_after wraps the entire block -- if teardown
         hangs, anyio cancels it via the stdio_client task group rather
         than leaving a zombie process behind.
         """
@@ -280,43 +284,3 @@ class TestVibrationMCPProtocol:
                 await asyncio.wait_for(session.list_tools(), timeout=_DEADLINE)
         exited = True
         assert exited, "Session teardown caused a deadlock"
-
-
-# ---------------------------------------------------------------------------
-# Legacy standalone entry point (python test_mcp_e2e.py)
-# ---------------------------------------------------------------------------
-
-
-async def _legacy_run() -> None:
-    """Original single-scenario run retained for backward compatibility."""
-    print("[E2E] Starting vibration MCP server...")
-    params = _server_params("servers.vibration.main")
-    async with stdio_client(params) as (read_stream, write_stream):
-        print("[E2E] Server connected. Initializing session...")
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
-            print("[E2E] Session initialized.")
-            tools = await session.list_tools()
-            print(f"[E2E] Available tools: {[t.name for t in tools.tools]}")
-            mock_args = {
-                "velocity_rms": 15.5,
-                "machine_class": "Class I",
-                "envelope_peak_freqs": [50.0, 100.0, 150.0],
-                "bpfo": 50.0,
-                "bpfi": 70.0,
-                "ftf": 10.0,
-                "bsf": 30.0,
-            }
-            print(f"[E2E] Calling 'diagnose_vibration' with mock data: {mock_args}")
-            try:
-                result = await session.call_tool("diagnose_vibration", mock_args)
-                print("[E2E] Tool executed successfully.")
-                print("[E2E] Result:")
-                for content in result.content:
-                    print(content.text)
-            except Exception as e:
-                print(f"[E2E] ERROR during tool execution: {e}")
-
-
-if __name__ == "__main__":
-    asyncio.run(_legacy_run())
