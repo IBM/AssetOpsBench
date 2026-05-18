@@ -35,14 +35,12 @@
 3. [Datasets](#datasets)
 4. [AI Agents](#ai-agents)
 5. [Multi-Agent Frameworks](#multi-agent-frameworks)
-6. [System Diagram](#system-diagram)
-7. [Leaderboards](#leaderboards)
-8. [Docker Setup](#run-assetopsbench-in-docker)
-9. [Talks & Events](#talks--events)
-10. [External Resources](#external-resources)
-11. [University Projects & Extensions](#university-projects--extensions)
-11. [Call for Scenario Contribution](#call-for-scenario-contribution)
-12. [Contributors](#contributors)
+6. [Leaderboards](#leaderboards)
+7. [Talks & Events](#talks--events)
+8. [External Resources](#external-resources)
+9. [University Projects & Extensions](#university-projects--extensions)
+10. [Call for Scenario Contribution](#call-for-scenario-contribution)
+11. [Contributors](#contributors)
 
 ---
 
@@ -153,20 +151,6 @@ Example: MetaAgent leaderboard
 - **2025-09-01:** [CODS 2025 Competition Launch – AssetOpsBench-Live](https://ikdd.acm.org/cods-2025/)
 - **2025-06-01:** AssetOpsBench v1.0 released with 141 industrial scenarios
 - **2025:** Multiple invited talks and accepted papers at NeurIPS, EMNLP, AAAI (see Announcements above)
-
-
-## Run AssetOpsBench in Docker
-- Please Refer to the 
-- Pre-built Docker Images: `assetopsbench-basic` (minimal) & `assetopsbench-extra` (full)  
-- Conda environment: `assetopsbench`  
-- [Full setup guide](https://github.com/IBM/AssetOpsBench/tree/main/benchmark/README.md)  
-
-```bash
-cd /path/to/AssetOpsBench
-chmod +x benchmark/entrypoint.sh
-docker-compose -f benchmark/docker-compose.yml build
-docker-compose -f benchmark/docker-compose.yml up
-```
 
 ---
 
