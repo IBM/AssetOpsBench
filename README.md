@@ -13,7 +13,7 @@
 [FailureSensorIQ (NeurIPS 2025)](https://github.com/IBM/FailureSensorIQ) |
 [AssetOpsBench Lab (AAAI 2026)](https://ibm.github.io/AssetOpsBench/aaaiwebsite/) |
 [Spiral (AAAI 2026)](https://github.com/IBM/SPIRAL) |
-[AssetOpsBench Technical Material](./docs/tutorial/AssetOpsBench_Technical_Material.pdf)
+[AssetOpsBench Technical Material](https://github.com/IBM/AssetOpsBench/blob/main/docs/tutorial/AssetOpsBench_Technical_Material.pdf)
 
 📄 [Paper](https://arxiv.org/pdf/2506.03828) | 🤗 [HF-Dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) | 📢 [IBM Blog](https://research.ibm.com/blog/asset-ops-benchmark) | 🤗 [HF Blog](https://huggingface.co/blog/ibm-research/assetopsbench-playground-on-hugging-face) | [Contributors](#contributors)
 
@@ -32,7 +32,7 @@
 ## 📑 Table of Contents
 1. [Announcements](#announcements)
 2. [Introduction](#introduction)
-3. [Datasets](#datasets-140-scenarios)
+3. [Datasets](#datasets)
 4. [AI Agents](#ai-agents)
 5. [Multi-Agent Frameworks](#multi-agent-frameworks)
 6. [System Diagram](#system-diagram)
@@ -46,7 +46,7 @@
 
 ---
 
-## Announcements (Papers, Invited Talks, etc) 
+## Announcements 
 
 - 📊 **Dataset Update:** **AssetOpsBench** expanded to cover wider variety of 9 Asset classes (Chiller, AHU, Pump, Motor, Bearing, Engine, Rotors, Boilers, Turbine, etc.) and various Tasks (Remaining Useful Life, Fault Classification, Rule Monitoring, etc.) <br>![Hugging Face](https://img.shields.io/badge/HuggingFace-AssetOpsBench-yellow?logo=huggingface)
 [![Dataset](https://img.shields.io/badge/Dataset-ibm--research%2FAssetOpsBench-blue)](https://huggingface.co/datasets/ibm-research/AssetOpsBench)
@@ -103,7 +103,7 @@ Designed for **maintenance engineers, reliability specialists, and facility plan
 
 ---
 
-## Datasets: 141 Scenarios
+## Datasets
 AssetOpsBench scenarios span multiple domains:  
 
 | Domain | Example Task |
@@ -125,7 +125,7 @@ Explore all scenarios [HF-Dataset](https://huggingface.co/datasets/ibm-research/
 - **TSFM Agent**: `forecasting`, `timeseries_anomaly_detection`  
 - **WO Agent**: `generate_work_order`  
 
-### Multi-Agent Frameworks (Blue Prints)
+### Multi-Agent Frameworks
 - **[MetaAgent](https://github.com/IBM/AssetOpsBench/tree/main/src/meta_agent)**: reAct-based single-agent-as-tool orchestration
 - **[AgentHive](https://github.com/IBM/AssetOpsBench/tree/main/src/agent_hive)**: plan-and-execute sequential workflow
 
