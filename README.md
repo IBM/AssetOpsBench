@@ -13,13 +13,13 @@
 [FailureSensorIQ (NeurIPS 2025)](https://github.com/IBM/FailureSensorIQ) |
 [AssetOpsBench Lab (AAAI 2026)](https://ibm.github.io/AssetOpsBench/aaaiwebsite/) |
 [Spiral (AAAI 2026)](https://github.com/IBM/SPIRAL) |
-[AssetOpsBench Technical Material](./docs/tutorial/AssetOpsBench_Technical_Material.pdf)
+[AssetOpsBench Technical Material](https://github.com/IBM/AssetOpsBench/blob/main/docs/tutorial/AssetOpsBench_Technical_Material.pdf)
 
 📄 [Paper](https://arxiv.org/pdf/2506.03828) | 🤗 [HF-Dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) | 📢 [IBM Blog](https://research.ibm.com/blog/asset-ops-benchmark) | 🤗 [HF Blog](https://huggingface.co/blog/ibm-research/assetopsbench-playground-on-hugging-face) | [Contributors](#contributors)
 
 [![Kaggle](https://img.shields.io/badge/Kaggle-Benchmark-blue?logo=kaggle&logoColor=white&style=flat-square)](https://www.kaggle.com/benchmarks/ibm-research/asset-ops-bench)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Playground-orange?style=flat-square)](https://huggingface.co/spaces/ibm-research/AssetOps-Bench)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/IBM/AssetOpsBench/blob/main/notebook/LLM_Agent.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/IBM/AssetOpsBench/blob/main-0.x/notebook/LLM_Agent.ipynb)
 </div>
 
 ---
@@ -32,21 +32,19 @@
 ## 📑 Table of Contents
 1. [Announcements](#announcements)
 2. [Introduction](#introduction)
-3. [Datasets](#datasets-140-scenarios)
+3. [Datasets](#datasets)
 4. [AI Agents](#ai-agents)
 5. [Multi-Agent Frameworks](#multi-agent-frameworks)
-6. [System Diagram](#system-diagram)
-7. [Leaderboards](#leaderboards)
-8. [Docker Setup](#run-assetopsbench-in-docker)
-9. [Talks & Events](#talks--events)
-10. [External Resources](#external-resources)
-11. [University Projects & Extensions](#university-projects--extensions)
-11. [Call for Scenario Contribution](#call-for-scenario-contribution)
-12. [Contributors](#contributors)
+6. [Leaderboards](#leaderboards)
+7. [Talks & Events](#talks--events)
+8. [External Resources](#external-resources)
+9. [University Projects & Extensions](#university-projects--extensions)
+10. [Call for Scenario Contribution](#call-for-scenario-contribution)
+11. [Contributors](#contributors)
 
 ---
 
-## Announcements (Papers, Invited Talks, etc) 
+## Announcements 
 
 - 📊 **Dataset Update:** **AssetOpsBench** expanded to cover wider variety of 9 Asset classes (Chiller, AHU, Pump, Motor, Bearing, Engine, Rotors, Boilers, Turbine, etc.) and various Tasks (Remaining Useful Life, Fault Classification, Rule Monitoring, etc.) <br>![Hugging Face](https://img.shields.io/badge/HuggingFace-AssetOpsBench-yellow?logo=huggingface)
 [![Dataset](https://img.shields.io/badge/Dataset-ibm--research%2FAssetOpsBench-blue)](https://huggingface.co/datasets/ibm-research/AssetOpsBench)
@@ -103,7 +101,7 @@ Designed for **maintenance engineers, reliability specialists, and facility plan
 
 ---
 
-## Datasets: 141 Scenarios
+## Datasets
 AssetOpsBench scenarios span multiple domains:  
 
 | Domain | Example Task |
@@ -125,7 +123,7 @@ Explore all scenarios [HF-Dataset](https://huggingface.co/datasets/ibm-research/
 - **TSFM Agent**: `forecasting`, `timeseries_anomaly_detection`  
 - **WO Agent**: `generate_work_order`  
 
-### Multi-Agent Frameworks (Blue Prints)
+### Multi-Agent Frameworks
 - **[MetaAgent](https://github.com/IBM/AssetOpsBench/tree/main/src/meta_agent)**: reAct-based single-agent-as-tool orchestration
 - **[AgentHive](https://github.com/IBM/AssetOpsBench/tree/main/src/agent_hive)**: plan-and-execute sequential workflow
 
@@ -153,20 +151,6 @@ Example: MetaAgent leaderboard
 - **2025-09-01:** [CODS 2025 Competition Launch – AssetOpsBench-Live](https://ikdd.acm.org/cods-2025/)
 - **2025-06-01:** AssetOpsBench v1.0 released with 141 industrial scenarios
 - **2025:** Multiple invited talks and accepted papers at NeurIPS, EMNLP, AAAI (see Announcements above)
-
-
-## Run AssetOpsBench in Docker
-- Please Refer to the 
-- Pre-built Docker Images: `assetopsbench-basic` (minimal) & `assetopsbench-extra` (full)  
-- Conda environment: `assetopsbench`  
-- [Full setup guide](https://github.com/IBM/AssetOpsBench/tree/main/benchmark/README.md)  
-
-```bash
-cd /path/to/AssetOpsBench
-chmod +x benchmark/entrypoint.sh
-docker-compose -f benchmark/docker-compose.yml build
-docker-compose -f benchmark/docker-compose.yml up
-```
 
 ---
 
