@@ -177,6 +177,8 @@ AssetOpsBench is being extended by university research groups exploring new asse
 
 - **Synthetic Scenario Generation for Evaluation of Industry 4.0 Agents** — Automated Scenario Generation, Transformer Asset Integration, and Scenario Quality Evaluation. [Rohith Kanathur, Sagar Chethan Kumar](https://github.com/Rohith-Kanathur, https://github.com/Sagar-CK), Columbia University · [repo](https://github.com/Rohith-Kanathur/AssetOpsBench)
 
+- **AgentOpsBench** — High-throughput battery analytics MCP server with DNN prognostics (RUL prediction) and 3.3× latency optimization via parallel fetch, batching, and disk caching. [Siddharth Gowda, Rushin Bhatt, Aryaman Agrawal, Winston Li](https://github.com/siddharthgowda), Columbia University · [repo](https://github.com/siddharthgowda/AssetOpsBench)
+
 ---
 
 ## Call for Scenario Contribution
