@@ -8,7 +8,7 @@
 
 [![Stars](https://img.shields.io/github/stars/IBM/AssetOpsBench?style=for-the-badge&logo=github&color=yellow)](https://github.com/IBM/AssetOpsBench/stargazers)
 [![Forks](https://img.shields.io/github/forks/IBM/AssetOpsBench?style=for-the-badge&logo=github)](https://github.com/IBM/AssetOpsBench/network/members)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-green?style=for-the-badge)](LICENSE)
 [![KDD 2026](https://img.shields.io/badge/KDD%202026-Accepted-0f62fe?style=for-the-badge)](#publications)
 
 [![AssetOps](https://img.shields.io/badge/Domain-Asset_Operations-blue)](#)
@@ -18,6 +18,9 @@
 [![AAAI 2026](https://img.shields.io/badge/AAAI--2026-Accepted-blueviolet)](#publications)
 [![IAAI 2026](https://img.shields.io/badge/IAAI--2026-Accepted-blueviolet)](#publications)
 [![ICLR 2026](https://img.shields.io/badge/ICLR--2026-Accepted-blueviolet)](#publications)
+[![ACL 2026](https://img.shields.io/badge/ACL--2026-Accepted-blueviolet)](#publications)
+
+
 
 📄 [**Paper**](https://arxiv.org/pdf/2506.03828) · 🤗 [**Dataset**](https://huggingface.co/datasets/ibm-research/AssetOpsBench) · 🎮 [**Playground**](https://huggingface.co/spaces/ibm-research/AssetOps-Bench) · 📢 [**IBM Blog**](https://research.ibm.com/blog/asset-ops-benchmark) · 🎥 [**Video**](https://www.youtube.com/watch?v=kXmBDMrKFjs) · 📊 [**Kaggle**](https://www.kaggle.com/benchmarks/ibm-research/asset-ops-bench) · 🚀 [**Colab**](https://colab.research.google.com/github/IBM/AssetOpsBench/blob/main-0.x/notebook/LLM_Agent.ipynb)
 
@@ -33,7 +36,7 @@
 <table>
   <tr>
     <td align="center" width="20%"><b>9</b><br><sub>Asset classes</sub></td>
-    <td align="center" width="20%"><b>141+</b><br><sub>Scenarios</sub></td>
+    <td align="center" width="20%"><b>460+</b><br><sub>Scenarios</sub></td>
     <td align="center" width="20%"><b>4</b><br><sub>Domain agents</sub></td>
     <td align="center" width="20%"><b>2</b><br><sub>Orchestration frameworks</sub></td>
     <td align="center" width="20%"><b>20+</b><br><sub>University extensions</sub></td>
@@ -54,7 +57,7 @@ git clone https://github.com/IBM/AssetOpsBench.git
 cd AssetOpsBench
 pip install -e .
 
-# Try a scenario
+# Try a scenario (to be enabled)
 python -m assetopsbench.run --scenario "List all sensors of Chiller 6 in MAIN site"
 ```
 
@@ -64,7 +67,7 @@ Or jump in instantly:
 - 📖 **[Read INSTRUCTIONS.md](./INSTRUCTIONS.md)** — full setup, MCP servers, plan-execute runner
 
 > [!NOTE]
-> Active development is on `main`. The legacy codebase used for our KDD paper and prior experimental work is maintained on [`main-0.x`](https://github.com/IBM/AssetOpsBench/tree/main-0.x).
+> Active development is on `main`. The codebase used for various publication venue is maintained on separate branch such as ACL-2026 is on [`IndustryAssetEQA`](https://github.com/IBM/AssetOpsBench/tree/IndustryAssetEQA) and prior experimental work is maintained on [`main-0.x`](https://github.com/IBM/AssetOpsBench/tree/main-0.x).
 
 ---
 
@@ -119,7 +122,7 @@ Example: MetaAgent leaderboard
 
 ## Publications
 
-**15 contributions across 6 top venues** in 2025–2026 from the team behind AssetOpsBench.
+**12+ contributions across 7 top venues** in 2025–2026 from the team behind AssetOpsBench.
 
 <details>
 <summary><b>⭐ KDD 2026 — Jeju, South Korea</b> (click to expand)</summary>
@@ -130,35 +133,35 @@ Example: MetaAgent leaderboard
 </details>
 
 <details>
-<summary><b>AAAI 2026 — Philadelphia, USA</b></summary>
+<summary><b>ACL 2026 - San Diego, USA</b></summary>
 
-- **[Main]** **AssetOpsBench-Live: Privacy-Aware Online Evaluation of Multi-Agent Performance in Industrial Operations** · *D. Patel, N. Zhou, S. Lin, J. T. Rayfield, C. Shyalika, S. R. Yarrabothula* · [🎥 Demo](https://www.youtube.com/watch?v=JcKlS5v5fGY)
-- **[Main]** **SPIRAL: Symbolic LLM Planning via Grounded and Reflective Search** · *Y. Zhang, G. Ganapavarapu, S. Jayaraman, B. Agrawal, D. Patel, A. Fokoue* · [💻 Code](https://github.com/IBM/SPIRAL)
-- **[Main]** **Knowledge-Guided AI for Industrial Asset Health Monitoring** · *S. Lin, D. Patel*
-- **[Tutorial]** **From Inception to Productization: Hands-on Lab for the Lifecycle of Multimodal Agentic AI in Industry 4.0** · *C. Shyalika, S. Ahuja, S. Lin, R. Wickramarachchi, D. Patel, A. Sheth* · [🌐 Website](https://ibm.github.io/AssetOpsBench/aaaiwebsite/) · [📊 Slides](https://drive.google.com/file/d/16GaYxBQ2FsVqKpkKOU0PI_ZCTCsowenF/view?usp=sharing)
-- **[AABA4ET]** **Agentic Code Generation for Heuristic Rules in Equipment Monitoring** · *F. Lorenzi, A. Langbridge, F. O'Donncha, J. Rayfield, B. Eck, S. Rosato*
+- **[Main]** **IndustryAssetEQA: A Neurosymbolic Operational Intelligence System for Embodied Question Answering in Industrial Asset Maintenance** · *C. Shyalika, D. Patel, A. Sheth*
 
 </details>
 
 <details>
-<summary><b>IAAI 2026</b></summary>
-
-- **[Deployed]** **Deployed AI Agents for Industrial Asset Management: CodeReAct Framework for Event Analysis and Work Order Automation** · *N. Zhou, D. Patel, A. Bhattacharyya*
-- **[IAAI]** **Diversity Meets Relevancy: Multi-Agent Knowledge Probing for Industry 4.0 Applications** · *C. Constantinides, D. Patel, S. Kimbleton, N. Garg, M. Paracha*
-
-</details>
-
-<details>
-<summary><b>ICLR 2026</b></summary>
+<summary><b>ICLR 2026 - Brazil</b></summary>
 
 - **[Main]** **Adaptive Conformal Anomaly Detection with Time Series Foundation Models for Signal Monitoring** · *N. Martinez, F. O'Donncha, W. M. Gifford, N. Zhou, D. C. Patel, R. Vaculin*
 
 </details>
 
 <details>
-<summary><b>ACL 2026</b></summary>
+<summary><b>AAAI 2026 — Singapore</b></summary>
 
-- **[Main]** **IndustryAssetEQA: A Neurosymbolic Operational Intelligence System for Embodied Question Answering in Industrial Asset Maintenance** · *C. Shyalika, D. Patel, A. Sheth*
+- **[Main]** **AssetOpsBench-Live: Privacy-Aware Online Evaluation of Multi-Agent Performance in Industrial Operations** · *D. Patel, N. Zhou, S. Lin, J. T. Rayfield, C. Shyalika, S. R. Yarrabothula* · [🎥 Demo](https://www.youtube.com/watch?v=JcKlS5v5fGY)
+- **[Main]** **SPIRAL: Symbolic LLM Planning via Grounded and Reflective Search** · *Y. Zhang, G. Ganapavarapu, S. Jayaraman, B. Agrawal, D. Patel, A. Fokoue* · [💻 Code](https://github.com/IBM/SPIRAL)
+- **[Bridge]** **Knowledge-Guided AI for Industrial Asset Health Monitoring** · *S. Lin, D. Patel*
+- **[Tutorial]** **From Inception to Productization: Hands-on Lab for the Lifecycle of Multimodal Agentic AI in Industry 4.0** · *C. Shyalika, S. Ahuja, S. Lin, R. Wickramarachchi, D. Patel, A. Sheth* · [🌐 Website](https://ibm.github.io/AssetOpsBench/aaaiwebsite/) · [📊 Slides](https://drive.google.com/file/d/16GaYxBQ2FsVqKpkKOU0PI_ZCTCsowenF/view?usp=sharing)
+- **[AABA4ET]** **Agentic Code Generation for Heuristic Rules in Equipment Monitoring** · *F. Lorenzi, A. Langbridge, F. O'Donncha, J. Rayfield, B. Eck, S. Rosato*
+
+</details>
+
+<details>
+<summary><b>IAAI 2026 - Singapore</b></summary>
+
+- **[Deployed]** **Deployed AI Agents for Industrial Asset Management: CodeReAct Framework for Event Analysis and Work Order Automation** · *N. Zhou, D. Patel, A. Bhattacharyya*
+- **[IAAI]** **Diversity Meets Relevancy: Multi-Agent Knowledge Probing for Industry 4.0 Applications** · *C. Constantinides, D. Patel, S. Kimbleton, N. Garg, M. Paracha*
 
 </details>
 
