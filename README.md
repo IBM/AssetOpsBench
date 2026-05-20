@@ -180,6 +180,8 @@ AssetOpsBench is being extended by university research groups exploring new asse
 - **AgentOpsBench** — High-throughput battery analytics MCP server with DNN prognostics (RUL prediction) and 3.3× latency optimization via parallel fetch, batching, and disk caching. [Siddharth Gowda, Rushin Bhatt, Aryaman Agrawal, Winston Li](https://github.com/siddharthgowda), Columbia University · [repo](https://github.com/siddharthgowda/AssetOpsBench)
 
 - **Skill-Knowledge-Augmented Agents on AssetOpsBench** - Confidence-gated skill execution with scoped knowledge plugins for industrial fault diagnosis on AssetOpsBench. [Vera Mazeeva, Sanskruti Shejwal, Shrey Arora, Mana Abbaszadeh](https://github.com/verammaz , https://github.com/Sans-Shej , https://github.com/shreyarora2198, https://github.com/Manazd), Columbia University · [repo](https://github.com/shreyarora2198/AssetOpsBench/tree/team14-final)
+
+- **Evaluating Temporal Semantic Caching and Workflow Optimization in Agentic Plan-Execute Pipelines**. [Krish Veera](https://www.github.com/krishrveera/), [Alimurtaza Mustafa Merchant](https://github.com/alimurtaza0411/), [Sajal Kumar Goyla](https://github.com/SajalGoyla/) , [Shambhawi Bhure](https://github.com/ShambhawiBhure/), Columbia University · [repo](https://github.com/alimurtaza0411/Latency-Optimized-AssetOpsBench/tree/feature/ablation-study)
   
 ---
 
