@@ -16,6 +16,16 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 **Path:** `src/servers/iot/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `IOT_DBNAME`)
 
+**Sample assets shipped in the `iot` database** (loaded by `src/couchdb/couchdb_setup.sh`):
+
+| `asset_id`  | Asset class      | Source file                                       |
+| ----------- | ---------------- | ------------------------------------------------- |
+| `Chiller 6` | Chiller          | `src/couchdb/sample_data/iot/chiller_6.json`         |
+| `mp_1`      | Metro pump       | `src/couchdb/sample_data/iot/metro_pump_1.json`      |
+| `hyd_1`     | Hydraulic pump   | `src/couchdb/sample_data/iot/hydraulic_pump_1.json`  |
+
+Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ships in a separate `vibration` database for the vibration MCP server.
+
 | Tool      | Arguments                                  | Description                                                             |
 | --------- | ------------------------------------------ | ----------------------------------------------------------------------- |
 | `sites`   | —                                          | List all available sites                                                |

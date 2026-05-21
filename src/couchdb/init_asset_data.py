@@ -7,7 +7,7 @@ Environment variables (or .env):
     COUCHDB_URL        e.g. http://localhost:5984
     COUCHDB_USERNAME   admin user
     COUCHDB_PASSWORD   admin password
-    IOT_DBNAME         target database (default: chiller)
+    IOT_DBNAME         target database (default: iot)
     ASSET_DATA_FILE    override JSON file path
 """
 
@@ -32,13 +32,13 @@ logger = logging.getLogger(__name__)
 
 _SCRIPT_DIR = os.path.dirname(__file__)
 _DEFAULT_DATA_FILE = os.path.join(
-    _SCRIPT_DIR, "sample_data", "iot", "chiller6_june2020_sensordata_couchdb.json"
+    _SCRIPT_DIR, "sample_data", "iot", "chiller_6.json"
 )
 
 COUCHDB_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")
 COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME", "admin")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD", "password")
-IOT_DBNAME = os.environ.get("IOT_DBNAME", "chiller")
+IOT_DBNAME = os.environ.get("IOT_DBNAME", "iot")
 ASSET_DATA_FILE = os.environ.get("ASSET_DATA_FILE", _DEFAULT_DATA_FILE)
 
 _AUTH = (COUCHDB_USERNAME, COUCHDB_PASSWORD)

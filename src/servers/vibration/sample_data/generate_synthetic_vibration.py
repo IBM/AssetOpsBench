@@ -24,7 +24,7 @@ References
 
 Output
 ------
-bulk_docs_vibration.json — JSON array of CouchDB documents with fields:
+motor_01.json — JSON array of CouchDB documents with fields:
   asset_id, timestamp (ISO-8601 µs), Vibration_X (g)
 
 Usage
@@ -122,7 +122,7 @@ def main() -> None:
     t, signal = generate()
     docs = to_couchdb_docs(t, signal)
 
-    out = os.path.join(os.path.dirname(__file__), "bulk_docs_vibration.json")
+    out = os.path.join(os.path.dirname(__file__), "motor_01.json")
     with open(out, "w") as f:
         json.dump(docs, f, indent=2)
 
