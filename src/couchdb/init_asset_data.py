@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 _SCRIPT_DIR = os.path.dirname(__file__)
 _DEFAULT_DATA_FILE = os.path.join(
-    _SCRIPT_DIR, "sample_data", "iot", "chiller6_june2020_sensordata_couchdb.json"
+    _SCRIPT_DIR, "sample_data", "iot", "chiller_6.json"
 )
 
 COUCHDB_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")

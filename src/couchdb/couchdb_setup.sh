@@ -25,18 +25,18 @@ pip3 install -q --break-system-packages requests pandas python-dotenv
 echo "Loading IoT asset data..."
 COUCHDB_URL="http://localhost:5984" \
   python3 /couchdb/init_asset_data.py \
-    --data-file /sample_data/iot/chiller6_june2020_sensordata_couchdb.json \
+    --data-file /sample_data/iot/chiller_6.json \
     --db "${IOT_DBNAME:-iot}" \
     --drop
 
 COUCHDB_URL="http://localhost:5984" \
   python3 /couchdb/init_asset_data.py \
-    --data-file /sample_data/iot/Metro_data_fixed.json \
+    --data-file /sample_data/iot/metro_pump_1.json \
     --db "${IOT_DBNAME:-iot}"
 
 COUCHDB_URL="http://localhost:5984" \
   python3 /couchdb/init_asset_data.py \
-    --data-file /sample_data/iot/hydropic_pump.json \
+    --data-file /sample_data/iot/hydraulic_pump_1.json \
     --db "${IOT_DBNAME:-iot}"
 
 echo "Loading work order data..."
@@ -47,7 +47,7 @@ COUCHDB_URL="http://localhost:5984" \
     --drop
 
 # Load vibration sample data (Motor_01 bearing fault) into a dedicated database
-VIBRATION_FILE="/sample_data/iot/bulk_docs_vibration.json"
+VIBRATION_FILE="/sample_data/iot/motor_01.json"
 if [ -f "$VIBRATION_FILE" ]; then
   echo "Loading vibration data..."
   COUCHDB_URL="http://localhost:5984" \
