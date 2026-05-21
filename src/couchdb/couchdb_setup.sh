@@ -26,18 +26,18 @@ echo "Loading IoT asset data..."
 COUCHDB_URL="http://localhost:5984" \
   python3 /couchdb/init_asset_data.py \
     --data-file /sample_data/iot/chiller6_june2020_sensordata_couchdb.json \
-    --db "${IOT_DBNAME:-chiller}" \
+    --db "${IOT_DBNAME:-iot}" \
     --drop
 
 COUCHDB_URL="http://localhost:5984" \
   python3 /couchdb/init_asset_data.py \
     --data-file /sample_data/iot/Metro_data_fixed.json \
-    --db "${IOT_DBNAME:-chiller}"
+    --db "${IOT_DBNAME:-iot}"
 
 COUCHDB_URL="http://localhost:5984" \
   python3 /couchdb/init_asset_data.py \
     --data-file /sample_data/iot/hydropic_pump.json \
-    --db "${IOT_DBNAME:-chiller}"
+    --db "${IOT_DBNAME:-iot}"
 
 echo "Loading work order data..."
 COUCHDB_URL="http://localhost:5984" \
