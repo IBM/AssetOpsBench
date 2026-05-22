@@ -10,6 +10,8 @@
 [![Forks](https://img.shields.io/github/forks/IBM/AssetOpsBench?style=for-the-badge&logo=github)](https://github.com/IBM/AssetOpsBench/network/members)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green?style=for-the-badge)](LICENSE)
 [![KDD 2026](https://img.shields.io/badge/KDD%202026-Accepted-0f62fe?style=for-the-badge)](#publications)
+[![IJCAI 2026](https://img.shields.io/badge/IJCAI%202026-Live%20Competition-d02670?style=for-the-badge)](#ai-competitions)
+[![CODS 2025](https://img.shields.io/badge/CODS%202025-500%2B%20Submissions-007d79?style=for-the-badge)](#ai-competitions)
 
 [![AssetOps](https://img.shields.io/badge/Domain-Asset_Operations-blue)](#)
 [![MultiAgentBench](https://img.shields.io/badge/Domain-Multi--agent_Bench-blue)](#)
@@ -35,11 +37,12 @@
 
 <table>
   <tr>
-    <td align="center" width="20%"><b>9</b><br><sub>Asset classes</sub></td>
-    <td align="center" width="20%"><b>460+</b><br><sub>Scenarios</sub></td>
-    <td align="center" width="20%"><b>4</b><br><sub>Domain agents</sub></td>
-    <td align="center" width="20%"><b>2</b><br><sub>Orchestration frameworks</sub></td>
-    <td align="center" width="20%"><b>20+</b><br><sub>University extensions</sub></td>
+    <td align="center" width="16%"><b>9</b><br><sub>Asset classes</sub></td>
+    <td align="center" width="16%"><b>141+</b><br><sub>Scenarios</sub></td>
+    <td align="center" width="16%"><b>5</b><br><sub>Domain agents</sub></td>
+    <td align="center" width="16%"><b>2</b><br><sub>Orchestration frameworks</sub></td>
+    <td align="center" width="16%"><b>20+</b><br><sub>University extensions</sub></td>
+    <td align="center" width="16%"><b>500+</b><br><sub>Competition submissions</sub></td>
   </tr>
 </table>
 
@@ -62,12 +65,12 @@ python -m assetopsbench.run --scenario "List all sensors of Chiller 6 in MAIN si
 ```
 
 Or jump in instantly:
-- 🚀 **[Run on Colab](https://colab.research.google.com/github/IBM/AssetOpsBench/blob/main-0.x/notebook/LLM_Agent.ipynb)** — no install required
+- 🚀 **[Run on Colab](https://colab.research.google.com/github/IBM/AssetOpsBench/blob/main-0.x/notebook/LLM_Agent.ipynb)** — no install required (illustration of LLM Agent)
 - 🎮 **[Try the HF Playground](https://huggingface.co/spaces/ibm-research/AssetOps-Bench)** — interactive demo
 - 📖 **[Read INSTRUCTIONS.md](./INSTRUCTIONS.md)** — full setup, MCP servers, plan-execute runner
 
 > [!NOTE]
-> Active development is on `main`. The codebase used for various publication venue is maintained on separate branch such as ACL-2026 is on [`IndustryAssetEQA`](https://github.com/IBM/AssetOpsBench/tree/IndustryAssetEQA) and prior experimental work is maintained on [`main-0.x`](https://github.com/IBM/AssetOpsBench/tree/main-0.x).
+> Active development is on `main`. The codebase used for various publication venues continues to be maintained on separate branches, for example, ACL 2026 [`IndustryAssetEQA`](https://github.com/IBM/AssetOpsBench/tree/IndustryAssetEQA) and prior experimental work is maintained on [`main-0.x`](https://github.com/IBM/AssetOpsBench/tree/main-0.x).
 
 ---
 
@@ -75,23 +78,29 @@ Or jump in instantly:
 
 AssetOpsBench is a **unified framework for developing, orchestrating, and evaluating domain-specific AI agents** in industrial asset operations and maintenance. It provides reproducible scenarios, agent tooling, and evaluation pipelines for multi-step workflows in simulated industrial environments.
 
-### Domain-Specific Agents
+### Domain-Specific MCP Servers
 
-| Agent | Important tools |
+| MCP Servers | Important tools |
 |---|---|
-| **IoT Agent** | `get_sites`, `get_history`, `get_assets`, `get_sensors` |
-| **FMSR Agent** | `get_sensors`, `get_failure_modes`, `get_failure_sensor_mapping` |
-| **TSFM Agent** | `forecasting`, `timeseries_anomaly_detection` |
-| **WO Agent** | `generate_work_order` |
+| **IoT** | `get_sites`, `get_history`, `get_assets`, `get_sensors` |
+| **FMSR** | `get_sensors`, `get_failure_modes`, `get_failure_sensor_mapping` |
+| **TSFM** | `forecasting`, `timeseries_anomaly_detection` |
+| **WO** | `get_work_order_distribution`, `predict_next_work_order`, ... |
+| **Vibration** | `compute_fft_spectrum`, `compute_envelope_spectrum`, ... |
+| **...** | **...** |
 
-### Multi-Agent Frameworks
+### Agent Frameworks
 
-- **[MetaAgent](./src/meta_agent)** — ReAct-based, agent-as-tool orchestration
-- **[AgentHive](./src/agent_hive)** — plan-and-execute sequential workflow
+- **[Plan Execute](./src/agent/plan_execute)** — plan-and-execute sequential workflow to work with any LLM
+- **[Deep Agent](./src/agent/deep_agent)** — planning, sub-agents, and virtual filesystem for long-horizon tasks
+- **[Claude Agent](./src/agent/claude_agent)** — ReAct-based orchestrator using Claude with agent-as-tool delegation
+- **[OpenAI Agent](./src/agent/openai_agent)** — ReAct-based orchestrator using OpenAI models with agent-as-tool delegation
+
 
 ### MCP Environment
 
 The `src/` directory contains MCP servers and a plan-execute runner built on the [Model Context Protocol](https://modelcontextprotocol.io/). See **[INSTRUCTIONS.md](./INSTRUCTIONS.md)** for setup.
+
 
 ---
 
@@ -110,6 +119,7 @@ Some tasks focus on a single domain, others are multi-step end-to-end workflows.
 
 ## Leaderboards
 
+- To be revised (WIP with latest models)
 - Evaluated with **7 Large Language Models**
 - Trajectories scored using **LLM Judge (Llama-4-Maverick-17B)**
 - **6-dimensional criteria** measuring reasoning, execution, and data handling
@@ -127,15 +137,15 @@ Example: MetaAgent leaderboard
 <details>
 <summary><b>⭐ KDD 2026 — Jeju, South Korea</b> (click to expand)</summary>
 
-- **[D&B]** **AssetOpsBench: A Benchmark for Industrial Asset Operations Agents** · *Patel et al.* · [📄 Paper](https://arxiv.org/pdf/2506.03828)
-- **[Tutorial]** **Building Reliable Industrial Agents with MCP: A Hands-on AssetOpsBench Tutorial for AI-Driven Operations** · *Patel et al.*
+- **[D&B]** **AssetOpsBench: A Benchmark for Industrial Asset Operations Agents** · *D. Patel, S. Lin, et al.* · [📄 Paper](https://arxiv.org/pdf/2506.03828)
+- **[Tutorial]** **Building Reliable Industrial Agents with MCP: A Hands-on AssetOpsBench Tutorial for AI-Driven Operations** · *D. Patel, C. Shyalika, et al.*
 
 </details>
 
 <details>
 <summary><b>ACL 2026 - San Diego, USA</b></summary>
 
-- **[Main]** **IndustryAssetEQA: A Neurosymbolic Operational Intelligence System for Embodied Question Answering in Industrial Asset Maintenance** · *C. Shyalika, D. Patel, A. Sheth*
+- **[Industry]** **IndustryAssetEQA: A Neurosymbolic Operational Intelligence System for Embodied Question Answering in Industrial Asset Maintenance** · *C. Shyalika, D. Patel, A. Sheth*
 
 </details>
 
@@ -149,11 +159,11 @@ Example: MetaAgent leaderboard
 <details>
 <summary><b>AAAI 2026 — Singapore</b></summary>
 
-- **[Main]** **AssetOpsBench-Live: Privacy-Aware Online Evaluation of Multi-Agent Performance in Industrial Operations** · *D. Patel, N. Zhou, S. Lin, J. T. Rayfield, C. Shyalika, S. R. Yarrabothula* · [🎥 Demo](https://www.youtube.com/watch?v=JcKlS5v5fGY)
+- **[Demo]** **AssetOpsBench-Live: Privacy-Aware Online Evaluation of Multi-Agent Performance in Industrial Operations** · *D. Patel, N. Zhou, S. Lin, J. T. Rayfield, C. Shyalika, S. R. Yarrabothula* · [🎥 Demo](https://www.youtube.com/watch?v=JcKlS5v5fGY)
 - **[Main]** **SPIRAL: Symbolic LLM Planning via Grounded and Reflective Search** · *Y. Zhang, G. Ganapavarapu, S. Jayaraman, B. Agrawal, D. Patel, A. Fokoue* · [💻 Code](https://github.com/IBM/SPIRAL)
 - **[Bridge]** **Knowledge-Guided AI for Industrial Asset Health Monitoring** · *S. Lin, D. Patel*
 - **[Tutorial]** **From Inception to Productization: Hands-on Lab for the Lifecycle of Multimodal Agentic AI in Industry 4.0** · *C. Shyalika, S. Ahuja, S. Lin, R. Wickramarachchi, D. Patel, A. Sheth* · [🌐 Website](https://ibm.github.io/AssetOpsBench/aaaiwebsite/) · [📊 Slides](https://drive.google.com/file/d/16GaYxBQ2FsVqKpkKOU0PI_ZCTCsowenF/view?usp=sharing)
-- **[AABA4ET]** **Agentic Code Generation for Heuristic Rules in Equipment Monitoring** · *F. Lorenzi, A. Langbridge, F. O'Donncha, J. Rayfield, B. Eck, S. Rosato*
+- **[Workshop(AABA4ET)]** **Agentic Code Generation for Heuristic Rules in Equipment Monitoring** · *F. Lorenzi, A. Langbridge, F. O'Donncha, J. Rayfield, B. Eck, S. Rosato*
 
 </details>
 
@@ -161,7 +171,7 @@ Example: MetaAgent leaderboard
 <summary><b>IAAI 2026 - Singapore</b></summary>
 
 - **[Deployed]** **Deployed AI Agents for Industrial Asset Management: CodeReAct Framework for Event Analysis and Work Order Automation** · *N. Zhou, D. Patel, A. Bhattacharyya*
-- **[IAAI]** **Diversity Meets Relevancy: Multi-Agent Knowledge Probing for Industry 4.0 Applications** · *C. Constantinides, D. Patel, S. Kimbleton, N. Garg, M. Paracha*
+- **[Emmerging]** **Diversity Meets Relevancy: Multi-Agent Knowledge Probing for Industry 4.0 Applications** · *C. Constantinides, D. Patel, S. Kimbleton, N. Garg, M. Paracha*
 
 </details>
 
@@ -193,6 +203,30 @@ Example: MetaAgent leaderboard
 - [**AssetOpsBench Lab**](https://ibm.github.io/AssetOpsBench/aaaiwebsite/) (AAAI 2026)
 - [**SPIRAL**](https://github.com/IBM/SPIRAL) (AAAI 2026)
 - [**AssetOpsBench Technical Material**](https://github.com/IBM/AssetOpsBench/blob/main/docs/tutorial/AssetOpsBench_Technical_Material.pdf)
+
+---
+
+## AI Competitions
+
+AssetOpsBench powers public AI agent competitions that bring together researchers, students, and practitioners worldwide.
+
+### 🔴 Live — IJCAI 2026
+
+**Industrial Automation Challenge: Benchmarking Physics-Grounded LLMs for Task Reasoning**
+
+A new challenge co-located with **IJCAI 2026** that pushes LLM agents on physics-grounded industrial reasoning.
+
+- 🌐 **Challenge site:** [ai-industrial-challenge-ijcai](https://sites.google.com/view/ai-industrial-challenge-ijcai/home)
+- 📋 **IJCAI 2026 competitions:** [2026.ijcai.org/competitions](https://2026.ijcai.org/competitions/)
+
+### ✅ Completed — CODS 2025
+
+**AssetOpsBench-Live: AI Agentic Challenge**
+
+Launched in September 2025 at CODS 2025, the competition evaluated multi-agent systems on live industrial scenarios.
+
+- 🏆 **Competition page:** [codabench.org/competitions/10206](https://www.codabench.org/competitions/10206/)
+- 👥 **365 participants** · **500+ agent submissions**
 
 ---
 
@@ -383,8 +417,6 @@ Thanks to these wonderful people ✨
 <!-- markdownlint-restore -->
 <!-- prettier-ignore-end -->
 <!-- ALL-CONTRIBUTORS-LIST:END -->
-
-**Special thanks to dataset contributors:** 👥 [@DeveloperMindset123](https://github.com/DeveloperMindset123), [@ChathurangiShyalika](https://github.com/ChathurangiShyalika), [@Fabio-Lorenzi1](https://github.com/Fabio-Lorenzi1)
 
 ---
 
