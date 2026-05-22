@@ -30,8 +30,10 @@ from agents.mcp import MCPServerStdio
 
 from observability import agent_run_span, persist_trajectory
 
+from llm.generation import GenerationParams
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
+from ..generation_maps import to_model_settings
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
 
@@ -193,8 +195,10 @@ class OpenAIAgentRunner(AgentRunner):
         server_paths: dict[str, Path | str] | None = None,
         model: str = _DEFAULT_MODEL,
         max_turns: int = 30,
+        *,
+        generation: GenerationParams | None = None,
     ) -> None:
-        super().__init__(llm, server_paths)
+        super().__init__(llm, server_paths, generation=generation)
         self._model_id = model
         self._model = resolve_model(model)
         self._run_config = _build_run_config(model)
@@ -227,6 +231,7 @@ class OpenAIAgentRunner(AgentRunner):
                     instructions=AGENT_SYSTEM_PROMPT,
                     mcp_servers=active_servers,
                     model=self._model,
+                    model_settings=to_model_settings(self._generation, self._model_id),
                 )
 
                 _log.info(

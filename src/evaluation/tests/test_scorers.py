@@ -16,7 +16,7 @@ class _StubLLM(LLMBackend):
     def __init__(self, response: str) -> None:
         self._response = response
 
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
+    def generate(self, prompt: str, temperature: float = 0.0, **_kw) -> str:
         return self._response
 
 

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .generation import GenerationParams
 
 
 @dataclass(frozen=True)
@@ -23,19 +27,38 @@ class LLMBackend(ABC):
     """Abstract interface for LLM backends."""
 
     @abstractmethod
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
-        """Generate text given a prompt."""
+    def generate(
+        self,
+        prompt: str,
+        temperature: float = 0.0,
+        *,
+        params: GenerationParams | None = None,
+    ) -> str:
+        """Generate text given a prompt.
+
+        Args:
+            prompt: The prompt to send to the model.
+            temperature: Sampling temperature — **always** overrides any value
+                stored in *params* when provided (even ``0.0``).
+            params: Optional :class:`~llm.GenerationParams` override applied on
+                top of the backend's stored defaults.  ``None`` means use
+                backend defaults unchanged.
+        """
         ...
 
     def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
+        self,
+        prompt: str,
+        temperature: float = 0.0,
+        *,
+        params: GenerationParams | None = None,
     ) -> LLMResult:
         """Generate text and report token usage.
 
         Default impl delegates to :meth:`generate` and reports zero usage —
         backends that can surface counts (e.g. LiteLLM) should override.
         """
-        return LLMResult(text=self.generate(prompt, temperature))
+        return LLMResult(text=self.generate(prompt, temperature, params=params))
 
     @property
     def model_id(self) -> str:

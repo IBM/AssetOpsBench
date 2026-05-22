@@ -104,7 +104,9 @@ def _build_llm():
         missing = [v for v in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(v)]
         if missing:
             raise RuntimeError(f"Missing env vars for LiteLLM: {missing}")
-    return LiteLLMBackend(model_id)
+    from llm import from_env as _gen_from_env
+
+    return LiteLLMBackend(model_id, params=_gen_from_env())
 
 
 try:

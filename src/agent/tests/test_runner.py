@@ -142,11 +142,11 @@ class _UsageReportingLLM(LLMBackend):
     def __init__(self, items: list[tuple[str, int, int]]) -> None:
         self._items = iter(items)
 
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
+    def generate(self, prompt: str, temperature: float = 0.0, **_kw) -> str:
         return self.generate_with_usage(prompt, temperature).text
 
     def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
+        self, prompt: str, temperature: float = 0.0, **_kw
     ) -> LLMResult:
         text, in_tok, out_tok = next(self._items, ("", 0, 0))
         return LLMResult(text=text, input_tokens=in_tok, output_tokens=out_tok)
