@@ -1,7 +1,7 @@
 """CouchDB client for fetching vibration sensor data.
 
 Uses a dedicated database (VIBRATION_DBNAME, default 'vibration') to keep
-vibration data isolated from the IoT chiller database.  Connection
+vibration data isolated from the IoT asset database.  Connection
 credentials are shared: COUCHDB_URL, COUCHDB_USERNAME, COUCHDB_PASSWORD.
 """
 

@@ -88,7 +88,7 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `COUCHDB_URL`      | `http://localhost:5984` | CouchDB connection URL   |
 | `COUCHDB_USERNAME` | `admin`                 | CouchDB admin username   |
 | `COUCHDB_PASSWORD` | `password`              | CouchDB admin password   |
-| `IOT_DBNAME`         | `chiller`               | IoT sensor database name      |
+| `IOT_DBNAME`         | `iot`                   | IoT sensor database name      |
 | `WO_DBNAME`          | `workorder`             | Work order database name      |
 | `VIBRATION_DBNAME`   | `vibration`             | Vibration sensor database name |
 
