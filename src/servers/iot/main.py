@@ -1,7 +1,6 @@
 import os
 import logging
 from datetime import datetime
-from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -24,20 +23,34 @@ COUCHDB_DBNAME = os.environ.get("IOT_DBNAME")
 COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD")
 
-# Initialize CouchDB
-try:
-    db = couchdb3.Database(
-        COUCHDB_DBNAME,
-        url=COUCHDB_URL,
-        user=COUCHDB_USERNAME,
-        password=COUCHDB_PASSWORD,
+# Initialize CouchDB. Guard before construction: couchdb3.Database raises inside
+# __init__ when COUCHDB_URL is None, leaving a partially-constructed instance
+# whose __del__ then raises AttributeError on `self.session.close()`. Skipping
+# construction keeps the MCP server startable for tool discovery even when
+# CouchDB env vars are unset.
+db = None
+if COUCHDB_URL and COUCHDB_DBNAME:
+    try:
+        db = couchdb3.Database(
+            COUCHDB_DBNAME,
+            url=COUCHDB_URL,
+            user=COUCHDB_USERNAME,
+            password=COUCHDB_PASSWORD,
+        )
+        logger.info(f"Connected to CouchDB: {COUCHDB_DBNAME}")
+    except Exception as e:
+        logger.error(f"Failed to connect to CouchDB: {e}")
+        db = None
+else:
+    logger.warning(
+        "CouchDB env vars not set (COUCHDB_URL, IOT_DBNAME); "
+        "tool calls that need CouchDB will return an error."
     )
-    logger.info(f"Connected to CouchDB: {COUCHDB_DBNAME}")
-except Exception as e:
-    logger.error(f"Failed to connect to CouchDB: {e}")
-    db = None
 
-mcp = FastMCP("iot", instructions="IoT sensor data: browse sites, assets, sensors, and query historical readings from CouchDB.")
+mcp = FastMCP(
+    "iot",
+    instructions="IoT sensor data: browse sites, assets, sensors, and query historical readings from CouchDB.",
+)
 
 # Static site as per original requirement
 SITES = ["MAIN"]
