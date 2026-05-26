@@ -20,7 +20,11 @@ def make_scenario():
             "category": "Knowledge Query",
             "characteristic_form": "Should list temperature, pressure, vibration sensors.",
         }
+        # Handle model_extra by merging it into defaults
+        model_extra = overrides.pop("model_extra", None)
         defaults.update(overrides)
+        if model_extra:
+            defaults.update(model_extra)
         return Scenario.from_raw(defaults)
 
     return _factory

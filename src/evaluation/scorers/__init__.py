@@ -44,5 +44,6 @@ def names() -> list[str]:
 # modules are importable but register no scorers until an
 # implementation is filled in.  LLM-As-Judge is registered explicitly
 # via :func:`evaluation.scorers.llm_judge.install`.
+# Code-Based scorers are now implemented but require explicit install().
 from . import code_based  # noqa: E402,F401
 from . import semantic  # noqa: E402,F401
