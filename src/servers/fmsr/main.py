@@ -28,6 +28,18 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
+from .models import (
+    DGAInterpretationResult,
+    HealthIndexResult,
+    WindingTemperatureResult,
+    LoadProfileResult,
+)
+from .prompt_templates import (
+    _INTERPRET_DGA_PROMPT,
+    _ASSESS_WINDING_PROMPT,
+    _ASSESS_LOAD_PROMPT,
+)
+
 load_dotenv()
 
 _log_level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING)
@@ -41,6 +53,9 @@ _FAILURE_MODES_FILE = Path(__file__).parent / "failure_modes.yaml"
 with _FAILURE_MODES_FILE.open() as _f:
     _ASSET_FAILURE_MODES: dict[str, list[str]] = yaml.safe_load(_f)
 
+_ASSET_FAILURE_MODE_ALIASES = {
+    "transformer": "smart grid transformer",
+}
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
 
@@ -72,6 +87,27 @@ def _parse_numbered_list(text: str) -> list[str]:
     return items
 
 
+def _normalize_asset_key(asset_name: str) -> str:
+    """Normalize an asset name for curated failure-mode lookup."""
+    normalized = re.sub(r"\d+", "", asset_name or "").strip().lower()
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+    return normalized
+
+
+def _resolve_failure_mode_asset_key(asset_name: str) -> str:
+    """Resolve an asset name to a curated failure-mode key when possible."""
+    asset_key = _normalize_asset_key(asset_name)
+    if asset_key in _ASSET_FAILURE_MODES:
+        return asset_key
+    if asset_key in _ASSET_FAILURE_MODE_ALIASES:
+        return _ASSET_FAILURE_MODE_ALIASES[asset_key]
+
+    for known_key in _ASSET_FAILURE_MODES:
+        if asset_key and (asset_key in known_key or known_key in asset_key):
+            return known_key
+    return asset_key
+
+
 def _parse_relevancy(text: str) -> dict:
     """Parse a 3-line relevancy response into {answer, reason, temporal_behavior}."""
     lines = [ln for ln in text.strip().splitlines() if ln.strip()]
@@ -84,6 +120,58 @@ def _parse_relevancy(text: str) -> dict:
     reason = lines[1] if len(lines) >= 2 else "Unknown"
     temporal = lines[2] if (answer == "Yes" and len(lines) >= 3) else "Unknown"
     return {"answer": answer, "reason": reason, "temporal_behavior": temporal}
+
+def _parse_dga_response(text: str) -> dict:
+    result = {}
+    for line in text.strip().splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            result[k.strip()] = v.strip()
+    return {
+        "fault_type": result.get("Fault Type", "Unknown"),
+        "r1": float(result.get("R1 (CH4/H2)", 0) or 0),
+        "r2": float(result.get("R2 (C2H2/C2H4)", 0) or 0),
+        "r3": float(result.get("R3 (C2H4/C2H6)", 0) or 0),
+        "code": result.get("Code (R1,R2,R3)", "Unknown"),
+        "confidence": result.get("Confidence", "Unknown"),
+        "reasoning": result.get("Reasoning", ""),
+        "recommended_action": result.get("Recommended Action", ""),
+    }
+
+
+def _parse_winding_response(text: str) -> dict:
+    result = {}
+    for line in text.strip().splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            result[k.strip()] = v.strip()
+    return {
+        "thermal_status": result.get("Thermal Status", "Unknown"),
+        "hot_spot_rise_c": float(result.get("Hot-Spot Rise (C)", 0) or 0),
+        "ageing_rate": float(result.get("Ageing Rate", 1.0) or 1.0),
+        "alarm_active": result.get("Alarm Active", "No") == "Yes",
+        "trip_active": result.get("Trip Active", "No") == "Yes",
+        "risk_level": result.get("Risk Level", "Unknown"),
+        "reasoning": result.get("Reasoning", ""),
+        "recommended_action": result.get("Recommended Action", ""),
+    }
+
+
+def _parse_load_response(text: str) -> dict:
+    result = {}
+    for line in text.strip().splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            result[k.strip()] = v.strip()
+    return {
+        "load_mva": float(result.get("Load MVA", 0) or 0),
+        "load_factor_pct": float(result.get("Load Factor (%)", 0) or 0),
+        "loading_status": result.get("Loading Status", "Unknown"),
+        "current_imbalance_pct": float(result.get("Current Imbalance (%)", 0) or 0),
+        "neutral_current_flag": result.get("Neutral Current Flag", "No") == "Yes",
+        "reasoning": result.get("Reasoning", ""),
+        "recommended_action": result.get("Recommended Action", ""),
+    }
 
 
 # ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
@@ -131,7 +219,7 @@ def _call_asset2fm(asset_name: str) -> list[str]:
     last_exc: Exception | None = None
     for _ in range(_MAX_RETRIES):
         try:
-            result = _parse_numbered_list(_llm.generate(prompt))
+            result = _parse_numbered_list(_llm.generate(prompt).text)
             _asset2fm_cache[asset_name] = result
             return result
         except Exception as exc:
@@ -147,10 +235,138 @@ def _call_relevancy(asset_name: str, failure_mode: str, sensor: str) -> dict:
     last_exc: Exception | None = None
     for _ in range(_MAX_RETRIES):
         try:
-            return _parse_relevancy(_llm.generate(prompt))
+            return _parse_relevancy(_llm.generate(prompt).text)
         except Exception as exc:
             last_exc = exc
     raise last_exc
+
+def _call_dga(
+    asset_name: str,
+    hydrogen: float,
+    methane: float,
+    acetylene: float,
+    ethylene: float,
+    ethane: float,
+) -> dict:
+    prompt = _INTERPRET_DGA_PROMPT.format(
+        asset_name=asset_name,
+        hydrogen=hydrogen,
+        methane=methane,
+        acetylene=acetylene,
+        ethylene=ethylene,
+        ethane=ethane,
+    )
+
+    last_exc: Exception | None = None
+    for _ in range(_MAX_RETRIES):
+        try:
+            raw = _llm.generate(prompt).text
+            return _parse_dga_response(raw)
+        except Exception as exc:
+            last_exc = exc
+    raise last_exc
+
+def _call_winding(
+    asset_name: str, wti: float, oti: float, ati: float, oti_a: int, oti_t: int
+) -> dict:
+    prompt = _ASSESS_WINDING_PROMPT.format(
+        asset_name=asset_name,
+        wti=wti,
+        oti=oti,
+        ati=ati,
+        oti_a=oti_a,
+        oti_t=oti_t,
+    )
+
+    last_exc: Exception | None = None
+    for _ in range(_MAX_RETRIES):
+        try:
+            raw = _llm.generate(prompt).text
+            return _parse_winding_response(raw)
+        except Exception as exc:
+            last_exc = exc
+    raise last_exc
+
+
+def _call_load(
+    asset_name: str,
+    vl1: float,
+    vl2: float,
+    vl3: float,
+    il1: float,
+    il2: float,
+    il3: float,
+    vl12: float,
+    vl23: float,
+    vl31: float,
+    inut: float,
+    rated_mva: float,
+) -> dict:
+    prompt = _ASSESS_LOAD_PROMPT.format(
+        asset_name=asset_name,
+        vl1=vl1,
+        vl2=vl2,
+        vl3=vl3,
+        il1=il1,
+        il2=il2,
+        il3=il3,
+        vl12=vl12,
+        vl23=vl23,
+        vl31=vl31,
+        inut=inut,
+        rated_mva=rated_mva,
+    )
+
+    last_exc: Exception | None = None
+    for _ in range(_MAX_RETRIES):
+        try:
+            raw = _llm.generate(prompt).text
+            return _parse_load_response(raw)
+        except Exception as exc:
+            last_exc = exc
+    raise last_exc
+
+
+def _call_predict_health_index(
+    hydrogen: float, oxygen: float, nitrogen: float,
+    methane: float, co: float, co2: float,
+    ethylene: float, ethane: float, acetylene: float,
+    dbds: float, power_factor: float, interfacial_v: float,
+    dielectric_rigidity: float, water_content: float,
+) -> float:
+    import pickle
+    import numpy as np
+
+    base_path = Path(__file__).parent / "artifacts"
+
+    with (base_path / "health_index_model.pkl").open("rb") as f:
+        model = pickle.load(f)
+
+    with (base_path / "health_index_scalers.pkl").open("rb") as f:
+        scaler_X = pickle.load(f)["scaler_X"]
+
+    feature_values = np.array(
+        [[
+            hydrogen,
+            oxygen,
+            nitrogen,
+            methane,
+            co,
+            co2,
+            ethylene,
+            ethane,
+            acetylene,
+            dbds,
+            power_factor,
+            interfacial_v,
+            dielectric_rigidity,
+            water_content,
+        ]]
+    )
+
+    scaled = scaler_X.transform(feature_values)
+    score = model.predict(scaled)[0]
+    return float(score)
 
 
 # ── Result models ─────────────────────────────────────────────────────────────
@@ -195,7 +411,7 @@ mcp = FastMCP("fmsr", instructions="Failure mode and sensor reasoning: get failu
 def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]:
     """Returns a list of known failure modes for the given asset.
     For chillers and AHUs returns a curated list. For other assets queries the LLM."""
-    asset_key = re.sub(r"\d+", "", asset_name).strip().lower()
+    asset_key = _resolve_failure_mode_asset_key(asset_name)
     if not asset_key or asset_key == "none":
         return ErrorResult(error="asset_name is required")
 
@@ -243,6 +459,15 @@ def get_failure_mode_sensor_mapping(
     fm2sensor: Dict[str, List[str]] = {}
     sensor2fm: Dict[str, List[str]] = {}
 
+    total_calls = len(failure_modes) * len(sensors)
+    logger.info(
+        "Starting FM-sensor mapping for asset '%s' with %d failure modes and %d sensors (%d total calls)",
+        asset_name,
+        len(failure_modes),
+        len(sensors),
+        total_calls,
+    )
+
     try:
         pairs = [(s, fm) for s in sensors for fm in failure_modes]
         with ThreadPoolExecutor() as executor:
@@ -279,6 +504,168 @@ def get_failure_mode_sensor_mapping(
         sensor2fm=sensor2fm,
         full_relevancy=full_relevancy,
     )
+
+
+@mcp.tool()
+def interpret_dga(
+    asset_name: str,
+    hydrogen: float,
+    methane: float,
+    acetylene: float,
+    ethylene: float,
+    ethane: float,
+) -> Union[DGAInterpretationResult, ErrorResult]:
+    """Interpret dissolved gas analysis readings for a transformer."""
+    if not asset_name:
+        return ErrorResult(error="asset_name is required")
+
+    if not _llm_available:
+        return ErrorResult(error="LLM unavailable")
+
+    try:
+        parsed = _call_dga(asset_name, hydrogen, methane, acetylene, ethylene, ethane)
+        return DGAInterpretationResult(
+            asset_name=asset_name,
+            **parsed,
+        )
+    except Exception as exc:
+        logger.error("_call_dga failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool()
+def assess_winding_temperature(
+    asset_name: str,
+    wti: float,
+    oti: float,
+    ati: float,
+    oti_a: int,
+    oti_t: int,
+) -> Union[WindingTemperatureResult, ErrorResult]:
+    """Assess transformer winding temperature condition."""
+    if not asset_name:
+        return ErrorResult(error="asset_name is required")
+
+    if not _llm_available:
+        return ErrorResult(error="LLM unavailable")
+
+    try:
+        parsed = _call_winding(asset_name, wti, oti, ati, oti_a, oti_t)
+        return WindingTemperatureResult(
+            asset_name=asset_name,
+            **parsed,
+        )
+    except Exception as exc:
+        logger.error("_call_winding failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool()
+def assess_load_profile(
+    asset_name: str,
+    vl1: float,
+    vl2: float,
+    vl3: float,
+    il1: float,
+    il2: float,
+    il3: float,
+    vl12: float,
+    vl23: float,
+    vl31: float,
+    inut: float,
+    rated_mva: float,
+) -> Union[LoadProfileResult, ErrorResult]:
+    """Assess transformer loading condition."""
+    if not asset_name:
+        return ErrorResult(error="asset_name is required")
+
+    if not _llm_available:
+        return ErrorResult(error="LLM unavailable")
+
+    try:
+        parsed = _call_load(
+            asset_name,
+            vl1,
+            vl2,
+            vl3,
+            il1,
+            il2,
+            il3,
+            vl12,
+            vl23,
+            vl31,
+            inut,
+            rated_mva,
+        )
+        return LoadProfileResult(
+            asset_name=asset_name,
+            **parsed,
+        )
+    except Exception as exc:
+        logger.error("_call_load failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool()
+def predict_health_index(
+    asset_name: str,
+    hydrogen: float,
+    oxygen: float,
+    nitrogen: float,
+    methane: float,
+    co: float,
+    co2: float,
+    ethylene: float,
+    ethane: float,
+    acetylene: float,
+    dbds: float,
+    power_factor: float,
+    interfacial_v: float,
+    dielectric_rigidity: float,
+    water_content: float,
+) -> Union[HealthIndexResult, ErrorResult]:
+    """Predict a transformer health index from condition data."""
+    if not asset_name:
+        return ErrorResult(error="asset_name is required")
+
+    try:
+        score = _call_predict_health_index(
+            hydrogen,
+            oxygen,
+            nitrogen,
+            methane,
+            co,
+            co2,
+            ethylene,
+            ethane,
+            acetylene,
+            dbds,
+            power_factor,
+            interfacial_v,
+            dielectric_rigidity,
+            water_content,
+        )
+
+        if score >= 85:
+            condition = "Very Good"
+        elif score >= 70:
+            condition = "Good"
+        elif score >= 50:
+            condition = "Fair"
+        elif score >= 30:
+            condition = "Poor"
+        else:
+            condition = "Very Poor"
+
+        return HealthIndexResult(
+            asset_name=asset_name,
+            health_index=score,
+            condition=condition,
+        )
+
+    except Exception as exc:
+        logger.error("_call_predict_health_index failed: %s", exc)
+        return ErrorResult(error=str(exc))
 
 
 def main():

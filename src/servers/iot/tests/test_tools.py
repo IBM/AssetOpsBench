@@ -10,26 +10,26 @@ from .conftest import requires_couchdb, call_tool
 
 
 # ---------------------------------------------------------------------------
-# sites
+# get_sites
 # ---------------------------------------------------------------------------
 
 
 class TestSites:
     @pytest.mark.anyio
     async def test_returns_main(self):
-        data = await call_tool(mcp, "sites", {})
+        data = await call_tool(mcp, "get_sites", {})
         assert data["sites"] == ["MAIN"]
 
 
 # ---------------------------------------------------------------------------
-# assets
+# get_assets
 # ---------------------------------------------------------------------------
 
 
 class TestAssets:
     @pytest.mark.anyio
     async def test_invalid_site(self):
-        data = await call_tool(mcp, "assets", {"site_name": "INVALID"})
+        data = await call_tool(mcp, "get_assets", {"site_name": "INVALID"})
         assert "error" in data
         assert "unknown site" in data["error"]
 
@@ -38,7 +38,7 @@ class TestAssets:
         mock_db.find.return_value = {
             "docs": [{"asset_id": "Chiller 1"}, {"asset_id": "Chiller 2"}]
         }
-        data = await call_tool(mcp, "assets", {"site_name": "MAIN"})
+        data = await call_tool(mcp, "get_assets", {"site_name": "MAIN"})
 
         assert data["total_assets"] == 2
         assert "Chiller 1" in data["assets"]
@@ -47,21 +47,21 @@ class TestAssets:
 
     @pytest.mark.anyio
     async def test_db_disconnected(self, no_db):
-        data = await call_tool(mcp, "assets", {"site_name": "MAIN"})
+        data = await call_tool(mcp, "get_assets", {"site_name": "MAIN"})
         # Should still return valid JSON (empty assets), not crash
         assert "assets" in data or "error" in data
 
     @requires_couchdb
     @pytest.mark.anyio
     async def test_discovery_integration(self):
-        data = await call_tool(mcp, "assets", {"site_name": "MAIN"})
+        data = await call_tool(mcp, "get_assets", {"site_name": "MAIN"})
         assert "assets" in data
         assert "Chiller 6" in data["assets"]
         assert data["total_assets"] > 0
 
 
 # ---------------------------------------------------------------------------
-# sensors
+# get_sensors
 # ---------------------------------------------------------------------------
 
 
@@ -69,14 +69,14 @@ class TestSensors:
     @pytest.mark.anyio
     async def test_invalid_site(self):
         data = await call_tool(
-            mcp, "sensors", {"site_name": "INVALID", "asset_id": "Chiller 6"}
+            mcp, "get_sensors", {"site_name": "INVALID", "asset_id": "Chiller 6"}
         )
         assert "error" in data
 
     @pytest.mark.anyio
     async def test_unknown_asset(self):
         data = await call_tool(
-            mcp, "sensors", {"site_name": "MAIN", "asset_id": "INVALID"}
+            mcp, "get_sensors", {"site_name": "MAIN", "asset_id": "INVALID"}
         )
         assert "error" in data
         assert "no sensors found" in data["error"]
@@ -96,7 +96,7 @@ class TestSensors:
             ]
         }
         data = await call_tool(
-            mcp, "sensors", {"site_name": "MAIN", "asset_id": "Chiller 1"}
+            mcp, "get_sensors", {"site_name": "MAIN", "asset_id": "Chiller 1"}
         )
 
         assert data["total_sensors"] == 2
@@ -110,7 +110,7 @@ class TestSensors:
     @pytest.mark.anyio
     async def test_success_integration(self):
         data = await call_tool(
-            mcp, "sensors", {"site_name": "MAIN", "asset_id": "Chiller 6"}
+            mcp, "get_sensors", {"site_name": "MAIN", "asset_id": "Chiller 6"}
         )
         assert "sensors" in data
         assert len(data["sensors"]) > 0
@@ -118,7 +118,7 @@ class TestSensors:
 
 
 # ---------------------------------------------------------------------------
-# history
+# get_history
 # ---------------------------------------------------------------------------
 
 
@@ -127,7 +127,7 @@ class TestHistory:
     async def test_invalid_date_range(self):
         data = await call_tool(
             mcp,
-            "history",
+            "get_history",
             {
                 "site_name": "MAIN",
                 "asset_id": "Chiller 6",
@@ -142,7 +142,7 @@ class TestHistory:
     async def test_malformed_date(self):
         data = await call_tool(
             mcp,
-            "history",
+            "get_history",
             {"site_name": "MAIN", "asset_id": "Chiller 6", "start": "not-a-date"},
         )
         assert "error" in data
@@ -151,7 +151,7 @@ class TestHistory:
     async def test_db_disconnected(self, no_db):
         data = await call_tool(
             mcp,
-            "history",
+            "get_history",
             {
                 "site_name": "MAIN",
                 "asset_id": "Chiller 6",
@@ -171,7 +171,7 @@ class TestHistory:
         }
         data = await call_tool(
             mcp,
-            "history",
+            "get_history",
             {
                 "site_name": "MAIN",
                 "asset_id": "Chiller 1",
@@ -188,7 +188,7 @@ class TestHistory:
     async def test_open_ended_integration(self):
         data = await call_tool(
             mcp,
-            "history",
+            "get_history",
             {
                 "site_name": "MAIN",
                 "asset_id": "Chiller 6",
@@ -203,7 +203,7 @@ class TestHistory:
     async def test_bounded_range_integration(self):
         data = await call_tool(
             mcp,
-            "history",
+            "get_history",
             {
                 "site_name": "MAIN",
                 "asset_id": "Chiller 6",

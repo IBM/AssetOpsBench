@@ -8,34 +8,44 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class LLMResult:
-    """Return type for :meth:`LLMBackend.generate_with_usage`.
+    """Return type for :meth:`LLMBackend.generate` / :meth:`generate_with_usage`.
 
-    ``input_tokens`` / ``output_tokens`` are ``0`` when the backend can't
-    report usage (e.g. mocks in unit tests).
+    ``input_tokens`` / ``output_tokens`` / ``total_tokens`` are ``0`` when the
+    backend can't report usage (e.g. mocks in unit tests). ``total_tokens``
+    should reflect the provider total when available; otherwise callers may use
+    ``input_tokens + output_tokens``.
     """
-
     text: str
     input_tokens: int = 0
     output_tokens: int = 0
+    total_tokens: int = 0
 
 
 class LLMBackend(ABC):
     """Abstract interface for LLM backends."""
 
     @abstractmethod
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
-        """Generate text given a prompt."""
+    def generate(
+        self,
+        prompt: str,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
+    ) -> LLMResult:
+        """Generate text given a prompt; includes usage when the backend provides it."""
         ...
 
     def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
+        self,
+        prompt: str,
+        temperature: float = 0.0,
+        max_tokens: int | None = None,
     ) -> LLMResult:
         """Generate text and report token usage.
 
-        Default impl delegates to :meth:`generate` and reports zero usage —
-        backends that can surface counts (e.g. LiteLLM) should override.
+        Default impl delegates to :meth:`generate` (same fields as usage-aware
+        backends).
         """
-        return LLMResult(text=self.generate(prompt, temperature))
+        return self.generate(prompt, temperature, max_tokens)
 
     @property
     def model_id(self) -> str:

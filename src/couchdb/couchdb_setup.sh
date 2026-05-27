@@ -59,5 +59,18 @@ else
   echo "⚠️ $VIBRATION_FILE not found, skipping vibration data."
 fi
 
+# Load transformer sample data (Transformer_01) into a dedicated database
+TRANSFORMER_FILE="/sample_data/iot/bulk_docs_transformer.json"
+if [ -f "$TRANSFORMER_FILE" ]; then
+  echo "Loading transformer data..."
+  COUCHDB_URL="http://localhost:5984" \
+    python3 /couchdb/init_asset_data.py \
+      --data-file "$TRANSFORMER_FILE" \
+      --db "${TRANSFORMER_DBNAME:-transformer}" \
+      --drop
+else
+  echo "⚠️ $TRANSFORMER_FILE not found, skipping transformer data."
+fi
+
 echo "✅ All databases initialised."
 tail -f /dev/null
