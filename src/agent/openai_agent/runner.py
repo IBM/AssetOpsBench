@@ -39,6 +39,12 @@ _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 
+# MCP client-session timeout for stdio servers.  The SDK default of 5s is too
+# tight for first-spawn cold-cache cases (heavy imports like scipy/numpy push
+# vibration cold start past 10s on a freshly synced env).  Warm handshakes are
+# all sub-second so a generous value has no operational downside.
+_MCP_CLIENT_TIMEOUT_SECONDS = 30
+
 
 def _build_run_config(model_id: str) -> RunConfig | None:
     """Build a RunConfig with a LiteLLM model provider when needed.
@@ -95,6 +101,7 @@ def _build_mcp_servers(
                     "args": ["run", cmd_arg],
                 },
                 cache_tools_list=True,
+                client_session_timeout_seconds=_MCP_CLIENT_TIMEOUT_SECONDS,
             )
         )
     return servers

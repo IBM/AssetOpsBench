@@ -38,6 +38,11 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 
 _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
 
+# MCP client-session timeout for stdio servers.  Cold-cache first spawns of
+# heavy servers (vibration imports scipy + numpy + DSP) can exceed the mcp
+# library's default handshake budget.  Warm runs are sub-second.
+_MCP_CLIENT_TIMEOUT_SECONDS = 30
+
 
 def _build_chat_model(model_id: str):
     """Construct a LangChain chat model for *model_id*.
@@ -85,6 +90,11 @@ def _build_mcp_connections(
             "command": "uv",
             "args": ["run", cmd_arg],
             "cwd": str(_REPO_ROOT),
+            "session_kwargs": {
+                "read_timeout_seconds": _dt.timedelta(
+                    seconds=_MCP_CLIENT_TIMEOUT_SECONDS
+                ),
+            },
         }
     return connections
 
