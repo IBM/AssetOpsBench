@@ -27,7 +27,11 @@ def no_llm():
 def mock_relevancy_chain():
     """Patch _call_relevancy so it always returns 'Yes' without calling the LLM."""
     mock = MagicMock(
-        return_value={"answer": "Yes", "reason": "Relevant sensor", "temporal_behavior": "Increases"}
+        return_value={
+            "answer": "Yes",
+            "reason": "Relevant sensor",
+            "temporal_behavior": "Increases",
+        }
     )
     with patch("servers.fmsr.main._call_relevancy", mock):
         with patch("servers.fmsr.main._llm_available", True):

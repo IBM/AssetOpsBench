@@ -99,7 +99,10 @@ def load(dataset: str) -> Optional[pd.DataFrame]:
 
         df = pd.DataFrame(docs)
         # Drop internal CouchDB fields
-        df.drop(columns=[c for c in ("_id", "_rev", "dataset") if c in df.columns], inplace=True)
+        df.drop(
+            columns=[c for c in ("_id", "_rev", "dataset") if c in df.columns],
+            inplace=True,
+        )
 
         # Parse date columns
         for col in _DATE_COLS.get(dataset, []):
@@ -142,12 +145,16 @@ def parse_date(value: Optional[str]) -> Optional[datetime]:
         raise ValueError(f"date must be YYYY-MM-DD, got '{value}'") from exc
 
 
-def date_conditions(equipment_id: str, date_col: str, start: Optional[str], end: Optional[str]) -> dict:
+def date_conditions(
+    equipment_id: str, date_col: str, start: Optional[str], end: Optional[str]
+) -> dict:
     """Build a filter-conditions dict for equipment + optional date range."""
     start_dt = parse_date(start)
     end_dt = parse_date(end)
     cond: dict = {
-        "equipment_id": lambda x, eid=equipment_id: isinstance(x, str) and x.strip().lower() == eid.strip().lower()
+        "equipment_id": lambda x, eid=equipment_id: (
+            isinstance(x, str) and x.strip().lower() == eid.strip().lower()
+        )
     }
     if start_dt or end_dt:
         cond[date_col] = lambda x, s=start_dt, e=end_dt: (
@@ -184,10 +191,18 @@ def row_to_wo(row: Any) -> WorkOrderItem:
         equipment_id=str(row.get("equipment_id", "")),
         equipment_name=str(row.get("equipment_name", "")),
         preventive=str(row.get("preventive", "")).upper() == "TRUE",
-        work_priority=int(row["work_priority"]) if pd.notna(row.get("work_priority")) else None,
-        actual_finish=row["actual_finish"].isoformat() if pd.notna(row.get("actual_finish")) else None,
-        duration=str(row.get("duration", "")) if pd.notna(row.get("duration")) else None,
-        actual_labor_hours=str(row.get("actual_labor_hours", "")) if pd.notna(row.get("actual_labor_hours")) else None,
+        work_priority=int(row["work_priority"])
+        if pd.notna(row.get("work_priority"))
+        else None,
+        actual_finish=row["actual_finish"].isoformat()
+        if pd.notna(row.get("actual_finish"))
+        else None,
+        duration=str(row.get("duration", ""))
+        if pd.notna(row.get("duration"))
+        else None,
+        actual_labor_hours=str(row.get("actual_labor_hours", ""))
+        if pd.notna(row.get("actual_labor_hours"))
+        else None,
     )
 
 
@@ -197,10 +212,14 @@ def row_to_event(row: Any) -> EventItem:
         event_group=str(row.get("event_group", "")),
         event_category=str(row.get("event_category", "")),
         event_type=str(row["event_type"]) if pd.notna(row.get("event_type")) else None,
-        description=str(row["description"]) if pd.notna(row.get("description")) else None,
+        description=str(row["description"])
+        if pd.notna(row.get("description"))
+        else None,
         equipment_id=str(row.get("equipment_id", "")),
         equipment_name=str(row.get("equipment_name", "")),
-        event_time=row["event_time"].isoformat() if pd.notna(row.get("event_time")) else "",
+        event_time=row["event_time"].isoformat()
+        if pd.notna(row.get("event_time"))
+        else "",
         note=str(row["note"]) if pd.notna(row.get("note")) else None,
     )
 

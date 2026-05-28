@@ -16,6 +16,7 @@ def _couchdb_reachable() -> bool:
         return False
     try:
         import requests
+
         requests.get(url, timeout=2)
         return True
     except Exception:

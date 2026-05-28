@@ -7,7 +7,6 @@ import os
 import tempfile
 import uuid
 from datetime import datetime
-from typing import Optional
 
 import numpy as np
 import pandas as pd

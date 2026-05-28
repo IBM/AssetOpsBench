@@ -188,7 +188,6 @@ def _TILDEQ(outputs, targets, axis=1):
 
 
 def _derivatives(inp, device="cpu"):
-    import torch
 
     batch_size, lens = inp.shape[0:2]
     input2 = inp[:, 2:lens].to(device)

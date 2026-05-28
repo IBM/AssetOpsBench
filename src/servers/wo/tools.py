@@ -8,7 +8,6 @@ the raw functions or the decorated ``mcp`` without circular-import issues.
 from collections import Counter
 from typing import List, Optional, Union
 
-import pandas as pd
 
 from .data import (
     date_conditions,
@@ -54,7 +53,9 @@ def get_work_orders(
     except ValueError as exc:
         return ErrorResult(error=str(exc))
     if not wos:
-        return ErrorResult(error=f"No work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(
+            error=f"No work orders found for equipment_id '{equipment_id}'"
+        )
     return WorkOrdersResult(
         equipment_id=equipment_id,
         start_date=start_date,
@@ -81,11 +82,15 @@ def get_preventive_work_orders(
     if df is None:
         return ErrorResult(error="Work order data not available")
     try:
-        wos = fetch_work_orders(df[df["preventive"] == "TRUE"], equipment_id, start_date, end_date)
+        wos = fetch_work_orders(
+            df[df["preventive"] == "TRUE"], equipment_id, start_date, end_date
+        )
     except ValueError as exc:
         return ErrorResult(error=str(exc))
     if not wos:
-        return ErrorResult(error=f"No preventive work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(
+            error=f"No preventive work orders found for equipment_id '{equipment_id}'"
+        )
     return WorkOrdersResult(
         equipment_id=equipment_id,
         start_date=start_date,
@@ -112,11 +117,15 @@ def get_corrective_work_orders(
     if df is None:
         return ErrorResult(error="Work order data not available")
     try:
-        wos = fetch_work_orders(df[df["preventive"] == "FALSE"], equipment_id, start_date, end_date)
+        wos = fetch_work_orders(
+            df[df["preventive"] == "FALSE"], equipment_id, start_date, end_date
+        )
     except ValueError as exc:
         return ErrorResult(error=str(exc))
     if not wos:
-        return ErrorResult(error=f"No corrective work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(
+            error=f"No corrective work orders found for equipment_id '{equipment_id}'"
+        )
     return WorkOrdersResult(
         equipment_id=equipment_id,
         start_date=start_date,
@@ -149,7 +158,9 @@ def get_events(
         return ErrorResult(error=str(exc))
 
     cond: dict = {
-        "equipment_id": lambda x, eid=equipment_id: isinstance(x, str) and x.strip().lower() == eid.strip().lower()
+        "equipment_id": lambda x, eid=equipment_id: (
+            isinstance(x, str) and x.strip().lower() == eid.strip().lower()
+        )
     }
     if start_dt or end_dt:
         cond["event_time"] = lambda x, s=start_dt, e=end_dt: (
@@ -224,7 +235,9 @@ def get_work_order_distribution(
         filtered = filtered[filtered["actual_finish"] <= end_dt]
 
     if filtered.empty:
-        return ErrorResult(error=f"No work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(
+            error=f"No work orders found for equipment_id '{equipment_id}'"
+        )
 
     counts = (
         filtered.groupby(["primary_code", "secondary_code"])
@@ -293,20 +306,31 @@ def predict_next_work_order(
     cond = date_conditions(equipment_id, "actual_finish", start_date, end_date)
     filtered = filter_df(wo_df, cond)
     if filtered is None or filtered.empty:
-        return ErrorResult(error=f"No historical work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(
+            error=f"No historical work orders found for equipment_id '{equipment_id}'"
+        )
 
     filtered = filtered.sort_values("actual_finish").reset_index(drop=True)
     transition_matrix = get_transition_matrix(filtered, "primary_code")
     last_type = filtered.iloc[-1]["primary_code"]
 
     if last_type not in transition_matrix.index:
-        return ErrorResult(error=f"No transition data for last work order type '{last_type}'")
+        return ErrorResult(
+            error=f"No transition data for last work order type '{last_type}'"
+        )
 
-    raw = sorted(transition_matrix.loc[last_type].items(), key=lambda t: t[1], reverse=True)
+    raw = sorted(
+        transition_matrix.loc[last_type].items(), key=lambda t: t[1], reverse=True
+    )
 
     predictions: List[NextWorkOrderEntry] = []
     for primary_code, prob in raw:
-        entry = NextWorkOrderEntry(category="", primary_code=primary_code, primary_code_description="", probability=float(prob))
+        entry = NextWorkOrderEntry(
+            category="",
+            primary_code=primary_code,
+            primary_code_description="",
+            probability=float(prob),
+        )
         if pfc_df is not None:
             match = pfc_df[pfc_df["primary_code"] == primary_code]
             if not match.empty:
@@ -357,23 +381,34 @@ def analyze_alert_to_failure(
         return ErrorResult(error=str(exc))
 
     cond: dict = {
-        "equipment_id": lambda x, eid=equipment_id: isinstance(x, str) and x.strip().lower() == eid.strip().lower(),
-        "rule_id": lambda x, rid=rule_id: isinstance(x, str) and x.strip().lower() == rid.strip().lower(),
+        "equipment_id": lambda x, eid=equipment_id: (
+            isinstance(x, str) and x.strip().lower() == eid.strip().lower()
+        ),
+        "rule_id": lambda x, rid=rule_id: (
+            isinstance(x, str) and x.strip().lower() == rid.strip().lower()
+        ),
     }
     filtered = filter_df(alert_df, cond)
     if filtered is None or filtered.empty:
-        return ErrorResult(error=f"No alert events found for equipment '{equipment_id}' and rule '{rule_id}'")
+        return ErrorResult(
+            error=f"No alert events found for equipment '{equipment_id}' and rule '{rule_id}'"
+        )
 
     filtered = filtered.sort_values("start_time").reset_index(drop=True)
 
     transitions: List[str] = []
     time_diffs: List[float] = []
     for i in range(len(filtered) - 1):
-        if str(filtered.iloc[i].get("rule_id", "")).strip().lower() == rule_id.strip().lower():
+        if (
+            str(filtered.iloc[i].get("rule_id", "")).strip().lower()
+            == rule_id.strip().lower()
+        ):
             for j in range(i + 1, len(filtered)):
                 if str(filtered.iloc[j].get("event_group", "")).upper() == "WORK_ORDER":
                     transitions.append("WORK_ORDER")
-                    diff = filtered.iloc[j]["start_time"] - filtered.iloc[i]["start_time"]
+                    diff = (
+                        filtered.iloc[j]["start_time"] - filtered.iloc[i]["start_time"]
+                    )
                     time_diffs.append(diff.total_seconds() / 3600)
                     break
             else:
@@ -387,7 +422,11 @@ def analyze_alert_to_failure(
 
     entries: List[AlertToFailureEntry] = []
     for transition, count in sorted(counts.items(), key=lambda t: t[1], reverse=True):
-        avg_hours = sum(time_diffs) / len(time_diffs) if transition == "WORK_ORDER" and time_diffs else None
+        avg_hours = (
+            sum(time_diffs) / len(time_diffs)
+            if transition == "WORK_ORDER" and time_diffs
+            else None
+        )
         entries.append(
             AlertToFailureEntry(
                 transition=transition,

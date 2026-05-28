@@ -10,7 +10,9 @@ from evaluation.runner import evaluate
 from evaluation import scorers as registry
 
 
-def _always_pass_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
+def _always_pass_scorer(
+    scenario: Scenario, answer: str, trajectory_text: str
+) -> ScorerResult:
     return ScorerResult(scorer="stub", passed=True, score=1.0)
 
 
@@ -46,11 +48,15 @@ def test_evaluate_end_to_end(tmp_path: Path, make_persisted_record):
     assert report.ops.tokens_in_total > 0
 
 
-def _always_fail_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
+def _always_fail_scorer(
+    scenario: Scenario, answer: str, trajectory_text: str
+) -> ScorerResult:
     return ScorerResult(scorer="stub-fail", passed=False, score=0.0)
 
 
-def test_evaluate_uses_per_scenario_scoring_method(tmp_path: Path, make_persisted_record):
+def test_evaluate_uses_per_scenario_scoring_method(
+    tmp_path: Path, make_persisted_record
+):
     rec = make_persisted_record(run_id="run-x", scenario_id=1, answer="A.")
     (tmp_path / "run-x.json").write_text(json.dumps(rec), encoding="utf-8")
 

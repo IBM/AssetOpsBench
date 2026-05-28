@@ -64,7 +64,9 @@ def test_persist_writes_file(monkeypatch, tmp_path: Path):
             _FakeTurn(
                 index=0,
                 text="hello",
-                tool_calls=[_FakeToolCall(name="sensors", input={"id": "CH-6"}, output="ok")],
+                tool_calls=[
+                    _FakeToolCall(name="sensors", input={"id": "CH-6"}, output="ok")
+                ],
                 input_tokens=100,
                 output_tokens=20,
             ),
@@ -111,7 +113,9 @@ def test_persist_serializes_list_trajectory(monkeypatch, tmp_path: Path):
     )
 
     record = json.loads(out.read_text())
-    assert record["trajectory"] == [{"step_number": 1, "task": "do thing", "success": True}]
+    assert record["trajectory"] == [
+        {"step_number": 1, "task": "do thing", "success": True}
+    ]
 
 
 def test_persist_skips_when_no_run_id(monkeypatch, tmp_path: Path, caplog):

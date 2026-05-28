@@ -38,7 +38,11 @@ from typing import AsyncGenerator
 import anyio
 import pytest
 from mcp.client.session import ClientSession
-from mcp.client.stdio import StdioServerParameters, get_default_environment, stdio_client
+from mcp.client.stdio import (
+    StdioServerParameters,
+    get_default_environment,
+    stdio_client,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -64,12 +68,21 @@ _DEADLINE = 20  # seconds per operation; anyio enforces this at subprocess level
 
 # LLM credentials that must not reach the test subprocess.
 # Prevents accidental billable API calls if server-side logic is ever changed.
-_SENSITIVE_KEYS: frozenset[str] = frozenset({
-    "WATSONX_APIKEY", "WATSONX_PROJECT_ID", "WATSONX_URL",
-    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LITELLM_API_KEY",
-    "LITELLM_BASE_URL", "COHERE_API_KEY", "AZURE_API_KEY",
-    "AZURE_API_BASE", "HUGGINGFACE_API_KEY",
-})
+_SENSITIVE_KEYS: frozenset[str] = frozenset(
+    {
+        "WATSONX_APIKEY",
+        "WATSONX_PROJECT_ID",
+        "WATSONX_URL",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "LITELLM_API_KEY",
+        "LITELLM_BASE_URL",
+        "COHERE_API_KEY",
+        "AZURE_API_KEY",
+        "AZURE_API_BASE",
+        "HUGGINGFACE_API_KEY",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -173,7 +186,9 @@ class TestVibrationMCPProtocol:
     @pytest.mark.anyio
     async def test_sc01_tool_listing(self, vibration_session: ClientSession) -> None:
         """SC-01: Server starts and exposes expected tools over stdio."""
-        tools = await asyncio.wait_for(vibration_session.list_tools(), timeout=_DEADLINE)
+        tools = await asyncio.wait_for(
+            vibration_session.list_tools(), timeout=_DEADLINE
+        )
         names = {t.name for t in tools.tools}
         expected = {
             "get_vibration_data",
@@ -188,7 +203,9 @@ class TestVibrationMCPProtocol:
         assert expected <= names, f"Missing tools: {expected - names}"
 
     @pytest.mark.anyio
-    async def test_sc02_static_tool_happy_path(self, vibration_session: ClientSession) -> None:
+    async def test_sc02_static_tool_happy_path(
+        self, vibration_session: ClientSession
+    ) -> None:
         """SC-02: list_known_bearings returns static database without CouchDB."""
         result = await asyncio.wait_for(
             vibration_session.call_tool("list_known_bearings", {}),
@@ -201,16 +218,26 @@ class TestVibrationMCPProtocol:
         assert any("6205" in n for n in names), f"6205 not found in {names}"
 
     @pytest.mark.anyio
-    async def test_sc03_iso_severity_zone_classification(self, vibration_session: ClientSession) -> None:
+    async def test_sc03_iso_severity_zone_classification(
+        self, vibration_session: ClientSession
+    ) -> None:
         """SC-03: assess_vibration_severity classifies ISO 10816 zones correctly."""
-        zone_d = _parse_result(await asyncio.wait_for(
-            vibration_session.call_tool("assess_vibration_severity", {"rms_velocity_mm_s": 50.0}),
-            timeout=_DEADLINE,
-        ))
-        zone_a = _parse_result(await asyncio.wait_for(
-            vibration_session.call_tool("assess_vibration_severity", {"rms_velocity_mm_s": 0.5}),
-            timeout=_DEADLINE,
-        ))
+        zone_d = _parse_result(
+            await asyncio.wait_for(
+                vibration_session.call_tool(
+                    "assess_vibration_severity", {"rms_velocity_mm_s": 50.0}
+                ),
+                timeout=_DEADLINE,
+            )
+        )
+        zone_a = _parse_result(
+            await asyncio.wait_for(
+                vibration_session.call_tool(
+                    "assess_vibration_severity", {"rms_velocity_mm_s": 0.5}
+                ),
+                timeout=_DEADLINE,
+            )
+        )
         assert zone_d.get("iso_zone") == "D", f"Expected D, got: {zone_d}"
         assert zone_a.get("iso_zone") == "A", f"Expected A, got: {zone_a}"
 

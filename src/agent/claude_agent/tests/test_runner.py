@@ -6,7 +6,7 @@ These tests patch claude_agent_sdk.query so no real API calls are made.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -113,7 +113,12 @@ async def test_run_returns_orchestrator_result():
 
 @pytest.mark.anyio
 async def test_run_collects_trajectory():
-    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
+    from claude_agent_sdk import (
+        AssistantMessage,
+        ResultMessage,
+        TextBlock,
+        ToolUseBlock,
+    )
 
     mock_tool = MagicMock(spec=ToolUseBlock)
     mock_tool.name = "sensors"
@@ -157,7 +162,12 @@ async def test_run_collects_trajectory():
 @pytest.mark.anyio
 async def test_run_tool_output_captured():
     """PostToolUse hook output is attached to the matching ToolCall."""
-    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
+    from claude_agent_sdk import (
+        AssistantMessage,
+        ResultMessage,
+        TextBlock,
+        ToolUseBlock,
+    )
 
     mock_tool = MagicMock(spec=ToolUseBlock)
     mock_tool.name = "sensors"
@@ -206,7 +216,12 @@ async def test_run_tool_output_captured():
 @pytest.mark.anyio
 async def test_run_tool_output_string_response():
     """PostToolUse hook handles string tool_response (no .get)."""
-    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock
+    from claude_agent_sdk import (
+        AssistantMessage,
+        ResultMessage,
+        TextBlock,
+        ToolUseBlock,
+    )
 
     mock_tool = MagicMock(spec=ToolUseBlock)
     mock_tool.name = "sites"

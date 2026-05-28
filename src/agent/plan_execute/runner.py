@@ -50,9 +50,7 @@ class _TokenMeter(LLMBackend):
         self.output_tokens += result.output_tokens
         return result.text
 
-    def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
-    ) -> LLMResult:
+    def generate_with_usage(self, prompt: str, temperature: float = 0.0) -> LLMResult:
         result = self._inner.generate_with_usage(prompt, temperature)
         self.input_tokens += result.input_tokens
         self.output_tokens += result.output_tokens
@@ -61,6 +59,7 @@ class _TokenMeter(LLMBackend):
     @property
     def model_id(self) -> str:
         return self._inner.model_id
+
 
 _log = logging.getLogger(__name__)
 

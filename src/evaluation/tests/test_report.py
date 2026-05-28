@@ -27,7 +27,9 @@ def _result(stype: str, passed: bool, run_id: str = "", **ops_kwargs) -> Scenari
         model="watsonx/ibm/granite",
         question="q",
         answer="a",
-        score=ScorerResult(scorer="llm_judge", passed=passed, score=1.0 if passed else 0.0),
+        score=ScorerResult(
+            scorer="llm_judge", passed=passed, score=1.0 if passed else 0.0
+        ),
         ops=OpsMetrics(**ops_kwargs),
     )
 
@@ -98,7 +100,14 @@ def test_write_reports_dir_falls_back_to_scenario_id(tmp_path: Path):
 
 def test_render_summary_includes_headlines():
     results = [
-        _result("iot", True, tokens_in=10, tokens_out=5, duration_ms=100.0, tool_call_count=1),
+        _result(
+            "iot",
+            True,
+            tokens_in=10,
+            tokens_out=5,
+            duration_ms=100.0,
+            tool_call_count=1,
+        ),
         _result("iot", False, tokens_in=8, tokens_out=4, duration_ms=200.0),
     ]
     text = render_summary(build_report(results))

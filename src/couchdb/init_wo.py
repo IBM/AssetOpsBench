@@ -120,8 +120,15 @@ def _bulk_insert(db_name: str, docs: list, batch_size: int = 500) -> None:
         resp.raise_for_status()
         errors = [r for r in resp.json() if r.get("error")]
         if errors:
-            logger.warning("%d bulk-insert errors in batch %d", len(errors), i // batch_size)
-        logger.info("Inserted batch %d/%d (%d docs)", i // batch_size + 1, math.ceil(total / batch_size), len(batch))
+            logger.warning(
+                "%d bulk-insert errors in batch %d", len(errors), i // batch_size
+            )
+        logger.info(
+            "Inserted batch %d/%d (%d docs)",
+            i // batch_size + 1,
+            math.ceil(total / batch_size),
+            len(batch),
+        )
 
 
 def _row_to_doc(row: dict, dataset: str, date_cols: dict) -> dict:
@@ -148,7 +155,9 @@ def load_dataset(data_dir: str, csv_file: str, dataset: str, date_cols: dict) ->
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], format=fmt, errors="coerce")
 
-    docs = [_row_to_doc(row, dataset, date_cols) for row in df.to_dict(orient="records")]
+    docs = [
+        _row_to_doc(row, dataset, date_cols) for row in df.to_dict(orient="records")
+    ]
     logger.info("Loaded %d rows from '%s' → dataset '%s'", len(docs), csv_file, dataset)
     return docs
 
@@ -159,10 +168,16 @@ def load_dataset(data_dir: str, csv_file: str, dataset: str, date_cols: dict) ->
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Initialize CouchDB work-order database from CSVs.")
-    parser.add_argument("--data-dir", default=WO_DATA_DIR, help="Directory containing CSVs")
+    parser = argparse.ArgumentParser(
+        description="Initialize CouchDB work-order database from CSVs."
+    )
+    parser.add_argument(
+        "--data-dir", default=WO_DATA_DIR, help="Directory containing CSVs"
+    )
     parser.add_argument("--db", default=WO_DBNAME, help="CouchDB database name")
-    parser.add_argument("--drop", action="store_true", help="Drop and recreate database if it exists")
+    parser.add_argument(
+        "--drop", action="store_true", help="Drop and recreate database if it exists"
+    )
     args = parser.parse_args()
 
     logger.info("CouchDB URL: %s", COUCHDB_URL)

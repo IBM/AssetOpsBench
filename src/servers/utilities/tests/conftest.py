@@ -1,6 +1,5 @@
 import json
 
-import pytest
 
 # Helper functions for tests
 

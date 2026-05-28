@@ -18,6 +18,7 @@ def _couchdb_reachable() -> bool:
         return False
     try:
         import requests
+
         requests.get(url, timeout=2)
         return True
     except Exception:
@@ -36,12 +37,27 @@ requires_couchdb = pytest.mark.skipif(
 def _make_wo_df() -> pd.DataFrame:
     data = {
         "wo_id": ["WO001", "WO002", "WO003", "WO004"],
-        "wo_description": ["Oil Analysis", "Routine Maintenance", "Corrective Repair", "Emergency Fix"],
+        "wo_description": [
+            "Oil Analysis",
+            "Routine Maintenance",
+            "Corrective Repair",
+            "Emergency Fix",
+        ],
         "collection": ["compressor", "compressor", "motor", "motor"],
         "primary_code": ["MT010", "MT001", "MT013", "MT013"],
-        "primary_code_description": ["Oil Analysis", "Routine Maintenance", "Corrective", "Corrective"],
+        "primary_code_description": [
+            "Oil Analysis",
+            "Routine Maintenance",
+            "Corrective",
+            "Corrective",
+        ],
         "secondary_code": ["MT010b", "MT001a", "MT013a", "MT013b"],
-        "secondary_code_description": ["Routine Oil Analysis", "Basic Maint", "Repair", "Emergency"],
+        "secondary_code_description": [
+            "Routine Oil Analysis",
+            "Basic Maint",
+            "Repair",
+            "Emergency",
+        ],
         "equipment_id": ["CWC04013", "CWC04013", "CWC04013", "CWC04007"],
         "equipment_name": ["Chiller 13", "Chiller 13", "Chiller 13", "Chiller 7"],
         "preventive": ["TRUE", "TRUE", "FALSE", "FALSE"],
@@ -79,9 +95,17 @@ def _make_events_df() -> pd.DataFrame:
 
 def _make_failure_codes_df() -> pd.DataFrame:
     data = {
-        "category": ["Maintenance and Routine Checks", "Maintenance and Routine Checks", "Corrective"],
+        "category": [
+            "Maintenance and Routine Checks",
+            "Maintenance and Routine Checks",
+            "Corrective",
+        ],
         "primary_code": ["MT010", "MT001", "MT013"],
-        "primary_code_description": ["Oil Analysis", "Routine Maintenance", "Corrective"],
+        "primary_code_description": [
+            "Oil Analysis",
+            "Routine Maintenance",
+            "Corrective",
+        ],
         "secondary_code": ["MT010b", "MT001a", "MT013a"],
         "secondary_code_description": ["Routine Oil Analysis", "Basic Maint", "Repair"],
     }
@@ -90,9 +114,17 @@ def _make_failure_codes_df() -> pd.DataFrame:
 
 def _make_primary_failure_codes_df() -> pd.DataFrame:
     data = {
-        "category": ["Maintenance and Routine Checks", "Maintenance and Routine Checks", "Corrective"],
+        "category": [
+            "Maintenance and Routine Checks",
+            "Maintenance and Routine Checks",
+            "Corrective",
+        ],
         "primary_code": ["MT010", "MT001", "MT013"],
-        "primary_code_description": ["Oil Analysis", "Routine Maintenance", "Corrective"],
+        "primary_code_description": [
+            "Oil Analysis",
+            "Routine Maintenance",
+            "Corrective",
+        ],
     }
     return pd.DataFrame(data)
 
@@ -132,6 +164,7 @@ _FIXTURE_DATA = {
 @pytest.fixture
 def mock_data():
     """Patch load() in tools namespace to return fixture DataFrames without CouchDB."""
+
     def _fake_load(key: str):
         factory = _FIXTURE_DATA.get(key)
         return factory() if factory else None

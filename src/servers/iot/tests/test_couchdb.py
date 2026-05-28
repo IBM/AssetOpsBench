@@ -28,7 +28,9 @@ def couchdb_client():
 @requires_couchdb
 class TestCouchDBInfrastructure:
     def test_connection(self):
-        resp = requests.get(f"http://{COUCHDB_HOST}", auth=(COUCHDB_USERNAME, COUCHDB_PASSWORD))
+        resp = requests.get(
+            f"http://{COUCHDB_HOST}", auth=(COUCHDB_USERNAME, COUCHDB_PASSWORD)
+        )
         assert resp.status_code == 200
 
         client = couchdb3.Server(FULL_URL)

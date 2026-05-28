@@ -189,7 +189,9 @@ def check_bearing_peaks(
         "harmonics_checked": n_harmonics,
         "harmonics_detected": detected_count,
         "confidence": (
-            "high" if detected_count >= 2 else ("medium" if detected_count == 1 else "none")
+            "high"
+            if detected_count >= 2
+            else ("medium" if detected_count == 1 else "none")
         ),
         "details": results,
     }

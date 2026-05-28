@@ -394,7 +394,6 @@ def _finetune_ttm_hf(
         TimeSeriesPreprocessor,
         get_datasets,
     )
-    from tsfm_public.toolkit.util import select_by_index
     from transformers import Trainer, TrainingArguments, EarlyStoppingCallback, set_seed
 
     if training_config_dic is None:

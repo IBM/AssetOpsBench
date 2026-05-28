@@ -12,10 +12,10 @@ from servers.wo.main import mcp
 from .conftest import requires_couchdb, call_tool
 
 # Real equipment IDs and rule IDs present in the sample dataset
-EQUIPMENT_ID = "CWC04013"         # 431 work orders in dataset
-EQUIPMENT_RICH = "CWC04014"       # 524 work orders — most records
-EQUIPMENT_ALERT = "CWC04009"      # has alert events with RUL0018
-RULE_ID = "RUL0018"               # 183 alert events for CWC04009
+EQUIPMENT_ID = "CWC04013"  # 431 work orders in dataset
+EQUIPMENT_RICH = "CWC04014"  # 524 work orders — most records
+EQUIPMENT_ALERT = "CWC04009"  # has alert events with RUL0018
+RULE_ID = "RUL0018"  # 183 alert events for CWC04009
 
 
 # ---------------------------------------------------------------------------
@@ -34,11 +34,17 @@ class TestGetWorkOrdersLive:
 
     @pytest.mark.anyio
     async def test_date_range_narrows_results(self):
-        all_data = await call_tool(mcp, "get_work_orders", {"equipment_id": EQUIPMENT_ID})
+        all_data = await call_tool(
+            mcp, "get_work_orders", {"equipment_id": EQUIPMENT_ID}
+        )
         filtered = await call_tool(
             mcp,
             "get_work_orders",
-            {"equipment_id": EQUIPMENT_ID, "start_date": "2015-01-01", "end_date": "2017-12-31"},
+            {
+                "equipment_id": EQUIPMENT_ID,
+                "start_date": "2015-01-01",
+                "end_date": "2017-12-31",
+            },
         )
         assert filtered["total"] < all_data["total"]
         assert filtered["total"] > 0
@@ -46,7 +52,14 @@ class TestGetWorkOrdersLive:
     @pytest.mark.anyio
     async def test_each_wo_has_required_fields(self):
         data = await call_tool(mcp, "get_work_orders", {"equipment_id": EQUIPMENT_ID})
-        required = {"wo_id", "wo_description", "equipment_id", "primary_code", "preventive", "actual_finish"}
+        required = {
+            "wo_id",
+            "wo_description",
+            "equipment_id",
+            "primary_code",
+            "preventive",
+            "actual_finish",
+        }
         for wo in data["work_orders"]:
             assert required <= wo.keys()
             assert wo["equipment_id"].upper() == EQUIPMENT_ID.upper()
@@ -59,7 +72,9 @@ class TestGetWorkOrdersLive:
 
     @pytest.mark.anyio
     async def test_unknown_equipment_returns_error(self):
-        data = await call_tool(mcp, "get_work_orders", {"equipment_id": "DOES_NOT_EXIST"})
+        data = await call_tool(
+            mcp, "get_work_orders", {"equipment_id": "DOES_NOT_EXIST"}
+        )
         assert "error" in data
 
 
@@ -72,7 +87,9 @@ class TestGetWorkOrdersLive:
 class TestGetPreventiveWorkOrdersLive:
     @pytest.mark.anyio
     async def test_all_results_are_preventive(self):
-        data = await call_tool(mcp, "get_preventive_work_orders", {"equipment_id": EQUIPMENT_ID})
+        data = await call_tool(
+            mcp, "get_preventive_work_orders", {"equipment_id": EQUIPMENT_ID}
+        )
         assert "work_orders" in data
         assert data["total"] > 0
         for wo in data["work_orders"]:
@@ -80,8 +97,12 @@ class TestGetPreventiveWorkOrdersLive:
 
     @pytest.mark.anyio
     async def test_count_less_than_all_work_orders(self):
-        all_data = await call_tool(mcp, "get_work_orders", {"equipment_id": EQUIPMENT_ID})
-        prev_data = await call_tool(mcp, "get_preventive_work_orders", {"equipment_id": EQUIPMENT_ID})
+        all_data = await call_tool(
+            mcp, "get_work_orders", {"equipment_id": EQUIPMENT_ID}
+        )
+        prev_data = await call_tool(
+            mcp, "get_preventive_work_orders", {"equipment_id": EQUIPMENT_ID}
+        )
         assert prev_data["total"] <= all_data["total"]
 
 
@@ -94,7 +115,9 @@ class TestGetPreventiveWorkOrdersLive:
 class TestGetCorrectiveWorkOrdersLive:
     @pytest.mark.anyio
     async def test_all_results_are_corrective(self):
-        data = await call_tool(mcp, "get_corrective_work_orders", {"equipment_id": EQUIPMENT_ID})
+        data = await call_tool(
+            mcp, "get_corrective_work_orders", {"equipment_id": EQUIPMENT_ID}
+        )
         assert "work_orders" in data
         assert data["total"] > 0
         for wo in data["work_orders"]:
@@ -102,9 +125,15 @@ class TestGetCorrectiveWorkOrdersLive:
 
     @pytest.mark.anyio
     async def test_preventive_and_corrective_partition_all(self):
-        all_data = await call_tool(mcp, "get_work_orders", {"equipment_id": EQUIPMENT_ID})
-        prev_data = await call_tool(mcp, "get_preventive_work_orders", {"equipment_id": EQUIPMENT_ID})
-        corr_data = await call_tool(mcp, "get_corrective_work_orders", {"equipment_id": EQUIPMENT_ID})
+        all_data = await call_tool(
+            mcp, "get_work_orders", {"equipment_id": EQUIPMENT_ID}
+        )
+        prev_data = await call_tool(
+            mcp, "get_preventive_work_orders", {"equipment_id": EQUIPMENT_ID}
+        )
+        corr_data = await call_tool(
+            mcp, "get_corrective_work_orders", {"equipment_id": EQUIPMENT_ID}
+        )
         assert prev_data["total"] + corr_data["total"] == all_data["total"]
 
 
@@ -131,7 +160,13 @@ class TestGetEventsLive:
     @pytest.mark.anyio
     async def test_each_event_has_required_fields(self):
         data = await call_tool(mcp, "get_events", {"equipment_id": EQUIPMENT_ID})
-        required = {"event_id", "event_group", "event_category", "equipment_id", "event_time"}
+        required = {
+            "event_id",
+            "event_group",
+            "event_category",
+            "equipment_id",
+            "event_time",
+        }
         for event in data["events"]:
             assert required <= event.keys()
             assert event["equipment_id"].upper() == EQUIPMENT_ID.upper()
@@ -141,7 +176,11 @@ class TestGetEventsLive:
         data = await call_tool(
             mcp,
             "get_events",
-            {"equipment_id": EQUIPMENT_ID, "start_date": "2015-01-01", "end_date": "2015-12-31"},
+            {
+                "equipment_id": EQUIPMENT_ID,
+                "start_date": "2015-01-01",
+                "end_date": "2015-12-31",
+            },
         )
         assert "events" in data
         assert data["total"] > 0
@@ -165,8 +204,13 @@ class TestGetFailureCodesLive:
     @pytest.mark.anyio
     async def test_required_fields_present(self):
         data = await call_tool(mcp, "get_failure_codes", {})
-        required = {"category", "primary_code", "primary_code_description",
-                    "secondary_code", "secondary_code_description"}
+        required = {
+            "category",
+            "primary_code",
+            "primary_code_description",
+            "secondary_code",
+            "secondary_code_description",
+        }
         for fc in data["failure_codes"]:
             assert required <= fc.keys()
 
@@ -188,39 +232,59 @@ class TestGetFailureCodesLive:
 class TestGetWorkOrderDistributionLive:
     @pytest.mark.anyio
     async def test_returns_distribution(self):
-        data = await call_tool(mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_ID})
+        data = await call_tool(
+            mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_ID}
+        )
         assert "distribution" in data
         assert data["total_work_orders"] > 0
         assert len(data["distribution"]) > 0
 
     @pytest.mark.anyio
     async def test_counts_sum_to_total(self):
-        data = await call_tool(mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_ID})
+        data = await call_tool(
+            mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_ID}
+        )
         total_from_dist = sum(e["count"] for e in data["distribution"])
         # distribution only counts entries matched in failure_codes; total_work_orders is the raw filter count
         assert total_from_dist <= data["total_work_orders"]
 
     @pytest.mark.anyio
     async def test_sorted_descending(self):
-        data = await call_tool(mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_ID})
+        data = await call_tool(
+            mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_ID}
+        )
         counts = [e["count"] for e in data["distribution"]]
         assert counts == sorted(counts, reverse=True)
 
     @pytest.mark.anyio
     async def test_distribution_fields_present(self):
-        data = await call_tool(mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_ID})
-        required = {"category", "primary_code", "primary_code_description",
-                    "secondary_code", "secondary_code_description", "count"}
+        data = await call_tool(
+            mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_ID}
+        )
+        required = {
+            "category",
+            "primary_code",
+            "primary_code_description",
+            "secondary_code",
+            "secondary_code_description",
+            "count",
+        }
         for entry in data["distribution"]:
             assert required <= entry.keys()
 
     @pytest.mark.anyio
     async def test_date_range_reduces_total(self):
-        all_data = await call_tool(mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_RICH})
+        all_data = await call_tool(
+            mcp, "get_work_order_distribution", {"equipment_id": EQUIPMENT_RICH}
+        )
         filtered = await call_tool(
             mcp,
             "get_work_order_distribution",
-            {"equipment_id": EQUIPMENT_RICH, "start_date": "2016-01-01", "end_date": "2016-12-31"},
+            {
+                "equipment_id": EQUIPMENT_RICH,
+                "start_date": "2016-01-01",
+                "end_date": "2016-12-31",
+            },
         )
         assert filtered["total_work_orders"] < all_data["total_work_orders"]
 
@@ -234,36 +298,51 @@ class TestGetWorkOrderDistributionLive:
 class TestPredictNextWorkOrderLive:
     @pytest.mark.anyio
     async def test_returns_predictions(self):
-        data = await call_tool(mcp, "predict_next_work_order", {"equipment_id": EQUIPMENT_RICH})
+        data = await call_tool(
+            mcp, "predict_next_work_order", {"equipment_id": EQUIPMENT_RICH}
+        )
         assert "predictions" in data
         assert "last_work_order_type" in data
         assert len(data["predictions"]) > 0
 
     @pytest.mark.anyio
     async def test_probabilities_sum_to_one(self):
-        data = await call_tool(mcp, "predict_next_work_order", {"equipment_id": EQUIPMENT_RICH})
+        data = await call_tool(
+            mcp, "predict_next_work_order", {"equipment_id": EQUIPMENT_RICH}
+        )
         if "predictions" in data:
             total = sum(p["probability"] for p in data["predictions"])
             assert abs(total - 1.0) < 1e-6
 
     @pytest.mark.anyio
     async def test_prediction_fields_present(self):
-        data = await call_tool(mcp, "predict_next_work_order", {"equipment_id": EQUIPMENT_RICH})
+        data = await call_tool(
+            mcp, "predict_next_work_order", {"equipment_id": EQUIPMENT_RICH}
+        )
         if "predictions" in data:
-            required = {"category", "primary_code", "primary_code_description", "probability"}
+            required = {
+                "category",
+                "primary_code",
+                "primary_code_description",
+                "probability",
+            }
             for pred in data["predictions"]:
                 assert required <= pred.keys()
 
     @pytest.mark.anyio
     async def test_probabilities_between_zero_and_one(self):
-        data = await call_tool(mcp, "predict_next_work_order", {"equipment_id": EQUIPMENT_RICH})
+        data = await call_tool(
+            mcp, "predict_next_work_order", {"equipment_id": EQUIPMENT_RICH}
+        )
         if "predictions" in data:
             for pred in data["predictions"]:
                 assert 0.0 <= pred["probability"] <= 1.0
 
     @pytest.mark.anyio
     async def test_unknown_equipment_returns_error(self):
-        data = await call_tool(mcp, "predict_next_work_order", {"equipment_id": "DOES_NOT_EXIST"})
+        data = await call_tool(
+            mcp, "predict_next_work_order", {"equipment_id": "DOES_NOT_EXIST"}
+        )
         assert "error" in data
 
 
@@ -316,7 +395,9 @@ class TestAnalyzeAlertToFailureLive:
             {"equipment_id": EQUIPMENT_ALERT, "rule_id": RULE_ID},
         )
         if "transitions" in data:
-            wo_transitions = [t for t in data["transitions"] if t["transition"] == "WORK_ORDER"]
+            wo_transitions = [
+                t for t in data["transitions"] if t["transition"] == "WORK_ORDER"
+            ]
             for t in wo_transitions:
                 assert t["average_hours_to_maintenance"] is not None
                 assert t["average_hours_to_maintenance"] > 0

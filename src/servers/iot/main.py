@@ -1,7 +1,6 @@
 import os
 import logging
 from datetime import datetime
-from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -37,7 +36,10 @@ except Exception as e:
     logger.error(f"Failed to connect to CouchDB: {e}")
     db = None
 
-mcp = FastMCP("iot", instructions="IoT sensor data: browse sites, assets, sensors, and query historical readings from CouchDB.")
+mcp = FastMCP(
+    "iot",
+    instructions="IoT sensor data: browse sites, assets, sensors, and query historical readings from CouchDB.",
+)
 
 # Static site as per original requirement
 SITES = ["MAIN"]

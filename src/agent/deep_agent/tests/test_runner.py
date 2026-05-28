@@ -122,12 +122,20 @@ def test_build_trajectory_tool_calls_and_outputs():
         AIMessage(
             content="",
             tool_calls=[{"name": "sensors", "args": {"asset_id": "CH-6"}, "id": "c1"}],
-            usage_metadata={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
+            usage_metadata={
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "total_tokens": 120,
+            },
         ),
         ToolMessage(content="5 sensors found", tool_call_id="c1"),
         AIMessage(
             content="Chiller 6 has 5 sensors.",
-            usage_metadata={"input_tokens": 150, "output_tokens": 30, "total_tokens": 180},
+            usage_metadata={
+                "input_tokens": 150,
+                "output_tokens": 30,
+                "total_tokens": 180,
+            },
         ),
     ]
     traj = _build_trajectory(messages)
@@ -149,7 +157,12 @@ def test_build_trajectory_tool_calls_and_outputs():
 
 def test_build_trajectory_list_content():
     messages = [
-        AIMessage(content=[{"type": "text", "text": "part one "}, {"type": "text", "text": "part two"}])
+        AIMessage(
+            content=[
+                {"type": "text", "text": "part one "},
+                {"type": "text", "text": "part two"},
+            ]
+        )
     ]
     traj = _build_trajectory(messages)
     assert traj.turns[0].text == "part one part two"
@@ -172,13 +185,21 @@ def test_build_trajectory_multiple_tool_calls_one_turn():
                 {"name": "sites", "args": {}, "id": "c1"},
                 {"name": "assets", "args": {"site_id": "MAIN"}, "id": "c2"},
             ],
-            usage_metadata={"input_tokens": 50, "output_tokens": 10, "total_tokens": 60},
+            usage_metadata={
+                "input_tokens": 50,
+                "output_tokens": 10,
+                "total_tokens": 60,
+            },
         ),
         ToolMessage(content=["MAIN"], tool_call_id="c1"),
         ToolMessage(content=["Chiller 6"], tool_call_id="c2"),
         AIMessage(
             content="Found Chiller 6 at site MAIN.",
-            usage_metadata={"input_tokens": 80, "output_tokens": 15, "total_tokens": 95},
+            usage_metadata={
+                "input_tokens": 80,
+                "output_tokens": 15,
+                "total_tokens": 95,
+            },
         ),
     ]
     traj = _build_trajectory(messages)
@@ -242,13 +263,23 @@ async def test_run_collects_trajectory():
             HumanMessage(content="What sensors are on Chiller 6?"),
             AIMessage(
                 content="",
-                tool_calls=[{"name": "sensors", "args": {"asset_id": "CH-6"}, "id": "c1"}],
-                usage_metadata={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
+                tool_calls=[
+                    {"name": "sensors", "args": {"asset_id": "CH-6"}, "id": "c1"}
+                ],
+                usage_metadata={
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "total_tokens": 120,
+                },
             ),
             ToolMessage(content="sensor data", tool_call_id="c1"),
             AIMessage(
                 content="Chiller 6 has 5 sensors.",
-                usage_metadata={"input_tokens": 150, "output_tokens": 30, "total_tokens": 180},
+                usage_metadata={
+                    "input_tokens": 150,
+                    "output_tokens": 30,
+                    "total_tokens": 180,
+                },
             ),
         ]
     }

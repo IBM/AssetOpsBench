@@ -19,7 +19,6 @@ from .models import (
     PersistedTrajectory,
     Scenario,
     ScenarioResult,
-    ScorerResult,
 )
 from .report import build_report
 from .scorers import Scorer

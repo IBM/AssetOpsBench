@@ -88,7 +88,9 @@ def test_agent_run_span_emits_attributes(memory_exporter):
     assert s.attributes["agent.runner"] == "plan-execute"
     assert s.attributes["gen_ai.system"] == "anthropic"
     assert s.attributes["gen_ai.request.model"] == "litellm_proxy/aws/claude-opus-4-6"
-    assert s.attributes["agent.question.length"] == len("What sensors are on Chiller 6?")
+    assert s.attributes["agent.question.length"] == len(
+        "What sensors are on Chiller 6?"
+    )
     assert s.attributes["custom.flag"] is True
 
 

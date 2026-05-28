@@ -86,9 +86,7 @@ class DataEntry:
             "sample_rate_hz": self.sample_rate,
             "duration_s": round(self.duration_s, 4),
             "channel_stats": channel_stats,
-            "metadata": {
-                k: v for k, v in self.metadata.items() if k != "axis_labels"
-            },
+            "metadata": {k: v for k, v in self.metadata.items() if k != "axis_labels"},
         }
 
 

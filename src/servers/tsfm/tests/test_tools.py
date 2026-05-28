@@ -15,6 +15,7 @@ from .conftest import call_tool, requires_tsfm
 
 # ── get_ai_tasks ──────────────────────────────────────────────────────────────
 
+
 class TestGetAITasks:
     @pytest.mark.anyio
     async def test_returns_tasks_list(self):
@@ -39,6 +40,7 @@ class TestGetAITasks:
 
 
 # ── get_tsfm_models ───────────────────────────────────────────────────────────
+
 
 class TestGetTSFMModels:
     @pytest.mark.anyio
@@ -65,11 +67,13 @@ class TestGetTSFMModels:
 
 # ── run_tsfm_forecasting — input validation ───────────────────────────────────
 
+
 class TestRunTSFMForecastingValidation:
     @pytest.mark.anyio
     async def test_empty_dataset_path_returns_error(self):
         data = await call_tool(
-            mcp, "run_tsfm_forecasting",
+            mcp,
+            "run_tsfm_forecasting",
             {"dataset_path": "", "timestamp_column": "ts", "target_columns": ["val"]},
         )
         assert "error" in data
@@ -78,8 +82,13 @@ class TestRunTSFMForecastingValidation:
     @pytest.mark.anyio
     async def test_empty_target_columns_returns_error(self):
         data = await call_tool(
-            mcp, "run_tsfm_forecasting",
-            {"dataset_path": "/tmp/data.csv", "timestamp_column": "ts", "target_columns": []},
+            mcp,
+            "run_tsfm_forecasting",
+            {
+                "dataset_path": "/tmp/data.csv",
+                "timestamp_column": "ts",
+                "target_columns": [],
+            },
         )
         assert "error" in data
         assert "target_columns" in data["error"]
@@ -89,7 +98,8 @@ class TestRunTSFMForecastingValidation:
         # tsfm_public is not expected to be installed in the CI/MCP environment.
         # If it IS installed this test is a no-op (the import succeeds).
         data = await call_tool(
-            mcp, "run_tsfm_forecasting",
+            mcp,
+            "run_tsfm_forecasting",
             {
                 "dataset_path": "/nonexistent/data.csv",
                 "timestamp_column": "Timestamp",
@@ -103,11 +113,13 @@ class TestRunTSFMForecastingValidation:
 
 # ── run_tsfm_finetuning — input validation ────────────────────────────────────
 
+
 class TestRunTSFMFinetuningValidation:
     @pytest.mark.anyio
     async def test_empty_dataset_path_returns_error(self):
         data = await call_tool(
-            mcp, "run_tsfm_finetuning",
+            mcp,
+            "run_tsfm_finetuning",
             {"dataset_path": "", "timestamp_column": "ts", "target_columns": ["val"]},
         )
         assert "error" in data
@@ -116,8 +128,13 @@ class TestRunTSFMFinetuningValidation:
     @pytest.mark.anyio
     async def test_empty_target_columns_returns_error(self):
         data = await call_tool(
-            mcp, "run_tsfm_finetuning",
-            {"dataset_path": "/tmp/data.csv", "timestamp_column": "ts", "target_columns": []},
+            mcp,
+            "run_tsfm_finetuning",
+            {
+                "dataset_path": "/tmp/data.csv",
+                "timestamp_column": "ts",
+                "target_columns": [],
+            },
         )
         assert "error" in data
         assert "target_columns" in data["error"]
@@ -125,11 +142,13 @@ class TestRunTSFMFinetuningValidation:
 
 # ── run_tsad — input validation ───────────────────────────────────────────────
 
+
 class TestRunTSADValidation:
     @pytest.mark.anyio
     async def test_empty_dataset_path_returns_error(self):
         data = await call_tool(
-            mcp, "run_tsad",
+            mcp,
+            "run_tsad",
             {
                 "dataset_path": "",
                 "tsfm_output_json": "/tmp/pred.json",
@@ -143,7 +162,8 @@ class TestRunTSADValidation:
     @pytest.mark.anyio
     async def test_empty_tsfm_output_json_returns_error(self):
         data = await call_tool(
-            mcp, "run_tsad",
+            mcp,
+            "run_tsad",
             {
                 "dataset_path": "/tmp/data.csv",
                 "tsfm_output_json": "",
@@ -157,7 +177,8 @@ class TestRunTSADValidation:
     @pytest.mark.anyio
     async def test_invalid_task_returns_error(self):
         data = await call_tool(
-            mcp, "run_tsad",
+            mcp,
+            "run_tsad",
             {
                 "dataset_path": "/tmp/data.csv",
                 "tsfm_output_json": "/tmp/pred.json",
@@ -172,7 +193,8 @@ class TestRunTSADValidation:
     @pytest.mark.anyio
     async def test_empty_target_columns_returns_error(self):
         data = await call_tool(
-            mcp, "run_tsad",
+            mcp,
+            "run_tsad",
             {
                 "dataset_path": "/tmp/data.csv",
                 "tsfm_output_json": "/tmp/pred.json",
@@ -186,11 +208,13 @@ class TestRunTSADValidation:
 
 # ── run_integrated_tsad — input validation ────────────────────────────────────
 
+
 class TestRunIntegratedTSADValidation:
     @pytest.mark.anyio
     async def test_empty_dataset_path_returns_error(self):
         data = await call_tool(
-            mcp, "run_integrated_tsad",
+            mcp,
+            "run_integrated_tsad",
             {"dataset_path": "", "timestamp_column": "ts", "target_columns": ["val"]},
         )
         assert "error" in data
@@ -199,14 +223,20 @@ class TestRunIntegratedTSADValidation:
     @pytest.mark.anyio
     async def test_empty_target_columns_returns_error(self):
         data = await call_tool(
-            mcp, "run_integrated_tsad",
-            {"dataset_path": "/tmp/data.csv", "timestamp_column": "ts", "target_columns": []},
+            mcp,
+            "run_integrated_tsad",
+            {
+                "dataset_path": "/tmp/data.csv",
+                "timestamp_column": "ts",
+                "target_columns": [],
+            },
         )
         assert "error" in data
         assert "target_columns" in data["error"]
 
 
 # ── Integration tests (requires tsfm_public) ─────────────────────────────────
+
 
 @requires_tsfm
 class TestTSFMForecastingIntegration:
@@ -218,15 +248,18 @@ class TestTSFMForecastingIntegration:
 
         # Create a small synthetic sine-wave CSV
         n = 200
-        df = pd.DataFrame({
-            "Timestamp": pd.date_range("2024-01-01", periods=n, freq="15min"),
-            "sensor_1": np.sin(np.linspace(0, 4 * np.pi, n)),
-        })
+        df = pd.DataFrame(
+            {
+                "Timestamp": pd.date_range("2024-01-01", periods=n, freq="15min"),
+                "sensor_1": np.sin(np.linspace(0, 4 * np.pi, n)),
+            }
+        )
         csv_path = str(tmp_path / "synthetic.csv")
         df.to_csv(csv_path, index=False)
 
         data = await call_tool(
-            mcp, "run_tsfm_forecasting",
+            mcp,
+            "run_tsfm_forecasting",
             {
                 "dataset_path": csv_path,
                 "timestamp_column": "Timestamp",
@@ -249,15 +282,19 @@ class TestIntegratedTSADIntegration:
         import numpy as np
 
         n = 300
-        df = pd.DataFrame({
-            "Timestamp": pd.date_range("2024-01-01", periods=n, freq="15min"),
-            "sensor_1": np.sin(np.linspace(0, 6 * np.pi, n)) + np.random.randn(n) * 0.05,
-        })
+        df = pd.DataFrame(
+            {
+                "Timestamp": pd.date_range("2024-01-01", periods=n, freq="15min"),
+                "sensor_1": np.sin(np.linspace(0, 6 * np.pi, n))
+                + np.random.randn(n) * 0.05,
+            }
+        )
         csv_path = str(tmp_path / "synthetic_ad.csv")
         df.to_csv(csv_path, index=False)
 
         data = await call_tool(
-            mcp, "run_integrated_tsad",
+            mcp,
+            "run_integrated_tsad",
             {
                 "dataset_path": csv_path,
                 "timestamp_column": "Timestamp",

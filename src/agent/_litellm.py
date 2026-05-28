@@ -29,5 +29,5 @@ def resolve_model(model_id: str) -> str:
         "anthropic/claude-sonnet-4-6"        ->  "anthropic/claude-sonnet-4-6"
     """
     if model_id.startswith(LITELLM_PREFIX):
-        return model_id[len(LITELLM_PREFIX):]
+        return model_id[len(LITELLM_PREFIX) :]
     return model_id
