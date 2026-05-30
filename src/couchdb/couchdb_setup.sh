@@ -1,24 +1,5 @@
 #!/bin/sh -xe
 
-
-COUCHDB_USERNAME=${COUCHDB_USERNAME}
-COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
-COUCHDB_DBNAME=${COUCHDB_DBNAME}
-COUCHDB_URL="http://${COUCHDB_USERNAME}:${COUCHDB_PASSWORD}@127.0.0.1:5984"
-INPUT_FILE="/sample_data/chiller6_june2020_sensordata_couchdb.json"
-OUTPUT_FILE="/sample_data/bulk_docs.json"
-
-# Convert the JSON file into a coudb bulk insertable JSON file
-if [ ! -f "$INPUT_FILE" ]; then
-  echo "❌ Error: $INPUT_FILE not found."
-fi
-
-# Read the array from file (single line) and wrap it
-ARRAY_CONTENT=$(cat "$INPUT_FILE")
-echo "{\"docs\": $ARRAY_CONTENT}" > "$OUTPUT_FILE"
-
-echo "✅ Wrapped $INPUT_FILE into $OUTPUT_FILE"
-
 cat >/opt/couchdb/etc/local.ini <<EOF
 [couchdb]
 single_node=true
@@ -28,31 +9,55 @@ ${COUCHDB_USERNAME} = ${COUCHDB_PASSWORD}
 EOF
 
 echo "Starting CouchDB..."
-
 /opt/couchdb/bin/couchdb &
-sleep 10
 
-echo "Connecting to CouchDB..."
-curl -u ${COUCHDB_USERNAME}:${COUCHDB_PASSWORD} GET http://localhost:5984/
-curl -u ${COUCHDB_USERNAME}:${COUCHDB_PASSWORD} GET http://localhost:5984/_all_dbs
+echo "Waiting for CouchDB to be ready..."
+until curl -sf -u "${COUCHDB_USERNAME}:${COUCHDB_PASSWORD}" http://localhost:5984/ >/dev/null; do
+  sleep 2
+done
+echo "CouchDB is ready."
 
-# Check if database exists
-response=$(curl -s -o /dev/null -w "%{http_code}" "$COUCHDB_URL/$COUCHDB_DBNAME")
+echo "Installing Python dependencies..."
+apt-get update -qq
+apt-get install -y -qq python3 python3-pip
+pip3 install -q --break-system-packages requests pandas python-dotenv
 
-if [ "$response" -eq 200 ]; then
-  echo "⚠️ Database $COUCHDB_DBNAME already exists. Skipping creation."
+echo "Loading IoT asset data..."
+COUCHDB_URL="http://localhost:5984" \
+  python3 /couchdb/init_asset_data.py \
+    --data-file /sample_data/iot/chiller_6.json \
+    --db "${IOT_DBNAME:-iot}" \
+    --drop
+
+COUCHDB_URL="http://localhost:5984" \
+  python3 /couchdb/init_asset_data.py \
+    --data-file /sample_data/iot/metro_pump_1.json \
+    --db "${IOT_DBNAME:-iot}"
+
+COUCHDB_URL="http://localhost:5984" \
+  python3 /couchdb/init_asset_data.py \
+    --data-file /sample_data/iot/hydraulic_pump_1.json \
+    --db "${IOT_DBNAME:-iot}"
+
+echo "Loading work order data..."
+COUCHDB_URL="http://localhost:5984" \
+  python3 /couchdb/init_wo.py \
+    --data-dir /sample_data/work_order \
+    --db "${WO_DBNAME:-workorder}" \
+    --drop
+
+# Load vibration sample data (Motor_01 bearing fault) into a dedicated database
+VIBRATION_FILE="/sample_data/iot/motor_01.json"
+if [ -f "$VIBRATION_FILE" ]; then
+  echo "Loading vibration data..."
+  COUCHDB_URL="http://localhost:5984" \
+    python3 /couchdb/init_asset_data.py \
+      --data-file "$VIBRATION_FILE" \
+      --db "${VIBRATION_DBNAME:-vibration}" \
+      --drop
 else
-  echo "⚠️ Database $COUCHDB_DBNAME does not exist. Creating..."
-  curl -s -X PUT "$COUCHDB_URL/$COUCHDB_DBNAME"
-
-  echo "Uploading documents from $JSON_FILE..."
-  curl -s -X POST "$COUCHDB_URL/$COUCHDB_DBNAME/_bulk_docs" \
-    -H "Content-Type: application/json" \
-    -d @"$OUTPUT_FILE"
-
-  curl -s -X POST "$COUCHDB_URL/$COUCHDB_DBNAME/_index" -H "Content-Type: application/json" -d '{ "type" : "json", "index": { "fields": [ "asset_id", "timestamp" ] } }'
-
-  echo "✅ Database created and populated."
+  echo "⚠️ $VIBRATION_FILE not found, skipping vibration data."
 fi
 
+echo "✅ All databases initialised."
 tail -f /dev/null

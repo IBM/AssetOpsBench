@@ -7,19 +7,11 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
-- [MCP Servers](#mcp-servers)
-  - [IoTAgent](#iotagent)
-  - [Utilities](#utilities)
-  - [FMSRAgent](#fmsragent)
-  - [TSFMAgent](#tsfmagent)
-- [Plan-Execute Runner](#plan-execute-runner)
-  - [How it works](#how-it-works)
-  - [CLI](#cli)
-  - [End-to-end example](#end-to-end-example)
-  - [Python API](#python-api)
-  - [Bring your own LLM](#bring-your-own-llm)
-  - [Add more MCP servers](#add-more-mcp-servers)
-- [Connect to Claude Desktop](#connect-to-claude-desktop)
+- [MCP Servers](#mcp-servers) — full reference in [docs/mcp-servers.md](docs/mcp-servers.md)
+- [Example queries](#example-queries)
+- [Agents](#agents)
+- [Observability](#observability)
+- [Evaluation](#evaluation)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
 
@@ -75,306 +67,212 @@ Verify CouchDB is running:
 curl -X GET http://localhost:5984/
 ```
 
-### 4. Run servers locally
+### 4. Run an agent
 
-Use `uv run` to start the MCP servers (paths relative to repo root):
+Servers are stdio processes spawned on-demand by the agent CLIs — no manual startup needed. Pick a runner and pass it a question:
 
 ```bash
-uv run utilities-mcp-server
-uv run iot-mcp-server
-uv run fmsr-mcp-server
-uv run tsfm-mcp-server
+uv run plan-execute "What sensors are on Chiller 6?"
 ```
+
+See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](docs/mcp-servers.md) for launching a server directly.
 
 ---
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `COUCHDB_URL` | IoT server | CouchDB connection URL, e.g. `http://localhost:5984` |
-| `COUCHDB_DBNAME` | IoT server | Database name (default fixture: `chiller`) |
-| `COUCHDB_USERNAME` | IoT server | CouchDB admin username |
-| `COUCHDB_PASSWORD` | IoT server | CouchDB admin password |
-| `WATSONX_APIKEY` | `--platform watsonx` | IBM WatsonX API key |
-| `WATSONX_PROJECT_ID` | `--platform watsonx` | IBM WatsonX project ID |
-| `WATSONX_URL` | `--platform watsonx` | WatsonX endpoint (optional; defaults to `https://us-south.ml.cloud.ibm.com`) |
-| `LITELLM_API_KEY` | `--platform litellm` | LiteLLM API key |
-| `LITELLM_BASE_URL` | `--platform litellm` | LiteLLM base URL (e.g. `https://your-litellm-host.example.com`) |
-| `PATH_TO_MODELS_DIR` | TSFM server | Base directory for TTM model checkpoints (default: `src/servers/tsfm/artifacts/output/tuned_models`) |
-| `PATH_TO_DATASETS_DIR` | TSFM server | Base directory for resolving relative dataset paths |
-| `PATH_TO_OUTPUTS_DIR` | TSFM server | Base directory for resolving output/save paths |
+**CouchDB** — `iot` and `wo` servers
+
+| Variable           | Default                 | Description              |
+| ------------------ | ----------------------- | ------------------------ |
+| `COUCHDB_URL`      | `http://localhost:5984` | CouchDB connection URL   |
+| `COUCHDB_USERNAME` | `admin`                 | CouchDB admin username   |
+| `COUCHDB_PASSWORD` | `password`              | CouchDB admin password   |
+| `IOT_DBNAME`         | `iot`                   | IoT sensor database name      |
+| `WO_DBNAME`          | `workorder`             | Work order database name      |
+| `VIBRATION_DBNAME`   | `vibration`             | Vibration sensor database name |
+
+**WatsonX** — plan-execute runner (when `--model-id` starts with `watsonx/`)
+
+| Variable             | Default                             | Description                 |
+| -------------------- | ----------------------------------- | --------------------------- |
+| `WATSONX_APIKEY`     | _(required)_                        | IBM WatsonX API key         |
+| `WATSONX_PROJECT_ID` | _(required)_                        | IBM WatsonX project ID      |
+| `WATSONX_URL`        | `https://us-south.ml.cloud.ibm.com` | WatsonX endpoint (optional) |
+
+**LiteLLM proxy** — used by every runner whenever `--model-id` carries the `litellm_proxy/` prefix (the default for claude-agent, openai-agent, deep-agent)
+
+| Variable           | Default      | Description                                                          |
+| ------------------ | ------------ | -------------------------------------------------------------------- |
+| `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
+| `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
 ---
 
 ## MCP Servers
 
-### IoTAgent
+Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagnostics, failure-mode reasoning, and utility tools. They speak MCP over stdio and are spawned on-demand by the agent runners — no manual startup needed.
 
-**Path:** `src/servers/iot/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_DBNAME`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`)
+| Server      | Tools | Backing service                        |
+| ----------- | ----- | -------------------------------------- |
+| `iot`       | 4     | CouchDB                                |
+| `utilities` | 3     | none                                   |
+| `fmsr`      | 2     | LiteLLM + `failure_modes.yaml`         |
+| `wo`        | 8     | CouchDB                                |
+| `tsfm`      | 6     | IBM Granite TinyTimeMixer (torch)      |
+| `vibration` | 8     | CouchDB + numpy/scipy DSP              |
 
-| Tool | Arguments | Description |
-|---|---|---|
-| `sites` | — | List all available sites |
-| `assets` | `site_name` | List all asset IDs for a site |
-| `sensors` | `site_name`, `asset_id` | List sensor names for an asset |
-| `history` | `site_name`, `asset_id`, `start`, `final?` | Fetch historical sensor readings for a time range (ISO 8601 timestamps) |
-
-### Utilities
-
-**Path:** `src/servers/utilities/main.py`
-**Requires:** nothing (no external services)
-
-| Tool | Arguments | Description |
-|---|---|---|
-| `json_reader` | `file_name` | Read and parse a JSON file from disk |
-| `current_date_time` | — | Return the current UTC date and time as JSON |
-| `current_time_english` | — | Return the current UTC time as a human-readable string |
-
-### FMSRAgent
-
-**Path:** `src/servers/fmsr/main.py`
-**Requires:** `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` for unknown assets; curated lists for `chiller` and `ahu` work without credentials.
-**Failure-mode data:** `src/servers/fmsr/failure_modes.yaml` (edit to add/change asset entries)
-
-| Tool | Arguments | Description |
-|---|---|---|
-| `get_failure_modes` | `asset_name` | Return known failure modes for an asset. Uses a curated YAML list for chillers and AHUs; falls back to the LLM for other types. |
-| `get_failure_mode_sensor_mapping` | `asset_name`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns bidirectional `fm→sensors` and `sensor→fms` maps plus full per-pair details. |
-
-### TSFMAgent
-
-**Path:** `src/servers/tsfm/main.py`
-**Requires:** `tsfm_public` (IBM Granite TSFM), `transformers`, `torch` for ML tools — imported lazily; static tools work without them.
-**Model checkpoints:** resolved relative to `PATH_TO_MODELS_DIR` (default: `src/servers/tsfm/artifacts/output/tuned_models`)
-
-| Tool | Arguments | Description |
-|---|---|---|
-| `get_ai_tasks` | — | List supported AI task types for time-series analysis |
-| `get_tsfm_models` | — | List available pre-trained TinyTimeMixer (TTM) model checkpoints |
-| `run_tsfm_forecasting` | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `forecast_horizon?`, `frequency_sampling?`, ... | Zero-shot TTM inference; returns path to a JSON predictions file |
-| `run_tsfm_finetuning` | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `save_model_dir?`, `n_finetune?`, `n_test?`, ... | Few-shot fine-tune a TTM model; returns saved checkpoint path and metrics file |
-| `run_tsad` | `dataset_path`, `tsfm_output_json`, `timestamp_column`, `target_columns`, `task?`, `false_alarm?`, `ad_model_type?`, ... | Conformal anomaly detection on top of a forecasting output JSON; returns CSV with anomaly labels |
-| `run_integrated_tsad` | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `false_alarm?`, `n_calibration?`, ... | End-to-end forecasting + anomaly detection in one call; returns combined CSV |
+Tool signatures, required env vars, and how to launch a server directly: **[docs/mcp-servers.md](docs/mcp-servers.md)**.
 
 ---
 
-## Plan-Execute Runner
+## Example queries
 
-`src/workflow/` is a custom MCP client that implements a **plan-and-execute** workflow over the MCP servers. It replaces AgentHive's bespoke orchestration with the standard MCP protocol.
-
-### How it works
-
-```
-PlanExecuteRunner.run(question)
-  │
-  ├─ 1. Discover   query each MCP server for its available tools
-  │
-  ├─ 2. Plan       LLM decomposes the question into ordered steps,
-  │                each assigned to an MCP server
-  │
-  ├─ 3. Execute    for each step (in dependency order):
-  │                  • LLM selects the right tool + generates arguments
-  │                  • tool is called via MCP stdio protocol
-  │                  • result is stored and passed as context to later steps
-  │
-  └─ 4. Summarise  LLM synthesises step results into a final answer
-```
-
-### CLI
-
-After `uv sync`, the `plan-execute` command is available:
+The CLI examples below use a `$query` shell variable so you can swap in any question without editing the commands. Pick one of these to get started:
 
 ```bash
-uv run plan-execute "What assets are available at site MAIN?"
+# Simple single-server queries
+query="What sensors are on Chiller 6?"
+query="Is LSTM model supported in TSFM?"
+query="Get the work order of equipment CWC04013 for year 2017."
+
+# Multi-step / multi-server queries
+query="What is the current date and time? Also list assets at site MAIN. Also get sensor list and failure mode list for any of the chiller at site MAIN."
 ```
 
-Flags:
+## Agents
 
-| Flag | Description |
-|---|---|
-| `--model-id MODEL_ID` | litellm model string with provider prefix (default: `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8`) |
-| `--server NAME=SPEC` | Override MCP servers with `NAME=SPEC` pairs (repeatable); SPEC is an entry-point name or path |
-| `--show-plan` | Print the generated plan before execution |
-| `--show-history` | Print each step result after execution |
-| `--json` | Output answer + plan + history as JSON |
+Four runners drive the same MCP servers. Each is a CLI registered by `uv sync` that takes a single positional `question` argument and spawns the MCP servers as stdio subprocesses on demand.
 
-The provider is encoded in the `--model-id` prefix:
+| Runner         | Source                       | Loop                                                          | Default model                                               |
+| -------------- | ---------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
+| `plan-execute` | `src/agent/plan_execute/`    | Custom plan → execute → summarise (no SDK)                    | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8` |
+| `claude-agent` | `src/agent/claude_agent/`    | [`claude-agent-sdk`](https://github.com/anthropics/claude-agent-sdk-python) agentic loop | `litellm_proxy/aws/claude-opus-4-6` |
+| `openai-agent` | `src/agent/openai_agent/`    | [`openai-agents`](https://github.com/openai/openai-agents-python) SDK Runner | `litellm_proxy/azure/gpt-5.4`                |
+| `deep-agent`   | `src/agent/deep_agent/`      | [LangChain deep-agents](https://docs.langchain.com/oss/python/deepagents/overview) (LangGraph), MCP bridged via `langchain-mcp-adapters` | `litellm_proxy/aws/claude-opus-4-6` |
 
-| Prefix | Provider | Required env vars |
-|---|---|---|
-| `watsonx/` | IBM WatsonX | `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` (optional) |
-| `litellm_proxy/` | LiteLLM proxy | `LITELLM_API_KEY`, `LITELLM_BASE_URL` |
-
-Examples:
+### Usage
 
 ```bash
-# WatsonX — default model
-uv run plan-execute "What assets are at site MAIN?"
-
-# WatsonX — different model, inspect the plan
-uv run plan-execute --model-id watsonx/ibm/granite-3-3-8b-instruct --show-plan "List sensors for asset CH-1"
-
-# LiteLLM proxy
-uv run plan-execute --model-id litellm_proxy/GCP/claude-4-sonnet "What are the failure modes for a chiller?"
-
-# Machine-readable output
-uv run plan-execute --show-history --json "How many observations exist for CH-1?" | jq .answer
+uv run plan-execute "$query"
+uv run claude-agent "$query"
+uv run openai-agent "$query"
+uv run deep-agent   "$query"
 ```
 
-### End-to-end example
+### Common flags
 
-All four servers (IoTAgent, Utilities, FMSRAgent, TSFMAgent) are registered by default.
-Run a question that exercises three of them with independent parallel steps:
+| Flag                  | Description                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `--model-id MODEL_ID` | Provider-prefixed model string (defaults in the runner table above)                          |
+| `--show-trajectory`   | Print each turn / step (text, tool calls, token usage)                                       |
+| `--json`              | Emit the trajectory as JSON                                                                  |
+| `--verbose`           | Show INFO-level logs on stderr                                                               |
+| `--run-id ID`         | Persist the run under this ID (auto-UUID4 if omitted) — see [Observability](#observability)  |
+| `--scenario-id ID`    | Tag the run for benchmark grouping                                                           |
+
+### Runner-specific flags
+
+| Flag                  | Runner                     | Description                                                       |
+| --------------------- | -------------------------- | ----------------------------------------------------------------- |
+| `--show-plan`         | plan-execute               | Print the generated plan before execution                         |
+| `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
+| `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
+
+### Examples
 
 ```bash
-uv run plan-execute --show-plan --show-history \
-  "What is the current date and time? Also list assets at site MAIN. Also get failure modes for a chiller."
+# Inspect the plan-execute plan before running
+uv run plan-execute --show-plan --model-id watsonx/ibm/granite-3-3-8b-instruct "$query"
+
+# Stream a claude-agent run and pipe to jq
+uv run claude-agent --json "$query" | jq .turns
+
+# Direct Anthropic API (no proxy) for claude-agent
+uv run claude-agent --model-id claude-opus-4-6 "$query"
+
+# Persist a deep-agent run for benchmark evaluation
+AGENT_TRAJECTORY_DIR=./traces/trajectories OTEL_TRACES_FILE=./traces/traces.jsonl \
+  uv run deep-agent --run-id bench-001 --scenario-id 304 "$query"
 ```
-
-Expected plan (3 parallel steps, no dependencies):
-
-```
-[1] Utilities  : current_date_time()
-[2] IoTAgent   : assets(site_name="MAIN")
-[3] FMSRAgent  : get_failure_modes(asset_name="chiller")
-```
-
-Expected execution output (trimmed):
-
-```
-[OK] Step 1 (Utilities)
-     {"currentDateTime": "2026-02-20T17:28:39Z", "currentDateTimeDescription": "Today's date is 2026-02-20 and time is 17:28:39."}
-
-[OK] Step 2 (IoTAgent)
-     {"site_name": "MAIN", "total_assets": 1, "assets": ["Chiller 6"], "message": "found 1 assets for site_name MAIN."}
-
-[OK] Step 3 (FMSRAgent)
-     {"asset_name": "chiller", "failure_modes": ["Compressor Overheating: Failed due to Normal wear, overheating", ...]}
-```
-
-> **Note:** Curated assets (`chiller`, `ahu`) are served from `failure_modes.yaml` without any LLM call.
-
-### Python API
-
-```python
-import asyncio
-from workflow import PlanExecuteRunner
-from llm import LiteLLMBackend
-
-runner = PlanExecuteRunner(llm=LiteLLMBackend("watsonx/meta-llama/llama-3-3-70b-instruct"))
-result = asyncio.run(runner.run("What assets are available at site MAIN?"))
-print(result.answer)
-```
-
-`OrchestratorResult` fields:
-
-| Field | Type | Description |
-|---|---|---|
-| `answer` | `str` | Final synthesised answer |
-| `plan` | `Plan` | The generated plan with its steps |
-| `history` | `list[StepResult]` | Per-step execution results |
-
-### Bring your own LLM
-
-Implement `LLMBackend` to use any model:
-
-```python
-from llm import LLMBackend
-
-class MyLLM(LLMBackend):
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
-        ...  # call your model here
-
-runner = PlanExecuteRunner(llm=MyLLM())
-```
-
-### Add more MCP servers
-
-Pass `server_paths` to register additional servers. Keys must match the agent names the planner assigns steps to:
-
-```python
-from workflow import PlanExecuteRunner
-
-runner = PlanExecuteRunner(
-    llm=my_llm,
-    server_paths={
-        "IoTAgent":  "iot-mcp-server",
-        "Utilities": "utilities-mcp-server",
-        "FMSRAgent": "fmsr-mcp-server",
-        "TSFMAgent": "tsfm-mcp-server",
-    },
-)
-```
-
-> **Note:** passing `server_paths` replaces the defaults entirely. Include all servers you need.
 
 ---
 
-## Connect to Claude Desktop
+## Observability
 
-Add the following to your Claude Desktop `claude_desktop_config.json`:
+Each agent run can persist two artifacts joined by `run_id`:
 
-```json
-{
-  "mcpServers": {
-    "utilities": {
-      "command": "/path/to/uv",
-      "args": ["run", "--project", "/path/to/AssetOpsBench", "utilities-mcp-server"]
-    },
-    "IoTAgent": {
-      "command": "/path/to/uv",
-      "args": ["run", "--project", "/path/to/AssetOpsBench", "iot-mcp-server"]
-    },
-    "FMSRAgent": {
-      "command": "/path/to/uv",
-      "args": ["run", "--project", "/path/to/AssetOpsBench", "fmsr-mcp-server"]
-    },
-    "TSFMAgent": {
-      "command": "/path/to/uv",
-      "args": ["run", "--project", "/path/to/AssetOpsBench", "tsfm-mcp-server"]
-    }
-  }
-}
+- **Trace** — OpenTelemetry root span with metadata + aggregate metrics (runner, model, IDs, span duration, token totals, turn / tool-call counts).
+- **Trajectory** — per-run JSON with per-turn content (text, tool inputs/outputs, per-turn tokens and timing).
+
+Install the optional deps and set either / both / neither env var:
+
+```bash
+uv sync --group otel
+
+AGENT_TRAJECTORY_DIR=./traces/trajectories \
+OTEL_TRACES_FILE=./traces/traces.jsonl \
+  uv run deep-agent --run-id bench-001 --scenario-id 304 "$query"
 ```
+
+`--run-id` (auto-UUID4 if omitted) and `--scenario-id` are available on every runner. With nothing set, runs work normally with zero persistence overhead.
+
+See [docs/observability.md](docs/observability.md) for span attribute reference, trajectory layout, `jq` recipes, log rotation, and optional Jaeger / Collector replay.
+
+---
+
+## Evaluation
+
+Offline scoring of saved trajectories against ground-truth scenarios. Three-stage flow:
+
+```
+agent run  →  trajectory (run_id)  →  uv run evaluate  →  reports/<run_id>.json
+```
+
+End-to-end against a ground-truth file:
+
+```bash
+# 1. Persist trajectories
+export AGENT_TRAJECTORY_DIR=$(pwd)/traces/trajectories
+uv run claude-agent "List all failure modes of asset Chiller." --scenario-id 101
+
+# 2. Score with LLM-As-Judge
+uv run evaluate \
+  --trajectories traces/trajectories \
+  --scenarios groundtruth/101.json \
+  --scorer-default llm_judge \
+  --judge-model litellm_proxy/aws/claude-opus-4-6
+```
+
+Output lands under `reports/` — one `<run_id>.json` per trajectory plus `_aggregate.json` for the rollup.
+
+Scorer families follow MLflow's evaluator/scorer split: `llm_judge` is wired up; `exact_string_match`, `numeric_match`, and `semantic_similarity` ship as skeletons (raise `NotImplementedError`).
+
+Full reference — scenario schema, report layout, custom scorers, looping over ground-truth: **[docs/evaluation.md](docs/evaluation.md)**.
 
 ---
 
 ## Running Tests
 
-Run the full suite from the repo root (unit + integration where services are available):
-
 ```bash
-uv run pytest src/ -v
+uv run pytest src/ -k "not integration"   # unit tests only — no services required
+uv run pytest src/                        # full suite — integration tests auto-skip if their service is unavailable
 ```
 
-Integration tests are auto-skipped when the required service is not available:
-- IoT integration tests require `COUCHDB_URL` (set in `.env`)
-- FMSR integration tests require `WATSONX_APIKEY` (set in `.env`)
-- TSFM integration tests require `PATH_TO_MODELS_DIR` and `PATH_TO_DATASETS_DIR` (set in `.env`)
+Each integration suite is gated by a `skipif` mark; missing service ⇒ silently skipped, not failed:
 
-### Unit tests only (no services required)
+| Suite              | Skip unless                                                                  |
+| ------------------ | ---------------------------------------------------------------------------- |
+| iot, wo, vibration | CouchDB reachable — `docker compose -f src/couchdb/docker-compose.yaml up -d` |
+| fmsr               | `WATSONX_APIKEY`, `WATSONX_PROJECT_ID` set in `.env`                          |
+| tsfm               | `PATH_TO_MODELS_DIR`, `PATH_TO_DATASETS_DIR` set in `.env`                    |
 
-```bash
-uv run pytest src/ -v -k "not integration"
-```
-
-### Per-server
+Narrow scope by path or name pattern:
 
 ```bash
-uv run pytest src/servers/iot/tests/test_tools.py -k "not integration"
-uv run pytest src/servers/utilities/tests/
-uv run pytest src/servers/fmsr/tests/ -k "not integration"
-uv run pytest src/servers/tsfm/tests/ -k "not integration"
-uv run pytest src/workflow/tests/
-```
-
-### Integration tests (requires CouchDB + WatsonX)
-
-```bash
-docker compose -f src/couchdb/docker-compose.yaml up -d
-uv run pytest src/ -v
+uv run pytest src/servers/wo/tests/                # one package's full suite
+uv run pytest src/servers/wo/tests/test_integration.py -v   # one file
+uv run pytest src/ -k "integration"                # only files / tests with "integration" in the name
 ```
 
 ---
@@ -382,22 +280,16 @@ uv run pytest src/ -v
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                     workflow/                        │
-│                                                      │
-│  PlanExecuteRunner.run(question)                     │
-│  ┌────────────┐   ┌────────────┐   ┌──────────────┐ │
-│  │  Planner   │ → │  Executor  │ → │  Summariser  │ │
-│  │            │   │            │   │              │ │
-│  │ LLM breaks │   │ Routes each│   │ LLM combines │ │
-│  │ question   │   │ step to the│   │ step results │ │
-│  │ into steps │   │ right MCP  │   │ into answer  │ │
-│  └────────────┘   │ server via │   └──────────────┘ │
-│                   │ stdio      │                     │
-└───────────────────┼────────────┼─────────────────────┘
-                    │ MCP protocol (stdio)
-         ┌──────────┼──────────┬──────────┐
-         ▼          ▼          ▼          ▼
-      IoTAgent   Utilities   FMSRAgent  TSFMAgent
-      (tools)    (tools)     (tools)    (tools)
+┌──────────────────────────────────────────────────────────────┐
+│                          agent/                              │
+│                                                              │
+│   PlanExecuteRunner   ClaudeAgentRunner                      │
+│   OpenAIAgentRunner   DeepAgentRunner                        │
+│                                                              │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ MCP protocol (stdio)
+         ┌─────────────────┼───────────┬──────────┬──────┬───────────┐
+         ▼                 ▼           ▼          ▼      ▼           ▼
+        iot           utilities      fmsr       tsfm    wo      vibration
+      (tools)          (tools)      (tools)   (tools) (tools)    (tools)
 ```
