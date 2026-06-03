@@ -87,7 +87,7 @@ uv run evaluate \
   --trajectories traces/trajectories \
   --scenarios groundtruth/101.json \
   --scorer-default llm_judge \
-  --judge-model litellm_proxy/aws/claude-opus-4-6
+  --judge-model litellm_proxy/azure/gpt-5.4
 ```
 
 Output:
@@ -267,7 +267,7 @@ To enforce the self-judging guard in programmatic usage, pass `judge_model`:
 ```python
 report = Evaluator(
     default_scorer="llm_judge",
-    judge_model="litellm_proxy/aws/claude-opus-4-6",
+    judge_model="litellm_proxy/azure/gpt-5.4",
 ).evaluate(
     trajectories_path=Path("traces/trajectories"),
     scenarios_paths=[Path("groundtruth/101.json")],
@@ -310,5 +310,5 @@ uv run evaluate \
   --trajectories traces/trajectories \
   --scenarios groundtruth/*.json \
   --scorer-default llm_judge \
-  --judge-model litellm_proxy/aws/claude-opus-4-6
+  --judge-model litellm_proxy/azure/gpt-5.4
 ```

@@ -241,7 +241,7 @@ uv run evaluate \
   --trajectories traces/trajectories \
   --scenarios groundtruth/101.json \
   --scorer-default llm_judge \
-  --judge-model litellm_proxy/aws/claude-opus-4-6
+  --judge-model litellm_proxy/azure/gpt-5.4
 ```
 
 Output lands under `reports/` — one `<run_id>.json` per trajectory plus `_aggregate.json` for the rollup.
