@@ -246,6 +246,10 @@ uv run evaluate \
 
 Output lands under `reports/` — one `<run_id>.json` per trajectory plus `_aggregate.json` for the rollup.
 
+> [!NOTE]
+> If `llm_judge` is used, `--judge-model` must not match the trajectory's `model`
+> for any evaluated run. The evaluator now rejects self-judging rows with a clear error.
+
 Scorer families follow MLflow's evaluator/scorer split: `llm_judge` is wired up; `exact_string_match`, `numeric_match`, and `semantic_similarity` ship as skeletons (raise `NotImplementedError`).
 
 Full reference — scenario schema, report layout, custom scorers, looping over ground-truth: **[docs/evaluation.md](docs/evaluation.md)**.
