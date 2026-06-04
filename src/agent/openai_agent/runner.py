@@ -23,6 +23,11 @@ import time
 from contextlib import AsyncExitStack
 from pathlib import Path
 
+# Generous cold-start timeout: first `uv run` pays import + page-cache costs.
+# Warm handshakes are well under 1s, so 30s has no operational downside.
+# Override with MCP_INIT_TIMEOUT_SECONDS env var for unusually slow machines.
+_MCP_TIMEOUT: int = int(os.environ.get("MCP_INIT_TIMEOUT_SECONDS", "30"))
+
 from openai import AsyncOpenAI
 
 from agents import Agent, ModelProvider, OpenAIChatCompletionsModel, RunConfig, Runner, set_tracing_disabled
@@ -95,6 +100,7 @@ def _build_mcp_servers(
                     "args": ["run", cmd_arg],
                 },
                 cache_tools_list=True,
+                client_session_timeout_seconds=_MCP_TIMEOUT,
             )
         )
     return servers

@@ -23,6 +23,11 @@ import time
 from functools import cached_property
 from pathlib import Path
 
+# Generous cold-start timeout: first `uv run` pays import + page-cache costs.
+# Warm handshakes are well under 1s, so 30s has no operational downside.
+# Override with MCP_INIT_TIMEOUT_SECONDS env var for unusually slow machines.
+_MCP_TIMEOUT: int = int(os.environ.get("MCP_INIT_TIMEOUT_SECONDS", "30"))
+
 from langchain_core.messages import AIMessage, ToolMessage
 
 from observability import agent_run_span, persist_trajectory
@@ -85,6 +90,7 @@ def _build_mcp_connections(
             "command": "uv",
             "args": ["run", cmd_arg],
             "cwd": str(_REPO_ROOT),
+            "session_kwargs": {"read_timeout_seconds": _dt.timedelta(seconds=_MCP_TIMEOUT)},
         }
     return connections
 
