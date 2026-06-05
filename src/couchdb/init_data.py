@@ -1,10 +1,9 @@
 """Entry point: read a scenario's JSON manifest and load its data into CouchDB.
 
-init_data reads the manifest and hands each collection to its existing loader:
-
-    manifest["work_order"]  →  init_wo            (the 'workorder' database)
-    manifest["iot"]         →  init_asset_data    (the 'iot' database)
-    manifest["vibration"]   →  init_asset_data    (the 'vibration' database)
+init_data resolves which manifest to use (the scenario's, or the default) and hands
+each collection to the generic, config-driven loader (loader.py). Every manifest key
+becomes a database of the same name; how each is parsed/keyed/indexed comes from
+collections.json.
 
     python -m couchdb.init_data 42      # load scenario 42's data
     python -m couchdb.init_data         # no scenario → default data (also used at container startup)
@@ -13,18 +12,16 @@ init_data reads the manifest and hands each collection to its existing loader:
     init_data(42)     # scenario 42
     init_data()       # default
 
-Manifest at scenarios_data/scenario_<id>.json, e.g.::
+Manifest at scenarios_data/scenario_<id>.json (and scenarios_data/default.json), e.g.::
 
     {"work_order": "sample_data/work_order/workorders.csv",
      "iot": ["sample_data/iot/chiller_6.json", "sample_data/iot/metro_pump_1.json"]}
 
-If the scenario's ``dataset`` field is ``default`` (or it has no manifest), the
-DEFAULT_MANIFEST below is loaded — the single definition of "default" data, used by
-couchdb_setup.sh at container startup too. Databases are rebuilt from scratch.
+If the scenario's ``dataset`` field is ``default`` (or it has no manifest), the default
+manifest is loaded. Databases are rebuilt from scratch each call.
 """
 
 import argparse
-import glob
 import json
 import logging
 import os
@@ -32,10 +29,9 @@ import os
 from dotenv import load_dotenv
 
 try:                       # works as a package (python -m couchdb.init_data / imports)
-    from . import init_asset_data, init_wo
+    from . import loader
 except ImportError:        # works as a script (python3 /couchdb/init_data.py)
-    import init_asset_data
-    import init_wo
+    import loader
 
 load_dotenv()
 
@@ -49,83 +45,22 @@ WO_DEFAULT_DATASET = os.environ.get("WO_DEFAULT_DATASET", "default")
 WO_SCENARIO_FIELD = os.environ.get("WO_SCENARIO_FIELD", "dataset")
 WO_SCENARIOS_FILE = os.environ.get(
     "WO_SCENARIOS_FILE", os.path.join(_REPO_ROOT, "scenarios", "huggingface", "all_utterance.jsonl"))
-VIBRATION_DBNAME = os.environ.get("VIBRATION_DBNAME", "vibration")
-
-# The single definition of the default data (what couchdb_setup.sh used to hardcode).
-DEFAULT_MANIFEST = {
-    "work_order": "default",
-    "iot": [
-        "sample_data/iot/chiller_6.json",
-        "sample_data/iot/metro_pump_1.json",
-        "sample_data/iot/hydraulic_pump_1.json",
-    ],
-    "vibration": "sample_data/iot/motor_01.json",
-}
-
-
-# --------------------------------------------------------------------------- #
-# Collection loaders (delegate to the existing per-collection modules)
-# --------------------------------------------------------------------------- #
-def _load_work_order(spec, drop) -> tuple:
-    return init_wo.load_work_order(spec, drop=drop)   # init_wo handles CSV/JSON/dir/"default"
-
-
-def _asset_files(spec) -> list:
-    """Resolve a sensor-data spec ("default" / path / dir / list) to JSON file paths."""
-    def resolve(s):
-        if not isinstance(s, str):
-            return []
-        if s.strip().lower() == "default":
-            return [init_asset_data.ASSET_DATA_FILE]
-        p = s if os.path.isabs(s) else os.path.join(_HERE, s)   # relative to couchdb/
-        if os.path.isdir(p):
-            return sorted(glob.glob(os.path.join(p, "*.json")))
-        return [p]
-    if isinstance(spec, str):
-        return resolve(spec)
-    if isinstance(spec, list):
-        out = []
-        for item in spec:
-            out += resolve(item)
-        return out
-    return []
-
-
-def _load_asset(spec, drop, db: str) -> tuple:
-    """Read sensor JSON file(s) and load into a database via init_asset_data's helpers."""
-    docs = []
-    for fp in _asset_files(spec):
-        if not os.path.isfile(fp):
-            logger.warning("data file not found: %s", fp)
-            continue
-        with open(fp) as f:
-            data = json.load(f)
-        docs += data if isinstance(data, list) else [data]
-    if docs:
-        init_asset_data._ensure_db(db, drop)
-        init_asset_data._bulk_insert(db, docs)
-        init_asset_data._create_indexes(db)
-    return db, len(docs)
-
-
-def _load_iot(spec, drop) -> tuple:
-    return _load_asset(spec, drop, init_asset_data.IOT_DBNAME)
-
-
-def _load_vibration(spec, drop) -> tuple:
-    return _load_asset(spec, drop, VIBRATION_DBNAME)
-
-
-LOADERS = {
-    "work_order": _load_work_order,
-    "iot": _load_iot,
-    "vibration": _load_vibration,
-}
+DEFAULT_MANIFEST_FILE = os.environ.get(
+    "WO_DEFAULT_MANIFEST", os.path.join(SCENARIOS_DATA_DIR, "default.json"))
 
 
 # --------------------------------------------------------------------------- #
 # Scenario → manifest
 # --------------------------------------------------------------------------- #
+def _load_default_manifest() -> dict:
+    if not os.path.isfile(DEFAULT_MANIFEST_FILE):
+        raise FileNotFoundError(
+            f"default manifest not found: {DEFAULT_MANIFEST_FILE}. "
+            "Create scenarios_data/default.json (or set WO_DEFAULT_MANIFEST).")
+    with open(DEFAULT_MANIFEST_FILE) as f:
+        return json.load(f)
+
+
 def _is_default(dataset_value) -> bool:
     return dataset_value is None or str(dataset_value).strip() in ("", WO_DEFAULT_DATASET)
 
@@ -152,26 +87,58 @@ def _manifest_path(scenario_id, dataset_value):
 
 def _resolve_manifest(scenario_id, scenarios_path=None) -> dict:
     if scenario_id is None:
-        return DEFAULT_MANIFEST
+        return _load_default_manifest()
     row = _scenario_row(scenario_id, scenarios_path)
     dataset_value = row.get(WO_SCENARIO_FIELD)
     path = None if _is_default(dataset_value) else _manifest_path(scenario_id, dataset_value)
     if path is None:
-        return DEFAULT_MANIFEST
+        return _load_default_manifest()
     with open(path) as f:
         return json.load(f)
 
 
-def init_data(scenario_id=None, scenarios_path: str = None, force: bool = True) -> dict:
-    """Load a scenario's data (or the default) into CouchDB. Returns {collection: (db, n)}."""
+# --------------------------------------------------------------------------- #
+# Reset
+# --------------------------------------------------------------------------- #
+def all_databases() -> list:
+    """The databases this loader manages = the default manifest's keys (db name = key)."""
+    try:
+        return list(_load_default_manifest().keys())
+    except Exception:
+        return []
+
+
+def reset(managed_only: bool = False) -> list:
+    """Drop databases for a clean state. Returns the dropped names.
+
+    Default: drop every user database (CouchDB GET /_all_dbs, system DBs excluded).
+    ``managed_only=True`` drops only the default-manifest collections.
+    """
+    targets = all_databases() if managed_only else loader.list_databases()
+    dropped = []
+    for db in targets:
+        code = loader.drop_database(db)
+        logger.info("Dropped database '%s' (%s).", db, code)
+        dropped.append(db)
+    return dropped
+
+
+# --------------------------------------------------------------------------- #
+# Load
+# --------------------------------------------------------------------------- #
+def init_data(scenario_id=None, scenarios_path: str = None, force: bool = True,
+              reset_first: bool = False, managed_only: bool = False) -> dict:
+    """Load a scenario's data (or the default) into CouchDB. Returns {collection: (db, n)}.
+
+    ``reset_first=True`` drops databases first so collections absent from the manifest
+    are left empty rather than carrying over.
+    """
+    if reset_first:
+        reset(managed_only=managed_only)
     manifest = _resolve_manifest(scenario_id, scenarios_path)
     results = {}
     for key, spec in manifest.items():
-        loader = LOADERS.get(key)
-        if loader is None:
-            logger.warning("No loader for collection '%s' — skipping.", key)
-            continue
-        results[key] = loader(spec, force)
+        results[key] = loader.load_collection(key, spec, drop=force)   # database name = key
         logger.info("Scenario %s: '%s' → %s (%d docs).", scenario_id, key, *results[key])
     return results
 
@@ -182,8 +149,19 @@ def main() -> None:
     p.add_argument("scenario", nargs="?", default=None, help="Scenario id (omit to load default data).")
     p.add_argument("--scenarios", default=None, help="Scenarios .jsonl path (else WO_SCENARIOS_FILE).")
     p.add_argument("--reuse", action="store_true", help="Reuse instead of reloading from scratch.")
+    p.add_argument("--reset", action="store_true", help="Drop databases first, then load (clean start).")
+    p.add_argument("--reset-only", action="store_true", help="Drop databases and exit (no load).")
+    p.add_argument("--managed-only", action="store_true",
+                   help="With --reset/--reset-only: drop only the default-manifest collections.")
     a = p.parse_args()
-    for key, (db, n) in init_data(a.scenario, scenarios_path=a.scenarios, force=not a.reuse).items():
+
+    if a.reset_only:
+        for db in reset(managed_only=a.managed_only):
+            print(f"dropped\t{db}")
+        return
+
+    for key, (db, n) in init_data(a.scenario, scenarios_path=a.scenarios, force=not a.reuse,
+                                  reset_first=a.reset, managed_only=a.managed_only).items():
         print(f"{key}\t{db}\t{n}")
 
 

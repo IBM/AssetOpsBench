@@ -1,0 +1,45 @@
+{
+    "_id": "_design/workorders",
+    "language": "javascript",
+    "validate_doc_update": "function validate_doc_update(newDoc, oldDoc, userCtx, secObj) {\n  // Allow deletions and CouchDB design/internal docs through untouched.\n  if (newDoc._deleted === true) return;\n  if (newDoc._id && newDoc._id.indexOf(\"_design/\") === 0) return;\n\n  function err(field, msg) {\n    throw { forbidden: \"WO validation failed [\" + field + \"]: \" + msg };\n  }\n  function isStr(v) { return typeof v === \"string\" && v.length > 0; }\n\n  if (newDoc.type !== \"workorder\") err(\"type\", \"must equal 'workorder'\");\n\n  // Required fields\n  [\"wonum\", \"siteid\", \"description\", \"status\", \"worktype\", \"reportdate\"].forEach(function (f) {\n    if (!isStr(newDoc[f])) err(f, \"is required and must be a non-empty string\");\n  });\n\n  // description length cap (Maximo DESCRIPTION is 100 chars)\n  if (newDoc.description.length > 100) err(\"description\", \"max length is 100 chars\");\n\n  // status enum (Maximo WO lifecycle)\n  var STATUS = [\"WAPPR\",\"APPR\",\"WMATL\",\"WSCH\",\"INPRG\",\"WPCOND\",\"COMP\",\"CLOSE\",\"CAN\"];\n  if (STATUS.indexOf(newDoc.status) === -1) err(\"status\", \"invalid status '\" + newDoc.status + \"'\");\n\n  // worktype enum\n  var WORKTYPE = [\"CM\",\"PM\",\"EM\",\"PdM\",\"CAL\",\"INSP\",\"GEN\"];\n  if (WORKTYPE.indexOf(newDoc.worktype) === -1) err(\"worktype\", \"invalid worktype '\" + newDoc.worktype + \"'\");\n\n  // wopriority 1..5 when present\n  if (newDoc.wopriority !== undefined && newDoc.wopriority !== null) {\n    var p = newDoc.wopriority;\n    if (typeof p !== \"number\" || p < 1 || p > 5 || (p % 1 !== 0)) err(\"wopriority\", \"must be an integer 1..5\");\n  }\n\n  // aob_source provenance (AssetOpsBench extension) — validate when present\n  if (newDoc.aob_source) {\n    var AGENTS = [\"iot\",\"fmsr\",\"tsfm\",\"wo\",\"human\"];\n    var TRIGGERS = [\"anomaly_detection\",\"forecast\",\"failure_mode\",\"rule_monitoring\",\"inspection\",\"manual\"];\n    if (AGENTS.indexOf(newDoc.aob_source.agent) === -1) err(\"aob_source.agent\", \"invalid agent\");\n    if (TRIGGERS.indexOf(newDoc.aob_source.trigger_type) === -1) err(\"aob_source.trigger_type\", \"invalid trigger_type\");\n  }\n}",
+    "views": {
+      "by_site": {
+        "map": "function map_by_site(doc) { if (doc.type === \"workorder\") emit(doc.siteid, null); }",
+        "reduce": "_count"
+      },
+      "by_status": {
+        "map": "function map_by_status(doc) { if (doc.type === \"workorder\") emit(doc.status, null); }",
+        "reduce": "_count"
+      },
+      "by_asset": {
+        "map": "function map_by_asset(doc) { if (doc.type === \"workorder\") emit([doc.siteid, doc.assetnum], null); }",
+        "reduce": "_count"
+      },
+      "by_worktype": {
+        "map": "function map_by_worktype(doc) { if (doc.type === \"workorder\") emit(doc.worktype, null); }",
+        "reduce": "_count"
+      },
+      "by_priority": {
+        "map": "function map_by_priority(doc) { if (doc.type === \"workorder\") emit(doc.wopriority, null); }",
+        "reduce": "_count"
+      },
+      "by_scenario": {
+        "map": "function map_by_scenario(doc) {\n  if (doc.type === \"workorder\" && doc.aob_source && doc.aob_source.scenario_id) {\n    emit(doc.aob_source.scenario_id, doc.wonum);\n  }\n}"
+      },
+      "by_agent": {
+        "map": "function map_by_agent(doc) {\n  if (doc.type === \"workorder\" && doc.aob_source && doc.aob_source.agent) {\n    emit([doc.aob_source.agent, doc.aob_source.trigger_type], null);\n  }\n}",
+        "reduce": "_count"
+      },
+      "by_asset_class": {
+        "map": "function map_by_asset_class(doc) {\n  if (doc.type === \"workorder\" && doc.aob_asset_class) emit(doc.aob_asset_class, null);\n}",
+        "reduce": "_count"
+      },
+      "backlog": {
+        "map": "function map_backlog(doc) {\n  // Non-terminal (open) work orders, keyed [siteid, status] for week-at-a-glance.\n  var TERMINAL = { COMP: 1, CLOSE: 1, CAN: 1 };\n  if (doc.type === \"workorder\" && !TERMINAL[doc.status]) emit([doc.siteid, doc.status], null);\n}",
+        "reduce": "_count"
+      },
+      "children": {
+        "map": "function map_children(doc) {\n  // Task / sub-WO rows keyed by parent for breakdown lookups.\n  if (doc.type === \"workorder\" && doc.parent) emit([doc.parent, doc.taskid || 0], doc.wonum);\n}"
+      }
+    }
+  }
