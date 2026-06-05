@@ -213,7 +213,9 @@ def _install_design(db, design_doc):
     existing = requests.get(url, auth=_AUTH, timeout=10)
     if existing.status_code == 200:
         design["_rev"] = existing.json()["_rev"]
-    requests.put(url, json=design, auth=_AUTH, timeout=10).raise_for_status()
+    resp = requests.put(url, json=design, auth=_AUTH, timeout=10)
+    if not resp.ok:                      # surface CouchDB's actual reason (e.g. compilation_error)
+        raise RuntimeError(f"design doc install failed for '{db}' ({resp.status_code}): {resp.text}")
 
 
 def _create_indexes(db, indexes):
