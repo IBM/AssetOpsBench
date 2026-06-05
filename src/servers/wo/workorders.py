@@ -79,7 +79,10 @@ async def list_workorders(db, site_id: Optional[str] = None, status: Optional[st
                 rng["$lte"] = date_to
             sel["reportdate"] = rng
 
-        docs = await db.find(sel, sort=[{"reportdate": "desc"}], limit=1000000)
+        # No Mango `sort` — that requires a matching index and 400s without one.
+        # Sort client-side instead (robust to missing reportdate / indexes).
+        docs = await db.find(sel, limit=1000000)
+        docs.sort(key=lambda d: (d.get("reportdate") or ""), reverse=True)
         total = len(docs)
         if not page_size:  # page_size=0 (or None) → return everything
             page = [_public(d) for d in docs]
@@ -103,7 +106,8 @@ async def get_workorder_tasks(db, wonum: str, site_id: str) -> Dict[str, Any]:
     """List child task rows whose `parent` references this work order."""
     with Timer() as t:
         docs = await db.find({"type": "workorder", "parent": wonum, "siteid": site_id.upper()},
-                             sort=[{"taskid": "asc"}], limit=1000)
+                             limit=1000)
+        docs.sort(key=lambda d: (d.get("taskid") or 0))   # sort client-side (no index needed)
         return envelope({"parent_wonum": wonum, "site_id": site_id,
                          "tasks": [_public(d) for d in docs]},
                         duration_ms=t_ms(t), record_count=len(docs))
