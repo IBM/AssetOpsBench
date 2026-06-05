@@ -38,7 +38,7 @@
 <table>
   <tr>
     <td align="center" width="16%"><b>9</b><br><sub>Asset classes</sub></td>
-    <td align="center" width="16%"><b>141+</b><br><sub>Scenarios</sub></td>
+    <td align="center" width="16%"><b>460+</b><br><sub>Scenarios</sub></td>
     <td align="center" width="16%"><b>5</b><br><sub>Domain agents</sub></td>
     <td align="center" width="16%"><b>2</b><br><sub>Orchestration frameworks</sub></td>
     <td align="center" width="16%"><b>20+</b><br><sub>University extensions</sub></td>
