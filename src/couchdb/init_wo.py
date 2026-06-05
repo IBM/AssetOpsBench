@@ -1,34 +1,17 @@
-"""Initialize CouchDB work-order databases from CSV files (Maximo-aligned schema).
+"""Low-level CouchDB work-order loader (Maximo-aligned schema).
 
-Datasets are bound to scenarios: a scenario names a ``wo_dataset`` and that dataset
-is loaded into its own database. Loading is idempotent and keyed by dataset id, so
-scenarios that share a dataset reuse one database (load once), and scenarios that
-bind different datasets get different databases.
+Building blocks shared by init_scenario.py and usable directly for single-corpus
+loading. Reads CSVs with pandas, turns each row into a CouchDB document tagged with
+a ``dataset`` discriminator (AssetOpsBench pattern), batched ``_bulk_docs`` insert,
+then Mango indexes. Documents use Maximo ``mxwo`` field names; the server only reads.
 
-Layout (one folder per dataset; each folder holds the dataset's CSVs):
-    datasets/<dataset_id>/workorders.csv        (+ optional events.csv, alert_events.csv, ...)
+Scenario-bound, per-dataset initialization lives in init_scenario.py.
 
-Database naming:  workorder_<dataset_id>   (sanitized to CouchDB rules)
-
-Each CSV row becomes a CouchDB document tagged with a ``dataset`` discriminator
-(AssetOpsBench pattern). Documents use Maximo ``mxwo`` field names; the server only
-reads — it never loads.
-
-CLI:
-    # load a dataset by id (idempotent; reuses the DB if already populated)
-    python -m couchdb.init_wo --dataset chiller6_2017
-    python -m couchdb.init_wo --dataset chiller6_2017 --force      # drop + reload
-    # or point at an explicit dir / db (single-corpus mode)
+CLI (single-corpus mode — load one CSV dir into one DB):
     python -m couchdb.init_wo --data-dir <path> --db workorder --drop
 
-Programmatic (for the scenario harness):
-    from couchdb.init_wo import ensure_dataset
-    db = ensure_dataset("chiller6_2017")     # returns the DB name to set as WO_DBNAME
-
 Environment (or .env):
-    COUCHDB_URL, COUCHDB_USERNAME, COUCHDB_PASSWORD
-    WO_DBNAME           default DB for single-corpus mode (default: workorder)
-    WO_DATASETS_ROOT    root holding dataset folders (default: ./datasets)
+    COUCHDB_URL, COUCHDB_USERNAME, COUCHDB_PASSWORD, WO_DBNAME
 """
 
 import argparse
@@ -36,7 +19,6 @@ import json
 import logging
 import math
 import os
-import re
 import sys
 
 import pandas as pd
@@ -54,12 +36,9 @@ COUCHDB_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")
 COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME", "admin")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD", "password")
 WO_DBNAME = os.environ.get("WO_DBNAME", "workorder")
-WO_DATASETS_ROOT = os.environ.get("WO_DATASETS_ROOT", os.path.join(_SCRIPT_DIR, "datasets"))
-# Base dataset loaded under every scenario; scenario docs override it on _id overlap.
-WO_DEFAULT_DATASET = os.environ.get("WO_DEFAULT_DATASET", "default")
 _AUTH = (COUCHDB_USERNAME, COUCHDB_PASSWORD)
 
-# (csv_filename, dataset key). Work orders are primary; add more CSVs per dataset here.
+# (csv_filename, dataset key). Work orders are primary; add more CSVs here.
 _DATASETS = [
     ("workorders.csv", "wo_events"),
 ]
@@ -80,22 +59,6 @@ _FLOAT_COLS = {
     "aob_source.evidence.threshold", "aob_source.evidence.observed_value",
 }
 _JSON_COLS = {"wplabor"}
-
-
-# --------------------------------------------------------------------------- #
-# Dataset <-> database name
-# --------------------------------------------------------------------------- #
-def dataset_db_name(dataset_id: str) -> str:
-    """CouchDB-legal database name for a dataset id (start lowercase; a-z0-9_$()+-).
-
-    '/' is intentionally excluded (it breaks the URL path) even though CouchDB allows it.
-    """
-    name = re.sub(r"[^a-z0-9_$()+-]", "_", f"workorder_{dataset_id}".lower())
-    return name if name[:1].isalpha() else "wo_" + name
-
-
-def dataset_dir(dataset_id: str) -> str:
-    return os.path.join(WO_DATASETS_ROOT, dataset_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -146,13 +109,12 @@ def _db_url(db: str, *parts: str) -> str:
     return "/".join([COUCHDB_URL.rstrip("/"), db] + list(parts))
 
 
-def _doc_count(db_name: str) -> int:
-    """Number of non-design docs, or -1 if the database doesn't exist."""
+def doc_count(db_name: str) -> int:
+    """Number of docs (incl. design docs), or -1 if the database doesn't exist."""
     resp = requests.get(_db_url(db_name), auth=_AUTH, timeout=10)
     if resp.status_code != 200:
         return -1
-    info = resp.json()
-    return int(info.get("doc_count", 0))  # includes _design docs; good enough for an emptiness check
+    return int(resp.json().get("doc_count", 0))
 
 
 def _ensure_db(db_name: str, drop: bool) -> None:
@@ -200,7 +162,7 @@ def _bulk_insert(db_name: str, docs: list, batch_size: int = 500) -> None:
         logger.info("Inserted batch %d/%d (%d docs)", i // batch_size + 1, math.ceil(total / batch_size), len(batch))
 
 
-def _collect_docs(data_dir: str) -> list:
+def collect_docs(data_dir: str) -> list:
     """Build all docs from a dataset directory's CSVs (no DB I/O)."""
     docs: list = []
     for csv_file, dataset in _DATASETS:
@@ -214,20 +176,8 @@ def _collect_docs(data_dir: str) -> list:
     return docs
 
 
-def merge_by_id(*doclists: list) -> list:
-    """Merge doc lists by ``_id``; later lists win (scenario overrides default).
-
-    On overlap the earlier (default) document is replaced entirely by the later
-    (scenario) one — the old version is not kept.
-    """
-    merged: dict = {}
-    for docs in doclists:
-        for d in docs:
-            merged[d.get("_id", id(d))] = d
-    return list(merged.values())
-
-
-def _write_db(db_name: str, docs: list, drop: bool) -> int:
+def write_docs(db_name: str, docs: list, drop: bool = False) -> int:
+    """Write a list of work-order docs to a database (design doc + indexes)."""
     if not docs:
         return 0
     _ensure_db(db_name, drop=drop)
@@ -237,68 +187,100 @@ def _write_db(db_name: str, docs: list, drop: bool) -> int:
     return len(docs)
 
 
-def _load_dir_into_db(data_dir: str, db_name: str, drop: bool = False) -> int:
-    return _write_db(db_name, _collect_docs(data_dir), drop=drop)
+def load_dir_into_db(data_dir: str, db_name: str, drop: bool = False) -> int:
+    """Build docs from a CSV dir and write them to a database."""
+    return write_docs(db_name, collect_docs(data_dir), drop=drop)
 
 
-# --------------------------------------------------------------------------- #
-# Public entry points
-# --------------------------------------------------------------------------- #
-def ensure_dataset(dataset_id: str, force: bool = False) -> str:
-    """Ensure DB = default dataset + scenario dataset (scenario overrides on _id overlap).
+def _normalize(doc: dict, dataset: str) -> dict:
+    """Ensure a doc has dataset/type/_id (so JSON-supplied docs match CSV-built ones)."""
+    doc = dict(doc)
+    doc.setdefault("dataset", dataset)
+    doc.setdefault("type", "workorder")
+    doc.setdefault("schema_version", "1.0.0")
+    if "_id" not in doc and doc.get("wonum") and doc.get("siteid"):
+        doc["_id"] = f"wo:{str(doc['siteid']).upper()}:{doc['wonum']}"
+    return doc
 
-    The effective database for a scenario is the base ``WO_DEFAULT_DATASET`` with the
-    scenario's docs layered on top: any work order whose _id appears in both is taken
-    from the scenario (the default's version is dropped). Idempotent and keyed by
-    dataset id — set the returned name as WO_DBNAME for the spawned server.
+
+# Accepted keys for the work-order collection inside a scenario JSON object.
+_WO_KEYS = ("work_order", "workorders", "wo_events", "wo")
+
+
+def docs_from_json(path: str, dataset: str = "wo_events") -> list:
+    """Load work-order docs from a scenario JSON file.
+
+    Accepts either a bare list of docs, or an object like
+    ``{"work_order": [ ...docs... ], "events": [...]}`` (the work-order collection is
+    pulled from any of: work_order / workorders / wo_events / wo).
     """
-    db_name = dataset_db_name(dataset_id)
-    if not force and _doc_count(db_name) > 1:  # >1 ⇒ already populated
-        logger.info("Dataset '%s' already loaded in '%s' — reusing.", dataset_id, db_name)
-        return db_name
+    with open(path) as f:
+        data = json.load(f)
+    if isinstance(data, list):
+        rows = data
+    elif isinstance(data, dict):
+        rows = next((data[k] for k in _WO_KEYS if k in data), [])
+    else:
+        rows = []
+    return [_normalize(d, dataset) for d in rows]
 
-    layers: list = []
-    # base default layer (skipped when the scenario *is* the default, or no default dir)
-    if dataset_id != WO_DEFAULT_DATASET and os.path.isdir(dataset_dir(WO_DEFAULT_DATASET)):
-        base = _collect_docs(dataset_dir(WO_DEFAULT_DATASET))
-        logger.info("Default layer '%s': %d docs", WO_DEFAULT_DATASET, len(base))
-        layers.append(base)
-    # scenario layer (wins on overlap)
-    scen_dir = dataset_dir(dataset_id)
-    if not os.path.isdir(scen_dir):
-        raise FileNotFoundError(f"dataset '{dataset_id}' not found at {scen_dir}")
-    scen = _collect_docs(scen_dir)
-    logger.info("Scenario layer '%s': %d docs", dataset_id, len(scen))
-    layers.append(scen)
 
-    merged = merge_by_id(*layers)
-    if not merged:
-        raise ValueError(f"dataset '{dataset_id}' produced no documents")
-    overlap = sum(len(x) for x in layers) - len(merged)
-    n = _write_db(db_name, merged, drop=True)
-    logger.info("Dataset '%s' → '%s': %d docs (%d overridden from default).",
-                dataset_id, db_name, n, overlap)
-    return db_name
+# Default WO data directory (used when a manifest's work_order value is "default").
+DEFAULT_WO_DIR = os.path.join(_SCRIPT_DIR, "sample_data", "work_order")
+
+
+def _resolve_source(src: str, dataset: str = "wo_events") -> list:
+    """Resolve one work_order source string to docs: 'default', a dir, a .csv, or a .json."""
+    if src.strip().lower() == "default":
+        return collect_docs(DEFAULT_WO_DIR)
+    target = src if os.path.isabs(src) else os.path.join(_SCRIPT_DIR, src)  # relative to couchdb/
+    if os.path.isdir(target):
+        return collect_docs(target)
+    if target.endswith(".csv") and os.path.isfile(target):
+        return build_docs(target, dataset)
+    if target.endswith(".json") and os.path.isfile(target):
+        return docs_from_json(target, dataset)
+    raise FileNotFoundError(f"work_order source not found: {src!r}")
+
+
+def docs_from_spec(spec, dataset: str = "wo_events") -> list:
+    """A manifest's ``work_order`` value → docs.
+
+    ``spec`` may be a path string ("default", a .csv/.json file, or a dir), a list of
+    such paths (concatenated), or a list of inline document objects.
+    """
+    if spec is None:
+        return []
+    if isinstance(spec, str):
+        return _resolve_source(spec, dataset)
+    if isinstance(spec, list):
+        docs = []
+        for item in spec:
+            if isinstance(item, dict):
+                docs.append(_normalize(item, dataset))
+            elif isinstance(item, str):
+                docs += _resolve_source(item, dataset)
+        return docs
+    return []
+
+
+def load_work_order(spec, db_name: str = None, drop: bool = True) -> tuple:
+    """Load a manifest's ``work_order`` data into the WO database. Returns (db_name, n_docs)."""
+    db_name = db_name or WO_DBNAME
+    n = write_docs(db_name, docs_from_spec(spec), drop=drop)
+    return db_name, n
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Initialize CouchDB work-order database(s) from CSVs.")
-    parser.add_argument("--dataset", help="Dataset id (loads datasets/<id>/ into workorder_<id>)")
-    parser.add_argument("--force", action="store_true", help="With --dataset: drop + reload even if present")
-    parser.add_argument("--data-dir", help="Explicit CSV dir (single-corpus mode)")
-    parser.add_argument("--db", default=WO_DBNAME, help="DB name for single-corpus mode")
-    parser.add_argument("--drop", action="store_true", help="Single-corpus mode: drop + recreate")
+    parser = argparse.ArgumentParser(description="Load one CSV directory into one CouchDB work-order database.")
+    parser.add_argument("--data-dir", help="CSV directory (default: sample_data/work_order)")
+    parser.add_argument("--db", default=WO_DBNAME, help="Target database name")
+    parser.add_argument("--drop", action="store_true", help="Drop + recreate the database first")
     args = parser.parse_args()
 
-    logger.info("CouchDB URL: %s", COUCHDB_URL)
-    if args.dataset:
-        db = ensure_dataset(args.dataset, force=args.force)
-        print(db)  # so a harness can capture it: WO_DBNAME=$(python -m couchdb.init_wo --dataset X)
-        return
-
     data_dir = args.data_dir or os.path.join(_SCRIPT_DIR, "sample_data", "work_order")
-    _ensure_db(args.db, drop=args.drop)
-    n = _load_dir_into_db(data_dir, args.db)
+    logger.info("CouchDB URL: %s | DB: %s | Data dir: %s", COUCHDB_URL, args.db, data_dir)
+    n = load_dir_into_db(data_dir, args.db, drop=args.drop)
     if n == 0:
         logger.error("No documents to insert — check --data-dir path.")
         sys.exit(1)
