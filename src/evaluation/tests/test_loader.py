@@ -56,6 +56,28 @@ def test_load_scenarios_single_object(tmp_path: Path):
     assert [s.id for s in out] == ["7"]
 
 
+_SCENARIOS_LOCAL = Path(__file__).resolve().parents[2] / "scenarios" / "local"
+
+
+def test_workorder_scenarios_load_and_conform():
+    """The bundled work order scenarios parse and carry the expected schema."""
+    path = _SCENARIOS_LOCAL / "workorder_utterance.json"
+    scenarios = load_scenarios(path)
+
+    assert len(scenarios) >= 5
+    assert all(isinstance(s, Scenario) for s in scenarios)
+    # Every scenario is a work order scenario with a non-empty question and rubric.
+    for s in scenarios:
+        assert s.type == "WorkOrder"
+        assert s.text.strip()
+        assert s.category.strip()
+        assert s.characteristic_form and s.characteristic_form.strip()
+    # IDs are unique and at least one scenario targets failure-code categorization.
+    ids = [s.id for s in scenarios]
+    assert len(ids) == len(set(ids))
+    assert any(s.category == "Categorization" for s in scenarios)
+
+
 def test_join_drops_orphans(make_persisted_record):
     from evaluation.models import PersistedTrajectory
 
