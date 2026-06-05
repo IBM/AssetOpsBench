@@ -273,7 +273,7 @@ We are expanding **AssetOpsBench** to cover a broader range of industrial challe
 
 1. **Define** your scenario following our [Utterance Guideline](docs/guideline/utterance_design_guideline.md) and [Ground Truth Guideline](docs/guideline/ground_truth_design_guideline.md)
 2. **Explore** the [Hugging Face dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) for examples
-   - For external public sources, see the contributor proposal in [External Industrial Dataset Guide](docs/external-industrial-datasets.md)
+   - For external public sources, see [External Industrial Dataset Guide](docs/external-industrial-datasets.md)
 3. **Submit** a Pull Request or open an [Issue](https://github.com/IBM/AssetOpsBench/issues) with the tag `new-scenario`
 4. **Contact us** with questions:
    - Dhaval Patel — [pateldha@us.ibm.com](mailto:pateldha@us.ibm.com)

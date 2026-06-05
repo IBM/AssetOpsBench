@@ -1,6 +1,6 @@
-# External Industrial Dataset Guide (Contributor Proposal)
+# External Industrial Dataset Guide
 
-This page is a contributor-oriented proposal to help newcomers discover public industrial datasets that may be useful for scenario design and benchmark extensions.
+This page helps contributors discover public industrial datasets that may be useful for scenario design and benchmark extensions.
 
 It does **not** change AssetOpsBench scoring or baseline definitions. It is a reference map for dataset discovery and adaptation planning.
 
