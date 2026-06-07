@@ -14,7 +14,7 @@ import argparse
 
 from .._cli_common import add_common_args, print_result, run_sdk_cli
 
-_DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
+_DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -73,6 +73,14 @@ examples:
         metavar="N",
         help="Maximum agent turns (default: 30).",
     )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=16_384,
+        metavar="N",
+        help="Max output tokens per model call; must stay under the provider "
+             "limit (watsonx caps new tokens at 100k). Default: 16384.",
+    )
     return parser
 
 
@@ -84,6 +92,7 @@ async def _run(args: argparse.Namespace) -> None:
         code_enabled=args.code_enabled,
         code_backend=args.code_backend,
         max_turns=args.max_turns,
+        max_tokens=args.max_tokens,
     )
     result = await runner.run(args.question)
     print_result(result, show_trajectory=args.show_trajectory, output_json=args.output_json)

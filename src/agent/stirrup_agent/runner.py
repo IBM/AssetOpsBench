@@ -46,7 +46,7 @@ from .trajectory import build_trajectory, classify_tool, final_answer
 _log = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
-_DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
+_DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "python:3.12-slim")
 
@@ -72,7 +72,7 @@ class StirrupAgentRunner(AgentRunner):
         code_enabled: bool = True,
         code_backend: str = "docker",
         max_turns: int = 30,
-        max_tokens: int = 200_000,
+        max_tokens: int = 16_384,
     ) -> None:
         super().__init__(llm, server_paths)
         self._model_id = model
