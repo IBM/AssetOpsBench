@@ -281,13 +281,11 @@ uv run stirrup-agent --code-backend docker --show-trajectory \
   --model-id watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 \
   "Run python to compute the factorial of 12 and tell me the result"
 
-# 6. persist + score one run
+# 6. persist
 export AGENT_TRAJECTORY_DIR=$(pwd)/traces/trajectories
 uv run stirrup-agent --no-code --run-id stirrup-smoke --scenario-id 101 \
   --model-id watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 \
   "List all failure modes of asset Chiller."
-uv run evaluate --trajectories traces/trajectories --scenarios groundtruth/101.json \
-  --scorer-default llm_judge --judge-model litellm_proxy/aws/claude-opus-4-6
 ```
 
 ---
