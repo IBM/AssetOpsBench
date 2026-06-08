@@ -1,44 +1,224 @@
 [
-    {
-      "id": 401,
-      "type": "WorkOrder",
-      "text": "What failure code categories are used to classify work orders?",
-      "category": "Knowledge Query",
-      "characteristic_form": "The expected response should call get_failure_codes and list the distinct top-level categories that work orders are grouped into (e.g., 'Maintenance and Routine Checks', 'Corrective'), describing what each category represents."
-    },
-    {
-      "id": 402,
-      "type": "WorkOrder",
-      "text": "List all failure codes that belong to the 'Maintenance and Routine Checks' category, with their descriptions.",
-      "category": "Knowledge Query",
-      "characteristic_form": "The expected response should call get_failure_codes, filter to the 'Maintenance and Routine Checks' category, and report the primary and secondary codes with descriptions (e.g., MT010 / Oil Analysis with secondary MT010b / Routine Oil Analysis, and MT001 / Routine Maintenance)."
-    },
-    {
-      "id": 403,
-      "type": "WorkOrder",
-      "text": "Which failure code category does the primary code MT010 belong to, and what does that code describe?",
-      "category": "Categorization",
-      "characteristic_form": "The expected response should look up MT010 via get_failure_codes and report that it falls under the 'Maintenance and Routine Checks' category with the description 'Oil Analysis', distinguishing the primary code from its secondary codes."
-    },
-    {
-      "id": 404,
-      "type": "WorkOrder",
-      "text": "A work order is described as 'Routine Oil Analysis'. Determine the most appropriate failure code and the category it should be filed under.",
-      "category": "Categorization",
-      "characteristic_form": "The expected response should map the description 'Routine Oil Analysis' to the secondary code MT010b (under primary code MT010, 'Oil Analysis') and assign it to the 'Maintenance and Routine Checks' category, using get_failure_codes to justify the mapping."
-    },
-    {
-      "id": 405,
-      "type": "WorkOrder",
-      "text": "Is failure code MT013 a preventive or a corrective maintenance type? Justify the answer using its category.",
-      "category": "Categorization",
-      "characteristic_form": "The expected response should identify MT013 via get_failure_codes as belonging to the 'Corrective' category (description 'Corrective'), and conclude it is a corrective rather than preventive maintenance type based on that category."
-    },
-    {
-      "id": 406,
-      "type": "WorkOrder",
-      "text": "For chiller CWC04013, summarize its work orders grouped by failure code category and state which category is most common.",
-      "category": "Distribution Analysis",
-      "characteristic_form": "The expected response should call get_work_order_distribution for equipment 'CWC04013' (optionally with get_failure_codes to resolve categories), aggregate the per-code counts up to the category level (e.g., 'Maintenance and Routine Checks' vs 'Corrective'), and identify the most frequent category for the asset."
+  {
+    "type": "WorkOrder",
+    "text": "Pull up work order TST-WO00032. If no failure code was recorded, suggest the single failure code from our 10-code list (Breakdown, Electrical, Fail to function, Leaking, Low output, Minor in-service problems, Overheating, Plugged / choked, Structural deficiency, Vibration). If a failure code is already recorded, return the existing code as-is.",
+    "category": "Failure Code Imputation",
+    "characteristic_form": "The expected response should retrieve work order TST-WO00032 (description 'hot joint'), observe that its failure_code is blank, and suggest a single code from the supplied 10-code list. The correct suggestion is 'Overheating'.",
+    "expected_answer": "Overheating",
+    "scoring_method": "exact_string_match",
+    "metadata": {
+      "scenario_label": "S1",
+      "task": "single-record-fill",
+      "subtitle": "failure-code suggestion",
+      "target_work_orders": [
+        "TST-WO00032"
+      ],
+      "write_back": false,
+      "candidate_codes": [
+        "Breakdown",
+        "Electrical",
+        "Fail to function",
+        "Leaking",
+        "Low output",
+        "Minor in-service problems",
+        "Overheating",
+        "Plugged / choked",
+        "Structural deficiency",
+        "Vibration"
+      ],
+      "data_sources": [
+        "fmc_test_wo.csv"
+      ],
+      "gold": {
+        "wo_id": "TST-WO00032",
+        "failure_code": "Overheating"
+      },
+      "gold_source": "fmc_test_answer_key.csv"
     }
-  ]
+  },
+  {
+    "type": "WorkOrder",
+    "text": "Pull up work order TST-WO00054. If no failure code was recorded, pick the single failure code from our 10-code list (Breakdown, Electrical, Fail to function, Leaking, Low output, Minor in-service problems, Overheating, Plugged / choked, Structural deficiency, Vibration) and write it back to the record. If a failure code is already recorded, leave the record as-is. Confirm the final value on the record.",
+    "category": "Failure Code Imputation",
+    "characteristic_form": "The expected response should retrieve work order TST-WO00054 (description 'rocking around'), observe that its failure_code is blank, pick the single best code from the supplied 10-code list, write it back to the record, and confirm the persisted value. The correct code is 'Vibration'.",
+    "expected_answer": "Vibration",
+    "scoring_method": "exact_string_match",
+    "metadata": {
+      "scenario_label": "S2",
+      "task": "single-record-fill + write-back",
+      "subtitle": "failure-code suggestion and imputation",
+      "target_work_orders": [
+        "TST-WO00054"
+      ],
+      "write_back": true,
+      "candidate_codes": [
+        "Breakdown",
+        "Electrical",
+        "Fail to function",
+        "Leaking",
+        "Low output",
+        "Minor in-service problems",
+        "Overheating",
+        "Plugged / choked",
+        "Structural deficiency",
+        "Vibration"
+      ],
+      "data_sources": [
+        "fmc_test_wo.csv"
+      ],
+      "verifier": "Verify the DB record was updated to the imputed failure_code.",
+      "gold": {
+        "wo_id": "TST-WO00054",
+        "failure_code": "Vibration"
+      },
+      "gold_source": "fmc_test_answer_key.csv"
+    }
+  },
+  {
+    "type": "WorkOrder",
+    "text": "Look across our historical work orders and rank the top three failure codes by record count. Reply with only a JSON array of exactly three objects, ordered 1, 2, 3, in this shape:\n[\n  {\"rank\": 1, \"failure_code\": \"<code>\", \"count\": <int>},\n  {\"rank\": 2, \"failure_code\": \"<code>\", \"count\": <int>},\n  {\"rank\": 3, \"failure_code\": \"<code>\", \"count\": <int>}\n]\nUse the failure code spelling exactly as it appears in the data. If two codes are tied at the rank-3 cut-off, include both at \"rank\": 3 and add a fourth object {\"tie_at_rank_3\": true} at the end of the array. Output nothing outside the JSON array.",
+    "category": "Distribution Analysis",
+    "characteristic_form": "The expected response should count failure codes across the historical training work orders and return the top three by record count as a JSON array of {rank, failure_code, count} objects, codes spelled exactly as in the data. Correct: Minor in-service problems (109), Breakdown (70), Structural deficiency (58).",
+    "expected_answer": "[{\"rank\": 1, \"failure_code\": \"Minor in-service problems\", \"count\": 109}, {\"rank\": 2, \"failure_code\": \"Breakdown\", \"count\": 70}, {\"rank\": 3, \"failure_code\": \"Structural deficiency\", \"count\": 58}]",
+    "scoring_method": "json_match",
+    "metadata": {
+      "scenario_label": "S3",
+      "task": "history-distribution",
+      "subtitle": "top-3 failure codes in the historical work orders",
+      "write_back": false,
+      "data_sources": [
+        "fmc_train_wo.csv"
+      ],
+      "response_format": "json_array",
+      "gold": [
+        {
+          "rank": 1,
+          "failure_code": "Minor in-service problems",
+          "count": 109
+        },
+        {
+          "rank": 2,
+          "failure_code": "Breakdown",
+          "count": 70
+        },
+        {
+          "rank": 3,
+          "failure_code": "Structural deficiency",
+          "count": 58
+        }
+      ],
+      "gold_source": "fmc_train_wo.csv (verified by record count)"
+    }
+  },
+  {
+    "type": "WorkOrder",
+    "text": "Learn the description-to-failure-code patterns from our historical work orders. Then go through work orders TST-WO00001 through TST-WO00010 and, for each one with a blank failure code, pick a single failure code from the set of codes used in history and write it back to the record. If a failure code is already recorded, leave that record as-is. Reply with only a JSON array of exactly 10 objects in wo_id order, in this shape:\n[\n  {\"wo_id\": \"TST-WO00001\", \"failure_code\": \"<code>\"},\n  {\"wo_id\": \"TST-WO00002\", \"failure_code\": \"<code>\"},\n  ...\n  {\"wo_id\": \"TST-WO00010\", \"failure_code\": \"<code>\"}\n]\nUse the failure code spelling exactly as it appears in the data. Output nothing outside the JSON array.",
+    "category": "Failure Code Imputation",
+    "characteristic_form": "The expected response should learn description-to-code patterns from the historical work orders, then impute and write back a single failure code for each of TST-WO00001 through TST-WO00010, returning a 10-object JSON array in wo_id order. Per-record gold is taken from the answer key.",
+    "expected_answer": "[{\"wo_id\": \"TST-WO00001\", \"failure_code\": \"Minor in-service problems\"}, {\"wo_id\": \"TST-WO00002\", \"failure_code\": \"Fail to function\"}, {\"wo_id\": \"TST-WO00003\", \"failure_code\": \"Plugged / choked\"}, {\"wo_id\": \"TST-WO00004\", \"failure_code\": \"Breakdown\"}, {\"wo_id\": \"TST-WO00005\", \"failure_code\": \"Minor in-service problems\"}, {\"wo_id\": \"TST-WO00006\", \"failure_code\": \"Electrical\"}, {\"wo_id\": \"TST-WO00007\", \"failure_code\": \"Fail to function\"}, {\"wo_id\": \"TST-WO00008\", \"failure_code\": \"Minor in-service problems\"}, {\"wo_id\": \"TST-WO00009\", \"failure_code\": \"Electrical\"}, {\"wo_id\": \"TST-WO00010\", \"failure_code\": \"Minor in-service problems\"}]",
+    "scoring_method": "json_match",
+    "metadata": {
+      "scenario_label": "S4",
+      "task": "batch-fill + write-back",
+      "subtitle": "failure-code imputation from history",
+      "target_work_orders": [
+        "TST-WO00001",
+        "TST-WO00002",
+        "TST-WO00003",
+        "TST-WO00004",
+        "TST-WO00005",
+        "TST-WO00006",
+        "TST-WO00007",
+        "TST-WO00008",
+        "TST-WO00009",
+        "TST-WO00010"
+      ],
+      "write_back": true,
+      "learning_source": "fmc_train_wo.csv",
+      "data_sources": [
+        "fmc_train_wo.csv",
+        "fmc_test_wo.csv"
+      ],
+      "response_format": "json_array",
+      "gold": [
+        {
+          "wo_id": "TST-WO00001",
+          "failure_code": "Minor in-service problems"
+        },
+        {
+          "wo_id": "TST-WO00002",
+          "failure_code": "Fail to function"
+        },
+        {
+          "wo_id": "TST-WO00003",
+          "failure_code": "Plugged / choked"
+        },
+        {
+          "wo_id": "TST-WO00004",
+          "failure_code": "Breakdown"
+        },
+        {
+          "wo_id": "TST-WO00005",
+          "failure_code": "Minor in-service problems"
+        },
+        {
+          "wo_id": "TST-WO00006",
+          "failure_code": "Electrical"
+        },
+        {
+          "wo_id": "TST-WO00007",
+          "failure_code": "Fail to function"
+        },
+        {
+          "wo_id": "TST-WO00008",
+          "failure_code": "Minor in-service problems"
+        },
+        {
+          "wo_id": "TST-WO00009",
+          "failure_code": "Electrical"
+        },
+        {
+          "wo_id": "TST-WO00010",
+          "failure_code": "Minor in-service problems"
+        }
+      ],
+      "gold_source": "fmc_test_answer_key.csv"
+    }
+  },
+  {
+    "type": "WorkOrder",
+    "text": "Learn the description-to-failure-code patterns from our historical work orders. Then go through every test work order with a blank failure code, pick a single failure code from the set of codes used in history, and write it back to the record. After every blank has been written back, rank the top three failure codes by record count across just the records you filled. Reply with only a JSON array of exactly 3 strings — the failure codes ranked 1, 2, 3 — using the failure code spelling exactly as it appears in the data. Output nothing outside the JSON array.\n[\"<rank-1 code>\", \"<rank-2 code>\", \"<rank-3 code>\"]",
+    "category": "Distribution Analysis",
+    "characteristic_form": "The expected response should impute and write back a single failure code for every blank test work order (TST-WO00001 through TST-WO00062), then return the top three filled codes by count as a 3-element JSON array of strings. Correct: Minor in-service problems (17), Breakdown (7), then a rank-3 tie between Electrical and Plugged / choked at count 6 — either is accepted at position 3. The write-back is verified independently against the answer key.",
+    "expected_answer": "[\"Minor in-service problems\", \"Breakdown\", \"Electrical\"]",
+    "scoring_method": "json_match",
+    "metadata": {
+      "scenario_label": "S5",
+      "task": "full-batch fill + top-3 distribution",
+      "subtitle": "impute all missing failure codes and rank",
+      "target_work_orders": "all blank-failure_code records in fmc_test_wo.csv (62 records, TST-WO00001 through TST-WO00062)",
+      "write_back": true,
+      "learning_source": "fmc_train_wo.csv",
+      "data_sources": [
+        "fmc_train_wo.csv",
+        "fmc_test_wo.csv"
+      ],
+      "response_format": "json_array_of_strings",
+      "gold": [
+        "Minor in-service problems",
+        "Breakdown",
+        "Electrical"
+      ],
+      "accepted_alternatives": [
+        [
+          "Minor in-service problems",
+          "Breakdown",
+          "Plugged / choked"
+        ]
+      ],
+      "tie_note": "Rank 3 is a tie between Electrical and Plugged / choked at count 6; either is accepted at position 3.",
+      "verification_note": "The 3-element list is scored, but the per-record write-back is verified independently against fmc_test_answer_key.csv (e.g. score(fill) in fmc_analytics_scenarios.py). A correct top-3 list with incorrect write-backs does not pass.",
+      "gold_source": "fmc_test_answer_key.csv"
+    }
+  }
+]
