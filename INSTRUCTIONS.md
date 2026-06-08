@@ -107,6 +107,13 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
+**Stirrup code track** — `stirrup-agent` with `--code-backend docker`
+
+| Variable             | Default            | Description                                                                |
+| -------------------- | ------------------ | -------------------------------------------------------------------------- |
+| `STIRRUP_CODE_IMAGE` | `python:3.12-slim` | Docker image for the code sandbox (build `assetops-code` for numpy/pandas/scipy) |
+| `DOCKER_HOST`        | *(SDK default)*    | Daemon socket if non-default (e.g. Rancher: `unix:///<home>/.rd/docker.sock`) |
+
 ---
 
 ## MCP Servers
@@ -142,7 +149,7 @@ query="What is the current date and time? Also list assets at site MAIN. Also ge
 
 ## Agents
 
-Four runners drive the same MCP servers. Each is a CLI registered by `uv sync` that takes a single positional `question` argument and spawns the MCP servers as stdio subprocesses on demand.
+Five runners drive the same MCP servers. Each is a CLI registered by `uv sync` that takes a single positional `question` argument and spawns the MCP servers as stdio subprocesses on demand.
 
 | Runner         | Source                       | Loop                                                          | Default model                                               |
 | -------------- | ---------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -150,6 +157,9 @@ Four runners drive the same MCP servers. Each is a CLI registered by `uv sync` t
 | `claude-agent` | `src/agent/claude_agent/`    | [`claude-agent-sdk`](https://github.com/anthropics/claude-agent-sdk-python) agentic loop | `litellm_proxy/aws/claude-opus-4-6` |
 | `openai-agent` | `src/agent/openai_agent/`    | [`openai-agents`](https://github.com/openai/openai-agents-python) SDK Runner | `litellm_proxy/azure/gpt-5.4`                |
 | `deep-agent`   | `src/agent/deep_agent/`      | [LangChain deep-agents](https://docs.langchain.com/oss/python/deepagents/overview) (LangGraph), MCP bridged via `langchain-mcp-adapters` | `litellm_proxy/aws/claude-opus-4-6` |
+| `stirrup-agent` | `src/agent/stirrup_agent/` | [Stirrup](https://github.com/ArtificialAnalysis/Stirrup) agent loop (in-process), MCP via its `MCPToolProvider`; **code-capable** (writes/runs Python) | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8` |
+
+- [Agents](#agents) — Stirrup specifics in [docs/stirrup-agent.md](docs/stirrup-agent.md)
 
 ### Usage
 
@@ -158,6 +168,7 @@ uv run plan-execute "$query"
 uv run claude-agent "$query"
 uv run openai-agent "$query"
 uv run deep-agent   "$query"
+uv run stirrup-agent "$query"
 ```
 
 ### Common flags
@@ -178,6 +189,9 @@ uv run deep-agent   "$query"
 | `--show-plan`         | plan-execute               | Print the generated plan before execution                         |
 | `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
 | `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
+| `--code-enabled` / `--no-code` | stirrup-agent | Enable (default) / disable code execution — selects the code track |
+| `--code-backend B`             | stirrup-agent | Code sandbox: `docker` (default), `local`, or `e2b`                |
+| `--max-tokens N`               | stirrup-agent | Max output tokens per call; keep under provider limit (default 16384) |
 
 ### Examples
 
@@ -194,6 +208,14 @@ uv run claude-agent --model-id claude-opus-4-6 "$query"
 # Persist a deep-agent run for benchmark evaluation
 AGENT_TRAJECTORY_DIR=./traces/trajectories OTEL_TRACES_FILE=./traces/traces.jsonl \
   uv run deep-agent --run-id bench-001 --scenario-id 304 "$query"
+
+# Stirrup tools-only run (comparable to the other runners), native watsonx route
+uv run stirrup-agent --no-code --show-trajectory \
+  --model-id watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 "$query"
+
+# Stirrup code track in a Docker sandbox (writes and runs Python)
+STIRRUP_CODE_IMAGE=assetops-code \
+  uv run stirrup-agent --code-backend docker "$query"
 ```
 
 ---
@@ -283,7 +305,7 @@ uv run pytest src/ -k "integration"                # only files / tests with "in
 ┌──────────────────────────────────────────────────────────────┐
 │                          agent/                              │
 │                                                              │
-│   PlanExecuteRunner   ClaudeAgentRunner                      │
+│   PlanExecuteRunner   ClaudeAgentRunner   StirrupAgentRunner │
 │   OpenAIAgentRunner   DeepAgentRunner                        │
 │                                                              │
 └──────────────────────────┬───────────────────────────────────┘
