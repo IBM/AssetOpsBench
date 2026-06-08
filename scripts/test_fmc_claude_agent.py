@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
+import uuid
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -50,12 +52,17 @@ def _load_scenarios(labels: set[str]) -> list[dict]:
 
 async def _run(args: argparse.Namespace) -> None:
     from agent.claude_agent.runner import ClaudeAgentRunner
+    from observability import set_run_context
     from servers.wo.data import load, write_failure_codes
 
     scenarios = _load_scenarios(set(args.labels))
     if not scenarios:
         print(f"No scenarios matched {args.labels!r}")
         return
+
+    traj_dir = os.environ.get("AGENT_TRAJECTORY_DIR")
+    if traj_dir:
+        print(f"[trajectory] saving per-scenario JSON to {traj_dir}")
 
     runner = ClaudeAgentRunner(model=args.model_id, max_turns=args.max_turns)
     needs_restore = False
@@ -64,6 +71,11 @@ async def _run(args: argparse.Namespace) -> None:
         md = s["metadata"]
         label = md.get("scenario_label", "?")
         needs_restore = needs_restore or bool(md.get("write_back"))
+
+        # Fresh run_id per scenario so persist_trajectory writes one file each
+        # (keyed by run_id, with scenario_id recorded inside).
+        run_id = str(uuid.uuid4())
+        set_run_context(run_id=run_id, scenario_id=label)
 
         print(f"\n{_HR}\n{label} · {md.get('subtitle', '')}\n{_HR}")
         print(f"Q: {s['text']}\n")
@@ -80,6 +92,8 @@ async def _run(args: argparse.Namespace) -> None:
             f"tool_calls={len(tools_used)}, "
             f"out_tokens={result.trajectory.total_output_tokens})"
         )
+        if traj_dir:
+            print(f"SAVED         : {Path(traj_dir) / f'{run_id}.json'}  (scenario_id={label})")
         if args.show_trajectory:
             for t in result.trajectory.turns:
                 for tc in t.tool_calls:
@@ -104,11 +118,20 @@ def main() -> None:
     parser.add_argument("--max-turns", type=int, default=30, help="Max agentic loop turns.")
     parser.add_argument("--no-restore", action="store_true", help="Leave write-back imputations in CouchDB.")
     parser.add_argument("--show-trajectory", action="store_true", help="Print each tool call.")
+    parser.add_argument(
+        "--trajectory-dir",
+        metavar="DIR",
+        default=None,
+        help="Save a {run_id}.json trajectory per scenario to DIR "
+        "(overrides/sets AGENT_TRAJECTORY_DIR).",
+    )
     args = parser.parse_args()
 
     from dotenv import load_dotenv
 
     load_dotenv(_ROOT / ".env")
+    if args.trajectory_dir:
+        os.environ["AGENT_TRAJECTORY_DIR"] = args.trajectory_dir
     asyncio.run(_run(args))
 
 
