@@ -83,32 +83,30 @@ def test_get_no_data():
 # --- list_work_order_failure_codes -----------------------------------------
 
 
-def test_list_train_split(mock_load):
-    res = fmc_tools.list_work_order_failure_codes(split="train")
+def test_list_labeled_only(mock_load):
+    res = fmc_tools.list_work_order_failure_codes(labeled=True)
     assert isinstance(res, FmcWorkOrdersResult)
     assert res.total == 4
     assert res.labeled == 4
     assert res.unlabeled == 0
-    assert all(wo.wo_id.startswith("TRN") for wo in res.work_orders)
+    assert all(wo.failure_code is not None for wo in res.work_orders)
 
 
-def test_list_test_split_unlabeled(mock_load):
-    res = fmc_tools.list_work_order_failure_codes(split="test")
+def test_list_unlabeled_only(mock_load):
+    res = fmc_tools.list_work_order_failure_codes(labeled=False)
     assert isinstance(res, FmcWorkOrdersResult)
     assert res.total == 2
     assert res.labeled == 0
     assert res.unlabeled == 2
+    assert all(wo.failure_code is None for wo in res.work_orders)
 
 
 def test_list_all_default(mock_load):
     res = fmc_tools.list_work_order_failure_codes()
     assert isinstance(res, FmcWorkOrdersResult)
     assert res.total == 6
-
-
-def test_list_invalid_split(mock_load):
-    res = fmc_tools.list_work_order_failure_codes(split="bogus")
-    assert isinstance(res, ErrorResult)
+    assert res.labeled == 4
+    assert res.unlabeled == 2
 
 
 # --- set_work_order_failure_code -------------------------------------------
@@ -143,9 +141,10 @@ def test_set_empty_code_rejected():
 # --- get_failure_code_distribution -----------------------------------------
 
 
-def test_distribution_train_ranked(mock_load):
-    res = fmc_tools.get_failure_code_distribution(split="train")
+def test_distribution_ranked(mock_load):
+    res = fmc_tools.get_failure_code_distribution()
     assert isinstance(res, FmcCodeDistributionResult)
+    assert res.total_records == 6
     assert res.labeled_records == 4
     # Breakdown (2) ranks first; remaining tied at 1
     assert res.distribution[0].failure_code == "Breakdown"
@@ -153,17 +152,14 @@ def test_distribution_train_ranked(mock_load):
 
 
 def test_distribution_top_n(mock_load):
-    res = fmc_tools.get_failure_code_distribution(split="train", top_n=1)
+    res = fmc_tools.get_failure_code_distribution(top_n=1)
     assert isinstance(res, FmcCodeDistributionResult)
     assert len(res.distribution) == 1
     assert res.distribution[0].failure_code == "Breakdown"
 
 
-def test_distribution_test_empty_when_unfilled(mock_load):
-    res = fmc_tools.get_failure_code_distribution(split="test")
-    assert isinstance(res, ErrorResult)
-
-
-def test_distribution_invalid_split(mock_load):
-    res = fmc_tools.get_failure_code_distribution(split="bogus")
-    assert isinstance(res, ErrorResult)
+def test_distribution_empty_when_no_codes():
+    blank = pd.DataFrame({"wo_id": ["TST-WO00001"], "description": ["x"], "failure_code": [None]})
+    with patch("servers.wo.fmc_tools.load", return_value=blank):
+        res = fmc_tools.get_failure_code_distribution()
+        assert isinstance(res, ErrorResult)

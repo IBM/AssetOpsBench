@@ -54,6 +54,18 @@ def load_scenarios(paths: Iterable[Path] | Path) -> list[Scenario]:
     return out
 
 
+def _coerce_scenario(item: dict, index: int) -> Scenario:
+    """Build a Scenario, assigning a positional fallback id when none is set.
+
+    Scenario files may omit ``id`` (e.g. draft utterance banks); a stable
+    1-based index keeps the join key populated without baking ids into the
+    on-disk file.
+    """
+    if not item.get("id"):
+        item = {**item, "id": index}
+    return Scenario.from_raw(item)
+
+
 def _load_scenario_file(path: Path) -> list[Scenario]:
     text = path.read_text(encoding="utf-8").strip()
     if not text:
@@ -61,16 +73,17 @@ def _load_scenario_file(path: Path) -> list[Scenario]:
 
     if path.suffix == ".jsonl":
         return [
-            Scenario.from_raw(json.loads(line))
-            for line in text.splitlines()
-            if line.strip()
+            _coerce_scenario(json.loads(line), i)
+            for i, line in enumerate(
+                (ln for ln in text.splitlines() if ln.strip()), start=1
+            )
         ]
 
     raw = json.loads(text)
     if isinstance(raw, list):
-        return [Scenario.from_raw(item) for item in raw]
+        return [_coerce_scenario(item, i) for i, item in enumerate(raw, start=1)]
     if isinstance(raw, dict):
-        return [Scenario.from_raw(raw)]
+        return [_coerce_scenario(raw, 1)]
     raise ValueError(f"unexpected scenario JSON shape in {path}: {type(raw).__name__}")
 
 

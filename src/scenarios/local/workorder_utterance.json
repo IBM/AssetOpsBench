@@ -33,7 +33,10 @@
         "wo_id": "TST-WO00032",
         "failure_code": "Overheating"
       },
-      "gold_source": "fmc_test_answer_key.csv"
+      "gold_source": "fmc_test_answer_key.csv",
+      "expected_tools": [
+        "get_work_order_failure_code"
+      ]
     }
   },
   {
@@ -71,14 +74,18 @@
         "wo_id": "TST-WO00054",
         "failure_code": "Vibration"
       },
-      "gold_source": "fmc_test_answer_key.csv"
+      "gold_source": "fmc_test_answer_key.csv",
+      "expected_tools": [
+        "get_work_order_failure_code",
+        "set_work_order_failure_code"
+      ]
     }
   },
   {
     "type": "WorkOrder",
     "text": "Look across our historical work orders and rank the top three failure codes by record count. Reply with only a JSON array of exactly three objects, ordered 1, 2, 3, in this shape:\n[\n  {\"rank\": 1, \"failure_code\": \"<code>\", \"count\": <int>},\n  {\"rank\": 2, \"failure_code\": \"<code>\", \"count\": <int>},\n  {\"rank\": 3, \"failure_code\": \"<code>\", \"count\": <int>}\n]\nUse the failure code spelling exactly as it appears in the data. If two codes are tied at the rank-3 cut-off, include both at \"rank\": 3 and add a fourth object {\"tie_at_rank_3\": true} at the end of the array. Output nothing outside the JSON array.",
     "category": "Distribution Analysis",
-    "characteristic_form": "The expected response should count failure codes across the historical training work orders and return the top three by record count as a JSON array of {rank, failure_code, count} objects, codes spelled exactly as in the data. Correct: Minor in-service problems (109), Breakdown (70), Structural deficiency (58).",
+    "characteristic_form": "The expected response should call get_failure_code_distribution (which ranks every recorded/labelled failure code by record count) and return the top three as a JSON array of {rank, failure_code, count} objects, codes spelled exactly as in the data. In the baseline state the labelled records are the historical work orders, so the correct answer is Minor in-service problems (109), Breakdown (70), Structural deficiency (58).",
     "expected_answer": "[{\"rank\": 1, \"failure_code\": \"Minor in-service problems\", \"count\": 109}, {\"rank\": 2, \"failure_code\": \"Breakdown\", \"count\": 70}, {\"rank\": 3, \"failure_code\": \"Structural deficiency\", \"count\": 58}]",
     "scoring_method": "json_match",
     "metadata": {
@@ -107,7 +114,11 @@
           "count": 58
         }
       ],
-      "gold_source": "fmc_train_wo.csv (verified by record count)"
+      "gold_source": "fmc_train_wo.csv (verified by record count)",
+      "expected_tools": [
+        "get_failure_code_distribution"
+      ],
+      "assumes_state": "test/target records still blank (only historical records labelled)"
     }
   },
   {
@@ -182,14 +193,20 @@
           "failure_code": "Minor in-service problems"
         }
       ],
-      "gold_source": "fmc_test_answer_key.csv"
+      "gold_source": "fmc_test_answer_key.csv",
+      "expected_tools": [
+        "list_work_order_failure_codes",
+        "get_work_order_failure_code",
+        "set_work_order_failure_code"
+      ],
+      "learning_via": "list_work_order_failure_codes(labeled=True)"
     }
   },
   {
     "type": "WorkOrder",
     "text": "Learn the description-to-failure-code patterns from our historical work orders. Then go through every test work order with a blank failure code, pick a single failure code from the set of codes used in history, and write it back to the record. After every blank has been written back, rank the top three failure codes by record count across just the records you filled. Reply with only a JSON array of exactly 3 strings — the failure codes ranked 1, 2, 3 — using the failure code spelling exactly as it appears in the data. Output nothing outside the JSON array.\n[\"<rank-1 code>\", \"<rank-2 code>\", \"<rank-3 code>\"]",
     "category": "Distribution Analysis",
-    "characteristic_form": "The expected response should impute and write back a single failure code for every blank test work order (TST-WO00001 through TST-WO00062), then return the top three filled codes by count as a 3-element JSON array of strings. Correct: Minor in-service problems (17), Breakdown (7), then a rank-3 tie between Electrical and Plugged / choked at count 6 — either is accepted at position 3. The write-back is verified independently against the answer key.",
+    "characteristic_form": "The expected response should list the blank records via list_work_order_failure_codes(labeled=False), impute and write back a single failure code for each via set_work_order_failure_code, then rank the top three failure codes by count across the records it imputed (computed from its own write set — get_failure_code_distribution ranks ALL recorded codes, including history, so it cannot isolate the filled subset). Correct: Minor in-service problems (17), Breakdown (7), then a rank-3 tie between Electrical and Plugged / choked at count 6 — either is accepted at position 3. The write-back is verified independently against the answer key.",
     "expected_answer": "[\"Minor in-service problems\", \"Breakdown\", \"Electrical\"]",
     "scoring_method": "json_match",
     "metadata": {
@@ -218,7 +235,12 @@
       ],
       "tie_note": "Rank 3 is a tie between Electrical and Plugged / choked at count 6; either is accepted at position 3.",
       "verification_note": "The 3-element list is scored, but the per-record write-back is verified independently against fmc_test_answer_key.csv (e.g. score(fill) in fmc_analytics_scenarios.py). A correct top-3 list with incorrect write-backs does not pass.",
-      "gold_source": "fmc_test_answer_key.csv"
+      "gold_source": "fmc_test_answer_key.csv",
+      "expected_tools": [
+        "list_work_order_failure_codes",
+        "set_work_order_failure_code"
+      ],
+      "distribution_note": "get_failure_code_distribution cannot scope to 'just the filled records'; the rank-3 list is computed by the agent from its own imputations."
     }
   }
 ]

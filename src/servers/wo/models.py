@@ -160,7 +160,6 @@ class FmcWorkOrder(BaseModel):
 
 
 class FmcWorkOrdersResult(BaseModel):
-    split: str
     total: int
     labeled: int
     unlabeled: int
@@ -181,7 +180,6 @@ class FmcCodeCount(BaseModel):
 
 
 class FmcCodeDistributionResult(BaseModel):
-    split: str
     total_records: int
     labeled_records: int
     distribution: List[FmcCodeCount]

@@ -72,10 +72,11 @@ def test_workorder_scenarios_load_and_conform():
         assert s.text.strip()
         assert s.category.strip()
         assert s.characteristic_form and s.characteristic_form.strip()
-    # IDs are unique and at least one scenario targets failure-code categorization.
+    # IDs are unique (positional fallback when omitted on disk) and at least
+    # one scenario targets failure-code imputation.
     ids = [s.id for s in scenarios]
     assert len(ids) == len(set(ids))
-    assert any(s.category == "Categorization" for s in scenarios)
+    assert any(s.category == "Failure Code Imputation" for s in scenarios)
 
 
 def test_join_drops_orphans(make_persisted_record):
