@@ -11,7 +11,6 @@ from servers.wo.models import (
     FmcBatchWriteResult,
     FmcCodeAssignment,
     FmcCodeDistributionResult,
-    FmcWorkOrder,
     FmcWorkOrdersResult,
 )
 
@@ -53,31 +52,54 @@ def mock_load():
         yield
 
 
-# --- get_work_order_failure_code -------------------------------------------
+# --- get_work_order_failure_codes ------------------------------------------
 
 
-def test_get_labeled_record(mock_load):
-    res = fmc_tools.get_work_order_failure_code("TRN-WO00001")
-    assert isinstance(res, FmcWorkOrder)
-    assert res.wo_id == "TRN-WO00001"
-    assert res.description == "falure"
-    assert res.failure_code == "Breakdown"
+def test_get_single_in_list(mock_load):
+    res = fmc_tools.get_work_order_failure_codes(["TRN-WO00001"])
+    assert isinstance(res, FmcWorkOrdersResult)
+    assert res.total == 1
+    wo = res.work_orders[0]
+    assert wo.wo_id == "TRN-WO00001"
+    assert wo.description == "falure"
+    assert wo.failure_code == "Breakdown"
+    assert res.missing == []
 
 
 def test_get_blank_record_has_null_code(mock_load):
-    res = fmc_tools.get_work_order_failure_code("TST-WO00001")
-    assert isinstance(res, FmcWorkOrder)
-    assert res.failure_code is None
+    res = fmc_tools.get_work_order_failure_codes(["TST-WO00001"])
+    assert isinstance(res, FmcWorkOrdersResult)
+    assert res.work_orders[0].failure_code is None
 
 
-def test_get_missing_record(mock_load):
-    res = fmc_tools.get_work_order_failure_code("TST-WO99999")
+def test_get_batch_preserves_order(mock_load):
+    res = fmc_tools.get_work_order_failure_codes(["TST-WO00001", "TRN-WO00003", "TRN-WO00001"])
+    assert isinstance(res, FmcWorkOrdersResult)
+    assert [wo.wo_id for wo in res.work_orders] == ["TST-WO00001", "TRN-WO00003", "TRN-WO00001"]
+    assert res.labeled == 2
+    assert res.unlabeled == 1
+
+
+def test_get_batch_reports_missing(mock_load):
+    res = fmc_tools.get_work_order_failure_codes(["TRN-WO00001", "TST-WO99999"])
+    assert isinstance(res, FmcWorkOrdersResult)
+    assert res.total == 1
+    assert res.missing == ["TST-WO99999"]
+
+
+def test_get_all_missing(mock_load):
+    res = fmc_tools.get_work_order_failure_codes(["TST-WO99999"])
+    assert isinstance(res, ErrorResult)
+
+
+def test_get_empty_list_rejected(mock_load):
+    res = fmc_tools.get_work_order_failure_codes([])
     assert isinstance(res, ErrorResult)
 
 
 def test_get_no_data():
     with patch("servers.wo.fmc_tools.load", return_value=None):
-        res = fmc_tools.get_work_order_failure_code("TRN-WO00001")
+        res = fmc_tools.get_work_order_failure_codes(["TRN-WO00001"])
         assert isinstance(res, ErrorResult)
 
 

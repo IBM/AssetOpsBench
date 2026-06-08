@@ -30,7 +30,7 @@ _TOOLS = [
     (tools.get_work_order_distribution, "Get Work Order Distribution"),
     (tools.predict_next_work_order, "Predict Next Work Order"),
     (tools.analyze_alert_to_failure, "Analyze Alert to Failure"),
-    (fmc_tools.get_work_order_failure_code, "Get Work Order Failure Code"),
+    (fmc_tools.get_work_order_failure_codes, "Get Work Order Failure Codes"),
     (fmc_tools.list_work_order_failure_codes, "List Work Order Failure Codes"),
     (fmc_tools.set_work_order_failure_codes, "Set Work Order Failure Codes"),
     (fmc_tools.get_failure_code_distribution, "Get Failure Code Distribution"),

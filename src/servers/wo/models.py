@@ -1,7 +1,7 @@
 """Pydantic result models for the Work Order MCP server."""
 
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ErrorResult(BaseModel):
@@ -164,6 +164,7 @@ class FmcWorkOrdersResult(BaseModel):
     labeled: int
     unlabeled: int
     work_orders: List[FmcWorkOrder]
+    missing: List[str] = Field(default_factory=list)
     message: str
 
 

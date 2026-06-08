@@ -49,26 +49,64 @@ def _is_labeled(value) -> bool:
     return _code(value) is not None
 
 
-def get_work_order_failure_code(wo_id: str) -> Union[FmcWorkOrder, ErrorResult]:
-    """Retrieve a single failure-mode work order by its ``wo_id``.
+def get_work_order_failure_codes(wo_ids: List[str]) -> Union[FmcWorkOrdersResult, ErrorResult]:
+    """Retrieve one or more failure-mode work orders by ``wo_id``.
 
-    Returns the work order's free-text description and its recorded failure
-    code.  ``failure_code`` is null when none has been recorded yet.
+    Returns each work order's free-text description and recorded failure code
+    (null when none has been recorded yet), in the requested order.  Pass a
+    one-element list to fetch a single record, or many to pull a batch at once
+    (preferred over many single calls).  Any ids with no matching record are
+    reported in ``missing``.
 
     Args:
-        wo_id: Work order identifier, e.g. ``"TST-WO00032"``.
+        wo_ids: Work order identifiers, e.g. ``["TST-WO00032"]`` or
+            ``["TST-WO00001", "TST-WO00002"]``.
     """
+    if not wo_ids:
+        return ErrorResult(error="wo_ids must be a non-empty list")
     df = load(_FMC_DATASET)
     if df is None:
         return ErrorResult(error="FMC work order data not available")
-    match = df[df["wo_id"] == wo_id]
-    if match.empty:
-        return ErrorResult(error=f"No work order found with wo_id '{wo_id}'")
-    row = match.iloc[0]
-    return FmcWorkOrder(
-        wo_id=str(row["wo_id"]),
-        description=str(row.get("description", "") or ""),
-        failure_code=_code(row.get("failure_code")),
+
+    requested = list(dict.fromkeys(wo_ids))  # de-duplicate, preserve order
+    by_id = {
+        str(row["wo_id"]): row
+        for _, row in df[df["wo_id"].isin(requested)].iterrows()
+    }
+    items: List[FmcWorkOrder] = []
+    missing: List[str] = []
+    labeled = 0
+    for wo_id in requested:
+        row = by_id.get(wo_id)
+        if row is None:
+            missing.append(wo_id)
+            continue
+        code = _code(row.get("failure_code"))
+        if code is not None:
+            labeled += 1
+        items.append(
+            FmcWorkOrder(
+                wo_id=wo_id,
+                description=str(row.get("description", "") or ""),
+                failure_code=code,
+            )
+        )
+    if not items:
+        return ErrorResult(error=f"No work orders found for: {', '.join(requested)}")
+
+    message = (
+        f"Found {len(items)} of {len(requested)} requested work order(s) "
+        f"({labeled} labelled, {len(items) - labeled} unlabelled)."
+    )
+    if missing:
+        message += f" Not found: {', '.join(missing)}."
+    return FmcWorkOrdersResult(
+        total=len(items),
+        labeled=labeled,
+        unlabeled=len(items) - labeled,
+        work_orders=items,
+        missing=missing,
+        message=message,
     )
 
 
