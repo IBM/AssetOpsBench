@@ -8,10 +8,11 @@ import pytest
 from servers.wo import fmc_tools
 from servers.wo.models import (
     ErrorResult,
+    FmcBatchWriteResult,
+    FmcCodeAssignment,
     FmcCodeDistributionResult,
     FmcWorkOrder,
     FmcWorkOrdersResult,
-    FmcWriteResult,
 )
 
 
@@ -109,32 +110,56 @@ def test_list_all_default(mock_load):
     assert res.unlabeled == 2
 
 
-# --- set_work_order_failure_code -------------------------------------------
+# --- set_work_order_failure_codes ------------------------------------------
 
 
-def test_set_success():
-    with patch("servers.wo.fmc_tools.write_failure_code", return_value=True) as mock_write:
-        res = fmc_tools.set_work_order_failure_code("TST-WO00001", "Overheating")
-        assert isinstance(res, FmcWriteResult)
-        assert res.updated is True
-        assert res.failure_code == "Overheating"
-        mock_write.assert_called_once_with("TST-WO00001", "Overheating")
+def _asg(wo_id, code):
+    return FmcCodeAssignment(wo_id=wo_id, failure_code=code)
 
 
-def test_set_missing_record():
-    with patch("servers.wo.fmc_tools.write_failure_code", return_value=False):
-        res = fmc_tools.set_work_order_failure_code("TST-WO99999", "Overheating")
-        assert isinstance(res, ErrorResult)
+def test_set_single():
+    with patch("servers.wo.fmc_tools.write_failure_codes", return_value={"TST-WO00001": True}) as mock_write:
+        res = fmc_tools.set_work_order_failure_codes([_asg("TST-WO00001", "Overheating")])
+        assert isinstance(res, FmcBatchWriteResult)
+        assert res.total == 1
+        assert res.updated == 1
+        assert res.results[0].failure_code == "Overheating"
+        mock_write.assert_called_once_with({"TST-WO00001": "Overheating"})
+
+
+def test_set_batch_partial_missing():
+    status = {"TST-WO00001": True, "TST-WO99999": False}
+    with patch("servers.wo.fmc_tools.write_failure_codes", return_value=status):
+        res = fmc_tools.set_work_order_failure_codes(
+            [_asg("TST-WO00001", "Electrical"), _asg("TST-WO99999", "Breakdown")]
+        )
+        assert isinstance(res, FmcBatchWriteResult)
+        assert res.total == 2
+        assert res.updated == 1
+        missing = [r.wo_id for r in res.results if not r.updated]
+        assert missing == ["TST-WO99999"]
 
 
 def test_set_no_db():
-    with patch("servers.wo.fmc_tools.write_failure_code", return_value=None):
-        res = fmc_tools.set_work_order_failure_code("TST-WO00001", "Overheating")
+    with patch("servers.wo.fmc_tools.write_failure_codes", return_value=None):
+        res = fmc_tools.set_work_order_failure_codes([_asg("TST-WO00001", "Overheating")])
         assert isinstance(res, ErrorResult)
 
 
+def test_set_empty_list_rejected():
+    res = fmc_tools.set_work_order_failure_codes([])
+    assert isinstance(res, ErrorResult)
+
+
 def test_set_empty_code_rejected():
-    res = fmc_tools.set_work_order_failure_code("TST-WO00001", "   ")
+    res = fmc_tools.set_work_order_failure_codes([_asg("TST-WO00001", "   ")])
+    assert isinstance(res, ErrorResult)
+
+
+def test_set_duplicate_wo_id_rejected():
+    res = fmc_tools.set_work_order_failure_codes(
+        [_asg("TST-WO00001", "Electrical"), _asg("TST-WO00001", "Breakdown")]
+    )
     assert isinstance(res, ErrorResult)
 
 

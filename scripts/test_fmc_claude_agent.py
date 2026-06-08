@@ -50,7 +50,7 @@ def _load_scenarios(labels: set[str]) -> list[dict]:
 
 async def _run(args: argparse.Namespace) -> None:
     from agent.claude_agent.runner import ClaudeAgentRunner
-    from servers.wo.data import load, write_failure_code
+    from servers.wo.data import load, write_failure_codes
 
     scenarios = _load_scenarios(set(args.labels))
     if not scenarios:
@@ -87,11 +87,11 @@ async def _run(args: argparse.Namespace) -> None:
 
     if needs_restore and not args.no_restore:
         df = load("wo_fmc")
-        restored = 0
+        status = {}
         if df is not None:
-            for wo_id in df.loc[df["wo_id"].str.startswith("TST"), "wo_id"]:
-                if write_failure_code(str(wo_id), None) is True:
-                    restored += 1
+            tst_ids = [str(w) for w in df.loc[df["wo_id"].str.startswith("TST"), "wo_id"]]
+            status = write_failure_codes({wo_id: None for wo_id in tst_ids}) or {}
+        restored = sum(1 for ok in status.values() if ok)
         print(f"\n[restore] re-blanked {restored} TST- record(s) to keep the dataset pristine.")
     elif needs_restore:
         print("\n[restore] skipped (--no-restore); TST- records keep their imputed codes.")

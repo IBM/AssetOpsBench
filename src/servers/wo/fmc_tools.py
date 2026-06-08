@@ -21,14 +21,16 @@ from typing import List, Optional, Union
 
 import pandas as pd
 
-from .data import load, write_failure_code
+from .data import load, write_failure_codes
 from .models import (
     ErrorResult,
+    FmcBatchWriteResult,
+    FmcCodeAssignment,
     FmcCodeCount,
     FmcCodeDistributionResult,
     FmcWorkOrder,
     FmcWorkOrdersResult,
-    FmcWriteResult,
+    FmcWriteEntry,
 )
 
 _FMC_DATASET = "wo_fmc"
@@ -119,29 +121,49 @@ def list_work_order_failure_codes(
     )
 
 
-def set_work_order_failure_code(wo_id: str, failure_code: str) -> Union[FmcWriteResult, ErrorResult]:
-    """Write (impute) a failure code onto a failure-mode work order record.
+def set_work_order_failure_codes(
+    assignments: List[FmcCodeAssignment],
+) -> Union[FmcBatchWriteResult, ErrorResult]:
+    """Write (impute) failure codes onto one or more work order records.
 
-    Persists ``failure_code`` to the ``wo_fmc`` record identified by ``wo_id``
-    in CouchDB and returns the confirmed value.
+    Persists each ``failure_code`` to its ``wo_fmc`` record in CouchDB in a
+    single batch.  Pass a one-element list to set a single record, or many to
+    impute a whole batch at once (preferred over many single calls).
 
     Args:
-        wo_id: Work order identifier, e.g. ``"TST-WO00054"``.
-        failure_code: Failure code to record, e.g. ``"Vibration"``.
+        assignments: List of ``{"wo_id": ..., "failure_code": ...}`` items,
+            e.g. ``[{"wo_id": "TST-WO00054", "failure_code": "Vibration"}]``.
     """
-    code = (failure_code or "").strip()
-    if not code:
-        return ErrorResult(error="failure_code must be a non-empty string")
-    result = write_failure_code(wo_id, code)
-    if result is None:
+    if not assignments:
+        return ErrorResult(error="assignments must be a non-empty list")
+
+    updates: dict = {}
+    for a in assignments:
+        code = (a.failure_code or "").strip()
+        if not code:
+            return ErrorResult(error=f"failure_code for '{a.wo_id}' must be a non-empty string")
+        if a.wo_id in updates:
+            return ErrorResult(error=f"duplicate wo_id in assignments: '{a.wo_id}'")
+        updates[a.wo_id] = code
+
+    status = write_failure_codes(updates)
+    if status is None:
         return ErrorResult(error="FMC work order data not available")
-    if result is False:
-        return ErrorResult(error=f"No work order found with wo_id '{wo_id}'")
-    return FmcWriteResult(
-        wo_id=wo_id,
-        failure_code=code,
-        updated=True,
-        message=f"Recorded failure_code '{code}' on work order '{wo_id}'.",
+
+    results = [
+        FmcWriteEntry(wo_id=wo_id, failure_code=code, updated=bool(status.get(wo_id)))
+        for wo_id, code in updates.items()
+    ]
+    updated = sum(1 for r in results if r.updated)
+    missing = [r.wo_id for r in results if not r.updated]
+    message = f"Recorded {updated}/{len(results)} failure code(s)."
+    if missing:
+        message += f" No record found for: {', '.join(missing)}."
+    return FmcBatchWriteResult(
+        total=len(results),
+        updated=updated,
+        results=results,
+        message=message,
     )
 
 

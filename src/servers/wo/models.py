@@ -167,10 +167,23 @@ class FmcWorkOrdersResult(BaseModel):
     message: str
 
 
-class FmcWriteResult(BaseModel):
+class FmcCodeAssignment(BaseModel):
+    """A single (wo_id, failure_code) write request."""
+
+    wo_id: str
+    failure_code: str
+
+
+class FmcWriteEntry(BaseModel):
     wo_id: str
     failure_code: str
     updated: bool
+
+
+class FmcBatchWriteResult(BaseModel):
+    total: int
+    updated: int
+    results: List[FmcWriteEntry]
     message: str
 
 

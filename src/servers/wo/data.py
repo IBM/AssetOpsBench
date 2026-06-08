@@ -114,32 +114,55 @@ def load(dataset: str) -> Optional[pd.DataFrame]:
         return None
 
 
-def write_failure_code(wo_id: str, failure_code: str) -> Optional[bool]:
-    """Persist *failure_code* onto the ``wo_fmc`` record identified by *wo_id*.
+def write_failure_codes(updates: Dict[str, Optional[str]]) -> Optional[Dict[str, bool]]:
+    """Persist failure codes onto multiple ``wo_fmc`` records in one round-trip.
 
-    Returns ``True`` on a successful update, ``False`` when no matching record
-    exists, and ``None`` when CouchDB is unavailable.  Invalidates the cached
-    ``wo_fmc`` DataFrame so subsequent reads reflect the write.
+    *updates* maps ``wo_id`` → ``failure_code`` (``None`` blanks the field).
+    Fetches all targets with a single ``$in`` query and writes them with one
+    ``_bulk_docs`` call.  Returns a ``{wo_id: updated}`` status map (``False``
+    for ids with no matching record), or ``None`` when CouchDB is unavailable.
+    Invalidates the cached ``wo_fmc`` DataFrame when anything was written.
     """
+    if not updates:
+        return {}
     db = _get_db()
     if db is None:
         return None
     try:
         result = db.find(
-            selector={"dataset": {"$eq": "wo_fmc"}, "wo_id": {"$eq": wo_id}},
-            limit=1,
+            selector={"dataset": {"$eq": "wo_fmc"}, "wo_id": {"$in": list(updates)}},
+            limit=len(updates) + 1,
         )
-        docs = result.get("docs", [])
-        if not docs:
-            return False
-        doc = docs[0]
-        doc["failure_code"] = failure_code
-        db.save(doc)
-        _dataset_cache.pop("wo_fmc", None)
-        return True
+        by_id = {doc["wo_id"]: doc for doc in result.get("docs", [])}
+        status: Dict[str, bool] = {}
+        to_save = []
+        for wo_id, failure_code in updates.items():
+            doc = by_id.get(wo_id)
+            if doc is None:
+                status[wo_id] = False
+                continue
+            doc["failure_code"] = failure_code
+            to_save.append(doc)
+            status[wo_id] = True
+        if to_save:
+            db.bulk_docs(to_save)
+            _dataset_cache.pop("wo_fmc", None)
+        return status
     except Exception as exc:
-        logger.error("Failed to write failure_code for '%s': %s", wo_id, exc)
+        logger.error("Failed to write failure codes for %s: %s", list(updates), exc)
         return None
+
+
+def write_failure_code(wo_id: str, failure_code: Optional[str]) -> Optional[bool]:
+    """Persist a single *failure_code* onto the ``wo_fmc`` record *wo_id*.
+
+    Thin wrapper over :func:`write_failure_codes`.  Returns ``True`` on update,
+    ``False`` when no matching record exists, ``None`` when CouchDB is down.
+    """
+    result = write_failure_codes({wo_id: failure_code})
+    if result is None:
+        return None
+    return result.get(wo_id, False)
 
 
 # ---------------------------------------------------------------------------
