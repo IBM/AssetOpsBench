@@ -19,7 +19,7 @@ logging.basicConfig(level=_log_level)
 mcp = FastMCP("wo", instructions="Work order analytics: query work orders, events, failure codes, and predict maintenance patterns.")
 
 # Register tools — imported after mcp is created to avoid circular imports.
-from . import tools  # noqa: E402
+from . import fmc_tools, tools  # noqa: E402
 
 _TOOLS = [
     (tools.get_work_orders, "Get Work Orders"),
@@ -30,6 +30,10 @@ _TOOLS = [
     (tools.get_work_order_distribution, "Get Work Order Distribution"),
     (tools.predict_next_work_order, "Predict Next Work Order"),
     (tools.analyze_alert_to_failure, "Analyze Alert to Failure"),
+    (fmc_tools.get_work_order_failure_code, "Get Work Order Failure Code"),
+    (fmc_tools.list_work_order_failure_codes, "List Work Order Failure Codes"),
+    (fmc_tools.set_work_order_failure_code, "Set Work Order Failure Code"),
+    (fmc_tools.get_failure_code_distribution, "Get Failure Code Distribution"),
 ]
 for _fn, _title in _TOOLS:
     mcp.tool(title=_title)(_fn)

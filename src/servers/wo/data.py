@@ -114,6 +114,34 @@ def load(dataset: str) -> Optional[pd.DataFrame]:
         return None
 
 
+def write_failure_code(wo_id: str, failure_code: str) -> Optional[bool]:
+    """Persist *failure_code* onto the ``wo_fmc`` record identified by *wo_id*.
+
+    Returns ``True`` on a successful update, ``False`` when no matching record
+    exists, and ``None`` when CouchDB is unavailable.  Invalidates the cached
+    ``wo_fmc`` DataFrame so subsequent reads reflect the write.
+    """
+    db = _get_db()
+    if db is None:
+        return None
+    try:
+        result = db.find(
+            selector={"dataset": {"$eq": "wo_fmc"}, "wo_id": {"$eq": wo_id}},
+            limit=1,
+        )
+        docs = result.get("docs", [])
+        if not docs:
+            return False
+        doc = docs[0]
+        doc["failure_code"] = failure_code
+        db.save(doc)
+        _dataset_cache.pop("wo_fmc", None)
+        return True
+    except Exception as exc:
+        logger.error("Failed to write failure_code for '%s': %s", wo_id, exc)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Query helpers
 # ---------------------------------------------------------------------------

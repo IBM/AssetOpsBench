@@ -146,3 +146,43 @@ class AlertToFailureResult(BaseModel):
     total_alerts_analyzed: int
     transitions: List[AlertToFailureEntry]
     message: str
+
+
+# ---------------------------------------------------------------------------
+# Failure-mode classification (wo_fmc dataset)
+# ---------------------------------------------------------------------------
+
+
+class FmcWorkOrder(BaseModel):
+    wo_id: str
+    description: str
+    failure_code: Optional[str]
+
+
+class FmcWorkOrdersResult(BaseModel):
+    split: str
+    total: int
+    labeled: int
+    unlabeled: int
+    work_orders: List[FmcWorkOrder]
+    message: str
+
+
+class FmcWriteResult(BaseModel):
+    wo_id: str
+    failure_code: str
+    updated: bool
+    message: str
+
+
+class FmcCodeCount(BaseModel):
+    failure_code: str
+    count: int
+
+
+class FmcCodeDistributionResult(BaseModel):
+    split: str
+    total_records: int
+    labeled_records: int
+    distribution: List[FmcCodeCount]
+    message: str
