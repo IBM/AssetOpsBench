@@ -66,6 +66,7 @@ _DATASETS = [
     ("failure_codes.csv", "failure_codes", {}),
     ("primary_failure_codes.csv", "primary_failure_codes", {}),
     ("component.csv", "component", {}),
+    ("wo_fmc.csv", "wo_fmc", {}),
 ]
 
 # Mango indexes to create: list of field-lists
