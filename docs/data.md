@@ -2,12 +2,14 @@
 
 Config-driven loading of benchmark data into CouchDB. Every **collection** (work orders,
 IoT sensor data, vibration, alerts, events, failure codes, …) is described once in
-`collections.json`, and **manifests** bind data files to collections — `default.json`
-for the baseline, `scenario_<id>.json` for scenario-specific data. One generic loader
-(`loader.py`) handles all of them: **each manifest key becomes a CouchDB database of
-the same name.**
+`collections.json`, and **manifests** bind data files to collections. Each scenario is a
+self-contained folder under `scenarios_data/` holding a `manifest.json` (what data to
+load) and a `question.txt` (the scenario prompt); a `default/` folder provides the
+baseline. One generic loader (`loader.py`) handles all of them: **each manifest key
+becomes a CouchDB database of the same name.**
 
-No loader code changes are needed to add data or new collections — only config.
+Data files common to many scenarios live once in `scenarios_data/shared/`. No loader code
+changes are needed to add data or new collections — only config.
 
 ---
 
@@ -21,15 +23,15 @@ docker compose -f src/couchdb/docker-compose.yaml up -d
 curl -s -u admin:password http://localhost:5984/_all_dbs
 # → ["workorder","iot","vibration","failurecode", ...]
 
-curl -s -u admin:password http://localhost:5984/workorder/wo:ABC:WO627398
+curl -s -u admin:password http://localhost:5984/workorder/wo:MAIN:1000045
 ```
 
 To (re)load from your host at any time (no container restart needed):
 
 ```bash
-pip install requests pandas python-dotenv     # one-time, or use `uv run`
 python3 src/couchdb/init_data.py              # load the default data
-python3 src/couchdb/init_data.py 7            # load scenario 7's data
+python3 src/couchdb/init_data.py 1            # load scenario 1's data
+python3 src/couchdb/init_data.py 1 --reset    # load scenario 1's data (clean slate)
 python3 src/couchdb/init_data.py --reset-only # drop all user databases (clean slate)
 ```
 
@@ -48,28 +50,51 @@ src/couchdb/
 ├── transforms.py              optional per-collection doc transforms (escape hatch)
 ├── _design_workorders.json    work-order validation + views (installed on load)
 │
-├── sample_data/               the data files
-│   ├── work_order/workorders.csv
-│   ├── iot/*.json
-│   └── failure_code/failure_code_sample.csv
-│
-└── scenarios_data/            manifests (what to load)
-    ├── default.json           the DEFAULT configuration
-    └── scenario_<id>.json     per-scenario overrides
+└── scenarios_data/            scenarios + the shared corpus
+    ├── default/               the DEFAULT configuration
+    │   ├── manifest.json
+    │   └── question.txt
+    ├── scenario_<id>/         one self-contained folder per scenario
+    │   ├── manifest.json      what to load (paths into shared/ or local files)
+    │   └── question.txt       the scenario prompt (read by the benchmark harness)
+    └── shared/                data common to many scenarios
+        ├── work_order/workorders.csv
+        ├── iot/*.json
+        └── failure_code/failure_code_sample.csv
 ```
+
+A scenario folder is fully self-contained: its `manifest.json`, its prompt, and any data
+unique to that scenario. `question.txt` is consumed by the benchmark/agent harness, not
+by the loader — `init_data.py` only reads `manifest.json`.
 
 ---
 
 ## How loading works
 
-1. `init_data.py` picks a **manifest**: `scenario_<id>.json` when an id is given and the
-   file exists, otherwise `default.json`.
+1. `init_data.py` picks a **manifest**: `scenarios_data/scenario_<id>/manifest.json` when
+   an id is given and the folder exists, otherwise the default manifest
+   `scenarios_data/default/manifest.json` (overridable via `DEFAULT_MANIFEST`). A legacy
+   flat `scenario_<id>.json` is still honoured if a scenario folder isn't present.
 2. For each `key: source` entry in the manifest, `loader.py` looks up the key in
    `collections.json`, parses the source (CSV or JSON), and writes the documents to a
    database named `key` — **dropped and rebuilt from scratch** on every load.
-3. Each document gets a deterministic `_id` built from the collection's
-   `primary_key`, e.g. `wo:ABC:WO627398` or `fc:C001`. Reloads are therefore
-   idempotent, and duplicate rows (same key) collapse to one document.
+3. Each document gets a deterministic `_id` built from the collection's `primary_key`,
+   e.g. `wo:ABC:WO627398` or `fc:C001`. Reloads are therefore idempotent, and duplicate
+   rows (same key) collapse to one document.
+
+### How data paths resolve
+
+A relative path in a manifest is resolved in this order, first match wins:
+
+1. The scenario's own folder (`scenarios_data/scenario_<id>/`) — for data unique to a
+   scenario, referenced by a bare path like `iot/custom_reading.json`.
+2. The scenario folder's **parent** (`scenarios_data/`) — which is why the shared corpus
+   is referenced simply as `shared/iot/chiller_6.json`, with no `../` hops.
+3. The couchdb dir (`src/couchdb/`) — preserves the behaviour of any legacy flat manifests.
+
+So the convention is: **shared corpus → `shared/<folder>/<file>`; scenario-local data →
+a bare path inside the scenario folder.** (A `../shared/...` form also works if you
+prefer it.)
 
 ---
 
@@ -82,7 +107,7 @@ python3 src/couchdb/init_data.py [SCENARIO_ID] [flags]
 | Command | Effect |
 | --- | --- |
 | `init_data.py` | Load the default manifest. |
-| `init_data.py 7` | Load `scenarios_data/scenario_7.json` (falls back to default if absent). |
+| `init_data.py 7` | Load `scenarios_data/scenario_7/manifest.json` (falls back to default if absent). |
 | `init_data.py 7 --reset` | Drop **all** user databases first, then load scenario 7 (guaranteed clean start). |
 | `init_data.py --reset-only` | Drop all user databases and exit. |
 | `--managed-only` | With `--reset`/`--reset-only`: drop only the default-manifest collections. |
@@ -100,26 +125,28 @@ init_data()                      # back to default
 
 ## Revising the default configuration
 
-### 1. Change *what* the default loads — `scenarios_data/default.json`
+### 1. Change *what* the default loads — `scenarios_data/default/manifest.json`
 
 ```json
 {
-    "workorder":   "sample_data/work_order/workorders.csv",
-    "iot":         ["sample_data/iot/chiller_6.json", "sample_data/iot/metro_pump_1.json"],
-    "vibration":   "sample_data/iot/motor_01.json",
-    "failurecode": "sample_data/failure_code/failure_code_sample.csv"
+    "workorder":   "shared/work_order/workorders.csv",
+    "iot":         ["shared/iot/chiller_6.json", "shared/iot/metro_pump_1.json"],
+    "vibration":   "shared/iot/motor_01.json",
+    "failurecode": "shared/failure_code/failure_code_sample.csv"
 }
 ```
 
-Each value may be any of (paths are relative to `src/couchdb/`):
+Each value may be any of (paths resolve against the scenario folder, then its parent,
+then `src/couchdb/` — see "How data paths resolve" above):
 
 | Value form | Meaning |
 | --- | --- |
-| `"path/to/file.csv"` or `.json` | Load that file. |
-| `"path/to/dir"` | Load every matching file in the directory. |
+| `"shared/.../file.csv"` or `.json` | Load that file from the shared corpus. |
+| `"file.json"` (bare) | Load a file that lives in this scenario's own folder. |
+| `"shared/<dir>"` | Load every matching file in the directory. |
 | `["path1", "path2", …]` | Load several files, concatenated. |
 | `[{...}, {...}]` | Inline document objects, written as-is. |
-| `"default"` | Shorthand for `sample_data/<key>/`. |
+| `"default"` | Shorthand for the corpus folder of this collection (`<SAMPLE_DATA_DIR>/<key>/`). |
 
 Edit this file and re-run `init_data.py` — that's the whole change.
 
@@ -151,8 +178,8 @@ Example — adding `alert`:
    "alert": { "format": "json", "primary_key": ["alert_id"],
               "indexes": [["equipment_id","start_time"], ["rule_id"]] }
    ```
-2. Drop the data in: `sample_data/alert/alerts.json` (a JSON array of docs).
-3. Reference it in a manifest: `"alert": "sample_data/alert/alerts.json"`.
+2. Drop the data in: `scenarios_data/shared/alert/alerts.json` (a JSON array of docs).
+3. Reference it in a manifest: `"alert": "shared/alert/alerts.json"`.
 4. `python3 src/couchdb/init_data.py` → database `alert` exists, docs keyed `alert:<alert_id>`.
 
 ### 4. Custom parsing — `transforms.py` (escape hatch)
@@ -191,17 +218,37 @@ stored functions to be **anonymous** (`function (doc) { … }`) — a named func
 
 ## Per-scenario data
 
-A scenario binds to its data purely by **file naming**: create
-`scenarios_data/scenario_<id>.json` with the same shape as `default.json`, listing only
-the collections that scenario needs. Then, before running the scenario:
+A scenario is a folder named `scenario_<id>` under `scenarios_data/`:
+
+```
+scenarios_data/scenario_7/
+├── manifest.json    # same shape as default/manifest.json; list only what this scenario needs
+└── question.txt     # the scenario prompt (for the harness; the loader ignores it)
+```
+
+The manifest lists only the collections that scenario needs, pulling common files from
+`shared/` and any bespoke files from the scenario folder itself. Then, before running it:
 
 ```bash
-python3 src/couchdb/init_data.py <id> --reset
+python3 src/couchdb/init_data.py 7 --reset
 ```
 
 `--reset` guarantees collections *not* listed in the scenario's manifest end up empty
-instead of carrying over from the previous load. Scenarios without their own manifest
+instead of carrying over from the previous load. Scenarios without their own folder
 automatically use the default.
+
+### Private scenarios in another repo
+
+The layout is portable: point `SCENARIOS_DATA_DIR` at a private folder that has the
+same shape (`scenario_<id>/manifest.json` + a sibling `shared/`), and everything resolves
+the same way:
+
+```bash
+SCENARIOS_DATA_DIR=/path/to/private python3 src/couchdb/init_data.py 7 --reset
+```
+
+A private scenario referencing `shared/...` reads its own repo's `shared/` (the scenario
+folder's parent); data unique to a private scenario goes in that scenario's folder.
 
 ---
 
@@ -212,8 +259,8 @@ automatically use the default.
 | `COUCHDB_URL` | `http://localhost:5984` | loader |
 | `COUCHDB_USERNAME` / `COUCHDB_PASSWORD` | `admin` / `password` | loader |
 | `COLLECTIONS_CONFIG` | `collections.json` | loader |
-| `WO_SCENARIOS_DATA_DIR` | `scenarios_data/` | init_data |
-| `WO_DEFAULT_MANIFEST` | `scenarios_data/default.json` | init_data |
+| `SCENARIOS_DATA_DIR` | `scenarios_data/` | init_data — point at a private scenarios folder to load from it |
+| `DEFAULT_MANIFEST` | `scenarios_data/default/manifest.json` | init_data — the default ("no id") manifest; override to point elsewhere |
 
 ---
 
@@ -221,6 +268,12 @@ automatically use the default.
 
 - **Database name = manifest key.** Consumers must match: the WO MCP server reads
   `WO_DBNAME=workorder`.
+- **Shared paths resolve via the scenario folder's parent.** `shared/...` works because
+  `shared/` sits beside the scenario folders under `scenarios_data/`. If you relocate the
+  corpus, update the manifests (or use an explicit relative path).
+- **The `"default"` keyword reads `SAMPLE_DATA_DIR`.** That loader constant still points at
+  the old `sample_data/` location; if you use the `"default"` shorthand, point it at
+  `shared/`. Most manifests use explicit `shared/...` paths and don't need it.
 - **Duplicate primary keys dedupe.** Two CSV rows with the same `wonum` become one
   document (second is a conflict) — intended idempotency, not data loss.
 - **Mango `sort` requires an index.** Query with selectors freely (CouchDB falls back

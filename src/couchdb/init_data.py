@@ -35,21 +35,22 @@ logger = logging.getLogger("init_data")
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
-SCENARIOS_DATA_DIR = os.environ.get("WO_SCENARIOS_DATA_DIR", os.path.join(_HERE, "scenarios_data"))
+SCENARIOS_DATA_DIR = os.environ.get("SCENARIOS_DATA_DIR", os.path.join(_HERE, "scenarios_data"))
 DEFAULT_MANIFEST_FILE = os.environ.get(
-    "WO_DEFAULT_MANIFEST", os.path.join(SCENARIOS_DATA_DIR, "default.json"))
+    "DEFAULT_MANIFEST", os.path.join(SCENARIOS_DATA_DIR, "default", "manifest.json"))
 
 
 # --------------------------------------------------------------------------- #
 # Scenario → manifest (filename convention, no scenarios .jsonl needed)
 # --------------------------------------------------------------------------- #
-def _load_default_manifest() -> dict:
+def _load_default_manifest() -> tuple:
+    """Return (manifest, base_dir) for the default manifest (scenarios_data/default/manifest.json)."""
     if not os.path.isfile(DEFAULT_MANIFEST_FILE):
         raise FileNotFoundError(
             f"default manifest not found: {DEFAULT_MANIFEST_FILE}. "
-            "Create scenarios_data/default.json (or set WO_DEFAULT_MANIFEST).")
+            "Create scenarios_data/default/manifest.json (or set DEFAULT_MANIFEST).")
     with open(DEFAULT_MANIFEST_FILE) as f:
-        return json.load(f)
+        return json.load(f), os.path.dirname(DEFAULT_MANIFEST_FILE)
 
 
 def manifest_path(scenario_id) -> str:
@@ -65,18 +66,14 @@ def _resolve_manifest(scenario_id) -> tuple:
     the couchdb dir. None → couchdb dir only (legacy flat manifests, unchanged).
     """
     if scenario_id is None:
-        folder = os.path.join(SCENARIOS_DATA_DIR, "default", "manifest.json")
-        if os.path.isfile(folder):
-            with open(folder) as f:
-                return json.load(f), os.path.dirname(folder)
-        return _load_default_manifest(), None       # legacy flat scenarios_data/default.json
+        return _load_default_manifest()
     path = manifest_path(scenario_id)
     if os.path.isfile(path):
         base_dir = os.path.dirname(path) if os.path.basename(path) == "manifest.json" else None
         with open(path) as f:
             return json.load(f), base_dir
     logger.info("No manifest %s — using default.", os.path.basename(path))
-    return _load_default_manifest(), None
+    return _load_default_manifest()
 
 
 # --------------------------------------------------------------------------- #
@@ -85,7 +82,8 @@ def _resolve_manifest(scenario_id) -> tuple:
 def all_databases() -> list:
     """The databases this loader manages = the default manifest's keys (db name = key)."""
     try:
-        return list(_load_default_manifest().keys())
+        manifest, _ = _load_default_manifest()
+        return list(manifest.keys())
     except Exception:
         return []
 
