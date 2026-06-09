@@ -59,7 +59,12 @@ def manifest_path(scenario_id) -> str:
 
 
 def _resolve_manifest(scenario_id) -> tuple:
-    """Return (manifest, base_dir). Scenario/default folder if present, else the flat default.
+    """Return (manifest, base_dir).
+
+    scenario_id None → the default manifest. Otherwise the scenario's own manifest
+    (folder form scenario_<id>/manifest.json, or legacy flat scenario_<id>.json),
+    raising FileNotFoundError if it doesn't exist — an unknown id is never silently
+    treated as the default.
 
     base_dir is the manifest's own folder; the loader resolves its relative data paths
     against that folder, then its parent (so a sibling shared/ corpus is reachable), then
@@ -68,12 +73,14 @@ def _resolve_manifest(scenario_id) -> tuple:
     if scenario_id is None:
         return _load_default_manifest()
     path = manifest_path(scenario_id)
-    if os.path.isfile(path):
-        base_dir = os.path.dirname(path) if os.path.basename(path) == "manifest.json" else None
-        with open(path) as f:
-            return json.load(f), base_dir
-    logger.info("No manifest %s — using default.", os.path.basename(path))
-    return _load_default_manifest()
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"no manifest for scenario {scenario_id}: expected "
+            f"{os.path.join(SCENARIOS_DATA_DIR, f'scenario_{scenario_id}', 'manifest.json')} "
+            f"or {os.path.join(SCENARIOS_DATA_DIR, f'scenario_{scenario_id}.json')}")
+    base_dir = os.path.dirname(path) if os.path.basename(path) == "manifest.json" else None
+    with open(path) as f:
+        return json.load(f), base_dir
 
 
 # --------------------------------------------------------------------------- #
@@ -110,12 +117,13 @@ def init_data(scenario_id=None, force: bool = True, reset_first: bool = False,
               managed_only: bool = False) -> dict:
     """Load a scenario's data (or the default) into CouchDB. Returns {collection: (db, n)}.
 
-    ``reset_first=True`` drops databases first so collections absent from the manifest
-    are left empty rather than carrying over.
+    Resolves the manifest first, so an unknown ``scenario_id`` raises FileNotFoundError
+    before anything is dropped. ``reset_first=True`` then drops databases so collections
+    absent from the manifest are left empty rather than carrying over.
     """
+    manifest, base_dir = _resolve_manifest(scenario_id)   # validate first (raises on unknown id)
     if reset_first:
         reset(managed_only=managed_only)
-    manifest, base_dir = _resolve_manifest(scenario_id)
     results = {}
     for key, spec in manifest.items():
         results[key] = loader.load_collection(key, spec, drop=force, base_dir=base_dir)   # database name = key

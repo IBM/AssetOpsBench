@@ -71,10 +71,11 @@ by the loader — `init_data.py` only reads `manifest.json`.
 
 ## How loading works
 
-1. `init_data.py` picks a **manifest**: `scenarios_data/scenario_<id>/manifest.json` when
-   an id is given and the folder exists, otherwise the default manifest
-   `scenarios_data/default/manifest.json` (overridable via `DEFAULT_MANIFEST`). A legacy
-   flat `scenario_<id>.json` is still honoured if a scenario folder isn't present.
+1. `init_data.py` picks a **manifest**: with no id, the default manifest
+   `scenarios_data/default/manifest.json` (overridable via `DEFAULT_MANIFEST`). With an id,
+   `scenarios_data/scenario_<id>/manifest.json` (or a legacy flat `scenario_<id>.json`) —
+   and if that doesn't exist it **raises** rather than silently using the default. The
+   manifest is resolved before any `--reset`, so an unknown id fails without dropping data.
 2. For each `key: source` entry in the manifest, `loader.py` looks up the key in
    `collections.json`, parses the source (CSV or JSON), and writes the documents to a
    database named `key` — **dropped and rebuilt from scratch** on every load.
@@ -107,7 +108,7 @@ python3 src/couchdb/init_data.py [SCENARIO_ID] [flags]
 | Command | Effect |
 | --- | --- |
 | `init_data.py` | Load the default manifest. |
-| `init_data.py 7` | Load `scenarios_data/scenario_7/manifest.json` (falls back to default if absent). |
+| `init_data.py 7` | Load `scenarios_data/scenario_7/manifest.json` (raises `FileNotFoundError` if it doesn't exist). |
 | `init_data.py 7 --reset` | Drop **all** user databases first, then load scenario 7 (guaranteed clean start). |
 | `init_data.py --reset-only` | Drop all user databases and exit. |
 | `--managed-only` | With `--reset`/`--reset-only`: drop only the default-manifest collections. |
@@ -234,8 +235,9 @@ python3 src/couchdb/init_data.py 7 --reset
 ```
 
 `--reset` guarantees collections *not* listed in the scenario's manifest end up empty
-instead of carrying over from the previous load. Scenarios without their own folder
-automatically use the default.
+instead of carrying over from the previous load. An id with no `scenario_<id>/` folder
+(or flat `scenario_<id>.json`) raises `FileNotFoundError` rather than loading the default,
+and that check happens before the reset, so a wrong id won't wipe your databases.
 
 ### Private scenarios in another repo
 
