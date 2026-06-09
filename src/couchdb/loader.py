@@ -108,14 +108,27 @@ def _parse_file(path, cfg) -> list:
     return parse_csv(path, cfg) if cfg.get("format") == "csv" else parse_json(path)
 
 
-def _collect_docs(key, source, cfg) -> list:
-    """Resolve a manifest source ("default"/path/dir/list/inline docs) to parsed docs."""
+def _collect_docs(key, source, cfg, base_dir=None) -> list:
+    """Resolve a manifest source ("default"/path/dir/list/inline docs) to parsed docs.
+
+    Relative data paths resolve against the scenario folder (``base_dir``), then its parent
+    (so a sibling ``shared/`` corpus is reachable as ``shared/...``), then ``_HERE``. With
+    base_dir=None (legacy flat manifests) only ``_HERE`` is used, preserving behaviour.
+    """
+    roots = ([base_dir, os.path.dirname(base_dir)] if base_dir else []) + [_HERE]
     ext = ".csv" if cfg.get("format") == "csv" else ".json"
+
+    def _resolve(s):
+        for root in roots:
+            p = os.path.join(root, s)
+            if os.path.exists(p):
+                return p
+        return os.path.join(roots[0], s)
 
     def files_from(s):
         if s.strip().lower() == "default":
             return sorted(glob.glob(os.path.join(SAMPLE_DATA_DIR, key, "*" + ext)))
-        p = s if os.path.isabs(s) else os.path.join(_HERE, s)
+        p = s if os.path.isabs(s) else _resolve(s)
         if os.path.isdir(p):
             return sorted(glob.glob(os.path.join(p, "*" + ext)))
         return [p]
@@ -239,11 +252,11 @@ def _bulk_insert(db, docs, batch_size=500):
 # --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
-def load_collection(key, source, drop=True) -> tuple:
+def load_collection(key, source, drop=True, base_dir=None) -> tuple:
     """Load one collection's data into a database named after the key. Returns (db, n)."""
     cfg = collection_config(key)
     transform = _transform_for(key)
-    docs = [_normalise(d, key, cfg, transform) for d in _collect_docs(key, source, cfg)]
+    docs = [_normalise(d, key, cfg, transform) for d in _collect_docs(key, source, cfg, base_dir)]
     db = key
     if docs:
         _ensure_db(db, drop=drop)

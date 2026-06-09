@@ -53,19 +53,30 @@ def _load_default_manifest() -> dict:
 
 
 def manifest_path(scenario_id) -> str:
-    return os.path.join(SCENARIOS_DATA_DIR, f"scenario_{scenario_id}.json")
+    folder = os.path.join(SCENARIOS_DATA_DIR, f"scenario_{scenario_id}", "manifest.json")
+    return folder if os.path.isfile(folder) else os.path.join(SCENARIOS_DATA_DIR, f"scenario_{scenario_id}.json")
 
 
-def _resolve_manifest(scenario_id) -> dict:
-    """scenarios_data/scenario_<id>.json if present, else the default manifest."""
+def _resolve_manifest(scenario_id) -> tuple:
+    """Return (manifest, base_dir). Scenario/default folder if present, else the flat default.
+
+    base_dir is the manifest's own folder; the loader resolves its relative data paths
+    against that folder, then its parent (so a sibling shared/ corpus is reachable), then
+    the couchdb dir. None → couchdb dir only (legacy flat manifests, unchanged).
+    """
     if scenario_id is None:
-        return _load_default_manifest()
+        folder = os.path.join(SCENARIOS_DATA_DIR, "default", "manifest.json")
+        if os.path.isfile(folder):
+            with open(folder) as f:
+                return json.load(f), os.path.dirname(folder)
+        return _load_default_manifest(), None       # legacy flat scenarios_data/default.json
     path = manifest_path(scenario_id)
     if os.path.isfile(path):
+        base_dir = os.path.dirname(path) if os.path.basename(path) == "manifest.json" else None
         with open(path) as f:
-            return json.load(f)
+            return json.load(f), base_dir
     logger.info("No manifest %s — using default.", os.path.basename(path))
-    return _load_default_manifest()
+    return _load_default_manifest(), None
 
 
 # --------------------------------------------------------------------------- #
@@ -106,10 +117,10 @@ def init_data(scenario_id=None, force: bool = True, reset_first: bool = False,
     """
     if reset_first:
         reset(managed_only=managed_only)
-    manifest = _resolve_manifest(scenario_id)
+    manifest, base_dir = _resolve_manifest(scenario_id)
     results = {}
     for key, spec in manifest.items():
-        results[key] = loader.load_collection(key, spec, drop=force)   # database name = key
+        results[key] = loader.load_collection(key, spec, drop=force, base_dir=base_dir)   # database name = key
         logger.info("Scenario %s: '%s' → %s (%d docs).", scenario_id, key, *results[key])
     return results
 
