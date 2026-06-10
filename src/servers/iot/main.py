@@ -33,9 +33,20 @@ try:
         password=COUCHDB_PASSWORD,
     )
     logger.info(f"Connected to CouchDB: {COUCHDB_DBNAME}")
+
 except Exception as e:
     logger.error(f"Failed to connect to CouchDB: {e}")
     db = None
+
+try:
+    ASSET_DBNAME = os.environ.get("ASSET_DBNAME", "asset")
+    asset_db = couchdb3.Database(ASSET_DBNAME, url=COUCHDB_URL, user=COUCHDB_USERNAME, password=COUCHDB_PASSWORD)
+    # get_asset_doc + registry_assets: use asset_db.find(...), not db.find(...)
+    logger.info(f"Connected to CouchDB: {ASSET_DBNAME}")
+
+except Exception as e:
+    logger.error(f"Failed to connect to asset registry DB: {e}")
+    asset_db = None
 
 mcp = FastMCP(
     "iot",
@@ -169,10 +180,10 @@ def get_asset_doc(asset_id: str) -> Optional[Dict[str, Any]]:
     """Helper to fetch one asset-registry document by assetnum. Cached per asset_id."""
     if asset_id in _asset_doc_cache:
         return _asset_doc_cache[asset_id]
-    if not db:
+    if not asset_db:
         return None
     try:
-        res = db.find({"doctype": "asset", "assetnum": asset_id}, limit=1)
+        res = asset_db.find({"doctype": "asset", "assetnum": asset_id}, limit=1)
         docs = res["docs"]
         if not docs:
             return None
@@ -276,13 +287,13 @@ def registry_assets(
     telemetry."""
     if site_name not in SITES:
         return ErrorResult(error=f"unknown site {site_name}")
-    if not db:
+    if not asset_db:
         return ErrorResult(error="CouchDB not connected")
     try:
         selector: Dict[str, Any] = {"doctype": "asset"}
         if assettype:
             selector["assettype"] = assettype
-        res = db.find(
+        res = asset_db.find(
             selector,
             fields=["assetnum", "assettype", "vintage", "sensors"],
             limit=100000,
