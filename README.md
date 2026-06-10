@@ -247,6 +247,7 @@ Launched in September 2025 at CODS 2025, the competition evaluated multi-agent s
 
 AssetOpsBench is being extended by university research groups exploring new asset classes, evaluation paradigms, and agentic architectures. **To list your project, open a PR.**
 
+- **Calibrated Coordination Reduces Overconfident Errors in Multi-Agent LLM Systems** – Confidence-weighted aggregation and abstention framework for reducing hallucinated confidence events in multi-agent industrial troubleshooting and operational decision-making benchmarks. Chand Sahil Mansuri, Sadamori Kojaku, Binghamton University.
 - **Internalizing MCP Tool Knowledge in Small LLMs via QLoRA Fine-Tuning** — HPML project using AssetOpsBench to fine-tune ~4B models to internalize MCP tool knowledge and reduce prompt schema overhead. [Ayal Yakobe](https://github.com/yakobeayal), Columbia University · [repo](https://github.com/YuvalShemla/hpml-2026-project)
 - **SPIN — Structural LLM Planning via Iterative Navigation for Industrial Tasks.** [Yusuke Ozaki](https://github.com/ozatamago), University at Albany · [paper](https://arxiv.org/abs/2605.14051) · [repo](https://github.com/ozatamago/AssetOpsBench/tree/UACap10)
 - **Synthetic Scenario Generation for Evaluation of Industry 4.0 Agents** — Automated scenario generation, transformer asset integration, and scenario quality evaluation. [Rohith Kanathur](https://github.com/Rohith-Kanathur), [Sagar Chethan Kumar](https://github.com/Sagar-CK), Columbia University · [repo](https://github.com/Rohith-Kanathur/AssetOpsBench)
