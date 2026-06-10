@@ -12,7 +12,7 @@ get_failure_modes returns what is known and signals when generation is needed. R
 generation (generate_*) are separate by design.
 
 LLM backend is configured via FMSR_MODEL_ID (default: watsonx/meta-llama/llama-3-3-70b-instruct).
-CouchDB via COUCHDB_URL / FMSR_DBNAME / COUCHDB_USERNAME / COUCHDB_PASSWORD.
+CouchDB via COUCHDB_URL / FAILURE_MODE_DBNAME / CATALOG_DBNAME / COUCHDB_USERNAME / COUCHDB_PASSWORD.
 """
 
 from __future__ import annotations
@@ -279,7 +279,7 @@ def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]
     if not fm_db:
         return ErrorResult(error="CouchDB not connected")
     try:
-        res = fm_db.find({"doctype": "failure_mode", "asset_class": key}, limit=1)
+        res = fm_db.find({"asset_class": key}, limit=1)
         docs = res["docs"]
         if not docs:
             return ErrorResult(
@@ -302,7 +302,7 @@ def _known_failure_modes(asset_name: str) -> List[str]:
     if not fm_db:
         return []
     try:
-        r = fm_db.find({"doctype": "failure_mode", "asset_class": _asset_key(asset_name)}, limit=1)
+        r = fm_db.find({"asset_class": _asset_key(asset_name)}, limit=1)
         return r["docs"][0].get("failure_modes", []) if r["docs"] else []
     except Exception:  # noqa: BLE001
         return []
@@ -377,7 +377,7 @@ def add_failure_modes(
             fm_db.save(doc)
         else:
             fm_db.save({
-                "_id": doc_id, "doctype": "failure_mode", "asset_class": key,
+                "_id": doc_id, "asset_class": key,
                 "failure_modes": merged, "exhaustive": exhaustive, "source": new_source,
             })
         return AddFailureModesResult(
