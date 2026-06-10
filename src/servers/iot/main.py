@@ -41,8 +41,7 @@ mcp = FastMCP(
     "iot",
     instructions=(
         "IoT sensor data + asset registry. Browse sites, assets, and sensors, read the asset "
-        "nameplate (registry), see which installed sensors are actually measured (streaming), and "
-        "query historical readings from CouchDB."
+        "nameplate (registry), query historical readings from CouchDB and see which installed sensors are actually measured (streaming)."
     ),
 )
 
@@ -224,7 +223,7 @@ def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
 
 @mcp.tool(title="Get Asset")
 def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
-    """Return registry/nameplate details for one asset plus installed/measured sensor counts."""
+    """Return registry/nameplate details for one asset plus installed sensor count."""
     if site_name not in SITES:
         return ErrorResult(error=f"unknown site {site_name}")
     doc = get_asset_doc(asset_id)
