@@ -167,9 +167,7 @@ _asset_doc_cache: Dict[str, Dict[str, Any]] = {}
  
  
 def get_asset_doc(asset_id: str) -> Optional[Dict[str, Any]]:
-    """Helper to fetch one asset-registry document (doctype 'asset', _id 'asset:<assetnum>')
-    by assetnum. Cached per asset_id. The registry holds identity/nameplate + the INSTALLED
-    sensor inventory, separate from the telemetry reading docs."""
+    """Helper to fetch one asset-registry document by assetnum. Cached per asset_id."""
     if asset_id in _asset_doc_cache:
         return _asset_doc_cache[asset_id]
     if not db:
@@ -226,9 +224,7 @@ def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
 
 @mcp.tool(title="Get Asset")
 def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
-    """Return registry/nameplate details for one asset (Maximo MXASSET-aligned: description,
-    assettype, status, location, installdate, vintage) plus installed/measured sensor counts.
-    This is asset IDENTITY — distinct from the telemetry-derived assets() list."""
+    """Return registry/nameplate details for one asset plus installed/measured sensor counts."""
     if site_name not in SITES:
         return ErrorResult(error=f"unknown site {site_name}")
     doc = get_asset_doc(asset_id)
