@@ -247,6 +247,7 @@ Launched in September 2025 at CODS 2025, the competition evaluated multi-agent s
 
 AssetOpsBench is being extended by university research groups exploring new asset classes, evaluation paradigms, and agentic architectures. **To list your project, open a PR.**
 
+- **Calibrated Coordination Reduces Overconfident Errors in Multi-Agent LLM Systems** – Confidence-weighted aggregation and abstention framework for reducing hallucinated confidence events in multi-agent industrial troubleshooting and operational decision-making benchmarks. Chand Sahil Mansuri, Sadamori Kojaku, Binghamton University.
 - **Internalizing MCP Tool Knowledge in Small LLMs via QLoRA Fine-Tuning** — HPML project using AssetOpsBench to fine-tune ~4B models to internalize MCP tool knowledge and reduce prompt schema overhead. [Ayal Yakobe](https://github.com/yakobeayal), Columbia University · [repo](https://github.com/YuvalShemla/hpml-2026-project)
 - **SPIN — Structural LLM Planning via Iterative Navigation for Industrial Tasks.** [Yusuke Ozaki](https://github.com/ozatamago), University at Albany · [paper](https://arxiv.org/abs/2605.14051) · [repo](https://github.com/ozatamago/AssetOpsBench/tree/UACap10)
 - **Synthetic Scenario Generation for Evaluation of Industry 4.0 Agents** — Automated scenario generation, transformer asset integration, and scenario quality evaluation. [Rohith Kanathur](https://github.com/Rohith-Kanathur), [Sagar Chethan Kumar](https://github.com/Sagar-CK), Columbia University · [repo](https://github.com/Rohith-Kanathur/AssetOpsBench)
@@ -292,130 +293,250 @@ Thanks to these wonderful people ✨
     <tr>
       <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/ShuxinLin">
-          <img src="https://github.com/ShuxinLin.png?s=50" width="50px;" alt="ShuxinLin"/><br />
+          <img src="https://github.com/ShuxinLin.png?s=50" width="30px;" alt="ShuxinLin"/><br />
           <sub><b>ShuxinLin</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=ShuxinLin" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/DhavalRepo18">
-          <img src="https://github.com/DhavalRepo18.png?s=50" width="50px;" alt="DhavalRepo18"/><br />
+          <img src="https://github.com/DhavalRepo18.png?s=50" width="30px;" alt="DhavalRepo18"/><br />
           <sub><b>DhavalRepo18</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=DhavalRepo18" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/ChathurangiShyalika">
-          <img src="https://github.com/ChathurangiShyalika.png?s=50" width="50px;" alt="ChathurangiShyalika"/><br />
+          <img src="https://github.com/ChathurangiShyalika.png?s=50" width="30px;" alt="ChathurangiShyalika"/><br />
           <sub><b>ChathurangiShyalika</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=ChathurangiShyalika" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/Dev-Scodes5">
-          <img src="https://github.com/Dev-Scodes5.png?s=50" width="50px;" alt="Dev-Scodes5"/><br />
-          <sub><b>Dev-Scodes5</b></sub>
+        <a href="https://github.com/nianjunz">
+          <img src="https://github.com/nianjunz.png?s=50" width="30px;" alt="nianjunz"/><br />
+          <sub><b>nianjunz</b></sub>
         </a><br />
-        <a href="https://github.com/IBM/AssetOpsBench/commits?author=Dev-Scodes5" title="Code">💻</a>
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=nianjunz" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/DeveloperMindset123">
-          <img src="https://github.com/DeveloperMindset123.png?s=50" width="50px;" alt="DeveloperMindset123"/><br />
-          <sub><b>DeveloperMindset123</b></sub>
+        <a href="https://github.com/PUSHPAK-JAISWAL">
+          <img src="https://github.com/PUSHPAK-JAISWAL.png?s=50" width="30px;" alt="PUSHPAK-JAISWAL"/><br />
+          <sub><b>PUSHPAK-JAISWAL</b></sub>
         </a><br />
-        <a href="https://github.com/IBM/AssetOpsBench/commits?author=DeveloperMindset123" title="Code">💻</a>
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=PUSHPAK-JAISWAL" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/LGDiMaggio">
-          <img src="https://github.com/LGDiMaggio.png?s=50" width="50px;" alt="LGDiMaggio"/><br />
+          <img src="https://github.com/LGDiMaggio.png?s=50" width="30px;" alt="LGDiMaggio"/><br />
           <sub><b>LGDiMaggio</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=LGDiMaggio" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/PUSHPAK-JAISWAL">
-          <img src="https://github.com/PUSHPAK-JAISWAL.png?s=50" width="50px;" alt="PUSHPAK-JAISWAL"/><br />
-          <sub><b>PUSHPAK-JAISWAL</b></sub>
+        <a href="https://github.com/DeveloperMindset123">
+          <img src="https://github.com/DeveloperMindset123.png?s=50" width="30px;" alt="Ayan Das"/><br />
+          <sub><b>Ayan Das</b></sub>
         </a><br />
-        <a href="https://github.com/IBM/AssetOpsBench/commits?author=PUSHPAK-JAISWAL" title="Code">💻</a>
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=DeveloperMindset123" title="Code">💻</a>
       </td>
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/bradleyjeck">
-          <img src="https://github.com/bradleyjeck.png?s=50" width="50px;" alt="bradleyjeck"/><br />
-          <sub><b>bradleyjeck</b></sub>
-        </a><br />
-        <a href="https://github.com/IBM/AssetOpsBench/commits?author=bradleyjeck" title="Code">💻</a>
-      </td>
-      <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/florenzi002">
-          <img src="https://github.com/florenzi002.png?s=50" width="50px;" alt="florenzi002"/><br />
-          <sub><b>florenzi002</b></sub>
-        </a><br />
-        <a href="https://github.com/IBM/AssetOpsBench/commits?author=florenzi002" title="Code">💻</a>
-      </td>
-      <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/jack-pfeifer">
-          <img src="https://github.com/jack-pfeifer.png?s=50" width="50px;" alt="jack-pfeifer"/><br />
-          <sub><b>jack-pfeifer</b></sub>
-        </a><br />
-        <a href="https://github.com/IBM/AssetOpsBench/commits?author=jack-pfeifer" title="Code">💻</a>
-      </td>
-      <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/jdsheehan">
-          <img src="https://github.com/jdsheehan.png?s=50" width="50px;" alt="jdsheehan"/><br />
+          <img src="https://github.com/jdsheehan.png?s=50" width="30px;" alt="jdsheehan"/><br />
           <sub><b>jdsheehan</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=jdsheehan" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/bradleyjeck">
+          <img src="https://github.com/bradleyjeck.png?s=50" width="30px;" alt="bradleyjeck"/><br />
+          <sub><b>bradleyjeck</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=bradleyjeck" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/jtrayfield">
-          <img src="https://github.com/jtrayfield.png?s=50" width="50px;" alt="jtrayfield"/><br />
+          <img src="https://github.com/jtrayfield.png?s=50" width="30px;" alt="jtrayfield"/><br />
           <sub><b>jtrayfield</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=jtrayfield" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/florenzi002">
+          <img src="https://github.com/florenzi002.png?s=50" width="30px;" alt="florenzi002"/><br />
+          <sub><b>florenzi002</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=florenzi002" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/flamehaven01">
+          <img src="https://github.com/flamehaven01.png?s=50" width="30px;" alt="flamehaven01"/><br />
+          <sub><b>flamehaven01</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=flamehaven01" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/kushwaha001">
-          <img src="https://github.com/kushwaha001.png?s=50" width="50px;" alt="kushwaha001"/><br />
+          <img src="https://github.com/kushwaha001.png?s=50" width="30px;" alt="kushwaha001"/><br />
           <sub><b>kushwaha001</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=kushwaha001" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
-        <a href="https://github.com/nianjunz">
-          <img src="https://github.com/nianjunz.png?s=50" width="50px;" alt="nianjunz"/><br />
-          <sub><b>nianjunz</b></sub>
+        <a href="https://github.com/Rohith-Kanathur">
+          <img src="https://github.com/Rohith-Kanathur.png?s=50" width="30px;" alt="Rohith-Kanathur"/><br />
+          <sub><b>Rohith-Kanathur</b></sub>
         </a><br />
-        <a href="https://github.com/IBM/AssetOpsBench/commits?author=nianjunz" title="Code">💻</a>
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=Rohith-Kanathur" title="Code">💻</a>
       </td>
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/Mohit-15">
+          <img src="https://github.com/Mohit-15.png?s=50" width="30px;" alt="Mohit Gupta"/><br />
+          <sub><b>Mohit Gupta</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=Mohit-15" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/jellyfishing2346">
+          <img src="https://github.com/jellyfishing2346.png?s=50" width="30px;" alt="jellyfishing2346"/><br />
+          <sub><b>jellyfishing2346</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=jellyfishing2346" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/anncli">
+          <img src="https://github.com/anncli.png?s=50" width="30px;" alt="anncli"/><br />
+          <sub><b>anncli</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=anncli" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/ozatamago">
+          <img src="https://github.com/ozatamago.png?s=50" width="30px;" alt="ozatamago"/><br />
+          <sub><b>ozatamago</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=ozatamago" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/tomaspasie">
+          <img src="https://github.com/tomaspasie.png?s=50" width="30px;" alt="tomaspasie"/><br />
+          <sub><b>tomaspasie</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=tomaspasie" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/Sans-Shej">
+          <img src="https://github.com/Sans-Shej.png?s=50" width="30px;" alt="Sans-Shej"/><br />
+          <sub><b>Sans-Shej</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=Sans-Shej" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/sanjaiiv04">
+          <img src="https://github.com/sanjaiiv04.png?s=50" width="30px;" alt="sanjaiiv04"/><br />
+          <sub><b>sanjaiiv04</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=sanjaiiv04" title="Code">💻</a>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/SajalGoyla">
+          <img src="https://github.com/SajalGoyla.png?s=50" width="30px;" alt="SajalGoyla"/><br />
+          <sub><b>SajalGoyla</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=SajalGoyla" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/priyamDalmia">
+          <img src="https://github.com/priyamDalmia.png?s=50" width="30px;" alt="priyamDalmia"/><br />
+          <sub><b>priyamDalmia</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=priyamDalmia" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/krishrveera">
+          <img src="https://github.com/krishrveera.png?s=50" width="30px;" alt="krishrveera"/><br />
+          <sub><b>krishrveera</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=krishrveera" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/kmn01">
+          <img src="https://github.com/kmn01.png?s=50" width="30px;" alt="kmn01"/><br />
+          <sub><b>kmn01</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=kmn01" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/Coderlicr">
+          <img src="https://github.com/Coderlicr.png?s=50" width="30px;" alt="Coderlicr"/><br />
+          <sub><b>Coderlicr</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=Coderlicr" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/BrianBai093">
+          <img src="https://github.com/BrianBai093.png?s=50" width="30px;" alt="BrianBai093"/><br />
+          <sub><b>BrianBai093</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=BrianBai093" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/AyalYakobe">
+          <img src="https://github.com/AyalYakobe.png?s=50" width="30px;" alt="AyalYakobe"/><br />
+          <sub><b>AyalYakobe</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=AyalYakobe" title="Code">💻</a>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/amaan784">
+          <img src="https://github.com/amaan784.png?s=50" width="30px;" alt="amaan784"/><br />
+          <sub><b>amaan784</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=amaan784" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/Dev-Scodes5">
+          <img src="https://github.com/Dev-Scodes5.png?s=50" width="30px;" alt="Dev-Scodes5"/><br />
+          <sub><b>Dev-Scodes5</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=Dev-Scodes5" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
+        <a href="https://github.com/jack-pfeifer">
+          <img src="https://github.com/jack-pfeifer.png?s=50" width="30px;" alt="jack-pfeifer"/><br />
+          <sub><b>jack-pfeifer</b></sub>
+        </a><br />
+        <a href="https://github.com/IBM/AssetOpsBench/commits?author=jack-pfeifer" title="Code">💻</a>
+      </td>
+      <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/sandeepkunkunuru">
-          <img src="https://github.com/sandeepkunkunuru.png?s=50" width="50px;" alt="sandeepkunkunuru"/><br />
+          <img src="https://github.com/sandeepkunkunuru.png?s=50" width="30px;" alt="sandeepkunkunuru"/><br />
           <sub><b>sandeepkunkunuru</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=sandeepkunkunuru" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/srutanik">
-          <img src="https://github.com/srutanik.png?s=50" width="50px;" alt="srutanik"/><br />
+          <img src="https://github.com/srutanik.png?s=50" width="30px;" alt="srutanik"/><br />
           <sub><b>srutanik</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=srutanik" title="Code">💻</a>
       </td>
       <td align="center" valign="top" width="14.28%">
         <a href="https://github.com/thedgarg31">
-          <img src="https://github.com/thedgarg31.png?s=50" width="50px;" alt="thedgarg31"/><br />
+          <img src="https://github.com/thedgarg31.png?s=50" width="30px;" alt="thedgarg31"/><br />
           <sub><b>thedgarg31</b></sub>
         </a><br />
         <a href="https://github.com/IBM/AssetOpsBench/commits?author=thedgarg31" title="Code">💻</a>
       </td>
-      <td></td>
-      <td></td>
-      <td></td>
       <td></td>
     </tr>
   </tbody>
