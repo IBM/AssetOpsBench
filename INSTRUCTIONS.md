@@ -149,7 +149,7 @@ query="What is the current date and time? Also list assets at site MAIN. Also ge
 
 ## Agents
 
-Five runners drive the same MCP servers. Each is a CLI registered by `uv sync` that takes a single positional `question` argument and spawns the MCP servers as stdio subprocesses on demand.
+Six runners are available as CLIs registered by `uv sync`; five use MCP tools, while `direct-llm-agent` is a model-only baseline that makes a direct LiteLLM call without MCP tools, planning, retrieval, or code execution. Each is a CLI registered by `uv sync` that takes a single positional `question` argument and spawns the MCP servers as stdio subprocesses on demand.
 
 | Runner         | Source                       | Loop                                                          | Default model                                               |
 | -------------- | ---------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -158,6 +158,7 @@ Five runners drive the same MCP servers. Each is a CLI registered by `uv sync` t
 | `openai-agent` | `src/agent/openai_agent/`    | [`openai-agents`](https://github.com/openai/openai-agents-python) SDK Runner | `litellm_proxy/azure/gpt-5.4`                |
 | `deep-agent`   | `src/agent/deep_agent/`      | [LangChain deep-agents](https://docs.langchain.com/oss/python/deepagents/overview) (LangGraph), MCP bridged via `langchain-mcp-adapters` | `litellm_proxy/aws/claude-opus-4-6` |
 | `stirrup-agent` | `src/agent/stirrup_agent/` | [Stirrup](https://github.com/ArtificialAnalysis/Stirrup) agent loop (in-process), MCP via its `MCPToolProvider`; **code-capable** (writes/runs Python) | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8` |
+| `direct-llm-agent` | `src/agent/direct_llm_agent/` | Single direct LLM call, no MCP tools, planning, retrieval, or code execution | `litellm_proxy/Azure/gpt-5-mini-2025-08-07` |
 
 - [Agents](#agents) — Stirrup specifics in [docs/stirrup-agent.md](docs/stirrup-agent.md)
 
@@ -169,6 +170,7 @@ uv run claude-agent "$query"
 uv run openai-agent "$query"
 uv run deep-agent   "$query"
 uv run stirrup-agent "$query"
+uv run direct-llm-agent "$query"
 ```
 
 ### Common flags
@@ -216,6 +218,10 @@ uv run stirrup-agent --no-code --show-trajectory \
 # Stirrup code track in a Docker sandbox (writes and runs Python)
 STIRRUP_CODE_IMAGE=assetops-code \
   uv run stirrup-agent --code-backend docker "$query"
+
+# Direct model-only baseline, no MCP tools
+uv run direct-llm-agent --model-id litellm_proxy/Azure/gpt-5-mini-2025-08-07 \
+  'Return only JSON: {"test": 1}'
 ```
 
 ---
