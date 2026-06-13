@@ -12,6 +12,8 @@ agent run  →  trajectory (run_id)  →  evaluate  →  reports/<run_id>.json
 Re-scoring from saved trajectories is first-class: re-run with a
 different scorer or judge model without re-invoking the agent.
 
+For deterministic scoring of structured answers such as JSON objects, tuple lists, and count-only outputs, see [Static JSON Evaluation](static-json-evaluation.md).
+
 ## Concepts
 
 The vocabulary follows MLflow's evaluation split:
