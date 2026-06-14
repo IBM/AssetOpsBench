@@ -269,10 +269,14 @@ uv run evaluate \
   --trajectories traces/trajectories \
   --scenarios groundtruth/101.json \
   --scorer-default llm_judge \
-  --judge-model litellm_proxy/aws/claude-opus-4-6
+  --judge-model litellm_proxy/azure/gpt-5.4
 ```
 
 Output lands under `reports/` — one `<run_id>.json` per trajectory plus `_aggregate.json` for the rollup.
+
+> [!NOTE]
+> If `llm_judge` is used, `--judge-model` must not match the trajectory's `model`
+> for any evaluated run. The evaluator now rejects self-judging rows with a clear error.
 
 Scorer families follow MLflow's evaluator/scorer split: `llm_judge` is wired up; `exact_string_match`, `numeric_match`, and `semantic_similarity` ship as skeletons (raise `NotImplementedError`).
 

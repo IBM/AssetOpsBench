@@ -87,7 +87,7 @@ uv run evaluate \
   --trajectories traces/trajectories \
   --scenarios groundtruth/101.json \
   --scorer-default llm_judge \
-  --judge-model litellm_proxy/aws/claude-opus-4-6
+  --judge-model litellm_proxy/azure/gpt-5.4
 ```
 
 Output:
@@ -230,6 +230,19 @@ free-form `suggestions` (or legacy `reason`) lands in
 To customise: edit `_PROMPT_TEMPLATE` in
 `src/evaluation/scorers/llm_judge.py`.
 
+## Self-judging guard
+
+When `llm_judge` is active and `--judge-model` is provided, evaluation
+aborts any row where the trajectory `model` matches the judge model
+(after normalizing the `litellm_proxy/` prefix). This avoids
+out-of-the-box self-evaluation bias.
+
+Example error:
+
+```
+self-judging is not allowed for llm_judge: trajectory model 'litellm_proxy/aws/claude-opus-4-6' matches judge model 'litellm_proxy/aws/claude-opus-4-6'
+```
+
 ## Programmatic use
 
 ```python
@@ -247,6 +260,18 @@ report = Evaluator(default_scorer="llm_judge").evaluate(
 
 for r in report.results:
     print(r.run_id, r.score.passed, r.score.score)
+```
+
+To enforce the self-judging guard in programmatic usage, pass `judge_model`:
+
+```python
+report = Evaluator(
+    default_scorer="llm_judge",
+    judge_model="litellm_proxy/azure/gpt-5.4",
+).evaluate(
+    trajectories_path=Path("traces/trajectories"),
+    scenarios_paths=[Path("groundtruth/101.json")],
+)
 ```
 
 ## Plug in a custom scorer
@@ -285,5 +310,5 @@ uv run evaluate \
   --trajectories traces/trajectories \
   --scenarios groundtruth/*.json \
   --scorer-default llm_judge \
-  --judge-model litellm_proxy/aws/claude-opus-4-6
+  --judge-model litellm_proxy/azure/gpt-5.4
 ```
