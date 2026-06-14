@@ -26,7 +26,7 @@ from claude_agent_sdk import TextBlock, ToolUseBlock
 
 from observability import agent_run_span, persist_trajectory
 
-from .._litellm import LITELLM_PREFIX, resolve_model
+from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
@@ -39,18 +39,19 @@ _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
 def _sdk_env(model_id: str) -> dict[str, str] | None:
     """Build env overrides for the claude-agent-sdk subprocess.
 
-    When routing through a LiteLLM proxy the SDK needs the proxy URL and key
-    under its own env var names.  We derive them from the LITELLM_* vars so
-    the user never has to set SDK-internal vars directly.
+    When routing through a proxy (LiteLLM proxy or TokenRouter) the SDK needs
+    the proxy URL and key under its own env var names.  We derive them from
+    the matching router env vars so the user never has to set SDK-internal
+    vars directly.  The router\'s base URL must expose an Anthropic-compatible
+    endpoint for the Claude SDK to consume.
     """
-    if not model_id.startswith(LITELLM_PREFIX):
+    creds = resolve_router_creds(model_id, strict=False)
+    if creds is None:
         return None
-    env: dict[str, str] = {}
-    if base_url := os.environ.get("LITELLM_BASE_URL"):
-        env["ANTHROPIC_BASE_URL"] = base_url
-    if api_key := os.environ.get("LITELLM_API_KEY"):
-        env["ANTHROPIC_API_KEY"] = api_key
-    return env or None
+    return {
+        "ANTHROPIC_BASE_URL": creds.base_url,
+        "ANTHROPIC_API_KEY": creds.api_key,
+    }
 
 
 def _build_mcp_servers(
