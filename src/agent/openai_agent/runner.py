@@ -18,7 +18,6 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import logging
-import os
 import time
 from contextlib import AsyncExitStack
 from pathlib import Path

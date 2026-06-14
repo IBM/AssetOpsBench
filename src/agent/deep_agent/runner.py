@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
-import os
 import time
 from functools import cached_property
 from pathlib import Path
