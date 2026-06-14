@@ -1,0 +1,84 @@
+{
+  "doc_type": "asset_robot_profile",
+  "id_pattern": "profile:{normalized_asset_id}",
+  "description": "Per-asset profile documents for the robot inspection extension. Stored in the iot CouchDB database alongside timestamped sensor readings, but deliberately omit the asset_id field so existing IoT server queries are unaffected.",
+  "deferred_fields": "See SAFETY_FIELDS_FUTURE.md for hazard_class, maintenance_slot, active_work_order",
+
+  "fields": {
+    "physical_location": {
+      "type": "object or null",
+      "schema": {"x": "float", "y": "float", "z": "float", "room_id": "string"},
+      "default": null,
+      "status": "active",
+      "purpose": "Robot navigation target for navigate_to() tool. Set from facility floor plan. Null until floor-plan data is loaded."
+    },
+    "gauge_value": {
+      "type": "float",
+      "default": 0.0,
+      "status": "active",
+      "CRITICAL": "NEVER return this field from any MCP tool to the agent",
+      "set_by": "PhysicalStateSimulator.generate_scenario()",
+      "read_by": "Evaluator.get_ground_truth() ONLY",
+      "purpose": "Ground truth physical gauge reading. Set at scenario generation time. Must never reach the agent — doing so invalidates the evaluation."
+    },
+    "gauge_range": {
+      "type": "array [float, float]",
+      "default": [0, 100],
+      "status": "active",
+      "purpose": "Min/max of the gauge scale face. Used in PA metric and tau_agreement threshold calculation."
+    },
+    "panel_stuck_prob": {
+      "type": "float 0-1",
+      "default": 0.12,
+      "status": "active",
+      "purpose": "Probability that the access panel fails to open. SME-calibrated at 0.12 for preprogrammed navigation; 0.24-0.40 for learned navigation routes."
+    },
+    "human_present": {
+      "type": "bool",
+      "default": false,
+      "status": "active",
+      "purpose": "Whether a technician is currently at this asset. If true, robot dispatch is skipped and an alarm is raised to the person already on-site. Updated by PhysicalStateSimulator per scenario."
+    },
+    "never_read": {
+      "type": "bool",
+      "default": false,
+      "status": "active",
+      "purpose": "True if no physical gauge reading exists in Maximo history for this asset. Enables the never-read-gauge scenario variant. SME confirmed some gauges have never been recorded."
+    },
+    "real_gauge_images": {
+      "type": "array of strings",
+      "default": [],
+      "status": "active",
+      "purpose": "File paths to real facility images of this asset's gauge collected during field visits. Used to train and calibrate the CosmosWorld perception layer."
+    },
+    "reading_consistency": {
+      "type": "float or null",
+      "default": null,
+      "status": "active",
+      "purpose": "Empirical std(readings) / gauge_range computed from field collection data. Used to set tau_consistency threshold for this asset type. Null until field data arrives."
+    },
+    "sensor_physical_gap": {
+      "type": "float or null",
+      "default": null,
+      "status": "active",
+      "purpose": "Empirical |iot_value - gauge_value| / gauge_range from field collection. Calibrates tau_agreement for this asset. Null until field data arrives."
+    }
+  },
+
+  "indexes": [
+    {
+      "name": "idx_robot_never_read",
+      "fields": ["doc_type", "never_read"],
+      "purpose": "Scenario generator lookup for never-read gauge cases"
+    }
+  ],
+
+  "known_profiles": [
+    {"profile_id": "profile:chiller_6",       "display_name": "Chiller 6"},
+    {"profile_id": "profile:metro_pump_1",    "display_name": "Metro Pump 1"},
+    {"profile_id": "profile:hydraulic_pump_1","display_name": "Hydraulic Pump 1"},
+    {"profile_id": "profile:motor_01",        "display_name": "Motor 01"}
+  ],
+
+  "isolation_guarantee": "Profile documents have no asset_id field. The IoT server queries {asset_id: {$exists: true}} — these documents are invisible to all existing server queries, including get_asset_list() and get_sensor_list()."
+}
