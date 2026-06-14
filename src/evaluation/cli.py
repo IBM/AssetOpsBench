@@ -95,10 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     _maybe_install_judge(args.judge_model)
     _validate_scorer_default(args.scorer_default)
 
-    report = Evaluator(
-        default_scorer=args.scorer_default,
-        judge_model=args.judge_model,
-    ).evaluate(
+    report = Evaluator(default_scorer=args.scorer_default).evaluate(
         trajectories_path=args.trajectories,
         scenarios_paths=list(args.scenarios),
     )
