@@ -71,11 +71,11 @@ def _maybe_install_judge(judge_model: str | None) -> None:
         return
     # Imported lazily so the CLI works for code-based-only runs even if
     # the LiteLLM dep happens to be flaky in the dev environment.
-    from llm import LiteLLMBackend  # type: ignore[import-not-found]
+    from llm import make_backend  # type: ignore[import-not-found]
 
     from .scorers.llm_judge import install
 
-    install(LiteLLMBackend(model_id=judge_model))
+    install(make_backend(judge_model))
 
 
 def _validate_scorer_default(name: str) -> None:
