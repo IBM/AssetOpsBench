@@ -107,6 +107,11 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
+**TokenRouter** — OpenAI-compatible gateway, used whenever `--model-id` carries the `tokenrouter/` prefix (the default for direct-llm-agent)
+
+| `TOKENROUTER_API_KEY`  | _(tokenrouter/* models)_ | TokenRouter API key                                          |
+| `TOKENROUTER_BASE_URL` | _(tokenrouter/* models)_ | TokenRouter base URL, e.g. `https://api.tokenrouter.com/v1`  |
+
 **Stirrup code track** — `stirrup-agent` with `--code-backend docker`
 
 | Variable             | Default            | Description                                                                |
