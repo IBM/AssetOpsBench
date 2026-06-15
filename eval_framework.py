@@ -1,7 +1,7 @@
 """Industrial Automation Challenge submission framework.
 
-It runs participant prediction code over challenge scenarios and packages a
-submission CSV with metadata.
+Runs participant prediction code over challenge scenarios and writes a Kaggle-ready
+CSV submission.
 """
 
 from __future__ import annotations
@@ -12,10 +12,8 @@ import importlib
 import importlib.util
 import json
 import logging
-import os
 import subprocess
 import sys
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -25,19 +23,8 @@ try:
 except ImportError:
     from dataset_utils import AssetOpsScenario, load_public_scenarios
 
-
 logger = logging.getLogger(__name__)
-
 PredictionFunc = Callable[[AssetOpsScenario], Any]
-
-
-REQUIRED_METADATA_FIELDS = (
-    "model_name",
-    "track",
-    "base_model_type",
-    "base_model_name",
-    "dataset",
-)
 
 
 @dataclass
@@ -54,36 +41,13 @@ def _clean_cell(value: Any, fallback: str = "NOTAVALUE") -> str:
 
 
 def _normalize_prediction(raw: Any) -> dict[str, str]:
-    """Normalize predictor output into submission columns.
-
-    Industrial Automation Challenge Kaggle submissions are MCQA-style and use
-    an ``answer`` column (letter such as A/B/C). The starter kit also keeps a
-    more general ``prediction`` alias plus optional reasoning/trajectory fields
-    for offline auditing and CUREBench-style metadata packages.
-    """
+    """Normalize predictor output into the `answer` submission column."""
 
     if isinstance(raw, dict):
         answer = raw.get("answer", raw.get("choice", raw.get("prediction", raw.get("response", ""))))
-        prediction = raw.get("prediction", answer)
-        reasoning = raw.get("reasoning", raw.get("rationale", ""))
-        trajectory = raw.get("trajectory", raw.get("trace", ""))
     else:
         answer = raw
-        prediction = raw
-        reasoning = ""
-        trajectory = ""
-
-    if isinstance(reasoning, (dict, list)):
-        reasoning = json.dumps(reasoning, ensure_ascii=False)
-    if isinstance(trajectory, (dict, list)):
-        trajectory = json.dumps(trajectory, ensure_ascii=False)
-
-    return {
-        "answer": _clean_cell(answer, "NOTAVALUE"),
-        "prediction": _clean_cell(prediction, "No prediction available"),
-        "reasoning": _clean_cell(reasoning, "No reasoning provided"),
-        "trajectory": _clean_cell(trajectory, "No trajectory provided"),
-    }
+    return {"answer": _clean_cell(answer, "NOTAVALUE")}
 
 
 def _load_module_from_file(path: Path):
@@ -97,7 +61,7 @@ def _load_module_from_file(path: Path):
 
 
 def load_predictor(spec: str) -> PredictionFunc:
-    """Load ``module:function`` or an absolute Python-file path plus function."""
+    """Load ``module:function`` or a Python-file path plus function."""
 
     if ":" not in spec:
         raise ValueError("Predictor must be formatted as 'module:function'.")
@@ -124,8 +88,8 @@ def command_predictor(command_template: str) -> PredictionFunc:
     - ``{question_json}``
     - ``{scenario_json}``
 
-    If stdout is JSON with an ``answer`` or ``prediction`` field, that field is
-    used. Otherwise stdout becomes the prediction text.
+    If stdout is JSON with an ``answer``, ``choice``, or ``prediction`` field,
+    that value is used. Otherwise stdout becomes the answer value.
     """
 
     def predict(scenario: AssetOpsScenario) -> dict[str, str]:
@@ -143,26 +107,22 @@ def command_predictor(command_template: str) -> PredictionFunc:
             text=True,
         )
         if completed.returncode != 0:
-            return {
-                "prediction": "Error occurred",
-                "reasoning": completed.stderr.strip(),
-                "trajectory": "",
-            }
+            return {"answer": "NOTAVALUE"}
 
         stdout = completed.stdout.strip()
         try:
             parsed = json.loads(stdout)
         except json.JSONDecodeError:
-            return {"prediction": stdout, "reasoning": "", "trajectory": ""}
+            return {"answer": stdout}
         if isinstance(parsed, dict):
             return parsed
-        return {"prediction": stdout, "reasoning": "", "trajectory": ""}
+        return {"answer": stdout}
 
     return predict
 
 
 class CompetitionKit:
-    """Small public starter-kit class for generating submissions."""
+    """Small starter-kit class for generating CSV submissions."""
 
     def __init__(self, config_path: str | None = None):
         self.config_path = config_path
@@ -170,11 +130,10 @@ class CompetitionKit:
         self.output_dir = Path(self.config.get("output_dir", "competition_results"))
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.dataset_config = self.config.get("dataset", {})
-        self.metadata_config = self.config.get("metadata", {})
         self.submission_columns = self.config.get("submission_columns", ["id", "answer"])
 
     def list_datasets(self) -> None:
-        name = self.dataset_config.get("dataset_name", "assetopsbench")
+        name = self.dataset_config.get("dataset_name", "industrial_automation_challenge")
         description = self.dataset_config.get("description", "")
         print(f"{name}: {description}")
 
@@ -199,28 +158,14 @@ class CompetitionKit:
             logger.info("Predicting %s/%s: %s", index, len(scenarios), scenario.id)
             try:
                 normalized = _normalize_prediction(predictor(scenario))
-            except Exception as exc:
+            except Exception:
                 logger.exception("Predictor failed for scenario %s", scenario.id)
-                normalized = {
-                    "answer": "NOTAVALUE",
-                    "prediction": "Error occurred",
-                    "reasoning": str(exc),
-                    "trajectory": "No trajectory provided",
-                }
+                normalized = {"answer": "NOTAVALUE"}
             predictions.append({"id": scenario.id, **normalized})
 
         return SubmissionResult(dataset_name=dataset_name, predictions=predictions)
 
-    def save_submission(
-        self,
-        result: SubmissionResult,
-        *,
-        filename: str = "submission.csv",
-        metadata: dict[str, Any] | None = None,
-    ) -> Path:
-        metadata = self.get_metadata(result.dataset_name, metadata)
-        self._validate_metadata(metadata)
-
+    def save_submission(self, result: SubmissionResult, *, filename: str = "submission.csv") -> Path:
         csv_path = self.output_dir / filename
         with csv_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
@@ -231,48 +176,12 @@ class CompetitionKit:
             )
             writer.writeheader()
             writer.writerows(result.predictions)
-
-        metadata_path = self.output_dir / "meta_data.json"
-        metadata_path.write_text(
-            json.dumps({"meta_data": metadata}, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
-
-        zip_path = self.output_dir / filename.replace(".csv", ".zip")
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-            zipf.write(csv_path, filename)
-            zipf.write(metadata_path, "meta_data.json")
-
-        return zip_path
-
-    def get_metadata(
-        self,
-        dataset_name: str,
-        fallback_metadata: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        metadata = {
-            "model_name": "unknown",
-            "track": "agentic_reasoning",
-            "base_model_type": "API",
-            "base_model_name": "unknown",
-            "dataset": dataset_name,
-            "additional_info": "",
-        }
-        metadata.update(self.metadata_config)
-        if fallback_metadata:
-            metadata.update({k: v for k, v in fallback_metadata.items() if v is not None})
-        return metadata
-
-    @staticmethod
-    def _validate_metadata(metadata: dict[str, Any]) -> None:
-        missing = [field for field in REQUIRED_METADATA_FIELDS if not metadata.get(field)]
-        if missing:
-            raise ValueError(f"Missing required metadata field(s): {', '.join(missing)}")
+        return csv_path
 
 
 def create_metadata_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Industrial Automation Challenge submission starter kit")
-    parser.add_argument("--config", type=str, help="Path to metadata/dataset JSON config.")
+    parser.add_argument("--config", type=str, help="Path to dataset/predictor JSON config.")
     parser.add_argument("--dataset-path", type=str, help="Override dataset path from config.")
     parser.add_argument("--predictor", type=str, help="Python predictor as module:function.")
     parser.add_argument(
@@ -283,12 +192,6 @@ def create_metadata_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--output-file", type=str, default="submission.csv")
     parser.add_argument("--subset-size", type=int, default=None)
-    parser.add_argument("--model-name", type=str)
-    parser.add_argument("--track", type=str, choices=["internal_reasoning", "agentic_reasoning"])
-    parser.add_argument("--base-model-type", type=str, choices=["API", "OpenWeighted", "Hybrid"])
-    parser.add_argument("--base-model-name", type=str)
-    parser.add_argument("--dataset", type=str)
-    parser.add_argument("--additional-info", type=str)
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
 
@@ -319,33 +222,8 @@ def load_and_merge_config(args: argparse.Namespace) -> argparse.Namespace:
     dataset = config.get("dataset", {})
     if args.dataset_path is None and dataset.get("dataset_path"):
         args.dataset_path = dataset["dataset_path"]
-    if args.dataset is None and dataset.get("dataset_name"):
-        args.dataset = dataset["dataset_name"]
-
-    metadata = config.get("metadata", {})
-    for field in (
-        "model_name",
-        "track",
-        "base_model_type",
-        "base_model_name",
-        "additional_info",
-    ):
-        arg_name = field.replace("-", "_")
-        if getattr(args, arg_name, None) is None and field in metadata:
-            setattr(args, arg_name, metadata[field])
 
     return args
-
-
-def metadata_from_args(args: argparse.Namespace) -> dict[str, Any]:
-    return {
-        "model_name": args.model_name,
-        "track": args.track,
-        "base_model_type": args.base_model_type,
-        "base_model_name": args.base_model_name,
-        "dataset": args.dataset,
-        "additional_info": args.additional_info,
-    }
 
 
 def build_predictor_from_args(args: argparse.Namespace) -> PredictionFunc:

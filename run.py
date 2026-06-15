@@ -5,13 +5,7 @@ from __future__ import annotations
 
 import logging
 
-from eval_framework import (
-    CompetitionKit,
-    build_predictor_from_args,
-    create_metadata_parser,
-    load_and_merge_config,
-    metadata_from_args,
-)
+from eval_framework import CompetitionKit, build_predictor_from_args, create_metadata_parser, load_and_merge_config
 
 
 def main() -> int:
@@ -37,17 +31,12 @@ def main() -> int:
         subset_size=args.subset_size,
         dataset_path=args.dataset_path,
     )
-    submission_path = kit.save_submission(
-        result,
-        filename=args.output_file,
-        metadata=metadata_from_args(args),
-    )
+    submission_path = kit.save_submission(result, filename=args.output_file)
 
     print(f"Processed scenarios: {len(result.predictions)}")
-    print(f"Submission package: {submission_path}")
+    print(f"Submission CSV: {submission_path}")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
