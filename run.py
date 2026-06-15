@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AssetOpsBench public competition submission script."""
+"""Industrial Automation Challenge submission script."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def main() -> int:
         kit.output_dir.mkdir(parents=True, exist_ok=True)
 
     predictor = build_predictor_from_args(args)
-    print("AssetOpsBench Competition - Submission Generation")
+    print("Industrial Automation Challenge - Submission Generation")
     kit.list_datasets()
 
     result = kit.run_predictions(

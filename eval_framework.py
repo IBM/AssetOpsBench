@@ -1,7 +1,7 @@
-"""AssetOpsBench public competition submission framework.
+"""Industrial Automation Challenge submission framework.
 
-It runs participant prediction code over public scenarios and packages a
-Kaggle/offline submission zip. AssetOpsBench scoring remains organizer-side.
+It runs participant prediction code over challenge scenarios and packages a
+submission CSV with metadata.
 """
 
 from __future__ import annotations
@@ -171,10 +171,7 @@ class CompetitionKit:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.dataset_config = self.config.get("dataset", {})
         self.metadata_config = self.config.get("metadata", {})
-        self.submission_columns = self.config.get(
-            "submission_columns",
-            ["id", "prediction", "reasoning", "trajectory"],
-        )
+        self.submission_columns = self.config.get("submission_columns", ["id", "answer"])
 
     def list_datasets(self) -> None:
         name = self.dataset_config.get("dataset_name", "assetopsbench")
@@ -274,7 +271,7 @@ class CompetitionKit:
 
 
 def create_metadata_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="AssetOpsBench submission starter kit")
+    parser = argparse.ArgumentParser(description="Industrial Automation Challenge submission starter kit")
     parser.add_argument("--config", type=str, help="Path to metadata/dataset JSON config.")
     parser.add_argument("--dataset-path", type=str, help="Override dataset path from config.")
     parser.add_argument("--predictor", type=str, help="Python predictor as module:function.")
