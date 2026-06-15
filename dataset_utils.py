@@ -31,6 +31,10 @@ class AssetOpsScenario:
     text: str
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def options(self) -> Any:
+        return self.metadata.get("options")
+
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.id, "text": self.text, **self.metadata}
 
@@ -86,7 +90,7 @@ def load_public_scenarios(path: str | Path) -> list[AssetOpsScenario]:
 
 
 def build_dataset(dataset_path: str | Path | None = None) -> list[AssetOpsScenario]:
-    """CUREBench-style dataset builder used by the starter framework."""
+    """Dataset builder used by the starter framework."""
 
     if dataset_path is None:
         raise ValueError("dataset_path is required")
