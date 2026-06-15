@@ -54,13 +54,21 @@ def _clean_cell(value: Any, fallback: str = "NOTAVALUE") -> str:
 
 
 def _normalize_prediction(raw: Any) -> dict[str, str]:
-    """Normalize predictor output into submission columns."""
+    """Normalize predictor output into submission columns.
+
+    Industrial Automation Challenge Kaggle submissions are MCQA-style and use
+    an ``answer`` column (letter such as A/B/C). The starter kit also keeps a
+    more general ``prediction`` alias plus optional reasoning/trajectory fields
+    for offline auditing and CUREBench-style metadata packages.
+    """
 
     if isinstance(raw, dict):
-        prediction = raw.get("prediction", raw.get("answer", raw.get("response", "")))
+        answer = raw.get("answer", raw.get("choice", raw.get("prediction", raw.get("response", ""))))
+        prediction = raw.get("prediction", answer)
         reasoning = raw.get("reasoning", raw.get("rationale", ""))
         trajectory = raw.get("trajectory", raw.get("trace", ""))
     else:
+        answer = raw
         prediction = raw
         reasoning = ""
         trajectory = ""
@@ -71,6 +79,7 @@ def _normalize_prediction(raw: Any) -> dict[str, str]:
         trajectory = json.dumps(trajectory, ensure_ascii=False)
 
     return {
+        "answer": _clean_cell(answer, "NOTAVALUE"),
         "prediction": _clean_cell(prediction, "No prediction available"),
         "reasoning": _clean_cell(reasoning, "No reasoning provided"),
         "trajectory": _clean_cell(trajectory, "No trajectory provided"),
@@ -162,6 +171,10 @@ class CompetitionKit:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.dataset_config = self.config.get("dataset", {})
         self.metadata_config = self.config.get("metadata", {})
+        self.submission_columns = self.config.get(
+            "submission_columns",
+            ["id", "prediction", "reasoning", "trajectory"],
+        )
 
     def list_datasets(self) -> None:
         name = self.dataset_config.get("dataset_name", "assetopsbench")
@@ -192,6 +205,7 @@ class CompetitionKit:
             except Exception as exc:
                 logger.exception("Predictor failed for scenario %s", scenario.id)
                 normalized = {
+                    "answer": "NOTAVALUE",
                     "prediction": "Error occurred",
                     "reasoning": str(exc),
                     "trajectory": "No trajectory provided",
@@ -214,8 +228,9 @@ class CompetitionKit:
         with csv_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=["id", "prediction", "reasoning", "trajectory"],
+                fieldnames=self.submission_columns,
                 quoting=csv.QUOTE_ALL,
+                extrasaction="ignore",
             )
             writer.writeheader()
             writer.writerows(result.predictions)
