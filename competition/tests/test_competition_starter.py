@@ -44,6 +44,7 @@ def test_write_public_dataset_strips_private_fields(tmp_path: Path):
                     "type": "Vibration",
                     "expected_answer": "A",
                     "characteristic_form": "rubric",
+                    "usage": "Public",
                 }
             ]
         ),
@@ -56,6 +57,32 @@ def test_write_public_dataset_strips_private_fields(tmp_path: Path):
     assert len(scenarios) == 1
     assert scenarios[0].id == "1"
     assert scenarios[0].metadata["type"] == "Vibration"
+
+
+def test_load_public_scenarios_supports_mcqa_schema(tmp_path: Path):
+    dataset = tmp_path / "public_mcqa.jsonl"
+    dataset.write_text(
+        json.dumps(
+            {
+                "id": "q1",
+                "question_type": "open_ended_multi_choice",
+                "passage": "FMEA links failures to sensor variables.",
+                "question": "Which option best indicates a motor phase-loss fault?",
+                "options": {"A": "Phase current imbalance", "B": "Cooling water flow"},
+                "metadata": {"asset_class": "electric motor", "family": "positive_failure_to_sensor"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    scenarios = load_public_scenarios(dataset)
+
+    assert len(scenarios) == 1
+    assert scenarios[0].id == "q1"
+    assert "FMEA links failures" in scenarios[0].text
+    assert "A. Phase current imbalance" in scenarios[0].text
+    assert scenarios[0].metadata["asset_class"] == "electric motor"
 
 
 def test_competition_kit_packages_submission(tmp_path: Path):
