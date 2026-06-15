@@ -1,10 +1,9 @@
-from evaluation.static_json_score import (
+from evaluation.scorers.static_json import (
     evaluate_static_json,
     evaluate_static_json_batch,
     flatten_answer,
     parse_structured_answer,
 )
-
 
 def test_parse_json_object_from_noisy_markdown_answer():
     raw = 'Answer:\n```json\n{"energy": 3, "material": 12}\n```'
@@ -121,3 +120,31 @@ def test_batch_evaluation():
 
     assert result["num_examples"] == 2
     assert result["strict_exact_match_accuracy"] == 0.5
+
+
+
+from evaluation.models import Scenario
+from evaluation.scorers.static_json import StaticJsonScorer
+
+
+def test_static_json_scorer_wrapper_exact_match():
+    scenario = Scenario.from_raw(
+        {
+            "id": "11",
+            "text": "Count storage jobs.",
+            "expected_answer": "{'energy': 14, 'material': 48}",
+            "scoring_method": "static_json",
+        }
+    )
+
+    scorer = StaticJsonScorer()
+    result = scorer(
+        scenario,
+        '{"energy": 14, "material": 48}',
+        "",
+    )
+
+    assert result.scorer == "static_json"
+    assert result.passed is True
+    assert result.score == 1.0
+    assert result.details["strict_exact_match_accuracy"] == 1.0

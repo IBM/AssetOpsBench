@@ -1,16 +1,19 @@
-"""Static structured-answer evaluator for AssetOpsBench.
+"""Static JSON scorer for structured AssetOpsBench answers.
 
-This module provides a deterministic evaluator for structured answers such as:
+This scorer is deterministic and is intended for structured outputs such as:
 
-- JSON objects: {"energy": 14, "material": 48}
-- JSON arrays: [{"equipment_group": "pumps", "count": 3}]
-- Python literals: {'energy': 14, 'material': 48}
-- Python-style tuple lists: [("Engines & motors", 5), ("Lines & drives", 2)]
-- Count-only answers: 34
-- Noisy model outputs with prefixes, markdown fences, or extra text.
+- JSON objects
+- JSON arrays
+- Python-style dictionaries
+- Python-style lists/tuples
+- nested structures
+- integer/count-only answers
+- noisy outputs with markdown fences or answer prefixes
 
-The implementation is inspired by DeepSynth-style static scoring, but is
-AssetOpsBench-specific and does not depend on DeepSynth reference files.
+It plugs into the existing evaluation pipeline as a scorer named
+``static_json`` and can be invoked with:
+
+    uv run evaluate --scorer-default static_json ...
 """
 
 from __future__ import annotations
@@ -19,13 +22,15 @@ import ast
 import json
 import re
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
 from typing import Any
+
+from ..models import Scenario, ScorerResult
+from . import register
 
 
 @dataclass
 class KeyComparison:
-    """Per-key comparison between gold and model answer."""
+    """Per-key comparison between gold and model output."""
 
     key: str
     gold_value: str
@@ -37,7 +42,7 @@ class KeyComparison:
 
 @dataclass
 class StaticJsonScore:
-    """Aggregate static score for one structured answer pair."""
+    """Structured score for one gold/model answer pair."""
 
     partial_exact_match_accuracy: float
     strict_exact_match_accuracy: float
@@ -54,20 +59,14 @@ class StaticJsonScore:
     details: list[KeyComparison] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        """Return JSON-serializable dictionary."""
+        """Return a JSON-serializable dictionary."""
         data = asdict(self)
         data["details"] = [asdict(item) for item in self.details]
         return data
 
 
 def extract_answer_text(text: Any) -> str:
-    """Extract likely final answer text from raw model output.
-
-    Examples:
-        "Answer: {\"a\": 1}" -> "{\"a\": 1}"
-        "<Answer>: 34" -> "34"
-        "Final Answer: [('x', 2)]" -> "[('x', 2)]"
-    """
+    """Extract likely final answer text from raw model output."""
     if not isinstance(text, str):
         return str(text)
 
@@ -106,11 +105,7 @@ def _strip_markdown_fence(content: str) -> str:
 
 
 def _extract_balanced_structure(content: str) -> str:
-    """Extract first balanced {...}, [...], or (...) structure from noisy text.
-
-    This helps with outputs like:
-        "Here is the answer: {\"a\": 1}. Thanks."
-    """
+    """Extract first balanced {...}, [...], or (...) from noisy text."""
     content = content.strip()
 
     candidates = [
@@ -171,55 +166,43 @@ def _extract_count_from_text(content: str) -> int | float | None:
     if re.fullmatch(r"-?\d+\.\d+", stripped):
         return float(stripped)
 
-    # Handle simple noisy count answers such as "The answer is 34."
     numbers = re.findall(r"-?\d+(?:\.\d+)?", stripped)
     if len(numbers) == 1:
         number = numbers[0]
-        if "." in number:
-            return float(number)
-        return int(number)
+        return float(number) if "." in number else int(number)
 
     return None
 
 
 def parse_structured_answer(value: Any) -> Any:
-    """Parse a structured gold/model answer into a Python object.
-
-    Supports JSON, Python literals, markdown-fenced JSON/Python,
-    tuple lists, count-only strings, and noisy answer-prefixed text.
-    """
+    """Parse JSON/Python-like structured output into a Python object."""
     if isinstance(value, (dict, list, tuple, int, float, bool)) or value is None:
         return value
 
     content = extract_answer_text(value)
     content = _strip_markdown_fence(content)
 
-    # First handle count-only or simple noisy count answer.
     count = _extract_count_from_text(content)
     if count is not None:
         return count
 
     content = _extract_balanced_structure(content)
 
-    # Strict JSON.
     try:
         return json.loads(content)
     except json.JSONDecodeError:
         pass
 
-    # Python literals: dicts, lists, tuples, strings, numbers.
     try:
         return ast.literal_eval(content)
     except (ValueError, SyntaxError):
         pass
 
-    # Common repair: single quotes to double quotes.
     try:
         return json.loads(content.replace("'", '"'))
     except json.JSONDecodeError:
         pass
 
-    # Try count extraction again after balanced extraction.
     count = _extract_count_from_text(content)
     if count is not None:
         return count
@@ -247,19 +230,7 @@ def normalize_value(value: Any) -> str:
 
 
 def flatten_answer(value: Any, prefix: str = "answer") -> dict[str, str]:
-    """Flatten nested structures into comparable key-value pairs.
-
-    Examples:
-        {"a": {"b": 2}} -> {"answer.a.b": "2"}
-
-        [("x", 1), ("y", 2)] ->
-        {
-            "answer[0][0]": "x",
-            "answer[0][1]": "1",
-            "answer[1][0]": "y",
-            "answer[1][1]": "2",
-        }
-    """
+    """Flatten nested structures into comparable key-value pairs."""
     parsed = parse_structured_answer(value)
 
     if isinstance(parsed, dict):
@@ -283,7 +254,6 @@ def similarity_score(gold_value: str, model_value: str) -> float:
     if gold_value == model_value:
         return 1.0
 
-    # Numeric similarity.
     try:
         gold_num = float(gold_value)
         model_num = float(model_value)
@@ -304,7 +274,6 @@ def similarity_score(gold_value: str, model_value: str) -> float:
     except (TypeError, ValueError):
         pass
 
-    # Simple character-set similarity for non-numeric values.
     gold_chars = set(gold_value)
     model_chars = set(model_value)
     union = gold_chars | model_chars
@@ -423,7 +392,6 @@ def evaluate_static_json(
         details=details,
     )
 
-
 def evaluate_static_json_batch(
     pairs: list[tuple[Any, Any]],
     *,
@@ -471,56 +439,47 @@ def evaluate_static_json_batch(
         "examples": [score.to_dict() for score in scores],
     }
 
+class StaticJsonScorer:
+    """Evaluation scorer wrapper for the trajectory-based pipeline."""
 
-def evaluate_static_json_files(
-    gold_path: str | Path,
-    model_path: str | Path,
-    *,
-    gold_key: str = "answer",
-    model_key: str = "answer",
-    id_key: str = "scenario_id",
-    similarity_threshold: float = 0.0,
-) -> dict[str, Any]:
-    """Evaluate two JSON files containing answer records.
+    def __init__(self, name: str = "static_json") -> None:
+        self.name = name
 
-    Example record format:
-        {"scenario_id": "11", "answer": {"energy": 14, "material": 48}}
+    def __call__(
+        self,
+        scenario: Scenario,
+        answer: str,
+        trajectory_text: str,
+    ) -> ScorerResult:
+        gold_answer = scenario.expected_answer or scenario.characteristic_form
 
-    The two files are aligned by ``id_key``.
-    """
-    gold_data = json.loads(Path(gold_path).read_text(encoding="utf-8"))
-    model_data = json.loads(Path(model_path).read_text(encoding="utf-8"))
+        if gold_answer is None or str(gold_answer).strip() == "":
+            return ScorerResult(
+                scorer=self.name,
+                passed=False,
+                score=0.0,
+                rationale=(
+                    "scenario has neither expected_answer nor characteristic_form "
+                    "for static_json scoring"
+                ),
+            )
 
-    if not isinstance(gold_data, list) or not isinstance(model_data, list):
-        return evaluate_static_json_batch(
-            [(gold_data, model_data)],
-            similarity_threshold=similarity_threshold,
+        static_score = evaluate_static_json(gold_answer, answer)
+        passed = static_score.strict_exact_match_accuracy == 1.0
+
+        return ScorerResult(
+            scorer=self.name,
+            passed=passed,
+            score=round(static_score.f1, 3),
+            rationale=(
+                "strict structured match"
+                if passed
+                else "structured answer differs from ground truth"
+            ),
+            details=static_score.to_dict(),
         )
 
-    gold_by_id = {
-        str(item[id_key]): item
-        for item in gold_data
-        if isinstance(item, dict) and id_key in item
-    }
-    model_by_id = {
-        str(item[id_key]): item
-        for item in model_data
-        if isinstance(item, dict) and id_key in item
-    }
 
-    common_ids = sorted(set(gold_by_id) & set(model_by_id))
-
-    pairs = [
-        (gold_by_id[item_id][gold_key], model_by_id[item_id][model_key])
-        for item_id in common_ids
-    ]
-
-    result = evaluate_static_json_batch(
-        pairs,
-        similarity_threshold=similarity_threshold,
-    )
-    result["matched_ids"] = common_ids
-    result["missing_ids"] = sorted(set(gold_by_id) - set(model_by_id))
-    result["extra_ids"] = sorted(set(model_by_id) - set(gold_by_id))
-
-    return result
+def install(name: str = "static_json") -> None:
+    """Register the static JSON scorer."""
+    register(name, StaticJsonScorer(name=name))

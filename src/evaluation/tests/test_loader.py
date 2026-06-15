@@ -70,3 +70,42 @@ def test_join_drops_orphans(make_persisted_record):
     pairs = list(join_records(scenarios, trajs))
     assert len(pairs) == 1
     assert pairs[0][0].id == "1"
+
+
+def test_load_trajectory_uses_filename_as_scenario_id_when_missing(tmp_path):
+    trajectory_path = tmp_path / "34.json"
+    trajectory_path.write_text(
+        """
+        {
+          "run_id": "24",
+          "scenario_id": null,
+          "runner": "stirrup-agent",
+          "model": "litellm_proxy/aws/claude-opus-4-8",
+          "question": "Question text",
+          "answer": "{\\"Repair\\": 13, \\"Replace\\": 20, \\"Service\\": 3}",
+          "trajectory": {"turns": []}
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    trajectories = load_trajectories(tmp_path)
+
+    assert len(trajectories) == 1
+    assert trajectories[0].scenario_id == "34"
+
+
+def test_load_scenarios_from_groundtruth_folders(tmp_path):
+    scenario_dir = tmp_path / "scenario_11"
+    scenario_dir.mkdir()
+    (scenario_dir / "groundtruth.txt").write_text(
+        "{'energy': 14, 'material': 48}",
+        encoding="utf-8",
+    )
+
+    scenarios = load_scenarios(tmp_path)
+
+    assert len(scenarios) == 1
+    assert scenarios[0].id == "11"
+    assert scenarios[0].expected_answer == "{'energy': 14, 'material': 48}"
+    assert scenarios[0].scoring_method == "static_json"

@@ -46,3 +46,6 @@ def names() -> list[str]:
 # via :func:`evaluation.scorers.llm_judge.install`.
 from . import code_based  # noqa: E402,F401
 from . import semantic  # noqa: E402,F401
+from .static_json import install as _install_static_json  # noqa: E402
+
+_install_static_json()
