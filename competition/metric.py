@@ -1,15 +1,12 @@
-"""Kaggle-style metric helpers for Industrial Automation Challenge.
+"""Kaggle-style metric helper for Industrial Automation Challenge.
 
-Kaggle solution files use a column named ``usage`` to mark Public/Private
-leaderboard rows. That column is not participant token usage and should not be
-included in participant submissions. The participant-facing submission schema is:
+The participant-facing submission schema is:
 
     id,answer
 
-This metric currently scores MCQA answer accuracy. Token efficiency, latency, and
-reasoning completeness are described in the IJCAI proposal as final/offline audit
-criteria; they need separate auditable fields or organizer-side logs before they
-can be safely included in a live Kaggle score.
+This helper scores exact MCQA answer accuracy. Broader criteria such as token
+efficiency, latency, and reasoning completeness require an announced/auditable
+field or organizer-side logs before they should be included in live scoring.
 """
 
 from __future__ import annotations
@@ -19,7 +16,6 @@ import pandas as pd
 
 ID_COLUMN = "id"
 ANSWER_COLUMN = "answer"
-USAGE_COLUMN = "usage"  # Kaggle Public/Private split marker, not token usage.
 
 
 def score(
@@ -30,7 +26,9 @@ def score(
     """Return exact-match MCQA accuracy for Kaggle custom metric validation.
 
     Parameters follow Kaggle's common custom metric signature. Answers are
-    compared case-insensitively after trimming whitespace.
+    compared case-insensitively after trimming whitespace. The public repository
+    contains only toy/example data; real evaluation data should remain outside
+    the public branch.
     """
 
     row_id = row_id_column_name or ID_COLUMN
@@ -50,34 +48,6 @@ def score(
     y_true = merged[f"{ANSWER_COLUMN}_true"].map(_normalize_answer)
     y_pred = merged[f"{ANSWER_COLUMN}_pred"].map(_normalize_answer)
     return float((y_true == y_pred).mean())
-
-
-def public_private_accuracy(
-    solution: pd.DataFrame,
-    submission: pd.DataFrame,
-    row_id_column_name: str = ID_COLUMN,
-) -> dict[str, float]:
-    """Compute overall/Public/Private accuracy when a Kaggle usage split exists."""
-
-    row_id = row_id_column_name or ID_COLUMN
-    _require_columns(solution, [row_id, ANSWER_COLUMN], "solution")
-    _require_columns(submission, [row_id, ANSWER_COLUMN], "submission")
-    merged = solution.merge(
-        submission[[row_id, ANSWER_COLUMN]],
-        on=row_id,
-        how="left",
-        suffixes=("_true", "_pred"),
-    )
-    y_true = merged[f"{ANSWER_COLUMN}_true"].map(_normalize_answer)
-    y_pred = merged[f"{ANSWER_COLUMN}_pred"].map(_normalize_answer)
-    correct = y_true == y_pred
-    out = {"overall": float(correct.mean())}
-    if USAGE_COLUMN in merged.columns:
-        for split_name in ("Public", "Private"):
-            mask = merged[USAGE_COLUMN].astype(str).str.lower() == split_name.lower()
-            if mask.any():
-                out[split_name.lower()] = float(correct[mask].mean())
-    return out
 
 
 def _require_columns(df: pd.DataFrame, columns: list[str], name: str) -> None:

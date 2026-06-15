@@ -33,27 +33,29 @@ q123,A
 
 `answer` should be the selected option letter.
 
-## Why is there a `usage` column in the solution file?
+## Should submissions include token usage?
 
-In Kaggle solution files, `usage` is the leaderboard split marker. It indicates
-whether each hidden row contributes to the Public or Private leaderboard. It is
-not token usage, cost, latency, or tool usage.
+Not in the current public submission schema. Submit only the columns announced in
+Kaggle and in `competition/examples/sample_submission.csv`.
 
-Participants should not include `usage` in public datasets or submissions. If
-the competition later needs live token-efficiency scoring, use a separate field
-name such as `token_usage` or `total_tokens`.
+If token-efficiency becomes part of live scoring, the organizers will announce a
+separate participant-facing field in the rules and sample submission. Do not add
+extra private/evaluation metadata columns to your Kaggle submission unless the
+rules explicitly request them.
 
 ## Are answers allowed in public data?
 
 Final test data should not include answer labels. Organizers may provide a
-labeled validation set if desired, but the public test set and hidden solution
-must remain separated.
+labeled validation artifact if desired, but participant-facing test data should
+contain prompt information only.
 
 ## Which fields are private and should not be in public test data?
 
-Do not publish fields such as `answer`, `correct_answer`, `expected_answer`,
-`ground_truth`, `reference_answer`, `rubric`, `characteristic_form`,
-`scoring_method`, or `usage` in participant test data.
+Do not publish private/evaluation fields in participant test data, including:
+
+- answer, label, or reference-answer fields
+- rubric, characteristic-form, or scoring-method fields
+- `usage` or any other reserved evaluation metadata
 
 ## How are submissions scored?
 

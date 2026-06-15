@@ -1,6 +1,6 @@
 """Public dataset loading helpers for AssetOpsBench competition submissions.
 
-The public competition dataset must not contain ground truth or rubric fields.
+The public competition dataset must not contain private labels or rubric fields.
 These helpers intentionally reject private/evaluation fields by default.
 """
 
@@ -25,10 +25,9 @@ PRIVATE_FIELD_NAMES = {
     "scoring_method",
     "target",
     "characteristic_form",
-    # Kaggle solution files use ``usage`` as the Public/Private split marker.
-    # It is organizer-side metadata and must not be present in participant
-    # datasets. If the competition later scores token/cost efficiency, use a
-    # distinct public column name such as ``token_usage`` to avoid ambiguity.
+    # Reserved organizer/evaluation metadata must not be present in public
+    # participant datasets. If token/cost efficiency is later scored publicly,
+    # use a distinct announced field such as ``token_usage``.
     "usage",
 }
 
@@ -87,7 +86,7 @@ def load_public_scenarios(
 ) -> list[AssetOpsScenario]:
     """Load scenarios from a public dataset file.
 
-    By default this raises if any record includes ground-truth-like fields.
+    By default this raises if any record includes private-label-like fields.
     Set ``allow_private_fields=True`` only for local organizer-side conversion
     scripts, never for a public Kaggle data artifact.
     """
@@ -102,7 +101,7 @@ def load_public_scenarios(
             joined = ", ".join(private)
             raise ValueError(
                 f"Record {index} contains private evaluation field(s): {joined}. "
-                "Remove ground truth before publishing or submitting."
+                "Remove private labels/metadata before publishing or submitting."
             )
 
         scenario_id = raw.get("id", raw.get("scenario_id"))

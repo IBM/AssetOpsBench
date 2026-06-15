@@ -16,11 +16,10 @@ Links:
 
 - Website changes are ready; publish after Kaggle setup is complete.
 - Kaggle rules page is complete.
-- Participant validation and test datasets have been uploaded.
-- Ground-truth solution file has been uploaded with the Kaggle `usage` split
-  column.
-- Sample submission is expected to use the MCQA answer schema described below.
-- Custom metric work is still in progress.
+- Participant-facing validation/test datasets and sample submission format are
+  handled through Kaggle.
+- This repository intentionally contains only public-safe starter-kit code,
+  documentation, toy examples, and local validation helpers.
 
 ## Folder layout
 
@@ -72,9 +71,9 @@ Expected participant artifact:
 ## Public participant dataset schema
 
 The challenge uses FailureSensorIQ-style multiple-choice industrial reasoning
-questions. Public participant datasets should contain prompt information only;
-hidden solution labels and leaderboard split markers must not be included in the
-public test file.
+questions. Public participant datasets should contain prompt information only.
+Do not place hidden labels, scoring metadata, or internal evaluation artifacts in
+this public starter kit.
 
 Typical public row:
 
@@ -104,22 +103,16 @@ The loader also supports the older simple schema:
 {"id": "301", "text": "What vibration analysis capabilities are available?", "type": "Vibration"}
 ```
 
-## Private solution schema
+## Hidden evaluation artifacts
 
-Organizer-side solution files currently use columns like:
+Hidden labels, private leaderboard metadata, and organizer-only evaluation files
+must remain outside the public repository. The starter kit documents the
+participant-facing input/output contract only.
 
-```csv
-id,anchor,answer,asset_class,family,n_options,usage
-```
-
-Important: Kaggle's `usage` column is the Public/Private leaderboard split
-marker. It is not token usage. Valid values are typically `Public` and
-`Private`. Do not include this column in participant datasets or participant
-submissions.
-
-If the live metric later incorporates token/cost efficiency, use a distinct
-field name such as `token_usage`, `total_tokens`, `latency_ms`, or
-`cost_estimate`, not `usage`, to avoid colliding with Kaggle's split marker.
+If the live metric later incorporates token/cost efficiency, use an explicit
+participant-facing field such as `token_usage`, `total_tokens`, `latency_ms`, or
+`cost_estimate` after that field has been announced in the Kaggle rules and
+sample submission.
 
 ## Public data leakage guard
 
@@ -127,14 +120,14 @@ field name such as `token_usage`, `total_tokens`, `latency_ms`, or
 solution-like fields. These include:
 
 - `answer`, `answers`, `correct_answer`, `expected_answer`
-- `ground_truth`, `reference_answer`, `label`, `labels`, `target`
-- `rubric`, `characteristic_form`, `scoring_method`
-- `usage` because Kaggle uses it as the hidden Public/Private split marker
+- private answer/reference label fields
+- rubric, characteristic-form, and scoring-method fields
+- `usage` and other reserved organizer/evaluation metadata
 
-Validation data may include labels if organizers intentionally release a labeled
-validation set. The final participant test set should not include answer labels.
-Use `write_public_dataset(...)` to strip private fields from organizer-side JSON
-or JSONL files before publishing a public artifact.
+Validation data may include labels only if organizers intentionally release a
+labeled validation artifact. The participant test set should not include answer
+labels or hidden scoring metadata. Use `write_public_dataset(...)` to strip
+private fields before publishing a public artifact.
 
 ## Submission schema
 
@@ -249,16 +242,17 @@ helper using the common Kaggle signature:
 score(solution, submission, row_id_column_name="id")
 ```
 
-It expects:
+It expects participant submissions with:
 
-- solution columns: `id`, `answer` plus optional Kaggle split column `usage`
-- submission columns: `id`, `answer`
+- `id`
+- `answer`
 
 The IJCAI proposal mentions a broader final rubric with MCQ accuracy, latency,
 reasoning completeness, and token efficiency. Live token-efficiency scoring
-requires an auditable token/cost field or organizer-side execution logs. Until
-that field is finalized, the safe Kaggle live metric is answer accuracy, with
-latency/reasoning/token efficiency handled in final/offline review.
+requires an announced, auditable participant-facing field or organizer-side
+execution logs. Until that field is finalized, the safe Kaggle live metric is
+answer accuracy, with latency/reasoning/token efficiency handled in final/offline
+review.
 
 ## Local checks
 
@@ -273,15 +267,3 @@ Expected smoke-test output:
 Processed scenarios: 1
 Submission package: competition_results/submission.zip
 ```
-
-## Organizer notes
-
-The local parent folder currently contains organizer-side artifacts, including:
-
-- `iso_sensors_mcqa_val.jsonl`
-- `HIDDEN_iso_sensors_mcqa_test_ground_truth_with_usage.jsonl`
-- `HIDDEN_iso_sensors_mcqa_test_ground_truth_with_usage.CSV`
-- `IJCAI Data Management.ipynb`
-
-Do not commit real hidden solution files to the public competition branch. Only
-commit toy/example rows and code needed to regenerate public-safe files.
