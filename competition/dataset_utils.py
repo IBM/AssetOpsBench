@@ -1,35 +1,12 @@
-"""Public dataset loading helpers for AssetOpsBench competition submissions.
-
-The public competition dataset must not contain private labels or rubric fields.
-These helpers intentionally reject private/evaluation fields by default.
-"""
+"""Dataset loading utilities for the Industrial Automation Challenge starter kit."""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-
-PRIVATE_FIELD_NAMES = {
-    "answer",
-    "answers",
-    "correct_answer",
-    "expected_answer",
-    "ground_truth",
-    "label",
-    "labels",
-    "reference_answer",
-    "rubric",
-    "scoring_method",
-    "target",
-    "characteristic_form",
-    # Reserved organizer/evaluation metadata must not be present in public
-    # participant datasets. If token/cost efficiency is later scored publicly,
-    # use a distinct announced field such as ``token_usage``.
-    "usage",
-}
 
 PUBLIC_EXTRA_FIELDS = {
     "question_type",
@@ -48,7 +25,7 @@ PUBLIC_EXTRA_FIELDS = {
 
 @dataclass(frozen=True)
 class AssetOpsScenario:
-    """One public AssetOpsBench competition scenario."""
+    """One Industrial Automation Challenge scenario."""
 
     id: str
     text: str
@@ -79,30 +56,13 @@ def read_json_records(path: str | Path) -> list[dict[str, Any]]:
     raise ValueError(f"Unsupported JSON shape in {p}: {type(raw).__name__}")
 
 
-def load_public_scenarios(
-    path: str | Path,
-    *,
-    allow_private_fields: bool = False,
-) -> list[AssetOpsScenario]:
-    """Load scenarios from a public dataset file.
-
-    By default this raises if any record includes private-label-like fields.
-    Set ``allow_private_fields=True`` only for local organizer-side conversion
-    scripts, never for a public Kaggle data artifact.
-    """
+def load_public_scenarios(path: str | Path) -> list[AssetOpsScenario]:
+    """Load scenarios from a JSON/JSONL dataset file."""
 
     scenarios: list[AssetOpsScenario] = []
     for index, raw in enumerate(read_json_records(path)):
         if not isinstance(raw, dict):
             raise ValueError(f"Record {index} must be an object, got {type(raw).__name__}")
-
-        private = sorted(PRIVATE_FIELD_NAMES.intersection(raw))
-        if private and not allow_private_fields:
-            joined = ", ".join(private)
-            raise ValueError(
-                f"Record {index} contains private evaluation field(s): {joined}. "
-                "Remove private labels/metadata before publishing or submitting."
-            )
 
         scenario_id = raw.get("id", raw.get("scenario_id"))
         text = raw.get("text", raw.get("prompt"))
@@ -120,15 +80,21 @@ def load_public_scenarios(
         if isinstance(raw.get("metadata"), dict):
             metadata.update(raw["metadata"])
         metadata.update({k: raw[k] for k in PUBLIC_EXTRA_FIELDS if k in raw})
-        scenarios.append(
-            AssetOpsScenario(id=str(scenario_id), text=str(text), metadata=metadata)
-        )
+        scenarios.append(AssetOpsScenario(id=str(scenario_id), text=str(text), metadata=metadata))
 
     return scenarios
 
 
+def build_dataset(dataset_path: str | Path | None = None) -> list[AssetOpsScenario]:
+    """CUREBench-style dataset builder used by the starter framework."""
+
+    if dataset_path is None:
+        raise ValueError("dataset_path is required")
+    return load_public_scenarios(dataset_path)
+
+
 def _compose_question_text(raw: dict[str, Any]) -> str:
-    """Build a model prompt from the FailureSensorIQ/MCQA public schema."""
+    """Build a prompt from the MCQA schema."""
 
     parts: list[str] = []
     passage = raw.get("passage")
@@ -155,25 +121,3 @@ def _format_options(options: Any) -> str:
     for key, value in items:
         lines.append(f"{key}. {value}")
     return "\n".join(lines)
-
-
-def strip_private_fields(records: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return public-safe copies of private scenario records."""
-
-    public_records: list[dict[str, Any]] = []
-    for raw in records:
-        cleaned = {k: v for k, v in raw.items() if k not in PRIVATE_FIELD_NAMES}
-        public_records.append(cleaned)
-    return public_records
-
-
-def write_public_dataset(source_path: str | Path, output_path: str | Path) -> Path:
-    """Create a public-safe JSONL dataset by removing private fields."""
-
-    records = strip_private_fields(read_json_records(source_path))
-    out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w", encoding="utf-8") as f:
-        for record in records:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    return out
