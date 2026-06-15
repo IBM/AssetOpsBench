@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
-import os
 import time
 from functools import cached_property
 from pathlib import Path
@@ -27,7 +26,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from observability import agent_run_span, persist_trajectory
 
-from .._litellm import LITELLM_PREFIX, resolve_model
+from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
@@ -42,25 +41,20 @@ _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
 def _build_chat_model(model_id: str):
     """Construct a LangChain chat model for *model_id*.
 
-    When the ID uses the ``litellm_proxy/`` prefix, a :class:`ChatOpenAI`
-    instance is pointed at the LiteLLM proxy (using ``LITELLM_BASE_URL`` and
-    ``LITELLM_API_KEY``).  Otherwise the model string is passed to
+    When the ID uses a proxy-router prefix (``litellm_proxy/`` or
+    ``tokenrouter/``), a :class:`ChatOpenAI` instance is pointed at that
+    router's OpenAI-compatible endpoint (credentials from the router's env
+    vars).  Otherwise the model string is passed to
     ``init_chat_model`` so any provider supported by LangChain can be used.
     """
-    if model_id.startswith(LITELLM_PREFIX):
-        base_url = os.environ.get("LITELLM_BASE_URL")
-        api_key = os.environ.get("LITELLM_API_KEY")
-        if not base_url or not api_key:
-            raise ValueError(
-                "LITELLM_BASE_URL and LITELLM_API_KEY must be set "
-                f"when using {LITELLM_PREFIX!r} model prefix"
-            )
+    creds = resolve_router_creds(model_id)
+    if creds is not None:
         from langchain_openai import ChatOpenAI
 
         return ChatOpenAI(
             model=resolve_model(model_id),
-            base_url=base_url,
-            api_key=api_key,
+            base_url=creds.base_url,
+            api_key=creds.api_key,
         )
 
     from langchain.chat_models import init_chat_model
@@ -149,8 +143,8 @@ class DeepAgentRunner(AgentRunner):
     conversation against the MCP-bridged LangChain tools.
 
     Routes LLM calls through a LiteLLM proxy when the model ID uses the
-    ``litellm_proxy/`` prefix (requires ``LITELLM_BASE_URL`` and
-    ``LITELLM_API_KEY``).
+    proxy-router prefix ``litellm_proxy/`` or ``tokenrouter/`` (requires the
+    matching ``*_BASE_URL`` / ``*_API_KEY`` env vars).
 
     Args:
         llm: Unused — DeepAgentRunner uses the deep-agents framework directly.

@@ -36,6 +36,8 @@ tracks:
 environment variables:
   LITELLM_API_KEY       LiteLLM API key    (required for litellm_proxy/* models)
   LITELLM_BASE_URL      LiteLLM base URL   (required for litellm_proxy/* models)
+  TOKENROUTER_API_KEY   TokenRouter API key  (for tokenrouter/* models)
+  TOKENROUTER_BASE_URL  TokenRouter base URL (e.g. https://api.tokenrouter.com/v1)
   WATSONX_APIKEY/...    Standard LiteLLM watsonx vars (for watsonx/* models)
   STIRRUP_CODE_IMAGE    Docker image for the code track (default python:3.12-slim)
 

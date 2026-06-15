@@ -37,7 +37,7 @@ from pathlib import Path
 
 from observability import agent_run_span, persist_trajectory
 
-from .._litellm import LITELLM_PREFIX, resolve_model
+from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
@@ -85,20 +85,14 @@ class StirrupAgentRunner(AgentRunner):
 
     def _build_client(self):
         """Build a Stirrup LLM client for the configured model id."""
-        if self._model_id.startswith(LITELLM_PREFIX):
-            base_url = os.environ.get("LITELLM_BASE_URL")
-            api_key = os.environ.get("LITELLM_API_KEY")
-            if not base_url or not api_key:
-                raise ValueError(
-                    "LITELLM_BASE_URL and LITELLM_API_KEY must be set when "
-                    f"using the {LITELLM_PREFIX!r} model prefix"
-                )
+        creds = resolve_router_creds(self._model_id)
+        if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
 
             return ChatCompletionsClient(
                 model=resolve_model(self._model_id),
-                base_url=base_url.rstrip("/"),
-                api_key=api_key,
+                base_url=creds.base_url.rstrip("/"),
+                api_key=creds.api_key,
                 max_tokens=self._max_tokens,
             )
         from stirrup.clients.litellm_client import LiteLLMClient

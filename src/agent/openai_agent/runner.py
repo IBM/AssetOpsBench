@@ -18,7 +18,6 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import logging
-import os
 import time
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -30,7 +29,7 @@ from agents.mcp import MCPServerStdio
 
 from observability import agent_run_span, persist_trajectory
 
-from .._litellm import LITELLM_PREFIX, resolve_model
+from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
@@ -43,26 +42,19 @@ _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 def _build_run_config(model_id: str) -> RunConfig | None:
     """Build a RunConfig with a LiteLLM model provider when needed.
 
-    When *model_id* starts with ``litellm_proxy/``, creates an
-    :class:`AsyncOpenAI` client pointing at the LiteLLM proxy (using
-    ``LITELLM_BASE_URL`` and ``LITELLM_API_KEY``) and wraps it in
-    :class:`OpenAIChatCompletionsModel`.
+    When *model_id* starts with a proxy-router prefix (``litellm_proxy/`` or
+    ``tokenrouter/``), creates an :class:`AsyncOpenAI` client pointing at that
+    router's OpenAI-compatible endpoint (credentials from the router's env
+    vars) and wraps it in :class:`OpenAIChatCompletionsModel`.
 
     Returns ``None`` for direct OpenAI API usage.
     """
-    if not model_id.startswith(LITELLM_PREFIX):
+    creds = resolve_router_creds(model_id)
+    if creds is None:
         return None
 
-    base_url = os.environ.get("LITELLM_BASE_URL")
-    api_key = os.environ.get("LITELLM_API_KEY")
-    if not base_url or not api_key:
-        raise ValueError(
-            "LITELLM_BASE_URL and LITELLM_API_KEY must be set "
-            f"when using {LITELLM_PREFIX!r} model prefix"
-        )
-
     resolved = resolve_model(model_id)
-    client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+    client = AsyncOpenAI(base_url=creds.base_url, api_key=creds.api_key)
     set_tracing_disabled(disabled=True)
 
     class _LiteLLMModelProvider(ModelProvider):
@@ -175,7 +167,8 @@ class OpenAIAgentRunner(AgentRunner):
     against the registered MCP servers.
 
     Routes all requests through a LiteLLM proxy via the ``litellm_proxy/``
-    model ID prefix (requires ``LITELLM_BASE_URL`` and ``LITELLM_API_KEY``).
+    proxy-router prefix ``litellm_proxy/`` or ``tokenrouter/`` (requires the
+    matching ``*_BASE_URL`` / ``*_API_KEY`` env vars).
 
     Args:
         llm: Unused — OpenAIAgentRunner uses the OpenAI Agents SDK directly.
