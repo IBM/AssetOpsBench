@@ -219,7 +219,7 @@ A new challenge co-located with **IJCAI 2026** that pushes LLM agents on physics
 - 🌐 **Challenge site:** [ai-industrial-challenge-ijcai](https://sites.google.com/view/ai-industrial-challenge-ijcai/home)
 - 🧠 **Kaggle Track 1:** [Internal Model Reasoning](https://www.kaggle.com/competitions/industrial-automation-challenge-track-1)
 - 🛠️ **Kaggle Track 2:** [Agentic Tool-Augmented Reasoning](https://www.kaggle.com/competitions/industrial-automation-challenge-track-2)
-- 📦 **Starter kit:** [`competition/`](./competition/readme.md)
+- 📦 **Starter kit:** [`competition/`](./competition/README.md)
 - 📋 **IJCAI 2026 competitions:** [2026.ijcai.org/competitions](https://2026.ijcai.org/competitions/)
 
 ### ✅ Completed — CODS 2025

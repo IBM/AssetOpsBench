@@ -10,66 +10,36 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from competition.dataset_utils import load_public_scenarios, write_public_dataset
+from competition.dataset_utils import build_dataset, load_public_scenarios
 from competition.eval_framework import CompetitionKit
 
 
-def test_load_public_scenarios_rejects_private_fields(tmp_path: Path):
-    dataset = tmp_path / "private.jsonl"
+def test_load_public_scenarios_supports_jsonl(tmp_path: Path):
+    dataset = tmp_path / "dataset.jsonl"
     dataset.write_text(
-        json.dumps(
-            {
-                "id": 1,
-                "text": "Q",
-                "characteristic_form": "private rubric",
-            }
-        )
-        + "\n",
+        json.dumps({"id": "q1", "text": "Question text", "type": "Vibration"}) + "\n",
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="private evaluation field"):
-        load_public_scenarios(dataset)
-
-
-def test_write_public_dataset_strips_private_fields(tmp_path: Path):
-    private_dataset = tmp_path / "private.json"
-    public_dataset = tmp_path / "public.jsonl"
-    private_dataset.write_text(
-        json.dumps(
-            [
-                {
-                    "id": 1,
-                    "text": "Q",
-                    "type": "Vibration",
-                    "expected_answer": "A",
-                    "characteristic_form": "rubric",
-                    "usage": "Public",
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    write_public_dataset(private_dataset, public_dataset)
-    scenarios = load_public_scenarios(public_dataset)
+    scenarios = load_public_scenarios(dataset)
 
     assert len(scenarios) == 1
-    assert scenarios[0].id == "1"
+    assert scenarios[0].id == "q1"
+    assert scenarios[0].text == "Question text"
     assert scenarios[0].metadata["type"] == "Vibration"
 
 
 def test_load_public_scenarios_supports_mcqa_schema(tmp_path: Path):
-    dataset = tmp_path / "public_mcqa.jsonl"
+    dataset = tmp_path / "mcqa.jsonl"
     dataset.write_text(
         json.dumps(
             {
                 "id": "q1",
                 "question_type": "open_ended_multi_choice",
-                "passage": "FMEA links failures to sensor variables.",
-                "question": "Which option best indicates a motor phase-loss fault?",
-                "options": {"A": "Phase current imbalance", "B": "Cooling water flow"},
-                "metadata": {"asset_class": "electric motor", "family": "positive_failure_to_sensor"},
+                "passage": "This is a passage.",
+                "question": "Which option should be selected?",
+                "options": {"A": "Option A", "B": "Option B"},
+                "metadata": {"asset_class": "toy", "family": "format_example"},
             }
         )
         + "\n",
@@ -80,15 +50,32 @@ def test_load_public_scenarios_supports_mcqa_schema(tmp_path: Path):
 
     assert len(scenarios) == 1
     assert scenarios[0].id == "q1"
-    assert "FMEA links failures" in scenarios[0].text
-    assert "A. Phase current imbalance" in scenarios[0].text
-    assert scenarios[0].metadata["asset_class"] == "electric motor"
+    assert "This is a passage" in scenarios[0].text
+    assert "A. Option A" in scenarios[0].text
+    assert scenarios[0].metadata["asset_class"] == "toy"
+
+
+def test_build_dataset_alias(tmp_path: Path):
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(json.dumps([{"id": "q1", "text": "Question text"}]), encoding="utf-8")
+
+    scenarios = build_dataset(dataset)
+
+    assert scenarios[0].id == "q1"
+
+
+def test_load_public_scenarios_requires_prompt_content(tmp_path: Path):
+    dataset = tmp_path / "dataset.jsonl"
+    dataset.write_text(json.dumps({"id": "q1"}) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing required prompt content"):
+        load_public_scenarios(dataset)
 
 
 def test_competition_kit_packages_submission(tmp_path: Path):
-    dataset = tmp_path / "public.jsonl"
+    dataset = tmp_path / "dataset.jsonl"
     dataset.write_text(
-        '{"id": "301", "text": "What vibration tools are available?", "type": "Vibration"}\n',
+        '{"id": "q1", "text": "Question text", "type": "Vibration"}\n',
         encoding="utf-8",
     )
     config = tmp_path / "config.json"
@@ -107,6 +94,7 @@ def test_competition_kit_packages_submission(tmp_path: Path):
                     "dataset_path": str(dataset),
                     "description": "test",
                 },
+                "submission_columns": ["id", "answer"],
                 "output_dir": str(tmp_path / "out"),
             }
         ),
@@ -114,13 +102,7 @@ def test_competition_kit_packages_submission(tmp_path: Path):
     )
 
     kit = CompetitionKit(str(config))
-    result = kit.run_predictions(
-        lambda scenario: {
-            "prediction": f"answer for {scenario.id}",
-            "reasoning": {"used": "unit"},
-            "trajectory": [{"tool": "none"}],
-        }
-    )
+    result = kit.run_predictions(lambda scenario: {"answer": "A", "prediction": "A"})
     package = kit.save_submission(result)
 
     assert package.exists()
@@ -130,12 +112,5 @@ def test_competition_kit_packages_submission(tmp_path: Path):
             rows = list(csv.DictReader(line.decode("utf-8") for line in f))
         metadata = json.loads(zf.read("meta_data.json").decode("utf-8"))
 
-    assert rows == [
-        {
-            "id": "301",
-            "prediction": "answer for 301",
-            "reasoning": '{"used": "unit"}',
-            "trajectory": '[{"tool": "none"}]',
-        }
-    ]
+    assert rows == [{"id": "q1", "answer": "A"}]
     assert metadata["meta_data"]["dataset"] == "unit_dataset"
