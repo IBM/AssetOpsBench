@@ -27,8 +27,10 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from observability import agent_run_span, persist_trajectory
 
+from llm.generation import GenerationParams
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
+from ..generation_maps import to_chat_openai_kwargs
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
 
@@ -39,7 +41,7 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
 
 
-def _build_chat_model(model_id: str):
+def _build_chat_model(model_id: str, extra_kwargs: dict | None = None):
     """Construct a LangChain chat model for *model_id*.
 
     When the ID uses the ``litellm_proxy/`` prefix, a :class:`ChatOpenAI`
@@ -47,6 +49,7 @@ def _build_chat_model(model_id: str):
     ``LITELLM_API_KEY``).  Otherwise the model string is passed to
     ``init_chat_model`` so any provider supported by LangChain can be used.
     """
+    extra_kwargs = extra_kwargs or {}
     if model_id.startswith(LITELLM_PREFIX):
         base_url = os.environ.get("LITELLM_BASE_URL")
         api_key = os.environ.get("LITELLM_API_KEY")
@@ -61,11 +64,12 @@ def _build_chat_model(model_id: str):
             model=resolve_model(model_id),
             base_url=base_url,
             api_key=api_key,
+            **extra_kwargs,
         )
 
     from langchain.chat_models import init_chat_model
 
-    return init_chat_model(model_id)
+    return init_chat_model(model_id, **extra_kwargs)
 
 
 def _build_mcp_connections(
@@ -168,15 +172,20 @@ class DeepAgentRunner(AgentRunner):
         server_paths: dict[str, Path | str] | None = None,
         model: str = _DEFAULT_MODEL,
         recursion_limit: int = 100,
+        *,
+        generation: GenerationParams | None = None,
     ) -> None:
-        super().__init__(llm, server_paths)
+        super().__init__(llm, server_paths, generation=generation)
         self._model_id = model
         self._recursion_limit = recursion_limit
 
     @cached_property
     def _chat_model(self):
         """LangChain chat model, built once per runner instance."""
-        return _build_chat_model(self._model_id)
+        return _build_chat_model(
+            self._model_id,
+            to_chat_openai_kwargs(self._generation, self._model_id),
+        )
 
     async def run(self, question: str) -> AgentResult:
         """Run the deep-agents loop for *question*.

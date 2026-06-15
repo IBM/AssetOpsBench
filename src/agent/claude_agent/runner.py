@@ -26,8 +26,10 @@ from claude_agent_sdk import TextBlock, ToolUseBlock
 
 from observability import agent_run_span, persist_trajectory
 
+from llm.generation import GenerationParams
 from .._litellm import LITELLM_PREFIX, resolve_model
 from .._prompts import AGENT_SYSTEM_PROMPT
+from ..generation_maps import to_claude_agent_options
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
 
@@ -95,9 +97,12 @@ class ClaudeAgentRunner(AgentRunner):
         model: str = _DEFAULT_MODEL,
         max_turns: int = 30,
         permission_mode: str = "bypassPermissions",
+        *,
+        generation: GenerationParams | None = None,
     ) -> None:
-        super().__init__(llm, server_paths)
+        super().__init__(llm, server_paths, generation=generation)
         self._model = resolve_model(model)
+        self._model_id = model
         self._sdk_env = _sdk_env(model)
         self._max_turns = max_turns
         self._permission_mode = permission_mode
@@ -123,6 +128,7 @@ class ClaudeAgentRunner(AgentRunner):
                 permission_mode=self._permission_mode,
                 env=self._sdk_env,
             )
+            to_claude_agent_options(options, self._generation, self._model_id)
 
             _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
             answer = ""

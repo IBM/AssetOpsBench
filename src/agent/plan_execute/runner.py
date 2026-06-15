@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from llm import LLMBackend, LLMResult
+from llm.generation import GenerationParams
 from observability import agent_run_span, persist_trajectory
 
 from .executor import Executor
@@ -44,16 +45,26 @@ class _TokenMeter(LLMBackend):
         self.input_tokens = 0
         self.output_tokens = 0
 
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
-        result = self._inner.generate_with_usage(prompt, temperature)
+    def generate(
+        self,
+        prompt: str,
+        temperature: float = 0.0,
+        *,
+        params: GenerationParams | None = None,
+    ) -> str:
+        result = self._inner.generate_with_usage(prompt, temperature, params=params)
         self.input_tokens += result.input_tokens
         self.output_tokens += result.output_tokens
         return result.text
 
     def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
+        self,
+        prompt: str,
+        temperature: float = 0.0,
+        *,
+        params: GenerationParams | None = None,
     ) -> LLMResult:
-        result = self._inner.generate_with_usage(prompt, temperature)
+        result = self._inner.generate_with_usage(prompt, temperature, params=params)
         self.input_tokens += result.input_tokens
         self.output_tokens += result.output_tokens
         return result
@@ -61,6 +72,7 @@ class _TokenMeter(LLMBackend):
     @property
     def model_id(self) -> str:
         return self._inner.model_id
+
 
 _log = logging.getLogger(__name__)
 
@@ -102,8 +114,10 @@ class PlanExecuteRunner(AgentRunner):
         self,
         llm: LLMBackend,
         server_paths: dict[str, Path | str] | None = None,
+        *,
+        generation: GenerationParams | None = None,
     ) -> None:
-        super().__init__(llm, server_paths)
+        super().__init__(llm, server_paths, generation=generation)
         self._meter = _TokenMeter(llm)
         self._planner = Planner(self._meter)
         self._executor = Executor(self._meter, server_paths)

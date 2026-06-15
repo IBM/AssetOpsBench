@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from llm import LLMBackend
+from llm.generation import GenerationParams, from_env
 
 from .models import AgentResult
 
@@ -30,16 +31,29 @@ class AgentRunner(ABC):
     return an :class:`AgentResult`.  After ``super().__init__``,
     ``self._server_paths`` is always a concrete ``dict`` — either the caller's
     override, or a copy of :data:`DEFAULT_SERVER_PATHS`.
+
+    Args:
+        llm: LLM backend (used by plan-execute; SDK-based runners accept
+             ``None`` for interface compatibility).
+        server_paths: MCP server specs.  Defaults to :data:`DEFAULT_SERVER_PATHS`.
+        generation: Generation parameters applied to all LLM calls made by this
+                    runner.  Defaults to :func:`~llm.generation.from_env` so
+                    env vars take effect without explicit construction.
     """
 
     def __init__(
         self,
         llm: LLMBackend,
         server_paths: dict[str, Path | str] | None = None,
+        *,
+        generation: GenerationParams | None = None,
     ) -> None:
         self._llm = llm
         self._server_paths: dict[str, Path | str] = (
             dict(DEFAULT_SERVER_PATHS) if server_paths is None else server_paths
+        )
+        self._generation: GenerationParams = (
+            generation if generation is not None else from_env()
         )
 
     @abstractmethod

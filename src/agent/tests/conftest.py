@@ -11,7 +11,7 @@ class MockLLM(LLMBackend):
     def __init__(self, response: str = "") -> None:
         self._response = response
 
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
+    def generate(self, prompt: str, temperature: float = 0.0, **_kw) -> str:
         return self._response
 
 
@@ -21,7 +21,7 @@ class SequentialMockLLM(LLMBackend):
     def __init__(self, responses: list[str]) -> None:
         self._responses = iter(responses)
 
-    def generate(self, prompt: str, temperature: float = 0.0) -> str:
+    def generate(self, prompt: str, temperature: float = 0.0, **_kw) -> str:
         return next(self._responses, "")
 
 
