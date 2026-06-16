@@ -373,5 +373,4 @@ write report
 ---
 
 ## Acknowledgment
-
-The `static_json` scorer is inspired by the static scoring implementation in the DeepSynth benchmark, particularly the structured-answer parsing, normalization, flattening, exact/partial matching, and precision/recall/F1-style evaluation ideas from [`eval_static_score.py`](https://github.com/agentdeepsynthesis/deepsynth-bench/blob/main/scripts/evaluation/eval_static_score.py).
+The static JSON scorer is inspired by DeepSynth-style structured-answer scoring. See [Acknowledgments](acknowledgments.md) for details.
