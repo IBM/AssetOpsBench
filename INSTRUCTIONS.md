@@ -125,14 +125,14 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 
 Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagnostics, failure-mode reasoning, and utility tools. They speak MCP over stdio and are spawned on-demand by the agent runners — no manual startup needed.
 
-| Server      | Tools | Backing service                        |
-| ----------- | ----- | -------------------------------------- |
-| `iot`       | 4     | CouchDB                                |
-| `utilities` | 3     | none                                   |
-| `fmsr`      | 2     | LiteLLM + `failure_modes.yaml`         |
-| `wo`        | 8     | CouchDB                                |
-| `tsfm`      | 6     | IBM Granite TinyTimeMixer (torch)      |
-| `vibration` | 8     | CouchDB + numpy/scipy DSP              |
+| Server      | Tools | Categories               | Backing service                        |
+| ----------- | ----- | ------------------------ | -------------------------------------- |
+| `iot`       | 4     | read                     | CouchDB                                |
+| `utilities` | 3     | read                     | none                                   |
+| `fmsr`      | 2     | read, LLM-use            | LiteLLM + `failure_modes.yaml`         |
+| `wo`        | 14    | read, write              | CouchDB                                |
+| `tsfm`      | 6     | read, write, cpu-centric | IBM Granite TinyTimeMixer (torch)      |
+| `vibration` | 8     | read, cpu-centric        | CouchDB + numpy/scipy DSP              |
 
 Tool signatures, required env vars, and how to launch a server directly: **[docs/mcp-servers.md](docs/mcp-servers.md)**.
 
