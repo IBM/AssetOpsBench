@@ -12,7 +12,7 @@ import sys
 
 from agent._cli_common import add_common_args, print_result, run_sdk_cli
 
-_DEFAULT_MODEL = "litellm_proxy/Azure/gpt-5-mini-2025-08-07"
+_DEFAULT_MODEL = "tokenrouter/MiniMax-M3"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -22,16 +22,20 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 model-id format:
+  tokenrouter/<model>      TokenRouter (OpenAI-compatible) model  [default]
+                           e.g. tokenrouter/MiniMax-M3
   litellm_proxy/<model>    LiteLLM proxy model
                            e.g. litellm_proxy/Azure/gpt-5-mini-2025-08-07
 
 environment variables:
-  LITELLM_API_KEY          LiteLLM API key
+  TOKENROUTER_API_KEY      TokenRouter API key  (for tokenrouter/* models)
+  TOKENROUTER_BASE_URL     TokenRouter base URL (e.g. https://api.tokenrouter.com/v1)
+  LITELLM_API_KEY          LiteLLM API key      (for litellm_proxy/* models)
   LITELLM_BASE_URL         LiteLLM base URL
 
 examples:
   direct-llm-agent 'Return only JSON: {"test": 1}'
-  direct-llm-agent --model-id litellm_proxy/aws/claude-opus-4-8 'Return only one integer.'
+  direct-llm-agent --model-id tokenrouter/MiniMax-M3 'Return only one integer.'
 """,
     )
     add_common_args(parser, default_model=_DEFAULT_MODEL)
@@ -40,13 +44,13 @@ examples:
 
 def _build_llm(model_id: str):
     try:
-        from llm.litellm import LiteLLMBackend
+        from llm import make_backend
     except ImportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
 
     try:
-        return LiteLLMBackend(model_id=model_id)
+        return make_backend(model_id)
     except KeyError as exc:
         print(f"error: missing environment variable {exc}", file=sys.stderr)
         sys.exit(1)

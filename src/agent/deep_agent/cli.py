@@ -29,6 +29,8 @@ model-id format:
 environment variables:
   LITELLM_API_KEY       LiteLLM API key    (required for litellm_proxy/* models)
   LITELLM_BASE_URL      LiteLLM base URL   (required for litellm_proxy/* models)
+  TOKENROUTER_API_KEY   TokenRouter API key  (for tokenrouter/* models)
+  TOKENROUTER_BASE_URL  TokenRouter base URL (e.g. https://api.tokenrouter.com/v1)
 
 examples:
   deep-agent "What assets are at site MAIN?"

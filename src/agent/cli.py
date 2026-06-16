@@ -36,6 +36,8 @@ environment variables:
 
   LITELLM_API_KEY       LiteLLM API key          (required for non-watsonx models)
   LITELLM_BASE_URL      LiteLLM base URL         (required for non-watsonx models)
+  TOKENROUTER_API_KEY   TokenRouter API key      (for tokenrouter/* models)
+  TOKENROUTER_BASE_URL  TokenRouter base URL     (e.g. https://api.tokenrouter.com/v1)
 
   LOG_LEVEL             Log level for MCP servers (default: WARNING)
 
@@ -57,12 +59,12 @@ examples:
 
 def _build_llm(model_id: str):
     try:
-        from llm.litellm import LiteLLMBackend
+        from llm import make_backend
     except ImportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)
     try:
-        return LiteLLMBackend(model_id=model_id)
+        return make_backend(model_id)
     except KeyError as exc:
         print(f"error: missing environment variable {exc}", file=sys.stderr)
         sys.exit(1)

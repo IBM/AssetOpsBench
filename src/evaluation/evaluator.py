@@ -19,7 +19,6 @@ from .models import (
     PersistedTrajectory,
     Scenario,
     ScenarioResult,
-    ScorerResult,
 )
 from .report import build_report
 from .scorers import Scorer
@@ -35,8 +34,13 @@ class Evaluator:
     take precedence.
     """
 
-    def __init__(self, default_scorer: str = "llm_judge") -> None:
+    def __init__(
+        self,
+        default_scorer: str = "llm_judge",
+        judge_model: str | None = None,
+    ) -> None:
         self.default_scorer = default_scorer
+        self.judge_model = judge_model
 
     def evaluate(
         self,
@@ -58,6 +62,7 @@ class Evaluator:
     ) -> ScenarioResult:
         name = scenario.scoring_method or self.default_scorer
         scorer = self._resolve(name)
+        self._validate_judge_model(name, traj)
         trajectory_text = _trajectory_to_text(traj)
         score = scorer(scenario, traj.answer, trajectory_text)
 
@@ -77,6 +82,21 @@ class Evaluator:
     def _resolve(name: str) -> Scorer:
         return scorer_registry.get(name)
 
+    def _validate_judge_model(self, scorer_name: str, traj: PersistedTrajectory) -> None:
+        if scorer_name != "llm_judge" or not self.judge_model:
+            return
+
+        trajectory_model = _normalize_model_id(traj.model)
+        judge_model = _normalize_model_id(self.judge_model)
+        if not trajectory_model or not judge_model:
+            return
+
+        if trajectory_model == judge_model:
+            raise ValueError(
+                "self-judging is not allowed for llm_judge: "
+                f"trajectory model '{traj.model}' matches judge model '{self.judge_model}'"
+            )
+
 
 def _trajectory_to_text(traj: PersistedTrajectory) -> str:
     """Flatten a trajectory to a text blob for the LLM-As-Judge prompt."""
@@ -86,3 +106,12 @@ def _trajectory_to_text(traj: PersistedTrajectory) -> str:
         return json.dumps(traj.trajectory, indent=2, default=str)
     except (TypeError, ValueError):
         return str(traj.trajectory)
+
+
+def _normalize_model_id(model_id: str | None) -> str:
+    if not model_id:
+        return ""
+    normalized = model_id.strip()
+    if normalized.startswith("litellm_proxy/"):
+        normalized = normalized[len("litellm_proxy/") :]
+    return normalized

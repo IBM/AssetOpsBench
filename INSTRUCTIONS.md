@@ -107,6 +107,11 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
+**TokenRouter** — OpenAI-compatible gateway, used whenever `--model-id` carries the `tokenrouter/` prefix (the default for direct-llm-agent)
+
+| `TOKENROUTER_API_KEY`  | _(tokenrouter/* models)_ | TokenRouter API key                                          |
+| `TOKENROUTER_BASE_URL` | _(tokenrouter/* models)_ | TokenRouter base URL, e.g. `https://api.tokenrouter.com/v1`  |
+
 **Stirrup code track** — `stirrup-agent` with `--code-backend docker`
 
 | Variable             | Default            | Description                                                                |
@@ -269,10 +274,14 @@ uv run evaluate \
   --trajectories traces/trajectories \
   --scenarios groundtruth/101.json \
   --scorer-default llm_judge \
-  --judge-model litellm_proxy/aws/claude-opus-4-6
+  --judge-model litellm_proxy/azure/gpt-5.4
 ```
 
 Output lands under `reports/` — one `<run_id>.json` per trajectory plus `_aggregate.json` for the rollup.
+
+> [!NOTE]
+> If `llm_judge` is used, `--judge-model` must not match the trajectory's `model`
+> for any evaluated run. The evaluator now rejects self-judging rows with a clear error.
 
 Scorer families follow MLflow's evaluator/scorer split: `llm_judge` is wired up; `exact_string_match`, `numeric_match`, and `semantic_similarity` ship as skeletons (raise `NotImplementedError`).
 
