@@ -12,6 +12,7 @@ agent run  →  trajectory (run_id)  →  evaluate  →  reports/<run_id>.json
 Re-scoring from saved trajectories is first-class: re-run with a
 different scorer or judge model without re-invoking the agent.
 
+
 ## Concepts
 
 The vocabulary follows MLflow's evaluation split:
@@ -25,8 +26,7 @@ The vocabulary follows MLflow's evaluation split:
 - **Scorer** — a callable that takes
   `(scenario, answer, trajectory_text)` and returns a `ScorerResult`.
   Scorers fall into three families:
-  - **Code-Based** — deterministic, no LLM (e.g. `exact_string_match`,
-    `numeric_match`). *Skeleton only* in this branch.
+  - **Code-Based** — deterministic, no LLM. `static_json` is implemented for structured outputs such as JSON objects, arrays, Python-style dictionaries, tuple lists, and count-only answers. `exact_string_match` and `numeric_match` are *skeleton only* in this branch.
   - **LLM-As-Judge** — `llm_judge`. Six-criterion rubric, requires a
     LiteLLM-routable model passed via `--judge-model`.
   - **Semantic-Score** — similarity-based, no LLM call. *Skeleton only*
@@ -46,7 +46,7 @@ JSON list, JSON object, or JSONL. Fields the scorer cares about:
 | `text`                | all                                              | The utterance the agent answered               |
 | `type`                | reporting                                        | Scenario family (`iot`, `tsfm`, `FMSR`, …)     |
 | `characteristic_form` | `llm_judge`, `semantic_similarity`*              | Expected behaviour, free-form                  |
-| `expected_answer`     | `exact_string_match`*, `numeric_match`*          | Exact target string / number                   |
+| `expected_answer`     | `static_json`, `exact_string_match`*, `numeric_match`* | Structured answer, exact target string, or number |
 | `scoring_method`      | dispatch                                         | Registered scorer name; overrides CLI default  |
 | `tolerance`           | `numeric_match`*                                 | Optional relative + absolute tolerance         |
 
@@ -72,8 +72,7 @@ JSON per run. Fields the evaluator reads:
 }
 ```
 
-`scenario_id` is critical — trajectories with `null` scenario_id are
-dropped at the join step. Pass `--scenario-id` to the agent CLI to set it.
+`scenario_id` is the primary join key. If `scenario_id` is missing or null, the loader may fall back to the trajectory filename stem. For generated trajectories where `scenario_id` contains a descriptive label, the evaluator can also fall back to `run_id` when it matches the scenario id.
 
 ## End-to-end workflow
 
@@ -201,9 +200,12 @@ uv run evaluate \
 | Family        | Registered name        | Status                                      |
 | ------------- | ---------------------- | ------------------------------------------- |
 | LLM-As-Judge  | `llm_judge`            | Works. Installed by passing `--judge-model` |
+| Code-Based    | `static_json`          | Works. Deterministic scorer for structured answers |
 | Code-Based    | `exact_string_match`   | **Skeleton — `NotImplementedError`**        |
 | Code-Based    | `numeric_match`        | **Skeleton — `NotImplementedError`**        |
 | Semantic-Score| `semantic_similarity`  | **Skeleton — `NotImplementedError`**        |
+
+`static_json` is registered automatically and can be selected with `--scorer-default static_json`. It compares the final answer from a saved trajectory against `scenario.expected_answer`, parsing JSON objects, arrays, Python-style literals, tuple lists, nested structures, markdown-fenced answers, answer-prefixed outputs, and count-only answers. See [Static JSON Evaluation](static-json-evaluation.md) for details.
 
 Skeleton scorers don't auto-register; calling them raises
 `NotImplementedError`. Fill in the body and call
@@ -262,6 +264,13 @@ for r in report.results:
     print(r.run_id, r.score.passed, r.score.score)
 ```
 
+For static JSON scoring, no judge model installation is required:
+
+```python
+from pathlib import Path
+from evaluation import Evaluator
+
+report = Evaluator(default_scorer="static_json").evaluate(
 To enforce the self-judging guard in programmatic usage, pass `judge_model`:
 
 ```python
@@ -273,6 +282,34 @@ report = Evaluator(
     scenarios_paths=[Path("groundtruth/101.json")],
 )
 ```
+
+## Static JSON scorer
+
+`static_json` is a deterministic scorer for structured outputs. It is useful when the expected answer is a JSON object, JSON array, Python-style dictionary, tuple list, nested structure, or count-only answer.
+
+The scorer compares `scenario.expected_answer` against the trajectory final `answer`. It parses noisy structured outputs, normalizes scalar values, flattens nested structures into key paths, and reports strict exact match, partial exact match, partial similarity, precision, recall, F1, missing keys, extra keys, and key-level details.
+
+A run passes only when the full structured answer is an exact match. Partial correctness is still available through the score and `score.details`.
+
+To score structured answers with the deterministic static JSON scorer:
+
+```bash
+uv run evaluate \
+  --trajectories traces/trajectories \
+  --scenarios groundtruth/101.json \
+  --scorer-default static_json
+```
+
+For folder-based generated scenarios with `scenario_<id>/groundtruth.txt`:
+
+```bash
+uv run evaluate \
+  --trajectories traces/trajectories/direct_llm \
+  --scenarios /path/to/scenarios_data \
+  --scorer-default static_json \
+  --reports-dir reports/static_json_direct_llm
+```
+Detailed documentation: [Static JSON Evaluation](static-json-evaluation.md).
 
 ## Plug in a custom scorer
 
