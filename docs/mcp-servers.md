@@ -61,16 +61,39 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`)
 **Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on every start — database is dropped and reloaded each time)
 
-| Tool                          | Arguments                                             | Description                                                                              |
-| ----------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `get_work_orders`             | `equipment_id`, `start_date?`, `end_date?`            | Retrieve all work orders for an equipment within an optional date range                  |
-| `get_preventive_work_orders`  | `equipment_id`, `start_date?`, `end_date?`            | Retrieve only preventive (PM) work orders                                                |
-| `get_corrective_work_orders`  | `equipment_id`, `start_date?`, `end_date?`            | Retrieve only corrective (CM) work orders                                                |
-| `get_events`                  | `equipment_id`, `start_date?`, `end_date?`            | Retrieve all events (work orders, alerts, anomalies)                                     |
-| `get_failure_codes`           | —                                                     | List all failure codes with categories and descriptions                                  |
-| `get_work_order_distribution` | `equipment_id`, `start_date?`, `end_date?`            | Count work orders per (primary, secondary) failure code pair, sorted by frequency        |
-| `predict_next_work_order`     | `equipment_id`, `start_date?`, `end_date?`            | Predict next work order type via Markov transition matrix built from historical sequence |
-| `analyze_alert_to_failure`    | `equipment_id`, `rule_id`, `start_date?`, `end_date?` | Probability that an alert rule leads to a work order; average hours to maintenance       |
+Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-centric**. Tools are registered centrally in `main.py`; set `AOB_READONLY=1` to expose only the read tools (8). The default exposes all 14 (8 read + 6 write).
+
+### Read tools
+
+| Tool                                | Arguments                                                                            | Description                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `list_workorders`                   | `site_id?`, `status?`, `asset_num?`, `priority?`, `date_from?`, `date_to?`, `page_size?`, `page_num?` | List work orders with optional filters; `page_size=0` returns all matches  |
+| `get_workorder`                     | `wonum`, `site_id`                                                                   | Get a single work order by number and site                                 |
+| `get_workorder_tasks`               | `wonum`, `site_id`                                                                   | List the child tasks of a parent work order                                |
+| `get_workorder_costs`               | `wonum`, `site_id`                                                                   | Actual labor/material/service/tool cost breakdown for a work order         |
+| `get_workorder_actuals_vs_planned`  | `wonum`, `site_id`                                                                   | Estimated vs actual hours and cost variance for a work order               |
+| `get_workorder_kpis`                | `site_id`, `period_months?`                                                          | Site KPIs: totals, backlog, overdue, avg completion, priority/asset splits |
+| `get_schedule_calendar`             | `site_id`, `date_from?`, `date_to?`, `group_by?`                                     | Scheduled (non-terminal) work orders in a date window, bucketed by day     |
+| `get_my_assigned_workorders`        | `labor_code`, `site_id?`, `open_only?`                                               | Work orders assigned to a given technician (labor code)                    |
+
+### Write tools
+
+| Tool                  | Arguments                                                                                                   | Description                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `generate_work_order` | `description`, `asset_num`, `site_id`, `priority?`, `work_type?`, `reported_by?`, `location?`, `notes?`, `wonum?`, `aob_source?` | Create a work order (status WAPPR); attach `aob_source` provenance |
+| `update_workorder`    | `wonum`, `site_id`, `description?`, `priority?`, `location?`, `asset_num?`, `notes?`                         | Update mutable fields on a work order                             |
+| `approve_workorder`   | `wonum`, `site_id`                                                                                          | Approve a work order (-> APPR)                                    |
+| `assign_technician`   | `wonum`, `site_id`, `labor_code`, `craft?`, `start_date?`, `hours_planned?`                                 | Assign a technician (adds a wplabor line)                         |
+| `close_workorder`     | `wonum`, `site_id`, `actual_hours?`, `failure_code?`, `resolution_notes?`                                   | Close a work order (-> COMP) with actuals and resolution          |
+| `cancel_workorder`    | `wonum`, `site_id`, `reason?`                                                                               | Cancel a work order (-> CAN)                                      |
+
+### LLM-use tools
+
+_None — the WO server makes no LLM calls; all tools are direct CouchDB operations._
+
+### CPU-centric tools
+
+_None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `GET` / `PUT`), with no heavy computation._
 
 ## tsfm — Time Series Foundation Model
 
