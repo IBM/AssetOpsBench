@@ -1,0 +1,24 @@
+# Gitleaks configuration. Extends the built-in default rule set and adds
+# project-specific allowlisting so test fixtures / sample values don't cause
+# false positives. Place at repo root as .gitleaks.toml
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for AssetOpsBench"
+# Files/paths that legitimately contain dummy or example secrets.
+paths = [
+  '''(.*?)(test|tests|fixtures|examples|docs)(/|\\).*''',
+  '''.*\.md$''',
+]
+# Known-safe placeholder values (regex). Add real false positives here.
+regexes = [
+  '''(?i)(your[_-]?api[_-]?key|example|dummy|placeholder|changeme|xxxx+)''',
+]
+
+# Example of an extra custom rule (uncomment / adapt as needed):
+# [[rules]]
+# id = "ibm-cloud-api-key"
+# description = "IBM Cloud IAM API key"
+# regex = '''(?i)(ibm)?[_-]?api[_-]?key['"\s:=]+[A-Za-z0-9_\-]{44}'''
+# keywords = ["api_key", "apikey"]

@@ -1,0 +1,31 @@
+# >>> Rename this file to ".pre-commit-config.yaml" at the repo root <<<
+#
+# Pre-commit hooks to block secrets before they are committed.
+# Install once per clone:  pip install pre-commit && pre-commit install
+# Run against all files:    pre-commit run --all-files
+#
+# Two complementary scanners are used:
+#   - gitleaks      : fast, regex + entropy based, large rule set
+#   - detect-secrets: IBM-maintained, baseline-driven (won't re-flag known/allowed values)
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        # exclude lockfiles / generated assets from scanning if needed:
+        # exclude: package.lock.json
+
+  # Optional general hygiene hooks (uncomment to enable)
+  # - repo: https://github.com/pre-commit/pre-commit-hooks
+  #   rev: v5.0.0
+  #   hooks:
+  #     - id: check-added-large-files
+  #     - id: end-of-file-fixer
+  #     - id: trailing-whitespace
