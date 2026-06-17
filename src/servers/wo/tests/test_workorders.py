@@ -102,6 +102,11 @@ async def scenario():
     nf = await wo.get_workorder(db, "999", "MAIN")
     assert not nf["success"] and nf["error_code"] == "NOT_FOUND"
 
+    # partial update: failure_code set independently, other fields untouched
+    u = await wo.update_workorder(db, "1000045", "MAIN", failure_code="BRG-WEAR")
+    assert u["data"]["failurecode"] == "BRG-WEAR"
+    assert u["data"]["wopriority"] == 2, "untouched fields must survive a partial update"
+
     # approve -> assign -> close
     assert (await wo.approve_workorder(db, "1000045", "MAIN", now=T0))["data"]["status"] == "APPR"
     a = await wo.assign_technician(db, "1000045", "MAIN", "HVACTECH1", craft="HVAC",

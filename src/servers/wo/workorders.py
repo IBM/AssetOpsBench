@@ -295,7 +295,8 @@ async def generate_work_order(db, **kwargs) -> Dict[str, Any]:
 
 async def update_workorder(db, wonum: str, site_id: str, description: Optional[str] = None,
                            priority: Optional[int] = None, location: Optional[str] = None,
-                           asset_num: Optional[str] = None, notes: Optional[str] = None) -> Dict[str, Any]:
+                           asset_num: Optional[str] = None, notes: Optional[str] = None,
+                           failure_code: Optional[str] = None) -> Dict[str, Any]:
     """Update mutable fields on an existing work order."""
     with Timer() as t:
         doc = await db.get(_doc_id(site_id, wonum))
@@ -311,6 +312,9 @@ async def update_workorder(db, wonum: str, site_id: str, description: Optional[s
             doc["assetnum"] = asset_num
         if notes is not None:
             doc["description_longdescription"] = notes
+        if failure_code is not None:
+            doc["failurecode"] = failure_code
+
         await db.put(doc)
         return envelope(_public(doc), duration_ms=t_ms(t))
 
