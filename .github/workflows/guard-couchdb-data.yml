@@ -1,0 +1,56 @@
+# Blocks NEW data files (csv/json/etc.) added under src/couchdb/ or any
+# subfolder, unless their path is listed in src/couchdb/.allowed_datafiles.
+# To permit a new data file, add its path to that allowlist in the same PR.
+# Uses only actions/checkout (GitHub-created) so it runs under the IBM org
+# action policy. Place at: .github/workflows/guard-couchdb-data.yml
+name: Guard couchdb data files
+
+on:
+  pull_request:
+    paths:
+      - 'src/couchdb/**'
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: No unapproved data files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for disallowed data files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Data-file extensions we want to gate (edit to taste).
+          EXT='\.(csv|tsv|json|jsonl|ndjson|parquet|xls|xlsx|feather|h5|hdf5|pkl|pickle|npy|npz|db|sqlite|sqlite3|avro|orc)$'
+          ALLOW="src/couchdb/.allowed_datafiles"
+
+          # Files newly ADDED in this PR under src/couchdb that look like data.
+          added=$(git diff --name-only --diff-filter=A "$BASE_SHA" "$HEAD_SHA" -- src/couchdb \
+                  | grep -iE "$EXT" || true)
+
+          violations=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if ! grep -qxF "$f" "$ALLOW" 2>/dev/null; then
+              violations="${violations}${f}"$'\n'
+            fi
+          done <<< "$added"
+
+          if [ -n "$violations" ]; then
+            echo "::error::New data files are not allowed under src/couchdb/ unless allowlisted."
+            echo "Disallowed additions:"
+            printf '  - %s\n' $violations
+            echo ""
+            echo "If a file is intentional, add its exact path to ${ALLOW} in this PR"
+            echo "(a maintainer must review that change)."
+            exit 1
+          fi
+          echo "OK: no unapproved data files added under src/couchdb/"
