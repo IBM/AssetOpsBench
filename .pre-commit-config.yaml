@@ -1,12 +1,9 @@
-# >>> Rename this file to ".pre-commit-config.yaml" at the repo root <<<
+# Pre-commit hooks. Install once per clone:  pre-commit install
+# Run against all files:  pre-commit run --all-files
 #
-# Pre-commit hooks to block secrets before they are committed.
-# Install once per clone:  pip install pre-commit && pre-commit install
-# Run against all files:    pre-commit run --all-files
-#
-# Two complementary scanners are used:
-#   - gitleaks      : fast, regex + entropy based, large rule set
-#   - detect-secrets: IBM-maintained, baseline-driven (won't re-flag known/allowed values)
+#   - gitleaks         : secret scanning (regex + entropy)
+#   - detect-secrets   : IBM-maintained, baseline-driven secret scanning
+#   - block-couchdb-data : blocks new data files under src/couchdb/ (local hook)
 
 repos:
   - repo: https://github.com/gitleaks/gitleaks
@@ -19,13 +16,12 @@ repos:
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
-        # exclude lockfiles / generated assets from scanning if needed:
-        # exclude: package.lock.json
 
-  # Optional general hygiene hooks (uncomment to enable)
-  # - repo: https://github.com/pre-commit/pre-commit-hooks
-  #   rev: v5.0.0
-  #   hooks:
-  #     - id: check-added-large-files
-  #     - id: end-of-file-fixer
-  #     - id: trailing-whitespace
+  - repo: local
+    hooks:
+      - id: block-couchdb-data
+        name: Block unapproved data files in src/couchdb
+        entry: scripts/check_couchdb_data.sh
+        language: script
+        pass_filenames: false
+        always_run: true
