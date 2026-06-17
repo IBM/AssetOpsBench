@@ -145,7 +145,7 @@ Example: MetaAgent leaderboard
 <details>
 <summary><b>ACL 2026 - San Diego, USA</b></summary>
 
-- **[Industry]** **IndustryAssetEQA: A Neurosymbolic Operational Intelligence System for Embodied Question Answering in Industrial Asset Maintenance** · *C. Shyalika, D. Patel, A. Sheth*
+- **[Industry]** **IndustryAssetEQA: A Neurosymbolic Operational Intelligence System for Embodied Question Answering in Industrial Asset Maintenance** · *C. Shyalika, D. Patel, A. Sheth* · [arXiv:2604.23446](https://arxiv.org/abs/2604.23446)
 
 </details>
 
