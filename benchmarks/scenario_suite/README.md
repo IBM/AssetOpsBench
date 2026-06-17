@@ -70,7 +70,7 @@ The scenario folder name must match the id from `scenarios.txt`:
 Run the direct LLM baseline sequentially over the listed scenarios:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --method direct_llm
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --method direct_llm --direct-model-id tokenrouter/MiniMax-M3
 ```
 
 This writes trajectories to:

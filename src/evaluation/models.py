@@ -116,3 +116,4 @@ class EvalReport(BaseModel):
     by_scenario_type: dict[str, TypeBreakdown] = Field(default_factory=dict)
     ops: AggregateOps = Field(default_factory=AggregateOps)
     results: list[ScenarioResult] = Field(default_factory=list)
+    score_summary: dict[str, Any] | None = None

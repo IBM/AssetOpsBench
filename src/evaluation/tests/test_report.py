@@ -105,3 +105,55 @@ def test_render_summary_includes_headlines():
     assert "Pass rate" in text
     assert "iot" in text
     assert "tokens_in_total" in text
+
+def test_build_report_includes_score_summary():
+    from evaluation.models import ScenarioResult, ScorerResult, OpsMetrics
+
+    results = [
+        ScenarioResult(
+            scenario_id="11",
+            scenario_type="structured",
+            run_id="direct_llm_11",
+            runner="direct-llm-agent",
+            model="tokenrouter/MiniMax-M3",
+            question="Q",
+            answer='{"energy":0,"material":0}',
+            score=ScorerResult(
+                scorer="static_json",
+                passed=False,
+                score=0.0,
+                rationale="structured answer differs from ground truth",
+                details={
+                    "partial_exact_match_accuracy": 0.0,
+                    "strict_exact_match_accuracy": 0.0,
+                    "partial_similarity_score": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1": 0.0,
+                    "total_gold_keys": 2,
+                    "total_model_keys": 2,
+                    "matched_keys": 2,
+                    "exact_value_matches": 0,
+                    "missing_keys": [],
+                    "extra_keys": [],
+                    "details": [],
+                },
+            ),
+            ops=OpsMetrics(
+                turn_count=1,
+                tool_call_count=0,
+                unique_tools=[],
+                tokens_in=390,
+                tokens_out=245,
+                duration_ms=6224.3382,
+                est_cost_usd=None,
+            ),
+        )
+    ]
+
+    report = build_report(results)
+
+    assert report.score_summary is not None
+    assert report.score_summary["partial_exact_match_accuracy_avg"] == 0.0
+    assert report.score_summary["strict_exact_match_accuracy_avg"] == 0.0
+    assert report.score_summary["missing_keys_total"] == 0

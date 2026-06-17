@@ -71,12 +71,12 @@ def test_build_methods_uses_cli_defaults() -> None:
 def test_selected_methods_direct_llm_only() -> None:
     methods = {
         "direct_llm": mr.MethodConfig(
-            name="direct_llm",
+            agent_name="direct_llm",
             command="direct-llm-agent",
             model_id="tokenrouter/MiniMax-M3",
         ),
         "stirrup_agent": mr.MethodConfig(
-            name="stirrup_agent",
+            agent_name="stirrup_agent",
             command="stirrup-agent",
             model_id="tokenrouter/MiniMax-M3",
         ),
@@ -85,18 +85,18 @@ def test_selected_methods_direct_llm_only() -> None:
     selected = mr.selected_methods(method_name="direct_llm", methods=methods)
 
     assert len(selected) == 1
-    assert selected[0].name == "direct_llm"
+    assert selected[0].agent_name == "direct_llm"
 
 
 def test_selected_methods_all_returns_both() -> None:
     methods = {
         "direct_llm": mr.MethodConfig(
-            name="direct_llm",
+            agent_name="direct_llm",
             command="direct-llm-agent",
             model_id="tokenrouter/MiniMax-M3",
         ),
         "stirrup_agent": mr.MethodConfig(
-            name="stirrup_agent",
+            agent_name="stirrup_agent",
             command="stirrup-agent",
             model_id="tokenrouter/MiniMax-M3",
         ),
@@ -104,7 +104,7 @@ def test_selected_methods_all_returns_both() -> None:
 
     selected = mr.selected_methods(method_name="all", methods=methods)
 
-    assert [m.name for m in selected] == ["direct_llm", "stirrup_agent"]
+    assert [m.agent_name for m in selected] == ["direct_llm", "stirrup_agent"]
 
 
 def test_run_agent_for_scenario_dry_run_does_not_call_subprocess(
