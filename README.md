@@ -281,6 +281,12 @@ We are expanding **AssetOpsBench** to cover a broader range of industrial challe
 
 ---
 
+## Infrastructure Support
+
+Model API access for AssetOpsBench 2.0 is enabled by [TokenRouter](https://tokenrouter.com) (PaleBlueDot AI), a unified API platform providing access to leading AI models through a single API endpoint.
+
+---
+
 ## Contributors
 
 Thanks to these wonderful people ✨
