@@ -7,6 +7,8 @@ model's answer. This is useful as a model-only baseline.
 
 from __future__ import annotations
 
+import json
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,9 +30,41 @@ If the task asks for information you cannot access, do not refuse only because
 data is missing. Use the task wording, general industrial-maintenance knowledge,
 and a reasonable guess if needed.
 
-Return only the final answer requested by the user. Do not include reasoning,
-tool-use claims, markdown, or extra explanation unless explicitly requested.
+Return only the final answer requested by the user.
+Do not include reasoning, chain-of-thought, <think> tags, tool-use claims,
+markdown, explanations, or any extra text.
+If the answer must be JSON, output only valid JSON.
 """
+
+
+def _clean_final_answer(text: str) -> str:
+    """Remove <think> blocks and keep only the final structured answer."""
+    if not text:
+        return ""
+
+    cleaned = text.strip()
+
+    # Remove <think>...</think> blocks if present.
+    cleaned = re.sub(
+        r"<think>.*?</think>",
+        "",
+        cleaned,
+        flags=re.IGNORECASE | re.DOTALL,
+    ).strip()
+
+    # Keep a trailing JSON object/array if the model added extra text.
+    json_match = re.search(r"(\{.*\}|\[.*\])\s*$", cleaned, flags=re.DOTALL)
+    if json_match:
+        cleaned = json_match.group(1).strip()
+
+    # Canonicalize JSON if possible so the saved answer is clean and strict.
+    try:
+        parsed = json.loads(cleaned)
+        cleaned = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+    except json.JSONDecodeError:
+        pass
+
+    return cleaned
 
 
 class DirectLLMAgentRunner(AgentRunner):
@@ -65,7 +99,7 @@ Final answer:"""
             duration_ms = (time.perf_counter() - call_started) * 1000
             total_duration_ms = (time.perf_counter() - run_started) * 1000
 
-            answer = result.text.strip()
+            answer = _clean_final_answer(result.text)
 
             trajectory = Trajectory(
                 started_at=started,
