@@ -39,7 +39,7 @@ _DEFAULT_STIRRUP_MODEL = "litellm_proxy/aws/claude-opus-4-8"
 class MethodConfig:
     """Configuration for one benchmark method."""
 
-    name: str
+    agent_name: str
     command: str
     model_id: str
 
@@ -118,7 +118,7 @@ def run_agent_for_scenario(
     dry_run: bool,
 ) -> None:
     """Run one scenario with one method."""
-    run_id = f"{method.name}_{scenario_id}"
+    run_id = f"{method.agent_name}_{scenario_id}"
 
     env = os.environ.copy()
     env["AGENT_TRAJECTORY_DIR"] = str(trajectory_dir)
@@ -137,7 +137,7 @@ def run_agent_for_scenario(
     ]
 
     print("\n" + "=" * 80)
-    print(f"Method:      {method.name}")
+    print(f"Method:      {method.agent_name}")
     print(f"Scenario ID: {scenario_id}")
     print(f"Run ID:      {run_id}")
     print(f"Trajectories:{trajectory_dir}")
@@ -192,12 +192,12 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     """Build available method configs from CLI args."""
     return {
         "direct_llm": MethodConfig(
-            name="direct_llm",
+            agent_name="direct_llm",
             command="direct-llm-agent",
             model_id=args.direct_model_id,
         ),
         "stirrup_agent": MethodConfig(
-            name="stirrup_agent",
+            agent_name="stirrup_agent",
             command="stirrup-agent",
             model_id=args.stirrup_model_id,
         ),
@@ -301,18 +301,18 @@ def main() -> None:
     )
 
     print(f"Loaded {len(scenario_ids)} scenario ids from {args.scenario_ids}")
-    print(f"Selected methods: {', '.join(method.name for method in methods)}")
+    print(f"Selected methods: {', '.join(method.agent_name for method in methods)}")
 
     for method in methods:
-        trajectory_dir = args.trajectory_root / method.name
-        report_dir = args.reports_root / method.name
+        trajectory_dir = args.trajectory_root / method.agent_name
+        report_dir = args.reports_root / method.agent_name
 
         if not args.dry_run:
             trajectory_dir.mkdir(parents=True, exist_ok=True)
             report_dir.mkdir(parents=True, exist_ok=True)
 
         for scenario_id in scenario_ids:
-            expected_trajectory = trajectory_dir / f"{method.name}_{scenario_id}.json"
+            expected_trajectory = trajectory_dir / f"{method.agent_name}_{scenario_id}.json"
 
             if args.skip_existing and expected_trajectory.exists():
                 print(f"Skipping scenario {scenario_id}; trajectory exists: {expected_trajectory}")
@@ -331,7 +331,7 @@ def main() -> None:
                 )
             except Exception as exc:
                 print(
-                    f"error: scenario {scenario_id} failed for method {method.name}: {exc}",
+                    f"error: scenario {scenario_id} failed for method {method.agent_name}: {exc}",
                     file=sys.stderr,
                 )
                 if not args.continue_on_error:
