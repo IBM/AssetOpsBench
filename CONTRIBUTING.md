@@ -80,14 +80,37 @@ uv run ruff check --fix .
 
 ### 3. Security Scanning
 
-To protect industrial metadata and API keys, run the IBM `detect-secrets` scan:
+This repo blocks secrets (API keys, tokens, credentials) at three layers:
+a local pre-commit hook, a CI workflow, and GitHub push protection. As a
+contributor you only need to set up the local hook once per clone:
 
 ```bash
-uv pip install --upgrade "git+[https://github.com/ibm/detect-secrets.git@master#egg=detect-secrets](https://github.com/ibm/detect-secrets.git@master#egg=detect-secrets)"
-detect-secrets scan --update .secrets.baseline
-detect-secrets audit .secrets.baseline
-
+uv pip install pre-commit detect-secrets
+pre-commit install
 ```
+
+After this, **every `git commit` automatically runs gitleaks and
+detect-secrets** on your staged changes and aborts the commit if a secret is
+found. To scan the whole repo on demand:
+
+```bash
+pre-commit run --all-files
+```
+
+If you add a new file that legitimately contains an example/placeholder value
+flagged as a secret, update the detect-secrets baseline and audit it:
+
+```bash
+detect-secrets scan --baseline .secrets.baseline
+detect-secrets audit .secrets.baseline
+```
+
+Known, already-triaged historical findings are listed in `.gitleaksignore`
+(by fingerprint). Never add a *real* secret there — if a live credential is
+detected, rotate/revoke it at its source first, then remove it from the code.
+
+> The same scans run in CI on every pull request, so a commit that slips past
+> the local hook will still be caught before merge.
 
 ---
 
