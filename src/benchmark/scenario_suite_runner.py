@@ -9,7 +9,8 @@ Example:
     uv run python -m benchmark.scenario_suite_runner \
       --scenario-ids benchmarks/scenario_suite/scenarios.txt \
       --scenario-root /path/to/scenarios_data \
-      --method direct_llm
+      --agent_name direct_llm \
+      --model-id tokenrouter/MiniMax-M3
 
 The scenario root is expected to contain folders such as:
 
@@ -33,8 +34,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-_DEFAULT_DIRECT_LLM_MODEL = "tokenrouter/MiniMax-M3"
-_DEFAULT_STIRRUP_MODEL = "litellm_proxy/aws/claude-opus-4-8"
+_DEFAULT_MODEL_ID = "tokenrouter/MiniMax-M3"
 
 
 @dataclass(frozen=True)
@@ -221,12 +221,12 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
         "direct_llm": MethodConfig(
             agent_name="direct_llm",
             command="direct-llm-agent",
-            model_id=args.direct_model_id,
+            model_id=args.model_id,
         ),
         "stirrup_agent": MethodConfig(
             agent_name="stirrup_agent",
             command="stirrup-agent",
-            model_id=args.stirrup_model_id,
+            model_id=args.model_id,
         ),
     }
 
@@ -269,7 +269,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--agent_name",
         choices=["direct_llm", "stirrup_agent", "all"],
         default="direct_llm",
-        help="Which method to run.",
+        help="Which agent to run.",
     )
     parser.add_argument(
         "--trajectory-root",
@@ -284,14 +284,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Root directory for evaluation reports.",
     )
     parser.add_argument(
-        "--direct-model-id",
-        default=_DEFAULT_DIRECT_LLM_MODEL,
-        help="Model id for direct_llm.",
-    )
-    parser.add_argument(
-        "--stirrup-model-id",
-        default=_DEFAULT_STIRRUP_MODEL,
-        help="Model id for stirrup_agent.",
+        "--model-id",
+        default=_DEFAULT_MODEL_ID,
+        help="Model id used by both agents.",
     )
     parser.add_argument(
         "--skip-existing",

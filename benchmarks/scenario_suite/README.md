@@ -70,7 +70,7 @@ The scenario folder name must match the id from `scenarios.txt`:
 Run the direct LLM baseline sequentially over the listed scenarios:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name direct_llm --direct-model-id tokenrouter/MiniMax-M3
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --method direct_llm --model-id tokenrouter/MiniMax-M3
 ```
 
 This writes trajectories to:
@@ -99,8 +99,8 @@ Run the Stirrup agent sequentially over the listed scenarios using the MiniMax m
 uv run python -m benchmark.scenario_suite_runner \
   --scenario-ids benchmarks/scenario_suite/scenarios.txt \
   --scenario-root /.../scenarios_data \
-  --agent_name stirrup_agent \
-  --stirrup-model-id tokenrouter/MiniMax-M3
+  --method stirrup_agent \
+  --model-id tokenrouter/MiniMax-M3
 ```
 
 This writes trajectories to:
@@ -115,12 +115,12 @@ and reports to:
 reports/scenario_suite/stirrup_agent/
 ```
 
-## Run all agents
+## Run all methods
 
 Run both supported methods one after the other:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name all
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --method all
 ```
 
 ## Useful options
@@ -130,7 +130,7 @@ uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/sce
 Print the commands without executing them:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name direct_llm   --dry-run
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --method direct_llm   --dry-run
 ```
 
 ### Skip existing trajectories
@@ -138,7 +138,7 @@ uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/sce
 Skip scenarios whose trajectory files already exist:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name direct_llm   --skip-existing
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --method direct_llm   --skip-existing
 ```
 
 ### Continue after errors
@@ -146,7 +146,7 @@ uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/sce
 Keep running later scenarios even if one fails:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name direct_llm   --continue-on-error
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --method direct_llm   --continue-on-error
 ```
 
 ## Environment variables
