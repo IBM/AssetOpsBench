@@ -99,8 +99,8 @@ asyncio.run(main())
 PY
 ```
 
-Expected counts: `iot` 4, `utilities` 3, `fmsr` 2, `tsfm` 6, `wo` 8, `vibration` 8
-(31 MCP tools total; the agent additionally has Stirrup's own `finish` tool).
+Expected counts: `iot` 4, `utilities` 3, `fmsr` 2, `tsfm` 6, `wo` 14, `vibration` 8
+(37 MCP tools total; the agent additionally has Stirrup's own `finish` tool).
 
 ---
 
