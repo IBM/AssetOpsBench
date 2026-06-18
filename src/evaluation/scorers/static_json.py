@@ -114,7 +114,9 @@ def _extract_balanced_structure(content: str) -> str:
         (content.find("("), "(", ")"),
     ]
     candidates = [
-        (idx, open_ch, close_ch) for idx, open_ch, close_ch in candidates if idx != -1
+        (idx, open_ch, close_ch)
+        for idx, open_ch, close_ch in candidates
+        if idx != -1
     ]
 
     if not candidates:
@@ -365,7 +367,9 @@ def evaluate_static_json(
     precision = exact_matches / total_model_keys if total_model_keys else 0.0
     recall = exact_matches / total_gold_keys if total_gold_keys else 0.0
     f1 = (
-        2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
+        2 * precision * recall / (precision + recall)
+        if precision + recall > 0
+        else 0.0
     )
 
     partial_exact = exact_matches / total_gold_keys if total_gold_keys else 0.0
@@ -387,7 +391,6 @@ def evaluate_static_json(
         extra_keys=extra_keys,
         details=details,
     )
-
 
 def evaluate_static_json_batch(
     pairs: list[tuple[Any, Any]],
@@ -435,7 +438,6 @@ def evaluate_static_json_batch(
         "f1": sum(score.f1 for score in scores) / len(scores),
         "examples": [score.to_dict() for score in scores],
     }
-
 
 class StaticJsonScorer:
     """Evaluation scorer wrapper for the trajectory-based pipeline."""

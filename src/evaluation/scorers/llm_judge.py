@@ -140,7 +140,9 @@ class LLMJudgeScorer:
         if review.get("hallucinations") is True:
             score = max(0.0, score - 0.2)
 
-        rationale = str(review.get("suggestions") or review.get("reason") or "")[:500]
+        rationale = str(
+            review.get("suggestions") or review.get("reason") or ""
+        )[:500]
         return ScorerResult(
             scorer=self.name,
             passed=passed,

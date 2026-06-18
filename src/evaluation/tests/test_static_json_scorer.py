@@ -5,7 +5,6 @@ from evaluation.scorers.static_json import (
     parse_structured_answer,
 )
 
-
 def test_parse_json_object_from_noisy_markdown_answer():
     raw = 'Answer:\n```json\n{"energy": 3, "material": 12}\n```'
 
@@ -121,6 +120,7 @@ def test_batch_evaluation():
 
     assert result["num_examples"] == 2
     assert result["strict_exact_match_accuracy"] == 0.5
+
 
 
 from evaluation.models import Scenario

@@ -10,9 +10,7 @@ def test_scenario_from_raw_coerces_int_id_to_str():
 
 
 def test_scenario_preserves_extra_fields():
-    s = Scenario.from_raw(
-        {"id": "1", "text": "Q", "characteristic_form": "X", "tolerance": 0.01}
-    )
+    s = Scenario.from_raw({"id": "1", "text": "Q", "characteristic_form": "X", "tolerance": 0.01})
     extra = s.model_extra or {}
     assert extra.get("tolerance") == 0.01
 
