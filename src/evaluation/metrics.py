@@ -40,9 +40,7 @@ def _from_sdk_trajectory(traj: dict, model: str) -> OpsMetrics:
     tokens_in = sum(int(t.get("input_tokens") or 0) for t in turns)
     tokens_out = sum(int(t.get("output_tokens") or 0) for t in turns)
 
-    durations_ms = [
-        t.get("duration_ms") for t in turns if t.get("duration_ms") is not None
-    ]
+    durations_ms = [t.get("duration_ms") for t in turns if t.get("duration_ms") is not None]
     duration_ms = sum(durations_ms) if durations_ms else None
 
     tool_names: list[str] = []
@@ -67,7 +65,11 @@ def _from_plan_execute(steps: list[Any], model: str) -> OpsMetrics:
     # plan-execute persists ``list[StepResult]``; the dataclass exposes
     # ``server`` / ``tool`` / ``response`` fields but no per-step token
     # counts, so we surface what is available and leave the rest at zero.
-    tool_names = [s.get("tool") for s in steps if isinstance(s, dict) and s.get("tool")]
+    tool_names = [
+        s.get("tool")
+        for s in steps
+        if isinstance(s, dict) and s.get("tool")
+    ]
     return OpsMetrics(
         turn_count=len(steps),
         tool_call_count=len(tool_names),
