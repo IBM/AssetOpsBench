@@ -3,13 +3,18 @@
 Injects an in-memory fake CouchDB into main._db, so no server/CouchDB is needed.
 Run:  PYTHONPATH=.. python tests/test_models_boundary.py
 """
+
 import asyncio
 from datetime import datetime, timezone
 
 from servers.wo.tests.test_workorders import FakeCouch  # reuse the in-memory fake
 from servers.wo import main
 from servers.wo.models import (
-    ErrorResult, WorkOrderItem, WorkOrderMutationResult, WorkOrderResult, WorkOrdersResult,
+    ErrorResult,
+    WorkOrderItem,
+    WorkOrderMutationResult,
+    WorkOrderResult,
+    WorkOrdersResult,
 )
 
 T0 = datetime(2020, 4, 28, 9, 0, 0, tzinfo=timezone.utc)
@@ -20,8 +25,14 @@ async def scenario():
     main._db = db  # inject fake
 
     # 1) Output is a Pydantic model, not a dict
-    created = await main.generate_work_order(description="Chiller 6 anomaly", asset_num="CHILLER6",
-                                             site_id="MAIN", priority=2, work_type="PdM", wonum="1000045")
+    created = await main.generate_work_order(
+        description="Chiller 6 anomaly",
+        asset_num="CHILLER6",
+        site_id="MAIN",
+        priority=2,
+        work_type="PdM",
+        wonum="1000045",
+    )
     assert isinstance(created, WorkOrderMutationResult), type(created)
     assert created.status == "WAPPR" and created.work_order.assetnum == "CHILLER6"
 
@@ -37,9 +48,16 @@ async def scenario():
     assert isinstance(missing, ErrorResult) and "not found" in missing.error.lower()
 
     # 3) THE KEY CASE: a work order missing most columns still converts cleanly
-    partial = {"_id": "wo:MAIN:2000", "type": "workorder", "wonum": "2000",
-               "siteid": "MAIN", "status": "APPR", "worktype": "CM",
-               "description": "partial doc", "reportdate": "2020-01-01T00:00:00+00:00"}
+    partial = {
+        "_id": "wo:MAIN:2000",
+        "type": "workorder",
+        "wonum": "2000",
+        "siteid": "MAIN",
+        "status": "APPR",
+        "worktype": "CM",
+        "description": "partial doc",
+        "reportdate": "2020-01-01T00:00:00+00:00",
+    }
     # store it directly and read back through the typed boundary
     await db.put(partial)
     res = await main.get_workorder("2000", "MAIN")
@@ -51,9 +69,17 @@ async def scenario():
     assert wo.wplabor is None and wo.failurecode is None
 
     # 4) extra/unmodeled fields are preserved (extra='allow')
-    extra_doc = {"_id": "wo:MAIN:2001", "type": "workorder", "wonum": "2001", "siteid": "MAIN",
-                 "status": "APPR", "worktype": "CM", "description": "x",
-                 "reportdate": "2020-01-01T00:00:00+00:00", "custom_field": "kept"}
+    extra_doc = {
+        "_id": "wo:MAIN:2001",
+        "type": "workorder",
+        "wonum": "2001",
+        "siteid": "MAIN",
+        "status": "APPR",
+        "worktype": "CM",
+        "description": "x",
+        "reportdate": "2020-01-01T00:00:00+00:00",
+        "custom_field": "kept",
+    }
     await db.put(extra_doc)
     r2 = await main.get_workorder("2001", "MAIN")
     assert r2.work_order.model_dump().get("custom_field") == "kept"

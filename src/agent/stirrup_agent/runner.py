@@ -160,7 +160,9 @@ class StirrupAgentRunner(AgentRunner):
 
             _log.info(
                 "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s)",
-                self._model_id, self._code_enabled, self._code_backend,
+                self._model_id,
+                self._code_enabled,
+                self._code_backend,
             )
 
             async with agent.session() as session:
@@ -180,7 +182,9 @@ class StirrupAgentRunner(AgentRunner):
             )
             return AgentResult(question=question, answer=answer, trajectory=trajectory)
 
-    def _annotate_span(self, span, trajectory: Trajectory, answer: str, started: float) -> None:
+    def _annotate_span(
+        self, span, trajectory: Trajectory, answer: str, started: float
+    ) -> None:
         domain_servers = set(self._server_paths)
         counts = {"domain": 0, "code": 0, "other": 0}
         for tc in trajectory.all_tool_calls:
@@ -201,5 +205,8 @@ class StirrupAgentRunner(AgentRunner):
 
         _log.info(
             "StirrupAgentRunner: done (turns=%d, domain=%d, code=%d, bypass=%s)",
-            len(trajectory.turns), counts["domain"], counts["code"], bypass,
+            len(trajectory.turns),
+            counts["domain"],
+            counts["code"],
+            bypass,
         )

@@ -2,6 +2,7 @@
 
 Run:  python -m pytest tests/ -q     (or just `python tests/test_workorders.py`)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -59,7 +60,9 @@ class FakeCouch:
                         return False
                     if op == "$elemMatch":
                         if not isinstance(val, list) or not any(
-                            all(it.get(ik) == iv for ik, iv in arg.items()) for it in val):
+                            all(it.get(ik) == iv for ik, iv in arg.items())
+                            for it in val
+                        ):
                             return False
             else:
                 if val != cond:
@@ -72,7 +75,7 @@ class FakeCouch:
             key = list(sort[0].keys())[0]
             rev = sort[0][key] == "desc"
             rows.sort(key=lambda d: d.get(key) or "", reverse=rev)
-        return rows[skip:skip + limit]
+        return rows[skip : skip + limit]
 
 
 T0 = datetime(2020, 4, 28, 9, 0, 0, tzinfo=timezone.utc)
@@ -83,16 +86,28 @@ async def scenario():
 
     # create with provenance + pinned wonum for reproducibility
     r = await wo.create_workorder(
-        db, description="Investigate Chiller 6 anomaly", asset_num="CHILLER6",
-        site_id="MAIN", priority=2, work_type="PdM", reported_by="AGENT.TSFM",
-        wonum="1000045", now=T0,
-        aob_source={"agent": "tsfm", "trigger_type": "anomaly_detection",
-                    "scenario_id": "WO-CHILLER6-ANOMALY-001"})
+        db,
+        description="Investigate Chiller 6 anomaly",
+        asset_num="CHILLER6",
+        site_id="MAIN",
+        priority=2,
+        work_type="PdM",
+        reported_by="AGENT.TSFM",
+        wonum="1000045",
+        now=T0,
+        aob_source={
+            "agent": "tsfm",
+            "trigger_type": "anomaly_detection",
+            "scenario_id": "WO-CHILLER6-ANOMALY-001",
+        },
+    )
     assert r["success"], r
     assert r["data"]["_id"] == "wo:MAIN:1000045"
     assert r["data"]["status"] == "WAPPR"
     assert "_rev" not in r["data"], "internal _rev must not leak"
-    assert r["data"]["reportdate"] == "2020-04-28T09:00:00+00:00", "clock must be injectable"
+    assert r["data"]["reportdate"] == "2020-04-28T09:00:00+00:00", (
+        "clock must be injectable"
+    )
 
     # get
     g = await wo.get_workorder(db, "1000045", "MAIN")
@@ -105,23 +120,45 @@ async def scenario():
     # partial update: failure_code set independently, other fields untouched
     u = await wo.update_workorder(db, "1000045", "MAIN", failure_code="BRG-WEAR")
     assert u["data"]["failurecode"] == "BRG-WEAR"
-    assert u["data"]["wopriority"] == 2, "untouched fields must survive a partial update"
+    assert u["data"]["wopriority"] == 2, (
+        "untouched fields must survive a partial update"
+    )
 
     # approve -> assign -> close
-    assert (await wo.approve_workorder(db, "1000045", "MAIN", now=T0))["data"]["status"] == "APPR"
-    a = await wo.assign_technician(db, "1000045", "MAIN", "HVACTECH1", craft="HVAC",
-                                   hours_planned=4, now=T0)
+    assert (await wo.approve_workorder(db, "1000045", "MAIN", now=T0))["data"][
+        "status"
+    ] == "APPR"
+    a = await wo.assign_technician(
+        db, "1000045", "MAIN", "HVACTECH1", craft="HVAC", hours_planned=4, now=T0
+    )
     assert a["data"]["wplabor"][0]["laborcode"] == "HVACTECH1"
-    c = await wo.close_workorder(db, "1000045", "MAIN", actual_hours=3.5,
-                                 failure_code="SENSOR-DRIFT", now=T0)
+    c = await wo.close_workorder(
+        db, "1000045", "MAIN", actual_hours=3.5, failure_code="SENSOR-DRIFT", now=T0
+    )
     assert c["data"]["status"] == "COMP" and c["data"]["actlabhrs"] == 3.5
     assert c["data"]["actfinish"] == "2020-04-28T09:00:00+00:00"
 
     # auto wonum allocation is sequential/deterministic after reset
-    w1 = (await wo.create_workorder(db, description="PM", asset_num="AHU2", site_id="MAIN",
-                                    work_type="PM", now=T0))["data"]["wonum"]
-    w2 = (await wo.create_workorder(db, description="PM", asset_num="AHU3", site_id="MAIN",
-                                    work_type="PM", now=T0))["data"]["wonum"]
+    w1 = (
+        await wo.create_workorder(
+            db,
+            description="PM",
+            asset_num="AHU2",
+            site_id="MAIN",
+            work_type="PM",
+            now=T0,
+        )
+    )["data"]["wonum"]
+    w2 = (
+        await wo.create_workorder(
+            db,
+            description="PM",
+            asset_num="AHU3",
+            site_id="MAIN",
+            work_type="PM",
+            now=T0,
+        )
+    )["data"]["wonum"]
     assert int(w2) == int(w1) + 1, (w1, w2)
 
     # list + filters
@@ -131,16 +168,21 @@ async def scenario():
     assert w1 in open_nums and w2 in open_nums
 
     # validation errors
-    bad = await wo.create_workorder(db, description="x", asset_num="A", site_id="S", priority=9)
+    bad = await wo.create_workorder(
+        db, description="x", asset_num="A", site_id="S", priority=9
+    )
     assert not bad["success"] and bad["error_code"] == "VALIDATION_ERROR"
 
     # my assigned (open_only excludes the closed one)
-    mine = await wo.get_my_assigned_workorders(db, "HVACTECH1", site_id="MAIN", open_only=True)
+    mine = await wo.get_my_assigned_workorders(
+        db, "HVACTECH1", site_id="MAIN", open_only=True
+    )
     assert mine["data"]["totalCount"] == 0
 
     # kpis
-    k = await wo.get_workorder_kpis(db, "MAIN", period_months=3,
-                                    now=datetime(2020, 5, 1, tzinfo=timezone.utc))
+    k = await wo.get_workorder_kpis(
+        db, "MAIN", period_months=3, now=datetime(2020, 5, 1, tzinfo=timezone.utc)
+    )
     assert k["data"]["completed"] == 1 and k["data"]["total_workorders"] >= 3
 
     print("ALL ASSERTIONS PASSED")

@@ -24,7 +24,14 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-from agents import Agent, ModelProvider, OpenAIChatCompletionsModel, RunConfig, Runner, set_tracing_disabled
+from agents import (
+    Agent,
+    ModelProvider,
+    OpenAIChatCompletionsModel,
+    RunConfig,
+    Runner,
+    set_tracing_disabled,
+)
 from agents.mcp import MCPServerStdio
 
 from observability import agent_run_span, persist_trajectory
@@ -136,7 +143,9 @@ def _build_trajectory(result) -> Trajectory:
                 tc_id = getattr(raw, "call_id", "") or getattr(raw, "id", "") or ""
                 tc_args = getattr(raw, "arguments", "{}") or "{}"
                 try:
-                    tc_input = json.loads(tc_args) if isinstance(tc_args, str) else tc_args
+                    tc_input = (
+                        json.loads(tc_args) if isinstance(tc_args, str) else tc_args
+                    )
                 except (json.JSONDecodeError, TypeError):
                     tc_input = {"raw": tc_args}
                 tool_calls.append(ToolCall(name=tc_name, input=tc_input, id=tc_id))
@@ -251,8 +260,12 @@ class OpenAIAgentRunner(AgentRunner):
                 )
 
                 span.set_attribute("agent.answer.length", len(answer))
-                span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
-                span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
+                span.set_attribute(
+                    "gen_ai.usage.input_tokens", trajectory.total_input_tokens
+                )
+                span.set_attribute(
+                    "gen_ai.usage.output_tokens", trajectory.total_output_tokens
+                )
                 span.set_attribute("agent.turns", len(trajectory.turns))
                 span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
                 span.set_attribute(
@@ -270,5 +283,3 @@ class OpenAIAgentRunner(AgentRunner):
                     answer=answer,
                     trajectory=trajectory,
                 )
-
-

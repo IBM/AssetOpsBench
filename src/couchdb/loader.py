@@ -38,8 +38,13 @@ logger = logging.getLogger("loader")
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 COUCHDB_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")
-_AUTH = (os.environ.get("COUCHDB_USERNAME", "admin"), os.environ.get("COUCHDB_PASSWORD", "password"))
-COLLECTIONS_FILE = os.environ.get("COLLECTIONS_CONFIG", os.path.join(_HERE, "collections.json"))
+_AUTH = (
+    os.environ.get("COUCHDB_USERNAME", "admin"),
+    os.environ.get("COUCHDB_PASSWORD", "password"),
+)
+COLLECTIONS_FILE = os.environ.get(
+    "COLLECTIONS_CONFIG", os.path.join(_HERE, "collections.json")
+)
 SAMPLE_DATA_DIR = os.path.join(_HERE, "sample_data")
 
 
@@ -87,7 +92,11 @@ def parse_csv(path, cfg) -> list:
     for row in df.to_dict(orient="records"):
         doc = {}
         for col, val in row.items():
-            if val is None or (isinstance(val, float) and pd.isna(val)) or str(val).strip() == "":
+            if (
+                val is None
+                or (isinstance(val, float) and pd.isna(val))
+                or str(val).strip() == ""
+            ):
                 continue
             v = _coerce(col, val, int_f, float_f, json_f)
             if "." in col:
@@ -134,9 +143,9 @@ def _collect_docs(key, source, cfg, base_dir=None) -> list:
         return [p]
 
     docs = []
-    for item in (source if isinstance(source, list) else [source]):
+    for item in source if isinstance(source, list) else [source]:
         if isinstance(item, dict):
-            docs.append(item)                      # inline document
+            docs.append(item)  # inline document
         elif isinstance(item, str):
             for fp in files_from(item):
                 if not os.path.isfile(fp):
@@ -153,9 +162,9 @@ def _transform_for(key):
     """Optional per-collection transform: a function named <key> in transforms.py."""
     try:
         try:
-            from . import transforms          # package context
+            from . import transforms  # package context
         except ImportError:
-            import transforms                  # script context
+            import transforms  # script context
         return getattr(transforms, key, None)
     except Exception:
         return None
@@ -227,26 +236,41 @@ def _install_design(db, design_doc):
     if existing.status_code == 200:
         design["_rev"] = existing.json()["_rev"]
     resp = requests.put(url, json=design, auth=_AUTH, timeout=10)
-    if not resp.ok:                      # surface CouchDB's actual reason (e.g. compilation_error)
-        raise RuntimeError(f"design doc install failed for '{db}' ({resp.status_code}): {resp.text}")
+    if not resp.ok:  # surface CouchDB's actual reason (e.g. compilation_error)
+        raise RuntimeError(
+            f"design doc install failed for '{db}' ({resp.status_code}): {resp.text}"
+        )
 
 
 def _create_indexes(db, indexes):
     for fields in indexes or []:
-        requests.post(_db_url(db, "_index"), json={"index": {"fields": fields}, "type": "json"},
-                      auth=_AUTH, timeout=10).raise_for_status()
+        requests.post(
+            _db_url(db, "_index"),
+            json={"index": {"fields": fields}, "type": "json"},
+            auth=_AUTH,
+            timeout=10,
+        ).raise_for_status()
 
 
 def _bulk_insert(db, docs, batch_size=500):
     total = len(docs)
     for i in range(0, total, batch_size):
-        batch = docs[i:i + batch_size]
-        r = requests.post(_db_url(db, "_bulk_docs"), json={"docs": batch}, auth=_AUTH, timeout=60)
+        batch = docs[i : i + batch_size]
+        r = requests.post(
+            _db_url(db, "_bulk_docs"), json={"docs": batch}, auth=_AUTH, timeout=60
+        )
         r.raise_for_status()
         errors = [x for x in r.json() if x.get("error")]
         if errors:
-            logger.warning("%d bulk-insert errors in batch %d", len(errors), i // batch_size)
-        logger.info("Inserted batch %d/%d (%d docs)", i // batch_size + 1, math.ceil(total / batch_size), len(batch))
+            logger.warning(
+                "%d bulk-insert errors in batch %d", len(errors), i // batch_size
+            )
+        logger.info(
+            "Inserted batch %d/%d (%d docs)",
+            i // batch_size + 1,
+            math.ceil(total / batch_size),
+            len(batch),
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -256,7 +280,10 @@ def load_collection(key, source, drop=True, base_dir=None) -> tuple:
     """Load one collection's data into a database named after the key. Returns (db, n)."""
     cfg = collection_config(key)
     transform = _transform_for(key)
-    docs = [_normalise(d, key, cfg, transform) for d in _collect_docs(key, source, cfg, base_dir)]
+    docs = [
+        _normalise(d, key, cfg, transform)
+        for d in _collect_docs(key, source, cfg, base_dir)
+    ]
     db = key
     if docs:
         _ensure_db(db, drop=drop)

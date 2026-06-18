@@ -51,9 +51,7 @@ def assess_iso10816(
     Returns:
         dict with zone (A/B/C/D), description, and thresholds used.
     """
-    thresholds = ISO_10816_THRESHOLDS.get(
-        machine_group, ISO_10816_THRESHOLDS["group2"]
-    )
+    thresholds = ISO_10816_THRESHOLDS.get(machine_group, ISO_10816_THRESHOLDS["group2"])
 
     if rms_velocity_mm_s <= thresholds["A_good"]:
         zone, desc = "A", "Good - newly commissioned machines"
@@ -246,9 +244,7 @@ def classify_faults(
 
     # --- Mechanical looseness: many harmonics + sub-harmonics ---
     n_significant = sum(
-        1
-        for a in [features.amp_1x, features.amp_2x, features.amp_3x]
-        if a / rms > 1.5
+        1 for a in [features.amp_1x, features.amp_2x, features.amp_3x] if a / rms > 1.5
     )
     if n_significant >= 3 or (features.amp_half_x / rms > 1.5):
         evidence = [f"Harmonics above threshold: {n_significant}/3"]

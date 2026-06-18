@@ -144,7 +144,9 @@ class TestPlanner:
         planner = Planner(llm)
         plan = planner.generate_plan(
             "List all assets",
-            {"iot": "  - sites(): List sites\n  - assets(site_name: string): List assets"},
+            {
+                "iot": "  - sites(): List sites\n  - assets(site_name: string): List assets"
+            },
         )
         assert len(plan.steps) == 2
         assert plan.steps[0].server == "iot"
@@ -170,7 +172,10 @@ class TestPlanner:
 
         Planner(llm).generate_plan(
             "Q",
-            {"iot": "  - sites(): List sites", "utilities": "  - current_date_time(): Get time"},
+            {
+                "iot": "  - sites(): List sites",
+                "utilities": "  - current_date_time(): Get time",
+            },
         )
         assert "iot" in captured[0]
         assert "utilities" in captured[0]

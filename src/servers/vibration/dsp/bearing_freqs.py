@@ -91,8 +91,10 @@ def compute_bearing_frequencies(
     ftf = f_shaft * 0.5 * (1.0 - ratio * math.cos(alpha_rad))
     bpfo = f_shaft * (n_balls / 2.0) * (1.0 - ratio * math.cos(alpha_rad))
     bpfi = f_shaft * (n_balls / 2.0) * (1.0 + ratio * math.cos(alpha_rad))
-    bsf = f_shaft * (pitch_dia / (2.0 * ball_dia)) * (
-        1.0 - (ratio * math.cos(alpha_rad)) ** 2
+    bsf = (
+        f_shaft
+        * (pitch_dia / (2.0 * ball_dia))
+        * (1.0 - (ratio * math.cos(alpha_rad)) ** 2)
     )
 
     return BearingFrequencies(

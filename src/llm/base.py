@@ -27,9 +27,7 @@ class LLMBackend(ABC):
         """Generate text given a prompt."""
         ...
 
-    def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
-    ) -> LLMResult:
+    def generate_with_usage(self, prompt: str, temperature: float = 0.0) -> LLMResult:
         """Generate text and report token usage.
 
         Default impl delegates to :meth:`generate` and reports zero usage —

@@ -75,7 +75,11 @@ class TestGetFailureModeSensorMapping:
         data = await call_tool(
             mcp,
             "get_failure_mode_sensor_mapping",
-            {"asset_name": "Chiller 6", "failure_modes": _FAILURE_MODES, "sensors": _SENSORS},
+            {
+                "asset_name": "Chiller 6",
+                "failure_modes": _FAILURE_MODES,
+                "sensors": _SENSORS,
+            },
         )
         assert "fm2sensor" in data
         assert "sensor2fm" in data
@@ -88,7 +92,11 @@ class TestGetFailureModeSensorMapping:
         data = await call_tool(
             mcp,
             "get_failure_mode_sensor_mapping",
-            {"asset_name": "Chiller 6", "failure_modes": _FAILURE_MODES, "sensors": _SENSORS},
+            {
+                "asset_name": "Chiller 6",
+                "failure_modes": _FAILURE_MODES,
+                "sensors": _SENSORS,
+            },
         )
         assert len(data["full_relevancy"]) == 4
 
@@ -115,7 +123,11 @@ class TestGetFailureModeSensorMapping:
         data = await call_tool(
             mcp,
             "get_failure_mode_sensor_mapping",
-            {"asset_name": "Chiller 6", "failure_modes": _FAILURE_MODES, "sensors": _SENSORS},
+            {
+                "asset_name": "Chiller 6",
+                "failure_modes": _FAILURE_MODES,
+                "sensors": _SENSORS,
+            },
         )
         assert "error" in data
 

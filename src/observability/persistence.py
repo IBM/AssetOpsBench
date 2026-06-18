@@ -79,9 +79,7 @@ def persist_trajectory(
     }
 
     try:
-        out_path.write_text(
-            json.dumps(record, indent=2, default=str), encoding="utf-8"
-        )
+        out_path.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
     except OSError:
         _log.exception("persist_trajectory: write failed at %s", out_path)
         return None

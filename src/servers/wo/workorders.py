@@ -15,6 +15,7 @@ Every function takes the CouchDB client `db` as its first argument. `server.py`
 binds a real client; tests bind an in-memory fake. Each returns the same
 `{success, data, metadata}` / `{success, error, error_code}` envelope as Maximo MCP.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
@@ -45,10 +46,17 @@ def _public(doc: Dict[str, Any]) -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Read tools
 # --------------------------------------------------------------------------- #
-async def list_workorders(db, site_id: Optional[str] = None, status: Optional[str] = None,
-                          asset_num: Optional[str] = None, priority: Optional[int] = None,
-                          date_from: Optional[str] = None, date_to: Optional[str] = None,
-                          page_size: int = 50, page_num: int = 1) -> Dict[str, Any]:
+async def list_workorders(
+    db,
+    site_id: Optional[str] = None,
+    status: Optional[str] = None,
+    asset_num: Optional[str] = None,
+    priority: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    page_size: int = 50,
+    page_num: int = 1,
+) -> Dict[str, Any]:
     """List work orders with optional filters (site, status, asset, priority, date window).
 
     `status` accepts a single value, or the pseudo-values OPEN / APPROVED_PENDING.
@@ -82,15 +90,18 @@ async def list_workorders(db, site_id: Optional[str] = None, status: Optional[st
         # No Mango `sort` — that requires a matching index and 400s without one.
         # Sort client-side instead (robust to missing reportdate / indexes).
         docs = await db.find(sel, limit=1000000)
-        docs.sort(key=lambda d: (d.get("reportdate") or ""), reverse=True)
+        docs.sort(key=lambda d: d.get("reportdate") or "", reverse=True)
         total = len(docs)
         if not page_size:  # page_size=0 (or None) → return everything
             page = [_public(d) for d in docs]
         else:
             start = (page_num - 1) * page_size
-            page = [_public(d) for d in docs[start:start + page_size]]
-        return envelope({"workorders": page, "totalCount": total},
-                        duration_ms=t_ms(t), record_count=len(page))
+            page = [_public(d) for d in docs[start : start + page_size]]
+        return envelope(
+            {"workorders": page, "totalCount": total},
+            duration_ms=t_ms(t),
+            record_count=len(page),
+        )
 
 
 async def get_workorder(db, wonum: str, site_id: str) -> Dict[str, Any]:
@@ -98,19 +109,31 @@ async def get_workorder(db, wonum: str, site_id: str) -> Dict[str, Any]:
     with Timer() as t:
         doc = await db.get(_doc_id(site_id, wonum))
         if not doc:
-            return error(f"Work order '{wonum}' not found in site '{site_id}'", "NOT_FOUND")
+            return error(
+                f"Work order '{wonum}' not found in site '{site_id}'", "NOT_FOUND"
+            )
         return envelope(_public(doc), duration_ms=t_ms(t))
 
 
 async def get_workorder_tasks(db, wonum: str, site_id: str) -> Dict[str, Any]:
     """List child task rows whose `parent` references this work order."""
     with Timer() as t:
-        docs = await db.find({"type": "workorder", "parent": wonum, "siteid": site_id.upper()},
-                             limit=1000)
-        docs.sort(key=lambda d: (d.get("taskid") or 0))   # sort client-side (no index needed)
-        return envelope({"parent_wonum": wonum, "site_id": site_id,
-                         "tasks": [_public(d) for d in docs]},
-                        duration_ms=t_ms(t), record_count=len(docs))
+        docs = await db.find(
+            {"type": "workorder", "parent": wonum, "siteid": site_id.upper()},
+            limit=1000,
+        )
+        docs.sort(
+            key=lambda d: d.get("taskid") or 0
+        )  # sort client-side (no index needed)
+        return envelope(
+            {
+                "parent_wonum": wonum,
+                "site_id": site_id,
+                "tasks": [_public(d) for d in docs],
+            },
+            duration_ms=t_ms(t),
+            record_count=len(docs),
+        )
 
 
 async def get_workorder_costs(db, wonum: str, site_id: str) -> Dict[str, Any]:
@@ -118,58 +141,106 @@ async def get_workorder_costs(db, wonum: str, site_id: str) -> Dict[str, Any]:
     with Timer() as t:
         wo = await db.get(_doc_id(site_id, wonum))
         if not wo:
-            return error(f"Work order '{wonum}' not found in site '{site_id}'.", "NOT_FOUND")
+            return error(
+                f"Work order '{wonum}' not found in site '{site_id}'.", "NOT_FOUND"
+            )
         f = lambda n: float(wo.get(n) or 0)
-        labor, material, service, tool = f("actlabcost"), f("actmatcost"), f("actservcost"), f("acttoolcost")
+        labor, material, service, tool = (
+            f("actlabcost"),
+            f("actmatcost"),
+            f("actservcost"),
+            f("acttoolcost"),
+        )
         total = f("acttotalcost") or (labor + material + service + tool)
-        breakdown = [{"category": c, "amount": round(a, 2),
-                      "share_pct": round((a / total) * 100, 1) if total else 0}
-                     for c, a in (("labor", labor), ("material", material),
-                                  ("service", service), ("tool", tool))]
-        return envelope({"wonum": wonum, "site_id": site_id, "status": wo.get("status"),
-                         "assetnum": wo.get("assetnum"), "location": wo.get("location"),
-                         "actual_hours": f("actlabhrs"), "total_cost": round(total, 2),
-                         "breakdown": breakdown}, duration_ms=t_ms(t))
+        breakdown = [
+            {
+                "category": c,
+                "amount": round(a, 2),
+                "share_pct": round((a / total) * 100, 1) if total else 0,
+            }
+            for c, a in (
+                ("labor", labor),
+                ("material", material),
+                ("service", service),
+                ("tool", tool),
+            )
+        ]
+        return envelope(
+            {
+                "wonum": wonum,
+                "site_id": site_id,
+                "status": wo.get("status"),
+                "assetnum": wo.get("assetnum"),
+                "location": wo.get("location"),
+                "actual_hours": f("actlabhrs"),
+                "total_cost": round(total, 2),
+                "breakdown": breakdown,
+            },
+            duration_ms=t_ms(t),
+        )
 
 
-async def get_workorder_actuals_vs_planned(db, wonum: str, site_id: str) -> Dict[str, Any]:
+async def get_workorder_actuals_vs_planned(
+    db, wonum: str, site_id: str
+) -> Dict[str, Any]:
     """Estimated vs actual hours and cost variance for one work order."""
     with Timer() as t:
         wo = await db.get(_doc_id(site_id, wonum))
         if not wo:
-            return error(f"Work order '{wonum}' not found in site '{site_id}'.", "NOT_FOUND")
+            return error(
+                f"Work order '{wonum}' not found in site '{site_id}'.", "NOT_FOUND"
+            )
         f = lambda n: float(wo.get(n) or 0)
 
         def var(est, act):
-            return {"estimated": round(est, 2), "actual": round(act, 2),
-                    "variance_abs": round(act - est, 2),
-                    "variance_pct": round(((act - est) / est) * 100, 1) if est else None,
-                    "over_budget": act > est}
+            return {
+                "estimated": round(est, 2),
+                "actual": round(act, 2),
+                "variance_abs": round(act - est, 2),
+                "variance_pct": round(((act - est) / est) * 100, 1) if est else None,
+                "over_budget": act > est,
+            }
 
-        est_total = f("esttotalcost") or (f("estlabcost") + f("estmatcost") + f("estservcost") + f("esttoolcost"))
-        act_total = f("acttotalcost") or (f("actlabcost") + f("actmatcost") + f("actservcost") + f("acttoolcost"))
-        return envelope({"wonum": wonum, "site_id": site_id, "status": wo.get("status"),
-                         "worktype": wo.get("worktype"),
-                         "labor_hours": var(f("estlabhrs"), f("actlabhrs")),
-                         "labor_cost": var(f("estlabcost"), f("actlabcost")),
-                         "material_cost": var(f("estmatcost"), f("actmatcost")),
-                         "service_cost": var(f("estservcost"), f("actservcost")),
-                         "tool_cost": var(f("esttoolcost"), f("acttoolcost")),
-                         "total_cost": var(est_total, act_total)}, duration_ms=t_ms(t))
+        est_total = f("esttotalcost") or (
+            f("estlabcost") + f("estmatcost") + f("estservcost") + f("esttoolcost")
+        )
+        act_total = f("acttotalcost") or (
+            f("actlabcost") + f("actmatcost") + f("actservcost") + f("acttoolcost")
+        )
+        return envelope(
+            {
+                "wonum": wonum,
+                "site_id": site_id,
+                "status": wo.get("status"),
+                "worktype": wo.get("worktype"),
+                "labor_hours": var(f("estlabhrs"), f("actlabhrs")),
+                "labor_cost": var(f("estlabcost"), f("actlabcost")),
+                "material_cost": var(f("estmatcost"), f("actmatcost")),
+                "service_cost": var(f("estservcost"), f("actservcost")),
+                "tool_cost": var(f("esttoolcost"), f("acttoolcost")),
+                "total_cost": var(est_total, act_total),
+            },
+            duration_ms=t_ms(t),
+        )
 
 
-async def get_workorder_kpis(db, site_id: str, period_months: int = 3,
-                             now: Optional[datetime] = None) -> Dict[str, Any]:
+async def get_workorder_kpis(
+    db, site_id: str, period_months: int = 3, now: Optional[datetime] = None
+) -> Dict[str, Any]:
     """Site KPIs over a period: totals, backlog, overdue, avg completion, priority + asset breakdowns."""
     with Timer() as t:
         now = now or datetime.now(timezone.utc)
         cutoff = _iso(now - timedelta(days=period_months * 30))
         now_str = _iso(now)
-        docs = await db.find({"type": "workorder", "siteid": site_id.upper()}, limit=10000)
+        docs = await db.find(
+            {"type": "workorder", "siteid": site_id.upper()}, limit=10000
+        )
         wos = [w for w in docs if (w.get("reportdate") or "") >= cutoff]
         completed = [w for w in wos if w.get("status") == "COMP"]
         backlog = [w for w in wos if w.get("status") not in TERMINAL]
-        overdue = [w for w in backlog if w.get("targcompdate") and w["targcompdate"] < now_str]
+        overdue = [
+            w for w in backlog if w.get("targcompdate") and w["targcompdate"] < now_str
+        ]
 
         times = []
         for w in completed:
@@ -184,27 +255,44 @@ async def get_workorder_kpis(db, site_id: str, period_months: int = 3,
         prio: Dict[str, int] = {}
         assets: Dict[str, int] = {}
         for w in wos:
-            prio[str(w.get("wopriority", "Unknown"))] = prio.get(str(w.get("wopriority", "Unknown")), 0) + 1
+            prio[str(w.get("wopriority", "Unknown"))] = (
+                prio.get(str(w.get("wopriority", "Unknown")), 0) + 1
+            )
             a = w.get("assetnum", "UNKNOWN")
             assets[a] = assets.get(a, 0) + 1
         top = sorted(assets.items(), key=lambda x: x[1], reverse=True)[:5]
-        return envelope({"site_id": site_id, "period_months": period_months,
-                         "total_workorders": len(wos), "completed": len(completed),
-                         "backlog": len(backlog), "overdue": len(overdue),
-                         "avg_completion_hrs": avg_hrs, "priority_breakdown": prio,
-                         "top_assets_by_wo_count": [{"asset": a, "count": c} for a, c in top]},
-                        duration_ms=t_ms(t))
+        return envelope(
+            {
+                "site_id": site_id,
+                "period_months": period_months,
+                "total_workorders": len(wos),
+                "completed": len(completed),
+                "backlog": len(backlog),
+                "overdue": len(overdue),
+                "avg_completion_hrs": avg_hrs,
+                "priority_breakdown": prio,
+                "top_assets_by_wo_count": [{"asset": a, "count": c} for a, c in top],
+            },
+            duration_ms=t_ms(t),
+        )
 
 
-async def get_schedule_calendar(db, site_id: str, date_from: Optional[str] = None,
-                                date_to: Optional[str] = None, group_by: str = "date",
-                                now: Optional[datetime] = None) -> Dict[str, Any]:
+async def get_schedule_calendar(
+    db,
+    site_id: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    group_by: str = "date",
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
     """Scheduled (non-terminal) work orders in a date window, optionally bucketed by day."""
     with Timer() as t:
         now = now or datetime.now(timezone.utc)
         date_from = date_from or now.strftime("%Y-%m-%d")
         date_to = date_to or (now + timedelta(days=14)).strftime("%Y-%m-%d")
-        docs = await db.find({"type": "workorder", "siteid": site_id.upper()}, limit=10000)
+        docs = await db.find(
+            {"type": "workorder", "siteid": site_id.upper()}, limit=10000
+        )
         in_win = []
         for w in docs:
             if (w.get("status") or "") in TERMINAL:
@@ -221,22 +309,36 @@ async def get_schedule_calendar(db, site_id: str, date_from: Optional[str] = Non
             for w in in_win:
                 day = (w.get("schedstart") or w.get("targstartdate"))[:10]
                 buckets.setdefault(day, []).append(_public(w))
-            payload = {"site_id": site_id, "date_from": date_from, "date_to": date_to,
-                       "total_scheduled": len(in_win),
-                       "by_date": [{"date": d, "count": len(r), "workorders": r}
-                                   for d, r in sorted(buckets.items())]}
+            payload = {
+                "site_id": site_id,
+                "date_from": date_from,
+                "date_to": date_to,
+                "total_scheduled": len(in_win),
+                "by_date": [
+                    {"date": d, "count": len(r), "workorders": r}
+                    for d, r in sorted(buckets.items())
+                ],
+            }
         else:
-            payload = {"site_id": site_id, "date_from": date_from, "date_to": date_to,
-                       "total_scheduled": len(in_win), "workorders": [_public(w) for w in in_win]}
+            payload = {
+                "site_id": site_id,
+                "date_from": date_from,
+                "date_to": date_to,
+                "total_scheduled": len(in_win),
+                "workorders": [_public(w) for w in in_win],
+            }
         return envelope(payload, duration_ms=t_ms(t), record_count=len(in_win))
 
 
-async def get_my_assigned_workorders(db, labor_code: str, site_id: Optional[str] = None,
-                                     open_only: bool = True) -> Dict[str, Any]:
+async def get_my_assigned_workorders(
+    db, labor_code: str, site_id: Optional[str] = None, open_only: bool = True
+) -> Dict[str, Any]:
     """Work orders with a `wplabor` line for the given labor (technician)."""
     with Timer() as t:
-        docs = await db.find({"type": "workorder", "wplabor": {"$elemMatch": {"laborcode": labor_code}}},
-                             limit=10000)
+        docs = await db.find(
+            {"type": "workorder", "wplabor": {"$elemMatch": {"laborcode": labor_code}}},
+            limit=10000,
+        )
         out = []
         for w in docs:
             if site_id and (w.get("siteid") or "").upper() != site_id.upper():
@@ -244,23 +346,36 @@ async def get_my_assigned_workorders(db, labor_code: str, site_id: Optional[str]
             if open_only and (w.get("status") or "").upper() in TERMINAL:
                 continue
             out.append(_public(w))
-        return envelope({"labor_code": labor_code, "workorders": out, "totalCount": len(out)},
-                        duration_ms=t_ms(t), record_count=len(out))
+        return envelope(
+            {"labor_code": labor_code, "workorders": out, "totalCount": len(out)},
+            duration_ms=t_ms(t),
+            record_count=len(out),
+        )
 
 
 # --------------------------------------------------------------------------- #
 # Write tools
 # --------------------------------------------------------------------------- #
-async def create_workorder(db, description: str, asset_num: str, site_id: str,
-                           priority: int = 3, work_type: str = "CM",
-                           reported_by: Optional[str] = None, location: Optional[str] = None,
-                           notes: Optional[str] = None, wonum: Optional[str] = None,
-                           aob_source: Optional[Dict[str, Any]] = None,
-                           now: Optional[datetime] = None) -> Dict[str, Any]:
+async def create_workorder(
+    db,
+    description: str,
+    asset_num: str,
+    site_id: str,
+    priority: int = 3,
+    work_type: str = "CM",
+    reported_by: Optional[str] = None,
+    location: Optional[str] = None,
+    notes: Optional[str] = None,
+    wonum: Optional[str] = None,
+    aob_source: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
     """Create a new work order (status WAPPR). Optionally pin `wonum` for reproducible ids
     and attach `aob_source` provenance (the agent/trigger that generated it)."""
     if not description or not asset_num or not site_id:
-        return error("description, asset_num, and site_id are required", "VALIDATION_ERROR")
+        return error(
+            "description, asset_num, and site_id are required", "VALIDATION_ERROR"
+        )
     if not 1 <= priority <= 5:
         return error("priority must be between 1 and 5", "VALIDATION_ERROR")
     if work_type not in WORKTYPES:
@@ -270,10 +385,17 @@ async def create_workorder(db, description: str, asset_num: str, site_id: str,
         now = now or datetime.now(timezone.utc)
         won = wonum or await db.next_wonum(site_id)
         doc: Dict[str, Any] = {
-            "_id": _doc_id(site_id, won), "type": "workorder", "schema_version": "1.0.0",
-            "wonum": won, "siteid": site_id.upper(), "description": description[:100],
-            "assetnum": asset_num, "wopriority": priority, "worktype": work_type,
-            "status": "WAPPR", "reportdate": _iso(now),
+            "_id": _doc_id(site_id, won),
+            "type": "workorder",
+            "schema_version": "1.0.0",
+            "wonum": won,
+            "siteid": site_id.upper(),
+            "description": description[:100],
+            "assetnum": asset_num,
+            "wopriority": priority,
+            "worktype": work_type,
+            "status": "WAPPR",
+            "reportdate": _iso(now),
         }
         if reported_by:
             doc["reportedby"] = reported_by
@@ -293,10 +415,17 @@ async def generate_work_order(db, **kwargs) -> Dict[str, Any]:
     return await create_workorder(db, **kwargs)
 
 
-async def update_workorder(db, wonum: str, site_id: str, description: Optional[str] = None,
-                           priority: Optional[int] = None, location: Optional[str] = None,
-                           asset_num: Optional[str] = None, notes: Optional[str] = None,
-                           failure_code: Optional[str] = None) -> Dict[str, Any]:
+async def update_workorder(
+    db,
+    wonum: str,
+    site_id: str,
+    description: Optional[str] = None,
+    priority: Optional[int] = None,
+    location: Optional[str] = None,
+    asset_num: Optional[str] = None,
+    notes: Optional[str] = None,
+    failure_code: Optional[str] = None,
+) -> Dict[str, Any]:
     """Update mutable fields on an existing work order."""
     with Timer() as t:
         doc = await db.get(_doc_id(site_id, wonum))
@@ -319,9 +448,14 @@ async def update_workorder(db, wonum: str, site_id: str, description: Optional[s
         return envelope(_public(doc), duration_ms=t_ms(t))
 
 
-async def _change_status(db, wonum: str, site_id: str, new_status: str,
-                         extra: Optional[Dict[str, Any]] = None,
-                         now: Optional[datetime] = None) -> Dict[str, Any]:
+async def _change_status(
+    db,
+    wonum: str,
+    site_id: str,
+    new_status: str,
+    extra: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
     with Timer() as t:
         doc = await db.get(_doc_id(site_id, wonum))
         if not doc:
@@ -334,21 +468,35 @@ async def _change_status(db, wonum: str, site_id: str, new_status: str,
         return envelope(_public(doc), duration_ms=t_ms(t))
 
 
-async def approve_workorder(db, wonum: str, site_id: str, now: Optional[datetime] = None) -> Dict[str, Any]:
+async def approve_workorder(
+    db, wonum: str, site_id: str, now: Optional[datetime] = None
+) -> Dict[str, Any]:
     """Approve a work order (status → APPR)."""
     return await _change_status(db, wonum, site_id, "APPR", now=now)
 
 
-async def cancel_workorder(db, wonum: str, site_id: str, reason: Optional[str] = None,
-                           now: Optional[datetime] = None) -> Dict[str, Any]:
+async def cancel_workorder(
+    db,
+    wonum: str,
+    site_id: str,
+    reason: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
     """Cancel a work order (status → CAN)."""
     extra = {"description_longdescription": reason} if reason else None
     return await _change_status(db, wonum, site_id, "CAN", extra=extra, now=now)
 
 
-async def assign_technician(db, wonum: str, site_id: str, labor_code: str,
-                            craft: Optional[str] = None, start_date: Optional[str] = None,
-                            hours_planned: float = 8.0, now: Optional[datetime] = None) -> Dict[str, Any]:
+async def assign_technician(
+    db,
+    wonum: str,
+    site_id: str,
+    labor_code: str,
+    craft: Optional[str] = None,
+    start_date: Optional[str] = None,
+    hours_planned: float = 8.0,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
     """Append a planned-labor (`wplabor`) line assigning a technician to the work order."""
     if not all([wonum, site_id, labor_code]):
         return error("wonum, site_id, and labor_code are required", "VALIDATION_ERROR")
@@ -356,8 +504,11 @@ async def assign_technician(db, wonum: str, site_id: str, labor_code: str,
         doc = await db.get(_doc_id(site_id, wonum))
         if not doc:
             return error(f"Work order '{wonum}' not found", "NOT_FOUND")
-        line: Dict[str, Any] = {"laborcode": labor_code, "laborhrs": hours_planned,
-                                "startdate": start_date or _iso(now or datetime.now(timezone.utc))}
+        line: Dict[str, Any] = {
+            "laborcode": labor_code,
+            "laborhrs": hours_planned,
+            "startdate": start_date or _iso(now or datetime.now(timezone.utc)),
+        }
         if craft:
             line["craft"] = craft
         doc.setdefault("wplabor", []).append(line)
@@ -365,9 +516,15 @@ async def assign_technician(db, wonum: str, site_id: str, labor_code: str,
         return envelope(_public(doc), duration_ms=t_ms(t))
 
 
-async def close_workorder(db, wonum: str, site_id: str, actual_hours: float = 0.0,
-                          failure_code: Optional[str] = None, resolution_notes: Optional[str] = None,
-                          now: Optional[datetime] = None) -> Dict[str, Any]:
+async def close_workorder(
+    db,
+    wonum: str,
+    site_id: str,
+    actual_hours: float = 0.0,
+    failure_code: Optional[str] = None,
+    resolution_notes: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
     """Close a work order (status → COMP), recording actual hours, failure code, resolution,
     and stamping `actfinish`."""
     now = now or datetime.now(timezone.utc)

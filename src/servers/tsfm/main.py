@@ -72,7 +72,6 @@ logging.basicConfig(level=_log_level)
 logger = logging.getLogger("tsfm-mcp-server")
 
 
-
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 
@@ -115,7 +114,10 @@ def _tsad_output_to_df(output: dict) -> pd.DataFrame:
 
 # ── FastMCP server ────────────────────────────────────────────────────────────
 
-mcp = FastMCP("tsfm", instructions="Time-series foundation models: forecasting, finetuning, and anomaly detection using IBM Granite TinyTimeMixer.")
+mcp = FastMCP(
+    "tsfm",
+    instructions="Time-series foundation models: forecasting, finetuning, and anomaly detection using IBM Granite TinyTimeMixer.",
+)
 
 
 # ── Static tools ──────────────────────────────────────────────────────────────
@@ -576,7 +578,9 @@ def run_integrated_tsad(
             frequency_sampling,
             autoregressive_modeling,
         )
-        full_data_df = _read_ts_data(dataset_path, dataset_config_dictionary=full_config)
+        full_data_df = _read_ts_data(
+            dataset_path, dataset_config_dictionary=full_config
+        )
 
         for col in target_columns:
             col_config = _build_dataset_config(

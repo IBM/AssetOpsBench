@@ -20,7 +20,13 @@ import logging
 import time
 from pathlib import Path
 
-from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, HookMatcher, ResultMessage, query
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    HookMatcher,
+    ResultMessage,
+    query,
+)
 from claude_agent_sdk import TextBlock, ToolUseBlock
 
 from observability import agent_run_span, persist_trajectory
@@ -132,8 +138,14 @@ class ClaudeAgentRunner(AgentRunner):
             last_turn_start = run_started
             tool_outputs: dict[str, object] = {}
 
-            async def _capture_tool_output(input_data, tool_use_id: str, context) -> dict:
-                resp = input_data.get("tool_response") if isinstance(input_data, dict) else input_data
+            async def _capture_tool_output(
+                input_data, tool_use_id: str, context
+            ) -> dict:
+                resp = (
+                    input_data.get("tool_response")
+                    if isinstance(input_data, dict)
+                    else input_data
+                )
                 if isinstance(resp, dict):
                     tool_outputs[tool_use_id] = resp.get("content", resp)
                 else:
@@ -145,7 +157,9 @@ class ClaudeAgentRunner(AgentRunner):
             # per-tool duration for claude-agent is therefore not captured
             # (matches openai-agent / deep-agent).
             options.hooks = {
-                "PostToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])],
+                "PostToolUse": [
+                    HookMatcher(matcher=".*", hooks=[_capture_tool_output])
+                ],
             }
 
             def _flush_tool_outputs() -> None:
@@ -169,7 +183,9 @@ class ClaudeAgentRunner(AgentRunner):
                             text += block.text
                         elif isinstance(block, ToolUseBlock):
                             tool_calls.append(
-                                ToolCall(name=block.name, input=block.input, id=block.id)
+                                ToolCall(
+                                    name=block.name, input=block.input, id=block.id
+                                )
                             )
                     usage = message.usage or {}
                     trajectory.turns.append(
@@ -197,8 +213,12 @@ class ClaudeAgentRunner(AgentRunner):
 
             duration_ms = (time.perf_counter() - run_started) * 1000
             span.set_attribute("agent.answer.length", len(answer))
-            span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
-            span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
+            span.set_attribute(
+                "gen_ai.usage.input_tokens", trajectory.total_input_tokens
+            )
+            span.set_attribute(
+                "gen_ai.usage.output_tokens", trajectory.total_output_tokens
+            )
             span.set_attribute("agent.turns", len(trajectory.turns))
             span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
             span.set_attribute("agent.duration_ms", duration_ms)

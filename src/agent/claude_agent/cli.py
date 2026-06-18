@@ -52,7 +52,9 @@ async def _run(args: argparse.Namespace) -> None:
 
     runner = ClaudeAgentRunner(model=args.model_id, max_turns=args.max_turns)
     result = await runner.run(args.question)
-    print_result(result, show_trajectory=args.show_trajectory, output_json=args.output_json)
+    print_result(
+        result, show_trajectory=args.show_trajectory, output_json=args.output_json
+    )
 
 
 def main() -> None:

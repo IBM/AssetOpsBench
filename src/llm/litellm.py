@@ -36,9 +36,7 @@ class LiteLLMBackend(LLMBackend):
     def generate(self, prompt: str, temperature: float = 0.0) -> str:
         return self.generate_with_usage(prompt, temperature).text
 
-    def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
-    ) -> LLMResult:
+    def generate_with_usage(self, prompt: str, temperature: float = 0.0) -> LLMResult:
         import litellm
 
         kwargs: dict = {

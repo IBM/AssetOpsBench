@@ -80,8 +80,13 @@ def test_build_trajectory_maps_turns_calls_and_outputs():
                 request_start_time=1.0,
                 request_end_time=2.5,
             ),
-            _Tool(content="[{'wo': 7}]", tool_call_id="t1", name="wo__get_work_order",
-                  tool_start_time=2.5, tool_end_time=3.0),
+            _Tool(
+                content="[{'wo': 7}]",
+                tool_call_id="t1",
+                name="wo__get_work_order",
+                tool_start_time=2.5,
+                tool_end_time=3.0,
+            ),
         ],
         [
             _Assistant(
@@ -98,20 +103,29 @@ def test_build_trajectory_maps_turns_calls_and_outputs():
 
     call = traj.all_tool_calls[0]
     assert call.name == "wo__get_work_order"
-    assert call.input == {"asset": "CWC04013"}        # JSON string parsed
+    assert call.input == {"asset": "CWC04013"}  # JSON string parsed
     assert call.output == "[{'wo': 7}]"
-    assert call.duration_ms == 500.0                   # (3.0 - 2.5) * 1000
-    assert traj.turns[0].duration_ms == 1500.0         # (2.5 - 1.0) * 1000
+    assert call.duration_ms == 500.0  # (3.0 - 2.5) * 1000
+    assert traj.turns[0].duration_ms == 1500.0  # (2.5 - 1.0) * 1000
 
     assert final_answer(history, _Finish("done")) == "there are 7 open work orders"
 
 
 def test_final_answer_falls_back_to_finish_reason():
     history = [[_Assistant(content="")]]
-    assert final_answer(history, _Finish("computed RUL = 142 days")) == "computed RUL = 142 days"
+    assert (
+        final_answer(history, _Finish("computed RUL = 142 days"))
+        == "computed RUL = 142 days"
+    )
 
 
 def test_arguments_parsed_when_already_dict():
-    history = [[_Assistant(content="x", tool_calls=[_TC("iot__get_sensors", {"asset": "CH6"}, "a")])]]
+    history = [
+        [
+            _Assistant(
+                content="x", tool_calls=[_TC("iot__get_sensors", {"asset": "CH6"}, "a")]
+            )
+        ]
+    ]
     traj = build_trajectory(history)
     assert traj.all_tool_calls[0].input == {"asset": "CH6"}

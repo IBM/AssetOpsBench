@@ -24,9 +24,9 @@ import os
 
 from dotenv import load_dotenv
 
-try:                       # works as a package (python -m couchdb.init_data / imports)
+try:  # works as a package (python -m couchdb.init_data / imports)
     from . import loader
-except ImportError:        # works as a script (python3 /couchdb/init_data.py)
+except ImportError:  # works as a script (python3 /couchdb/init_data.py)
     import loader
 
 load_dotenv()
@@ -35,9 +35,12 @@ logger = logging.getLogger("init_data")
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
-SCENARIOS_DATA_DIR = os.environ.get("SCENARIOS_DATA_DIR", os.path.join(_HERE, "scenarios_data"))
+SCENARIOS_DATA_DIR = os.environ.get(
+    "SCENARIOS_DATA_DIR", os.path.join(_HERE, "scenarios_data")
+)
 DEFAULT_MANIFEST_FILE = os.environ.get(
-    "DEFAULT_MANIFEST", os.path.join(SCENARIOS_DATA_DIR, "default", "manifest.json"))
+    "DEFAULT_MANIFEST", os.path.join(SCENARIOS_DATA_DIR, "default", "manifest.json")
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -48,14 +51,21 @@ def _load_default_manifest() -> tuple:
     if not os.path.isfile(DEFAULT_MANIFEST_FILE):
         raise FileNotFoundError(
             f"default manifest not found: {DEFAULT_MANIFEST_FILE}. "
-            "Create scenarios_data/default/manifest.json (or set DEFAULT_MANIFEST).")
+            "Create scenarios_data/default/manifest.json (or set DEFAULT_MANIFEST)."
+        )
     with open(DEFAULT_MANIFEST_FILE) as f:
         return json.load(f), os.path.dirname(DEFAULT_MANIFEST_FILE)
 
 
 def manifest_path(scenario_id) -> str:
-    folder = os.path.join(SCENARIOS_DATA_DIR, f"scenario_{scenario_id}", "manifest.json")
-    return folder if os.path.isfile(folder) else os.path.join(SCENARIOS_DATA_DIR, f"scenario_{scenario_id}.json")
+    folder = os.path.join(
+        SCENARIOS_DATA_DIR, f"scenario_{scenario_id}", "manifest.json"
+    )
+    return (
+        folder
+        if os.path.isfile(folder)
+        else os.path.join(SCENARIOS_DATA_DIR, f"scenario_{scenario_id}.json")
+    )
 
 
 def _resolve_manifest(scenario_id) -> tuple:
@@ -77,8 +87,11 @@ def _resolve_manifest(scenario_id) -> tuple:
         raise FileNotFoundError(
             f"no manifest for scenario {scenario_id}: expected "
             f"{os.path.join(SCENARIOS_DATA_DIR, f'scenario_{scenario_id}', 'manifest.json')} "
-            f"or {os.path.join(SCENARIOS_DATA_DIR, f'scenario_{scenario_id}.json')}")
-    base_dir = os.path.dirname(path) if os.path.basename(path) == "manifest.json" else None
+            f"or {os.path.join(SCENARIOS_DATA_DIR, f'scenario_{scenario_id}.json')}"
+        )
+    base_dir = (
+        os.path.dirname(path) if os.path.basename(path) == "manifest.json" else None
+    )
     with open(path) as f:
         return json.load(f), base_dir
 
@@ -113,34 +126,61 @@ def reset(managed_only: bool = False) -> list:
 # --------------------------------------------------------------------------- #
 # Load
 # --------------------------------------------------------------------------- #
-def init_data(scenario_id=None, force: bool = True, reset_first: bool = False,
-              managed_only: bool = False) -> dict:
+def init_data(
+    scenario_id=None,
+    force: bool = True,
+    reset_first: bool = False,
+    managed_only: bool = False,
+) -> dict:
     """Load a scenario's data (or the default) into CouchDB. Returns {collection: (db, n)}.
 
     Resolves the manifest first, so an unknown ``scenario_id`` raises FileNotFoundError
     before anything is dropped. ``reset_first=True`` then drops databases so collections
     absent from the manifest are left empty rather than carrying over.
     """
-    manifest, base_dir = _resolve_manifest(scenario_id)   # validate first (raises on unknown id)
+    manifest, base_dir = _resolve_manifest(
+        scenario_id
+    )  # validate first (raises on unknown id)
     if reset_first:
         reset(managed_only=managed_only)
     results = {}
     for key, spec in manifest.items():
-        results[key] = loader.load_collection(key, spec, drop=force, base_dir=base_dir)   # database name = key
-        logger.info("Scenario %s: '%s' → %s (%d docs).", scenario_id, key, *results[key])
+        results[key] = loader.load_collection(
+            key, spec, drop=force, base_dir=base_dir
+        )  # database name = key
+        logger.info(
+            "Scenario %s: '%s' → %s (%d docs).", scenario_id, key, *results[key]
+        )
     return results
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    p = argparse.ArgumentParser(description="Load CouchDB data for a scenario (default if omitted).")
-    p.add_argument("scenario", nargs="?", default=None,
-                   help="Scenario id → scenarios_data/scenario_<id>.json (omit for default).")
-    p.add_argument("--reuse", action="store_true", help="Reuse instead of reloading from scratch.")
-    p.add_argument("--reset", action="store_true", help="Drop databases first, then load (clean start).")
-    p.add_argument("--reset-only", action="store_true", help="Drop databases and exit (no load).")
-    p.add_argument("--managed-only", action="store_true",
-                   help="With --reset/--reset-only: drop only the default-manifest collections.")
+    p = argparse.ArgumentParser(
+        description="Load CouchDB data for a scenario (default if omitted)."
+    )
+    p.add_argument(
+        "scenario",
+        nargs="?",
+        default=None,
+        help="Scenario id → scenarios_data/scenario_<id>.json (omit for default).",
+    )
+    p.add_argument(
+        "--reuse", action="store_true", help="Reuse instead of reloading from scratch."
+    )
+    p.add_argument(
+        "--reset",
+        action="store_true",
+        help="Drop databases first, then load (clean start).",
+    )
+    p.add_argument(
+        "--reset-only", action="store_true", help="Drop databases and exit (no load)."
+    )
+    p.add_argument(
+        "--managed-only",
+        action="store_true",
+        help="With --reset/--reset-only: drop only the default-manifest collections.",
+    )
     a = p.parse_args()
 
     if a.reset_only:
@@ -148,8 +188,9 @@ def main() -> None:
             print(f"dropped\t{db}")
         return
 
-    for key, (db, n) in init_data(a.scenario, force=not a.reuse,
-                                  reset_first=a.reset, managed_only=a.managed_only).items():
+    for key, (db, n) in init_data(
+        a.scenario, force=not a.reuse, reset_first=a.reset, managed_only=a.managed_only
+    ).items():
         print(f"{key}\t{db}\t{n}")
 
 

@@ -17,9 +17,7 @@ def _install_fake_openai(monkeypatch, captured: dict):
         captured.update(kwargs)
         return types.SimpleNamespace(
             choices=[
-                types.SimpleNamespace(
-                    message=types.SimpleNamespace(content="hi")
-                )
+                types.SimpleNamespace(message=types.SimpleNamespace(content="hi"))
             ],
             usage=types.SimpleNamespace(prompt_tokens=3, completion_tokens=2),
         )
@@ -70,5 +68,7 @@ def test_tokenrouter_strips_prefix_and_routes(monkeypatch):
 
 
 def test_model_id_property_keeps_full_string():
-    assert OpenAICompatBackend("tokenrouter/MiniMax-M3").model_id == "tokenrouter/MiniMax-M3"
-
+    assert (
+        OpenAICompatBackend("tokenrouter/MiniMax-M3").model_id
+        == "tokenrouter/MiniMax-M3"
+    )

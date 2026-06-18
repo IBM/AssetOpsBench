@@ -57,7 +57,7 @@ def resolve_model(model_id: str) -> str:
     ``"anthropic/claude-sonnet-4-6"`` -> unchanged.
     """
     prefix = router_prefix(model_id)
-    return model_id[len(prefix):] if prefix else model_id
+    return model_id[len(prefix) :] if prefix else model_id
 
 
 def is_openai_compat(model_id: str) -> bool:
@@ -65,9 +65,7 @@ def is_openai_compat(model_id: str) -> bool:
     return model_id.startswith(OPENAI_COMPAT_PREFIXES)
 
 
-def resolve_router_creds(
-    model_id: str, *, strict: bool = True
-) -> RouterCreds | None:
+def resolve_router_creds(model_id: str, *, strict: bool = True) -> RouterCreds | None:
     """Resolve endpoint + key for *model_id*, or ``None`` if not proxied.
 
     Args:
