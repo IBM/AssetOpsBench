@@ -181,10 +181,12 @@ async def generate_work_order(description: str, asset_num: str, site_id: str,
 
 async def update_workorder(wonum: str, site_id: str, description: Optional[str] = None,
                            priority: Optional[int] = None, location: Optional[str] = None,
-                           asset_num: Optional[str] = None, notes: Optional[str] = None
+                           asset_num: Optional[str] = None, notes: Optional[str] = None,
+                           failure_code: Optional[str] = None
                            ) -> Union[WorkOrderMutationResult, ErrorResult]:
     """Update mutable fields on a work order."""
-    res = await wo.update_workorder(db(), wonum, site_id, description, priority, location, asset_num, notes)
+    res = await wo.update_workorder(db(), wonum, site_id, description, priority, location,
+                                    asset_num, notes, failure_code)
     return _mutation(res, "updated")
 
 
