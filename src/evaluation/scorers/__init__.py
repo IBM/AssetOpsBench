@@ -30,9 +30,7 @@ def register(name: str, scorer: Scorer) -> None:
 
 def get(name: str) -> Scorer:
     if name not in _REGISTRY:
-        raise KeyError(
-            f"unknown scorer {name!r}; registered: {sorted(_REGISTRY)}"
-        )
+        raise KeyError(f"unknown scorer {name!r}; registered: {sorted(_REGISTRY)}")
     return _REGISTRY[name]
 
 

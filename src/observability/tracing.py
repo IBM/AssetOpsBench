@@ -73,7 +73,9 @@ def init_tracing(service_name: str) -> None:
         if _initialized:
             return
 
-        provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
+        provider = TracerProvider(
+            resource=Resource.create({"service.name": service_name})
+        )
 
         if (path := _traces_file_path()) is not None:
             from .file_exporter import OTLPJsonFileExporter

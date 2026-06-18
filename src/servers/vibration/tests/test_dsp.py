@@ -219,8 +219,9 @@ class TestExtractShaftFeatures:
         freqs = np.array(fft["frequencies"])
         mags = np.array(fft["magnitude"])
         shaft_freq = 50.0  # as if rpm=3000
-        features = extract_shaft_features(freqs, mags, shaft_freq,
-                                          time_signal=COMPOSITE)
+        features = extract_shaft_features(
+            freqs, mags, shaft_freq, time_signal=COMPOSITE
+        )
         assert features.f_shaft == 50.0
         assert features.amp_1x > 0
 

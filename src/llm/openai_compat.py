@@ -29,18 +29,14 @@ class OpenAICompatBackend(LLMBackend):
 
     def __init__(self, model_id: str) -> None:
         if not is_openai_compat(model_id):
-            raise ValueError(
-                f"unsupported OpenAI-compatible model id: {model_id!r}"
-            )
+            raise ValueError(f"unsupported OpenAI-compatible model id: {model_id!r}")
         self._model_id = model_id
         self._model_name = resolve_model(model_id)
 
     def generate(self, prompt: str, temperature: float = 0.0) -> str:
         return self.generate_with_usage(prompt, temperature).text
 
-    def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
-    ) -> LLMResult:
+    def generate_with_usage(self, prompt: str, temperature: float = 0.0) -> LLMResult:
         from openai import OpenAI
 
         creds = resolve_router_creds(self._model_id)  # strict: clear error if unset

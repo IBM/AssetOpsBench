@@ -43,7 +43,10 @@ _log_level = getattr(
 logging.basicConfig(level=_log_level)
 logger = logging.getLogger("vibration-mcp-server")
 
-mcp = FastMCP("vibration", instructions="Vibration signal analysis: FFT, envelope spectrum, bearing fault detection, and ISO 10816 severity assessment.")
+mcp = FastMCP(
+    "vibration",
+    instructions="Vibration signal analysis: FFT, envelope spectrum, bearing fault detection, and ISO 10816 severity assessment.",
+)
 
 
 # ---------------------------------------------------------------------------

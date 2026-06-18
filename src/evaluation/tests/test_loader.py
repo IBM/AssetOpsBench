@@ -21,7 +21,9 @@ def test_load_trajectories_from_dir(trajectory_dir: Path):
 
 
 def test_load_trajectories_skips_unparseable(tmp_path: Path, make_persisted_record):
-    (tmp_path / "good.json").write_text(json.dumps(make_persisted_record()), encoding="utf-8")
+    (tmp_path / "good.json").write_text(
+        json.dumps(make_persisted_record()), encoding="utf-8"
+    )
     (tmp_path / "bad.json").write_text("{not json", encoding="utf-8")
     records = load_trajectories(tmp_path)
     assert len(records) == 1
@@ -30,9 +32,7 @@ def test_load_trajectories_skips_unparseable(tmp_path: Path, make_persisted_reco
 def test_load_scenarios_json_list(tmp_path: Path):
     p = tmp_path / "s.json"
     p.write_text(
-        json.dumps(
-            [{"id": 1, "text": "Q1"}, {"id": "2", "text": "Q2"}]
-        ),
+        json.dumps([{"id": 1, "text": "Q1"}, {"id": "2", "text": "Q2"}]),
         encoding="utf-8",
     )
     out = load_scenarios(p)
@@ -65,7 +65,9 @@ def test_join_drops_orphans(make_persisted_record):
     ]
     trajs = [
         PersistedTrajectory.from_raw(make_persisted_record(scenario_id=1)),
-        PersistedTrajectory.from_raw(make_persisted_record(run_id="r2", scenario_id=99)),
+        PersistedTrajectory.from_raw(
+            make_persisted_record(run_id="r2", scenario_id=99)
+        ),
     ]
     pairs = list(join_records(scenarios, trajs))
     assert len(pairs) == 1

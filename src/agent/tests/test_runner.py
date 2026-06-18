@@ -37,7 +37,11 @@ _FINAL_ANSWER = "Sites: MAIN. Current time: 2026-02-18T13:00:00."
 
 _MOCK_TOOLS = [
     {"name": "sites", "description": "List IoT sites", "parameters": []},
-    {"name": "current_date_time", "description": "Get current datetime", "parameters": []},
+    {
+        "name": "current_date_time",
+        "description": "Get current datetime",
+        "parameters": [],
+    },
 ]
 _TOOL_RESPONSE = json.dumps({"sites": ["MAIN"]})
 
@@ -51,9 +55,13 @@ _STEP2_ARGS = "{}"
 
 def _patch_mcp(tool_response: str = _TOOL_RESPONSE):
     return (
-        patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
         patch(
-            "agent.plan_execute.executor._call_tool", new=AsyncMock(return_value=tool_response)
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=_MOCK_TOOLS),
+        ),
+        patch(
+            "agent.plan_execute.executor._call_tool",
+            new=AsyncMock(return_value=tool_response),
         ),
     )
 
@@ -93,12 +101,14 @@ class _CapturingLLM:
 
 @pytest.mark.anyio
 async def test_orchestrator_run_returns_result(sequential_llm):
-    llm = sequential_llm([
-        _TWO_STEP_PLAN,  # planner call
-        _STEP1_ARGS,     # arg resolution for step 1
-        _STEP2_ARGS,     # arg resolution for step 2
-        _FINAL_ANSWER,   # summarisation
-    ])
+    llm = sequential_llm(
+        [
+            _TWO_STEP_PLAN,  # planner call
+            _STEP1_ARGS,  # arg resolution for step 1
+            _STEP2_ARGS,  # arg resolution for step 2
+            _FINAL_ANSWER,  # summarisation
+        ]
+    )
     with _patch_mcp()[0], _patch_mcp()[1]:
         result = await PlanExecuteRunner(llm).run("What are the IoT sites?")
 
@@ -145,9 +155,7 @@ class _UsageReportingLLM(LLMBackend):
     def generate(self, prompt: str, temperature: float = 0.0) -> str:
         return self.generate_with_usage(prompt, temperature).text
 
-    def generate_with_usage(
-        self, prompt: str, temperature: float = 0.0
-    ) -> LLMResult:
+    def generate_with_usage(self, prompt: str, temperature: float = 0.0) -> LLMResult:
         text, in_tok, out_tok = next(self._items, ("", 0, 0))
         return LLMResult(text=text, input_tokens=in_tok, output_tokens=out_tok)
 
@@ -155,12 +163,14 @@ class _UsageReportingLLM(LLMBackend):
 @pytest.mark.anyio
 async def test_orchestrator_accumulates_token_usage_across_llm_calls():
     """Plan + 2 arg-resolution + summarise → summed input/output tokens."""
-    llm = _UsageReportingLLM([
-        (_TWO_STEP_PLAN, 100, 50),   # planner
-        (_STEP1_ARGS, 20, 5),        # step 1 arg resolution
-        (_STEP2_ARGS, 30, 5),        # step 2 arg resolution
-        (_FINAL_ANSWER, 200, 40),    # summarise
-    ])
+    llm = _UsageReportingLLM(
+        [
+            (_TWO_STEP_PLAN, 100, 50),  # planner
+            (_STEP1_ARGS, 20, 5),  # step 1 arg resolution
+            (_STEP2_ARGS, 30, 5),  # step 2 arg resolution
+            (_FINAL_ANSWER, 200, 40),  # summarise
+        ]
+    )
     runner = PlanExecuteRunner(llm)
     with _patch_mcp()[0], _patch_mcp()[1]:
         await runner.run("Q")
@@ -245,8 +255,13 @@ async def test_executor_step_result_carries_resolved_args(sequential_llm):
 
     step = _make_step(1, tool="assets")
     with (
-        patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("agent.plan_execute.executor._call_tool", new=AsyncMock(return_value="{}")),
+        patch(
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=_MOCK_TOOLS),
+        ),
+        patch(
+            "agent.plan_execute.executor._call_tool", new=AsyncMock(return_value="{}")
+        ),
     ):
         result = await executor.execute_step(step, {}, "List assets at MAIN")
 
@@ -258,13 +273,19 @@ async def test_executor_tool_call_exception_recorded_as_error(sequential_llm):
     """If _call_tool raises, the error is captured in StepResult (no crash)."""
     from pathlib import Path
 
-    llm = sequential_llm(['{}'])
+    llm = sequential_llm(["{}"])
     executor = Executor(llm, server_paths={"iot": Path("/fake/server.py")})
 
     step = _make_step(1, tool="sites")
     with (
-        patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("agent.plan_execute.executor._call_tool", new=AsyncMock(side_effect=RuntimeError("timeout"))),
+        patch(
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=_MOCK_TOOLS),
+        ),
+        patch(
+            "agent.plan_execute.executor._call_tool",
+            new=AsyncMock(side_effect=RuntimeError("timeout")),
+        ),
     ):
         result = await executor.execute_step(step, {}, "Q")
 
@@ -277,10 +298,12 @@ async def test_executor_calls_llm_to_generate_args(sequential_llm):
     """Each tool step triggers exactly one LLM call for arg generation."""
     from pathlib import Path
 
-    llm = sequential_llm([
-        '{}',                                       # step 1: sites (no args)
-        '{"site_name": "MAIN", "asset_id": "CH-1"}',  # step 2: sensors
-    ])
+    llm = sequential_llm(
+        [
+            "{}",  # step 1: sites (no args)
+            '{"site_name": "MAIN", "asset_id": "CH-1"}',  # step 2: sensors
+        ]
+    )
     executor = Executor(llm, server_paths={"iot": Path("/fake/server.py")})
 
     plan = Plan(
@@ -290,12 +313,17 @@ async def test_executor_calls_llm_to_generate_args(sequential_llm):
         ],
         raw="",
     )
-    call_mock = AsyncMock(side_effect=[
-        json.dumps({"sites": ["MAIN"]}),
-        json.dumps({"sensors": ["temp"]}),
-    ])
+    call_mock = AsyncMock(
+        side_effect=[
+            json.dumps({"sites": ["MAIN"]}),
+            json.dumps({"sensors": ["temp"]}),
+        ]
+    )
     with (
-        patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch(
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=_MOCK_TOOLS),
+        ),
         patch("agent.plan_execute.executor._call_tool", new=call_mock),
     ):
         results = await executor.execute_plan(plan, "Q")
@@ -324,7 +352,10 @@ async def test_executor_prior_step_results_in_llm_prompt():
     site_resp = json.dumps({"sites": ["MAIN"]})
     call_mock = AsyncMock(side_effect=[site_resp, '{"sensors": []}'])
     with (
-        patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch(
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=_MOCK_TOOLS),
+        ),
         patch("agent.plan_execute.executor._call_tool", new=call_mock),
     ):
         await executor.execute_plan(plan, "List sensors for CH-1")
@@ -338,13 +369,18 @@ async def test_executor_no_prior_context_shows_none_in_prompt():
     """When no prior steps exist the prompt contains the literal '(none)'."""
     from pathlib import Path
 
-    llm = _CapturingLLM('{}')
+    llm = _CapturingLLM("{}")
     executor = Executor(llm, server_paths={"iot": Path("/fake/server.py")})  # type: ignore[arg-type]
 
     step = _make_step(1, tool="sites")
     with (
-        patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
-        patch("agent.plan_execute.executor._call_tool", new=AsyncMock(return_value="{}")),
+        patch(
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=_MOCK_TOOLS),
+        ),
+        patch(
+            "agent.plan_execute.executor._call_tool", new=AsyncMock(return_value="{}")
+        ),
     ):
         await executor.execute_step(step, {}, "Q")
 
@@ -356,7 +392,7 @@ async def test_executor_context_accumulates_across_steps():
     """Step 3's LLM prompt contains results from both steps 1 and 2."""
     from pathlib import Path
 
-    llm = _CapturingLLM('{}')
+    llm = _CapturingLLM("{}")
     executor = Executor(llm, server_paths={"iot": Path("/fake/server.py")})  # type: ignore[arg-type]
 
     plan = Plan(
@@ -370,7 +406,10 @@ async def test_executor_context_accumulates_across_steps():
     resp1, resp2, resp3 = '{"sites":["MAIN"]}', '{"assets":["CH-1"]}', '{"sensors":[]}'
     call_mock = AsyncMock(side_effect=[resp1, resp2, resp3])
     with (
-        patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch(
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=_MOCK_TOOLS),
+        ),
         patch("agent.plan_execute.executor._call_tool", new=call_mock),
     ):
         await executor.execute_plan(plan, "Q")
@@ -395,16 +434,21 @@ async def test_pipeline_uses_llm_args_for_each_step(sequential_llm):
         "#Dependency2: #S1\n"
         "#ExpectedOutput2: List of assets"
     )
-    llm = sequential_llm([
-        planner_output,            # planner call
-        '{}',                      # arg resolution for step 1 (sites needs no args)
-        '{"site_name": "MAIN"}',   # arg resolution for step 2 (uses step 1 result)
-        "Final answer.",           # summarisation
-    ])
+    llm = sequential_llm(
+        [
+            planner_output,  # planner call
+            "{}",  # arg resolution for step 1 (sites needs no args)
+            '{"site_name": "MAIN"}',  # arg resolution for step 2 (uses step 1 result)
+            "Final answer.",  # summarisation
+        ]
+    )
 
     call_mock = AsyncMock(side_effect=['{"sites": ["MAIN"]}', '{"assets": ["CH-1"]}'])
     with (
-        patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
+        patch(
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=_MOCK_TOOLS),
+        ),
         patch("agent.plan_execute.executor._call_tool", new=call_mock),
     ):
         result = await PlanExecuteRunner(llm).run("List all assets at site MAIN")
@@ -420,10 +464,18 @@ async def test_pipeline_uses_llm_args_for_each_step(sequential_llm):
 @pytest.mark.anyio
 async def test_resolve_args_with_llm_uses_context(mock_llm):
     llm = mock_llm('{"asset_id": "CH-1"}')
-    ctx = {1: StepResult(step_number=1, task="t", server="a",
-                         response='{"assets": ["CH-1", "CH-2"]}')}
+    ctx = {
+        1: StepResult(
+            step_number=1, task="t", server="a", response='{"assets": ["CH-1", "CH-2"]}'
+        )
+    }
     result = await _resolve_args_with_llm(
-        "What sensors does CH-1 have?", "get sensors", "sensors", "", ctx, llm,
+        "What sensors does CH-1 have?",
+        "get sensors",
+        "sensors",
+        "",
+        ctx,
+        llm,
     )
     assert result["asset_id"] == "CH-1"
 
@@ -440,14 +492,19 @@ async def test_resolve_args_with_llm_fallback_on_bad_json(mock_llm):
 async def test_resolve_args_with_llm_question_in_prompt():
     llm = _CapturingLLM('{"site_name": "MAIN"}')
     await _resolve_args_with_llm(
-        "What sites exist?", "List sites", "sites", "", {}, llm  # type: ignore[arg-type]
+        "What sites exist?",
+        "List sites",
+        "sites",
+        "",
+        {},
+        llm,  # type: ignore[arg-type]
     )
     assert "What sites exist?" in llm.prompts[0]
 
 
 @pytest.mark.anyio
 async def test_resolve_args_with_llm_tool_in_prompt():
-    llm = _CapturingLLM('{}')
+    llm = _CapturingLLM("{}")
     await _resolve_args_with_llm("Q", "List IoT sites", "sites", "", {}, llm)  # type: ignore[arg-type]
     assert "sites" in llm.prompts[0]
 
@@ -465,7 +522,7 @@ async def test_resolve_args_with_llm_schema_in_prompt():
 @pytest.mark.anyio
 async def test_resolve_args_with_llm_unknown_schema_shows_sentinel():
     """Empty schema renders as '(unknown)' in the prompt."""
-    llm = _CapturingLLM('{}')
+    llm = _CapturingLLM("{}")
     await _resolve_args_with_llm("Q", "task", "tool", "", {}, llm)  # type: ignore[arg-type]
     assert "(unknown)" in llm.prompts[0]
 
@@ -473,15 +530,17 @@ async def test_resolve_args_with_llm_unknown_schema_shows_sentinel():
 @pytest.mark.anyio
 async def test_resolve_args_with_llm_context_in_prompt():
     """Prior step results appear verbatim in the generated prompt."""
-    llm = _CapturingLLM('{}')
-    ctx = {1: StepResult(step_number=1, task="t", server="a", response="step-one-result")}
+    llm = _CapturingLLM("{}")
+    ctx = {
+        1: StepResult(step_number=1, task="t", server="a", response="step-one-result")
+    }
     await _resolve_args_with_llm("Q", "task", "tool", "", ctx, llm)  # type: ignore[arg-type]
     assert "step-one-result" in llm.prompts[0]
 
 
 @pytest.mark.anyio
 async def test_resolve_args_with_llm_empty_context_shows_none():
-    llm = _CapturingLLM('{}')
+    llm = _CapturingLLM("{}")
     await _resolve_args_with_llm("Q", "task", "tool", "", {}, llm)  # type: ignore[arg-type]
     assert "(none)" in llm.prompts[0]
 

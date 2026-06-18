@@ -13,11 +13,16 @@ import os
 
 # Setup logging — default WARNING so stderr stays quiet when used as MCP server;
 # set LOG_LEVEL=INFO (or DEBUG) in the environment to see verbose output.
-_log_level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING)
+_log_level = getattr(
+    logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING
+)
 logging.basicConfig(level=_log_level)
 logger = logging.getLogger("utilities-mcp-server")
 
-mcp = FastMCP("utilities", instructions="General utilities: read JSON files and get current date/time.")
+mcp = FastMCP(
+    "utilities",
+    instructions="General utilities: read JSON files and get current date/time.",
+)
 
 
 class DateTimeResult(BaseModel):
@@ -75,7 +80,9 @@ def current_date_time() -> DateTimeResult:
 
     description = f"Today's date is {date_part} and time is {time_part}."
 
-    return DateTimeResult(currentDateTime=now_iso, currentDateTimeDescription=description)
+    return DateTimeResult(
+        currentDateTime=now_iso, currentDateTimeDescription=description
+    )
 
 
 @mcp.tool(title="Get Current Time in English")

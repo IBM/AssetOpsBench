@@ -4,14 +4,20 @@ Identical shape to the Maximo MCP (`{success, data, metadata}` / `{success, erro
 error_code}`) so AssetOpsBench agents written against the real Maximo server work
 unchanged against this benchmark server.
 """
+
 from __future__ import annotations
 
 import time
 from typing import Any, Dict, Optional
 
 
-def envelope(data: Any, *, cached: bool = False, duration_ms: int = 0,
-             record_count: Optional[int] = None) -> Dict[str, Any]:
+def envelope(
+    data: Any,
+    *,
+    cached: bool = False,
+    duration_ms: int = 0,
+    record_count: Optional[int] = None,
+) -> Dict[str, Any]:
     meta: Dict[str, Any] = {"cached": cached, "duration_ms": duration_ms}
     if record_count is not None:
         meta["record_count"] = record_count

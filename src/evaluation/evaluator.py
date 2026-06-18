@@ -82,7 +82,9 @@ class Evaluator:
     def _resolve(name: str) -> Scorer:
         return scorer_registry.get(name)
 
-    def _validate_judge_model(self, scorer_name: str, traj: PersistedTrajectory) -> None:
+    def _validate_judge_model(
+        self, scorer_name: str, traj: PersistedTrajectory
+    ) -> None:
         if scorer_name != "llm_judge" or not self.judge_model:
             return
 

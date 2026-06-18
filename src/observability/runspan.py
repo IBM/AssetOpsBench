@@ -76,5 +76,3 @@ def agent_run_span(
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))
             raise
-
-

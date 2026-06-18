@@ -81,7 +81,7 @@ examples:
         default=16_384,
         metavar="N",
         help="Max output tokens per model call; must stay under the provider "
-             "limit (watsonx caps new tokens at 100k). Default: 16384.",
+        "limit (watsonx caps new tokens at 100k). Default: 16384.",
     )
     return parser
 
@@ -97,7 +97,9 @@ async def _run(args: argparse.Namespace) -> None:
         max_tokens=args.max_tokens,
     )
     result = await runner.run(args.question)
-    print_result(result, show_trajectory=args.show_trajectory, output_json=args.output_json)
+    print_result(
+        result, show_trajectory=args.show_trajectory, output_json=args.output_json
+    )
 
 
 def main() -> None:

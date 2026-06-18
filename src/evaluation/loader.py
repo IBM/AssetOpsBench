@@ -45,20 +45,20 @@ def _load_one_trajectory(path: Path) -> PersistedTrajectory:
 def load_scenarios(paths: Iterable[Path] | Path) -> list[Scenario]:
     """Load scenarios from one or more files or directories.
 
-    Supported inputs:
+      Supported inputs:
 
-    1. Existing JSON / JSONL scenario files.
-    2. A directory containing scenario subdirectories, each with
-       ``groundtruth.txt``. For example:
+      1. Existing JSON / JSONL scenario files.
+      2. A directory containing scenario subdirectories, each with
+         ``groundtruth.txt``. For example:
 
-       scenarios_data/
-  scenario_11/
-    groundtruth.txt
-  scenario_12/
-    groundtruth.txt
+         scenarios_data/
+    scenario_11/
+      groundtruth.txt
+    scenario_12/
+      groundtruth.txt
 
-    For folder-based scenarios, the folder name becomes the scenario id and
-    ``groundtruth.txt`` becomes ``expected_answer``.
+      For folder-based scenarios, the folder name becomes the scenario id and
+      ``groundtruth.txt`` becomes ``expected_answer``.
     """
     if isinstance(paths, (str, Path)):
         paths = [Path(paths)]

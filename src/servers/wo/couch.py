@@ -7,6 +7,7 @@ The tool functions in `workorders.py` depend only on this small interface (duck
 typed), so they can be unit-tested against an in-memory fake (see test_workorders.py)
 without a running CouchDB.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -22,13 +23,24 @@ class CouchError(Exception):
 
 
 class CouchClient:
-    def __init__(self, base_url: str, db: str, *, username: Optional[str] = None,
-                 password: Optional[str] = None, timeout: float = 10.0):
+    def __init__(
+        self,
+        base_url: str,
+        db: str,
+        *,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        timeout: float = 10.0,
+    ):
         if httpx is None:
-            raise CouchError("httpx is required for the real CouchClient (pip install httpx)")
+            raise CouchError(
+                "httpx is required for the real CouchClient (pip install httpx)"
+            )
         self.db = db
         auth = (username, password) if username else None
-        self._c = httpx.AsyncClient(base_url=base_url.rstrip("/"), auth=auth, timeout=timeout)
+        self._c = httpx.AsyncClient(
+            base_url=base_url.rstrip("/"), auth=auth, timeout=timeout
+        )
 
     async def aclose(self) -> None:
         await self._c.aclose()
@@ -56,9 +68,15 @@ class CouchClient:
         return r.json()
 
     # ---- queries ----
-    async def find(self, selector: Dict[str, Any], *, fields: Optional[List[str]] = None,
-                   sort: Optional[List[Dict[str, str]]] = None, limit: int = 200,
-                   skip: int = 0) -> List[Dict[str, Any]]:
+    async def find(
+        self,
+        selector: Dict[str, Any],
+        *,
+        fields: Optional[List[str]] = None,
+        sort: Optional[List[Dict[str, str]]] = None,
+        limit: int = 200,
+        skip: int = 0,
+    ) -> List[Dict[str, Any]]:
         body: Dict[str, Any] = {"selector": selector, "limit": limit, "skip": skip}
         if fields:
             body["fields"] = fields
@@ -71,8 +89,11 @@ class CouchClient:
     async def view(self, ddoc: str, view: str, **params: Any) -> Dict[str, Any]:
         # CouchDB expects JSON-encoded key/startkey/endkey params.
         import json as _json
-        q = {k: (_json.dumps(v) if k in ("key", "startkey", "endkey") else v)
-             for k, v in params.items()}
+
+        q = {
+            k: (_json.dumps(v) if k in ("key", "startkey", "endkey") else v)
+            for k, v in params.items()
+        }
         r = await self._c.get(f"/{self.db}/_design/{ddoc}/_view/{view}", params=q)
         r.raise_for_status()
         return r.json()
