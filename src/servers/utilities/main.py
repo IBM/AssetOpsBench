@@ -4,7 +4,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Optional
  
 import pendulum
 import couchdb3
@@ -62,6 +62,13 @@ class ErrorResult(BaseModel):
 class WriteResultResponse(BaseModel):
     ok: bool
     doc_id: str
+    message: str
+
+
+class ReadResultResponse(BaseModel):
+    found: bool
+    result: Optional[Union[Dict[str, Any], List[Any]]] = None
+    written_at: Optional[str] = None
     message: str
 
 # --- Helper Functions ---
@@ -128,15 +135,41 @@ def write_final_result(
         return ErrorResult(error=str(e))
  
  
-def read_final_result():
-    """Grader-side helper (not an MCP tool): return the persisted final payload, or None if the agent
-    never wrote one (the seeded placeholder has result=null)."""
+ 
+def _get_final_result_doc():
+    """Fetch the raw result document (or None). Shared by the read tool and the grader helper below."""
     if _result_db is None:
         return None
     try:
-        return _result_db.get(_RESULT_DOC_ID).get("result")
+        return _result_db.get(_RESULT_DOC_ID)
     except Exception:  # noqa: BLE001
         return None
+ 
+ 
+def _get_final_result_payload():
+    """Grader-side helper (importable by the offline grader): return just the persisted payload, or
+    None if nothing was written."""
+    doc = _get_final_result_doc()
+    return doc.get("result") if doc else None
+ 
+ 
+@mcp.tool(title="Read Final Result")
+def read_final_result() -> Union[ReadResultResponse, ErrorResult]:
+    """Read back the scenario's final result payload (what write_final_result stored). Returns
+    found=false if nothing has been written yet (the seeded placeholder has result=null)."""
+    if _result_db is None:
+        return ErrorResult(error="CouchDB not connected")
+    doc = _get_final_result_doc()
+    if doc is None:
+        return ReadResultResponse(found=False, result=None, message="no result document yet")
+    res = doc.get("result")
+    return ReadResultResponse(
+        found=res is not None,
+        result=res,
+        written_at=doc.get("written_at"),
+        message="final result read" if res is not None else "placeholder only (no result written yet)",
+    )
+  
 
 # --- Time Tools ---
 
