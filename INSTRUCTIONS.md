@@ -128,7 +128,7 @@ Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagn
 | Server      | Tools | Categories               | Backing service                        |
 | ----------- | ----- | ------------------------ | -------------------------------------- |
 | `iot`       | 4     | read                     | CouchDB                                |
-| `utilities` | 3     | read                     | none                                   |
+| `utilities` | 5     | read                     | none                                   |
 | `fmsr`      | 2     | read, LLM-use            | LiteLLM + `failure_modes.yaml`         |
 | `wo`        | 14    | read, write              | CouchDB                                |
 | `tsfm`      | 6     | read, write, cpu-centric | IBM Granite TinyTimeMixer (torch)      |
