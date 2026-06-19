@@ -36,13 +36,15 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 ## utilities — Utilities
 
 **Path:** `src/servers/utilities/main.py`
-**Requires:** nothing (no external services)
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `FINAL_RESULT_DBNAME`)
 
 | Tool                   | Category | Arguments   | Description                                            |
 | ---------------------- | -------- | ----------- | ------------------------------------------------------ |
 | `json_reader`          | read     | `file_name` | Read and parse a JSON file from disk                   |
 | `current_date_time`    | read     | —           | Return the current UTC date and time as JSON           |
 | `current_time_english` | read     | —           | Return the current UTC time as a human-readable string |
+| `write_final_result`   | write    | `result`    | Persist the scenario's final answer to the final_result collection for grading. |
+| `read_final_result`    | read     | -           | Read back the stored final result (found=false if none written).|
 
 ## fmsr — Failure Mode and Sensor Relations
 
