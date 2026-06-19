@@ -4,11 +4,13 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
-
+from typing import Any, Dict, List, Union
+ 
 import pendulum
+import couchdb3
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
-
+ 
 import os
 
 # Setup logging — default WARNING so stderr stays quiet when used as MCP server;
@@ -21,9 +23,28 @@ logger = logging.getLogger("utilities-mcp-server")
 
 mcp = FastMCP(
     "utilities",
-    instructions="General utilities: read JSON files and get current date/time.",
+    instructions="General utilities: read JSON files, get current date/time, and write the "
+                 "scenario's final result to CouchDB for the grader.",
 )
 
+# --- CouchDB (final-result store) ---
+# init_data seeds an EMPTY `final_result` collection (one placeholder doc, id "result") at the start
+# of each scenario run and rebuilds DBs from scratch, so the run is already isolated — no run id.
+COUCHDB_URL = os.environ.get("COUCHDB_URL")
+COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME")
+COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD")
+FINAL_RESULT_DBNAME = os.environ.get("FINAL_RESULT_DBNAME", "final_result")
+_RESULT_DOC_ID = "result"   # fixed: one result document per scenario run
+ 
+try:
+    _result_db = couchdb3.Database(
+        FINAL_RESULT_DBNAME, url=COUCHDB_URL, user=COUCHDB_USERNAME, password=COUCHDB_PASSWORD
+    )
+    logger.info("Connected to CouchDB: %s", FINAL_RESULT_DBNAME)
+except Exception as e:  # noqa: BLE001
+    logger.error("Failed to connect to final_result DB: %s", e)
+    _result_db = None
+ 
 
 class DateTimeResult(BaseModel):
     currentDateTime: str
@@ -34,6 +55,14 @@ class TimeEnglishResult(BaseModel):
     english: str
     iso: str
 
+class ErrorResult(BaseModel):
+    error: str
+ 
+ 
+class WriteResultResponse(BaseModel):
+    ok: bool
+    doc_id: str
+    message: str
 
 # --- Helper Functions ---
 
@@ -65,6 +94,49 @@ def json_reader(file_name: str) -> str:
         logger.error(f"Error reading JSON file {file_name}: {e}")
         return json.dumps({"error": str(e)})
 
+# --- Final Result Tool ---
+
+@mcp.tool(title="Write Final Result")
+def write_final_result(
+    result: Union[Dict[str, Any], List[Any]],
+) -> Union[WriteResultResponse, ErrorResult]:
+    """Persist this scenario's FINAL answer as a JSON payload to CouchDB so the grader can read it.
+ 
+    Call this exactly once, at the end, with your final answer. `result` is the JSON the task
+    description asks for — a JSON object, or a list of JSON objects. There is no task id: the run is
+    scoped to a single scenario (init_data seeds an empty `final_result` collection per run), so it is
+    one document. Calling again overwrites it.
+    """
+    if _result_db is None:
+        return ErrorResult(error="CouchDB not connected")
+    doc = {
+        "_id": _RESULT_DOC_ID,
+        "doctype": "result",
+        "result": result,
+        "written_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    try:
+        existing = _result_db.get(_RESULT_DOC_ID)   # seeded placeholder after init_data
+        doc["_rev"] = existing["_rev"]
+    except Exception:  # noqa: BLE001
+        pass                                        # not seeded yet -> create fresh
+    try:
+        _result_db.save(doc)
+        return WriteResultResponse(ok=True, doc_id=_RESULT_DOC_ID, message="final result written")
+    except Exception as e:  # noqa: BLE001
+        logger.error("write_final_result failed: %s", e)
+        return ErrorResult(error=str(e))
+ 
+ 
+def read_final_result():
+    """Grader-side helper (not an MCP tool): return the persisted final payload, or None if the agent
+    never wrote one (the seeded placeholder has result=null)."""
+    if _result_db is None:
+        return None
+    try:
+        return _result_db.get(_RESULT_DOC_ID).get("result")
+    except Exception:  # noqa: BLE001
+        return None
 
 # --- Time Tools ---
 
