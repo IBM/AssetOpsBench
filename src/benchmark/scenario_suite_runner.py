@@ -371,12 +371,18 @@ def main() -> None:
                     dry_run=args.dry_run,
                 )
                 # capture post-run state right after the agent finishes
-                export_couchdb_state(
-                    scenario_id=scenario_id,
-                    scenario_root=args.scenario_root,
-                    out_dir=trajectory_dir,           # or a dedicated states_root
-                    dry_run=args.dry_run,
-                )
+                try:
+                    export_couchdb_state(
+                        scenario_id=scenario_id,
+                        scenario_root=args.scenario_root,
+                        out_dir=trajectory_dir,           # or a dedicated states_root
+                        dry_run=args.dry_run,
+                    )
+                except Exception as exc:
+                    print(
+                        f"warning: state export failed for scenario {scenario_id}: {exc}",
+                        file=sys.stderr,
+                    )                
             except Exception as exc:
                 print(
                     f"error: scenario {scenario_id} failed for method {method.agent_name}: {exc}",
