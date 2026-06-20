@@ -225,6 +225,8 @@ def export_database(db, include_design=False) -> list:
         auth=_AUTH,
         timeout=60,
     )
+    if r.status_code == 404:
+        return []  # DB not created for this scenario -> empty snapshot, not a crash
     r.raise_for_status()
     docs = []
     for row in r.json().get("rows", []):
