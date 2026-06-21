@@ -1,0 +1,265 @@
+[
+  {
+    "_id": "feature:efe_time_robust_norm_v1",
+    "feature_id": "efe_time_robust_norm_v1",
+    "name": "Invertible robust normalization",
+    "modality": "timeseries",
+    "interface": "fit_transform_inverse",
+    "class_name": "Transformation",
+    "invertible": true,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Invertible robust per-channel normalization (median/IQR) for forecasting inputs.\"\"\"\n    def fit(self, X, metadata):\n        X = np.asarray(X, dtype=float)\n        center = np.median(X, axis=0)\n        q1, q3 = np.percentile(X, 25, axis=0), np.percentile(X, 75, axis=0)\n        scale = np.where((q3 - q1) > 1e-8, (q3 - q1), 1.0)\n        return {\"center\": center, \"scale\": scale}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float)\n        return (X - state[\"center\"]) / state[\"scale\"]\n    def inverse_transform(self, Y, state):\n        Y = np.asarray(Y, dtype=float)\n        return Y * state[\"scale\"] + state[\"center\"]\n",
+    "scenario_categories": [
+      "Future State Prediction"
+    ],
+    "scenario_types": [
+      "Forecasting",
+      "Prognostics"
+    ],
+    "provenance": "evolved",
+    "method": "EFE-Time",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "normalized_series",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": true,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "EFE-Time",
+      "Future State Prediction"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00"
+  },
+  {
+    "_id": "feature:lag_rolling_features_v1",
+    "feature_id": "lag_rolling_features_v1",
+    "name": "Causal lag/rolling features",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Append causal rolling-mean channels (lag/rolling features) for forecasting.\"\"\"\n    def fit(self, X, metadata):\n        return {\"w\": int(metadata.get(\"window\", 8))}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float); X = X.reshape(len(X), -1); w = state[\"w\"]\n        cs = np.cumsum(X, axis=0); roll = np.copy(X)\n        if len(X) > w:\n            roll[w:] = (cs[w:] - cs[:-w]) / w\n        roll[:w] = cs[:w] / np.arange(1, min(w, len(X)) + 1)[:, None]\n        return np.concatenate([X, roll], axis=1)\n",
+    "scenario_categories": [
+      "Future State Prediction",
+      "Data Extraction"
+    ],
+    "scenario_types": [
+      "Forecasting"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "augmented_channels",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Future State Prediction",
+      "Data Extraction"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00"
+  },
+  {
+    "_id": "feature:spectral_residual_v1",
+    "feature_id": "spectral_residual_v1",
+    "name": "Rolling-median residual z-score",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Robust residual + MAD z-score from a rolling-median baseline (anomaly features).\"\"\"\n    def fit(self, X, metadata):\n        return {\"w\": int(metadata.get(\"window\", 16))}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float).reshape(len(X), -1); w = state[\"w\"]\n        base = np.copy(X)\n        for i in range(len(X)):\n            base[i] = np.median(X[max(0, i - w + 1):i + 1], axis=0)\n        resid = X - base\n        mad = np.median(np.abs(resid - np.median(resid, axis=0)), axis=0) + 1e-8\n        return resid / (1.4826 * mad)\n",
+    "scenario_categories": [
+      "Anomaly & Exception Detection"
+    ],
+    "scenario_types": [
+      "AnomalyDetection"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_anomaly_detection",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "anomaly_features",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Anomaly & Exception Detection"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00"
+  },
+  {
+    "_id": "feature:trend_slope_v1",
+    "feature_id": "trend_slope_v1",
+    "name": "Rolling local slope (degradation)",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Rolling local linear slope per channel (degradation / trend features).\"\"\"\n    def fit(self, X, metadata):\n        return {\"w\": int(metadata.get(\"window\", 24))}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float).reshape(len(X), -1); w = state[\"w\"]; out = np.zeros_like(X)\n        for i in range(len(X)):\n            seg = X[max(0, i - w + 1):i + 1]; m = seg.shape[0]\n            tt = np.arange(m) - (m - 1) / 2.0; d = (tt ** 2).sum() or 1.0\n            out[i] = (tt[:, None] * seg).sum(axis=0) / d\n        return out\n",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "scenario_types": [
+      "Analytics"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting_evaluation",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "trend_features",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Analysis & Inference"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00"
+  },
+  {
+    "_id": "feature:channel_select_v1",
+    "feature_id": "channel_select_v1",
+    "name": "Relevant-sensor channel selection",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Select the relevant sensor channels (e.g. PS1-PS6, FS1/FS2, VS1 from a pump scenario).\n    Indices come from the scenario's relevant_sensors via metadata['channel_indices'].\"\"\"\n    def fit(self, X, metadata):\n        return {\"idx\": list(metadata.get(\"channel_indices\", []))}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float).reshape(len(X), -1)\n        idx = state[\"idx\"] or list(range(X.shape[1]))\n        return X[:, idx]\n",
+    "scenario_categories": [
+      "Data Extraction",
+      "Anomaly & Exception Detection",
+      "Future State Prediction"
+    ],
+    "scenario_types": [
+      "AnomalyDetection",
+      "Forecasting"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_anomaly_detection",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "selected_channels",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Data Extraction",
+      "Anomaly & Exception Detection",
+      "Future State Prediction"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00"
+  },
+  {
+    "_id": "feature:condition_index_v1",
+    "feature_id": "condition_index_v1",
+    "name": "Weighted condition/health index",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Aggregate normalized channels into a single condition/health index (decision support).\"\"\"\n    def fit(self, X, metadata):\n        X = np.asarray(X, dtype=float)\n        return {\"mean\": X.mean(axis=0), \"std\": X.std(axis=0) + 1e-8,\n                \"w\": np.asarray(metadata.get(\"weights\", []), dtype=float)}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float).reshape(len(X), -1)\n        z = (X - state[\"mean\"]) / state[\"std\"]\n        w = state[\"w\"] if state[\"w\"].size == z.shape[1] else np.ones(z.shape[1]) / z.shape[1]\n        return (z * w).sum(axis=1, keepdims=True)\n",
+    "scenario_categories": [
+      "Recommendation & Optimization",
+      "Analysis & Inference"
+    ],
+    "scenario_types": [
+      "DecisionSupport",
+      "Prognostics"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting_evaluation",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "condition_index",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Recommendation & Optimization",
+      "Analysis & Inference"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00"
+  }
+]
