@@ -1,0 +1,3114 @@
+[
+  {
+    "_id": "feature:efe_time_robust_norm_v1",
+    "feature_id": "efe_time_robust_norm_v1",
+    "name": "Invertible robust normalization",
+    "modality": "timeseries",
+    "interface": "fit_transform_inverse",
+    "class_name": "Transformation",
+    "invertible": true,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Invertible robust per-channel normalization (median/IQR) for forecasting inputs.\"\"\"\n    def fit(self, X, metadata):\n        X = np.asarray(X, dtype=float)\n        center = np.median(X, axis=0)\n        q1, q3 = np.percentile(X, 25, axis=0), np.percentile(X, 75, axis=0)\n        scale = np.where((q3 - q1) > 1e-8, (q3 - q1), 1.0)\n        return {\"center\": center, \"scale\": scale}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float)\n        return (X - state[\"center\"]) / state[\"scale\"]\n    def inverse_transform(self, Y, state):\n        Y = np.asarray(Y, dtype=float)\n        return Y * state[\"scale\"] + state[\"center\"]\n",
+    "scenario_categories": [
+      "Future State Prediction"
+    ],
+    "scenario_types": [
+      "Forecasting",
+      "Prognostics"
+    ],
+    "provenance": "evolved",
+    "method": "EFE-Time",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "normalized_series",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": true,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "EFE-Time",
+      "Future State Prediction"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00",
+    "kind": "transform",
+    "description": "Invertible per-channel robust normalization (median/IQR) for forecasting inputs."
+  },
+  {
+    "_id": "feature:lag_rolling_features_v1",
+    "feature_id": "lag_rolling_features_v1",
+    "name": "Causal lag/rolling features",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Append causal rolling-mean channels (lag/rolling features) for forecasting.\"\"\"\n    def fit(self, X, metadata):\n        return {\"w\": int(metadata.get(\"window\", 8))}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float); X = X.reshape(len(X), -1); w = state[\"w\"]\n        cs = np.cumsum(X, axis=0); roll = np.copy(X)\n        if len(X) > w:\n            roll[w:] = (cs[w:] - cs[:-w]) / w\n        roll[:w] = cs[:w] / np.arange(1, min(w, len(X)) + 1)[:, None]\n        return np.concatenate([X, roll], axis=1)\n",
+    "scenario_categories": [
+      "Future State Prediction",
+      "Data Extraction"
+    ],
+    "scenario_types": [
+      "Forecasting"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "augmented_channels",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Future State Prediction",
+      "Data Extraction"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00",
+    "kind": "transform",
+    "description": "Appends causal lag/rolling-mean channels for forecasting."
+  },
+  {
+    "_id": "feature:spectral_residual_v1",
+    "feature_id": "spectral_residual_v1",
+    "name": "Rolling-median residual z-score",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Robust residual + MAD z-score from a rolling-median baseline (anomaly features).\"\"\"\n    def fit(self, X, metadata):\n        return {\"w\": int(metadata.get(\"window\", 16))}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float).reshape(len(X), -1); w = state[\"w\"]\n        base = np.copy(X)\n        for i in range(len(X)):\n            base[i] = np.median(X[max(0, i - w + 1):i + 1], axis=0)\n        resid = X - base\n        mad = np.median(np.abs(resid - np.median(resid, axis=0)), axis=0) + 1e-8\n        return resid / (1.4826 * mad)\n",
+    "scenario_categories": [
+      "Anomaly & Exception Detection"
+    ],
+    "scenario_types": [
+      "AnomalyDetection"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_anomaly_detection",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "anomaly_features",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Anomaly & Exception Detection"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00",
+    "kind": "transform",
+    "description": "Robust residual + MAD z-score from a rolling-median baseline (anomaly features)."
+  },
+  {
+    "_id": "feature:trend_slope_v1",
+    "feature_id": "trend_slope_v1",
+    "name": "Rolling local slope (degradation)",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Rolling local linear slope per channel (degradation / trend features).\"\"\"\n    def fit(self, X, metadata):\n        return {\"w\": int(metadata.get(\"window\", 24))}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float).reshape(len(X), -1); w = state[\"w\"]; out = np.zeros_like(X)\n        for i in range(len(X)):\n            seg = X[max(0, i - w + 1):i + 1]; m = seg.shape[0]\n            tt = np.arange(m) - (m - 1) / 2.0; d = (tt ** 2).sum() or 1.0\n            out[i] = (tt[:, None] * seg).sum(axis=0) / d\n        return out\n",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "scenario_types": [
+      "Analytics"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting_evaluation",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "trend_features",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Analysis & Inference"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00",
+    "kind": "transform",
+    "description": "Rolling local linear slope per channel (degradation/trend features)."
+  },
+  {
+    "_id": "feature:channel_select_v1",
+    "feature_id": "channel_select_v1",
+    "name": "Relevant-sensor channel selection",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Select the relevant sensor channels (e.g. PS1-PS6, FS1/FS2, VS1 from a pump scenario).\n    Indices come from the scenario's relevant_sensors via metadata['channel_indices'].\"\"\"\n    def fit(self, X, metadata):\n        return {\"idx\": list(metadata.get(\"channel_indices\", []))}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float).reshape(len(X), -1)\n        idx = state[\"idx\"] or list(range(X.shape[1]))\n        return X[:, idx]\n",
+    "scenario_categories": [
+      "Data Extraction",
+      "Anomaly & Exception Detection",
+      "Future State Prediction"
+    ],
+    "scenario_types": [
+      "AnomalyDetection",
+      "Forecasting"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_anomaly_detection",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "selected_channels",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Data Extraction",
+      "Anomaly & Exception Detection",
+      "Future State Prediction"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00",
+    "kind": "transform",
+    "description": "Selects the most relevant sensor channels (dimensionality reduction)."
+  },
+  {
+    "_id": "feature:condition_index_v1",
+    "feature_id": "condition_index_v1",
+    "name": "Weighted condition/health index",
+    "modality": "timeseries",
+    "interface": "fit_transform",
+    "class_name": "Transformation",
+    "invertible": false,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Aggregate normalized channels into a single condition/health index (decision support).\"\"\"\n    def fit(self, X, metadata):\n        X = np.asarray(X, dtype=float)\n        return {\"mean\": X.mean(axis=0), \"std\": X.std(axis=0) + 1e-8,\n                \"w\": np.asarray(metadata.get(\"weights\", []), dtype=float)}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float).reshape(len(X), -1)\n        z = (X - state[\"mean\"]) / state[\"std\"]\n        w = state[\"w\"] if state[\"w\"].size == z.shape[1] else np.ones(z.shape[1]) / z.shape[1]\n        return (z * w).sum(axis=1, keepdims=True)\n",
+    "scenario_categories": [
+      "Recommendation & Optimization",
+      "Analysis & Inference"
+    ],
+    "scenario_types": [
+      "DecisionSupport",
+      "Prognostics"
+    ],
+    "provenance": "handwritten",
+    "method": "handwritten",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting_evaluation",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "condition_index",
+    "metrics": [],
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": null,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "handwritten",
+      "Recommendation & Optimization",
+      "Analysis & Inference"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00",
+    "kind": "transform",
+    "description": "Weighted condition/health index"
+  },
+  {
+    "_id": "feature:mean",
+    "feature_id": "mean",
+    "name": "FLOps extractor: mean",
+    "description": "Average value of the window.",
+    "kind": "extractor",
+    "extractor_name": "mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Future State Prediction",
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:std",
+    "feature_id": "std",
+    "name": "FLOps extractor: std",
+    "description": "Standard deviation (spread).",
+    "kind": "extractor",
+    "extractor_name": "std",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Future State Prediction",
+      "Anomaly & Exception Detection"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "std"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:min",
+    "feature_id": "min",
+    "name": "FLOps extractor: min",
+    "description": "Minimum value.",
+    "kind": "extractor",
+    "extractor_name": "min",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "min"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:max",
+    "feature_id": "max",
+    "name": "FLOps extractor: max",
+    "description": "Maximum value.",
+    "kind": "extractor",
+    "extractor_name": "max",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "max"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:range",
+    "feature_id": "range",
+    "name": "FLOps extractor: range",
+    "description": "Max minus min (peak-to-peak spread).",
+    "kind": "extractor",
+    "extractor_name": "range",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "range"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:q25",
+    "feature_id": "q25",
+    "name": "FLOps extractor: q25",
+    "description": "25th percentile (lower quartile).",
+    "kind": "extractor",
+    "extractor_name": "q25",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Future State Prediction"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "q25"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:q75",
+    "feature_id": "q75",
+    "name": "FLOps extractor: q75",
+    "description": "75th percentile (upper quartile).",
+    "kind": "extractor",
+    "extractor_name": "q75",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Future State Prediction"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "q75"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:kurtosis",
+    "feature_id": "kurtosis",
+    "name": "FLOps extractor: kurtosis",
+    "description": "Tailedness/peakedness of the distribution (excess kurtosis).",
+    "kind": "extractor",
+    "extractor_name": "kurtosis",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Anomaly & Exception Detection"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "kurtosis"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:skew",
+    "feature_id": "skew",
+    "name": "FLOps extractor: skew",
+    "description": "Asymmetry of the distribution.",
+    "kind": "extractor",
+    "extractor_name": "skew",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Anomaly & Exception Detection"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "skew"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:slope",
+    "feature_id": "slope",
+    "name": "FLOps extractor: slope",
+    "description": "Linear trend slope over the window.",
+    "kind": "extractor",
+    "extractor_name": "slope",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference",
+      "Future State Prediction"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "slope"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:autocorr1",
+    "feature_id": "autocorr1",
+    "name": "FLOps extractor: autocorr1",
+    "description": "Lag-1 autocorrelation (short-term persistence).",
+    "kind": "extractor",
+    "extractor_name": "autocorr1",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Future State Prediction"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "autocorr1"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:energy",
+    "feature_id": "energy",
+    "name": "FLOps extractor: energy",
+    "description": "Mean squared value (average power).",
+    "kind": "extractor",
+    "extractor_name": "energy",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Anomaly & Exception Detection"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "energy"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:abs_diff_mean",
+    "feature_id": "abs_diff_mean",
+    "name": "FLOps extractor: abs_diff_mean",
+    "description": "Mean absolute first difference (roughness).",
+    "kind": "extractor",
+    "extractor_name": "abs_diff_mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Anomaly & Exception Detection"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "abs_diff_mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:spectral_centroid",
+    "feature_id": "spectral_centroid",
+    "name": "FLOps extractor: spectral_centroid",
+    "description": "Center of mass of the frequency spectrum (brightness).",
+    "kind": "extractor",
+    "extractor_name": "spectral_centroid",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Anomaly & Exception Detection"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "spectral_centroid"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:dominant_freq_power",
+    "feature_id": "dominant_freq_power",
+    "name": "FLOps extractor: dominant_freq_power",
+    "description": "Power of the strongest non-DC frequency.",
+    "kind": "extractor",
+    "extractor_name": "dominant_freq_power",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Anomaly & Exception Detection"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "dominant_freq_power"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:var",
+    "feature_id": "var",
+    "name": "FLOps extractor: var",
+    "description": "Variance of the window.",
+    "kind": "extractor",
+    "extractor_name": "var",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "var"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:median",
+    "feature_id": "median",
+    "name": "FLOps extractor: median",
+    "description": "Median value (robust center).",
+    "kind": "extractor",
+    "extractor_name": "median",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "median"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:q05",
+    "feature_id": "q05",
+    "name": "FLOps extractor: q05",
+    "description": "5th percentile.",
+    "kind": "extractor",
+    "extractor_name": "q05",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "q05"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:q10",
+    "feature_id": "q10",
+    "name": "FLOps extractor: q10",
+    "description": "10th percentile.",
+    "kind": "extractor",
+    "extractor_name": "q10",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "q10"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:q90",
+    "feature_id": "q90",
+    "name": "FLOps extractor: q90",
+    "description": "90th percentile.",
+    "kind": "extractor",
+    "extractor_name": "q90",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "q90"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:q95",
+    "feature_id": "q95",
+    "name": "FLOps extractor: q95",
+    "description": "95th percentile.",
+    "kind": "extractor",
+    "extractor_name": "q95",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "q95"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:iqr",
+    "feature_id": "iqr",
+    "name": "FLOps extractor: iqr",
+    "description": "Inter-quartile range (robust spread).",
+    "kind": "extractor",
+    "extractor_name": "iqr",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "iqr"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:mad",
+    "feature_id": "mad",
+    "name": "FLOps extractor: mad",
+    "description": "Median absolute deviation (robust spread).",
+    "kind": "extractor",
+    "extractor_name": "mad",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "mad"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:mean_abs",
+    "feature_id": "mean_abs",
+    "name": "FLOps extractor: mean_abs",
+    "description": "Mean of absolute values.",
+    "kind": "extractor",
+    "extractor_name": "mean_abs",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "mean_abs"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:sum_abs",
+    "feature_id": "sum_abs",
+    "name": "FLOps extractor: sum_abs",
+    "description": "Sum of absolute values.",
+    "kind": "extractor",
+    "extractor_name": "sum_abs",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "sum_abs"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:rms",
+    "feature_id": "rms",
+    "name": "FLOps extractor: rms",
+    "description": "Root-mean-square amplitude.",
+    "kind": "extractor",
+    "extractor_name": "rms",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "rms"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:abs_energy",
+    "feature_id": "abs_energy",
+    "name": "FLOps extractor: abs_energy",
+    "description": "Sum of squared values (total energy).",
+    "kind": "extractor",
+    "extractor_name": "abs_energy",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "abs_energy"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:cv",
+    "feature_id": "cv",
+    "name": "FLOps extractor: cv",
+    "description": "Coefficient of variation (std/|mean|).",
+    "kind": "extractor",
+    "extractor_name": "cv",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "cv"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:std_to_mean",
+    "feature_id": "std_to_mean",
+    "name": "FLOps extractor: std_to_mean",
+    "description": "Std divided by mean (relative dispersion).",
+    "kind": "extractor",
+    "extractor_name": "std_to_mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "std_to_mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:count_above_mean",
+    "feature_id": "count_above_mean",
+    "name": "FLOps extractor: count_above_mean",
+    "description": "Number of points above the mean.",
+    "kind": "extractor",
+    "extractor_name": "count_above_mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "count_above_mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:count_below_mean",
+    "feature_id": "count_below_mean",
+    "name": "FLOps extractor: count_below_mean",
+    "description": "Number of points below the mean.",
+    "kind": "extractor",
+    "extractor_name": "count_below_mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "count_below_mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:ratio_above_mean",
+    "feature_id": "ratio_above_mean",
+    "name": "FLOps extractor: ratio_above_mean",
+    "description": "Fraction of points above the mean.",
+    "kind": "extractor",
+    "extractor_name": "ratio_above_mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "ratio_above_mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:count_above_2std",
+    "feature_id": "count_above_2std",
+    "name": "FLOps extractor: count_above_2std",
+    "description": "Number of points beyond 2 std (outliers).",
+    "kind": "extractor",
+    "extractor_name": "count_above_2std",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "count_above_2std"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:abs_max",
+    "feature_id": "abs_max",
+    "name": "FLOps extractor: abs_max",
+    "description": "Maximum absolute value.",
+    "kind": "extractor",
+    "extractor_name": "abs_max",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "abs_max"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:abs_min",
+    "feature_id": "abs_min",
+    "name": "FLOps extractor: abs_min",
+    "description": "Minimum absolute value.",
+    "kind": "extractor",
+    "extractor_name": "abs_min",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "abs_min"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:intercept",
+    "feature_id": "intercept",
+    "name": "FLOps extractor: intercept",
+    "description": "Mean level (regression intercept proxy).",
+    "kind": "extractor",
+    "extractor_name": "intercept",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "intercept"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:autocorr2",
+    "feature_id": "autocorr2",
+    "name": "FLOps extractor: autocorr2",
+    "description": "Lag-2 autocorrelation.",
+    "kind": "extractor",
+    "extractor_name": "autocorr2",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "autocorr2"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:autocorr3",
+    "feature_id": "autocorr3",
+    "name": "FLOps extractor: autocorr3",
+    "description": "Lag-3 autocorrelation.",
+    "kind": "extractor",
+    "extractor_name": "autocorr3",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "autocorr3"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:autocorr5",
+    "feature_id": "autocorr5",
+    "name": "FLOps extractor: autocorr5",
+    "description": "Lag-5 autocorrelation.",
+    "kind": "extractor",
+    "extractor_name": "autocorr5",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "autocorr5"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:autocorr10",
+    "feature_id": "autocorr10",
+    "name": "FLOps extractor: autocorr10",
+    "description": "Lag-10 autocorrelation (longer memory).",
+    "kind": "extractor",
+    "extractor_name": "autocorr10",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "autocorr10"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:mean_diff",
+    "feature_id": "mean_diff",
+    "name": "FLOps extractor: mean_diff",
+    "description": "Mean of first differences (average step).",
+    "kind": "extractor",
+    "extractor_name": "mean_diff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "mean_diff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:mean_2nd_diff",
+    "feature_id": "mean_2nd_diff",
+    "name": "FLOps extractor: mean_2nd_diff",
+    "description": "Mean of second differences (curvature).",
+    "kind": "extractor",
+    "extractor_name": "mean_2nd_diff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "mean_2nd_diff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:abs_2nd_diff_mean",
+    "feature_id": "abs_2nd_diff_mean",
+    "name": "FLOps extractor: abs_2nd_diff_mean",
+    "description": "Mean absolute second difference.",
+    "kind": "extractor",
+    "extractor_name": "abs_2nd_diff_mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "abs_2nd_diff_mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:std_diff",
+    "feature_id": "std_diff",
+    "name": "FLOps extractor: std_diff",
+    "description": "Std of first differences (volatility of change).",
+    "kind": "extractor",
+    "extractor_name": "std_diff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "std_diff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:num_zero_crossings",
+    "feature_id": "num_zero_crossings",
+    "name": "FLOps extractor: num_zero_crossings",
+    "description": "Count of sign changes around zero.",
+    "kind": "extractor",
+    "extractor_name": "num_zero_crossings",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "num_zero_crossings"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:num_mean_crossings",
+    "feature_id": "num_mean_crossings",
+    "name": "FLOps extractor: num_mean_crossings",
+    "description": "Count of crossings of the mean level.",
+    "kind": "extractor",
+    "extractor_name": "num_mean_crossings",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "num_mean_crossings"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:longest_above_mean",
+    "feature_id": "longest_above_mean",
+    "name": "FLOps extractor: longest_above_mean",
+    "description": "Longest run of points above the mean.",
+    "kind": "extractor",
+    "extractor_name": "longest_above_mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "longest_above_mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:longest_below_mean",
+    "feature_id": "longest_below_mean",
+    "name": "FLOps extractor: longest_below_mean",
+    "description": "Longest run of points below the mean.",
+    "kind": "extractor",
+    "extractor_name": "longest_below_mean",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "longest_below_mean"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:first_loc_max",
+    "feature_id": "first_loc_max",
+    "name": "FLOps extractor: first_loc_max",
+    "description": "Relative position (0-1) of the first maximum.",
+    "kind": "extractor",
+    "extractor_name": "first_loc_max",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "first_loc_max"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:last_loc_max",
+    "feature_id": "last_loc_max",
+    "name": "FLOps extractor: last_loc_max",
+    "description": "Relative position of the last maximum.",
+    "kind": "extractor",
+    "extractor_name": "last_loc_max",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "last_loc_max"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:first_loc_min",
+    "feature_id": "first_loc_min",
+    "name": "FLOps extractor: first_loc_min",
+    "description": "Relative position of the first minimum.",
+    "kind": "extractor",
+    "extractor_name": "first_loc_min",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "first_loc_min"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:mean_change",
+    "feature_id": "mean_change",
+    "name": "FLOps extractor: mean_change",
+    "description": "Average per-step change ((last-first)/n).",
+    "kind": "extractor",
+    "extractor_name": "mean_change",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "mean_change"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:cid_ce",
+    "feature_id": "cid_ce",
+    "name": "FLOps extractor: cid_ce",
+    "description": "Complexity-invariant distance estimate (curve complexity).",
+    "kind": "extractor",
+    "extractor_name": "cid_ce",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "cid_ce"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:c3_lag1",
+    "feature_id": "c3_lag1",
+    "name": "FLOps extractor: c3_lag1",
+    "description": "Non-linearity measure C3 at lag 1.",
+    "kind": "extractor",
+    "extractor_name": "c3_lag1",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "c3_lag1"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:c3_lag2",
+    "feature_id": "c3_lag2",
+    "name": "FLOps extractor: c3_lag2",
+    "description": "Non-linearity measure C3 at lag 2.",
+    "kind": "extractor",
+    "extractor_name": "c3_lag2",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "c3_lag2"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:time_reversal_asym",
+    "feature_id": "time_reversal_asym",
+    "name": "FLOps extractor: time_reversal_asym",
+    "description": "Time-reversal asymmetry statistic (lag 1).",
+    "kind": "extractor",
+    "extractor_name": "time_reversal_asym",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "time_reversal_asym"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:distinct_ratio",
+    "feature_id": "distinct_ratio",
+    "name": "FLOps extractor: distinct_ratio",
+    "description": "Ratio of distinct values to length.",
+    "kind": "extractor",
+    "extractor_name": "distinct_ratio",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "distinct_ratio"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:binned_entropy",
+    "feature_id": "binned_entropy",
+    "name": "FLOps extractor: binned_entropy",
+    "description": "Shannon entropy of a 10-bin value histogram.",
+    "kind": "extractor",
+    "extractor_name": "binned_entropy",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "binned_entropy"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:perm_entropy",
+    "feature_id": "perm_entropy",
+    "name": "FLOps extractor: perm_entropy",
+    "description": "Permutation entropy (ordinal complexity, order 3).",
+    "kind": "extractor",
+    "extractor_name": "perm_entropy",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "perm_entropy"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:spectral_entropy",
+    "feature_id": "spectral_entropy",
+    "name": "FLOps extractor: spectral_entropy",
+    "description": "Entropy of the normalized power spectrum.",
+    "kind": "extractor",
+    "extractor_name": "spectral_entropy",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "spectral_entropy"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:hjorth_mobility",
+    "feature_id": "hjorth_mobility",
+    "name": "FLOps extractor: hjorth_mobility",
+    "description": "Hjorth mobility (mean frequency).",
+    "kind": "extractor",
+    "extractor_name": "hjorth_mobility",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "hjorth_mobility"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:hjorth_complexity",
+    "feature_id": "hjorth_complexity",
+    "name": "FLOps extractor: hjorth_complexity",
+    "description": "Hjorth complexity (spectral bandwidth/shape change).",
+    "kind": "extractor",
+    "extractor_name": "hjorth_complexity",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "hjorth_complexity"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:spectral_rolloff",
+    "feature_id": "spectral_rolloff",
+    "name": "FLOps extractor: spectral_rolloff",
+    "description": "Frequency below which 85% of spectral energy lies.",
+    "kind": "extractor",
+    "extractor_name": "spectral_rolloff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "spectral_rolloff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:spectral_flatness",
+    "feature_id": "spectral_flatness",
+    "name": "FLOps extractor: spectral_flatness",
+    "description": "Geometric/arithmetic mean of spectrum (tonal vs noisy).",
+    "kind": "extractor",
+    "extractor_name": "spectral_flatness",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "spectral_flatness"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:dc_power",
+    "feature_id": "dc_power",
+    "name": "FLOps extractor: dc_power",
+    "description": "Magnitude of the DC component (|mean|).",
+    "kind": "extractor",
+    "extractor_name": "dc_power",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "dc_power"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:total_spectral_energy",
+    "feature_id": "total_spectral_energy",
+    "name": "FLOps extractor: total_spectral_energy",
+    "description": "Total power across the spectrum.",
+    "kind": "extractor",
+    "extractor_name": "total_spectral_energy",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "total_spectral_energy"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:band_low",
+    "feature_id": "band_low",
+    "name": "FLOps extractor: band_low",
+    "description": "Spectral-energy fraction in the low band (0-1/3).",
+    "kind": "extractor",
+    "extractor_name": "band_low",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "band_low"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:band_mid",
+    "feature_id": "band_mid",
+    "name": "FLOps extractor: band_mid",
+    "description": "Spectral-energy fraction in the mid band (1/3-2/3).",
+    "kind": "extractor",
+    "extractor_name": "band_mid",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "band_mid"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:band_high",
+    "feature_id": "band_high",
+    "name": "FLOps extractor: band_high",
+    "description": "Spectral-energy fraction in the high band (2/3-1).",
+    "kind": "extractor",
+    "extractor_name": "band_high",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "band_high"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:dominant_freq",
+    "feature_id": "dominant_freq",
+    "name": "FLOps extractor: dominant_freq",
+    "description": "Index of the dominant non-DC frequency.",
+    "kind": "extractor",
+    "extractor_name": "dominant_freq",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "dominant_freq"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:peak_to_peak",
+    "feature_id": "peak_to_peak",
+    "name": "FLOps extractor: peak_to_peak",
+    "description": "Max minus min amplitude.",
+    "kind": "extractor",
+    "extractor_name": "peak_to_peak",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "peak_to_peak"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:crest_factor",
+    "feature_id": "crest_factor",
+    "name": "FLOps extractor: crest_factor",
+    "description": "Peak/RMS \u2014 impulsiveness (vibration health).",
+    "kind": "extractor",
+    "extractor_name": "crest_factor",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "crest_factor"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:shape_factor",
+    "feature_id": "shape_factor",
+    "name": "FLOps extractor: shape_factor",
+    "description": "RMS/mean-absolute \u2014 waveform shape (vibration).",
+    "kind": "extractor",
+    "extractor_name": "shape_factor",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "shape_factor"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:impulse_factor",
+    "feature_id": "impulse_factor",
+    "name": "FLOps extractor: impulse_factor",
+    "description": "Peak/mean-absolute \u2014 impulsiveness (bearing faults).",
+    "kind": "extractor",
+    "extractor_name": "impulse_factor",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "impulse_factor"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:clearance_factor",
+    "feature_id": "clearance_factor",
+    "name": "FLOps extractor: clearance_factor",
+    "description": "Peak/(mean sqrt|x|)^2 \u2014 early bearing wear (vibration).",
+    "kind": "extractor",
+    "extractor_name": "clearance_factor",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "clearance_factor"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:margin_factor",
+    "feature_id": "margin_factor",
+    "name": "FLOps extractor: margin_factor",
+    "description": "Peak-to-peak / RMS.",
+    "kind": "extractor",
+    "extractor_name": "margin_factor",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "margin_factor"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:form_factor",
+    "feature_id": "form_factor",
+    "name": "FLOps extractor: form_factor",
+    "description": "RMS / |mean|.",
+    "kind": "extractor",
+    "extractor_name": "form_factor",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "form_factor"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:linear_trend_r",
+    "feature_id": "linear_trend_r",
+    "name": "FLOps extractor: linear_trend_r",
+    "description": "Pearson correlation of value vs time (trend strength).",
+    "kind": "extractor",
+    "extractor_name": "linear_trend_r",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "linear_trend_r"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:half_mean_diff",
+    "feature_id": "half_mean_diff",
+    "name": "FLOps extractor: half_mean_diff",
+    "description": "Mean of 2nd half minus 1st half (drift).",
+    "kind": "extractor",
+    "extractor_name": "half_mean_diff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "half_mean_diff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:half_std_ratio",
+    "feature_id": "half_std_ratio",
+    "name": "FLOps extractor: half_std_ratio",
+    "description": "Std of 2nd half / 1st half (variance shift).",
+    "kind": "extractor",
+    "extractor_name": "half_std_ratio",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "half_std_ratio"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:energy_ratio_first_half",
+    "feature_id": "energy_ratio_first_half",
+    "name": "FLOps extractor: energy_ratio_first_half",
+    "description": "Fraction of total energy in the first half.",
+    "kind": "extractor",
+    "extractor_name": "energy_ratio_first_half",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "energy_ratio_first_half"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:trend_strength",
+    "feature_id": "trend_strength",
+    "name": "FLOps extractor: trend_strength",
+    "description": "Normalized trend magnitude (|slope|*n/std).",
+    "kind": "extractor",
+    "extractor_name": "trend_strength",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "trend_strength"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:cumsum_argmax_ratio",
+    "feature_id": "cumsum_argmax_ratio",
+    "name": "FLOps extractor: cumsum_argmax_ratio",
+    "description": "Relative position of the cumulative-sum peak.",
+    "kind": "extractor",
+    "extractor_name": "cumsum_argmax_ratio",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "cumsum_argmax_ratio"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:cumsum_max",
+    "feature_id": "cumsum_max",
+    "name": "FLOps extractor: cumsum_max",
+    "description": "Maximum of the mean-centered cumulative sum.",
+    "kind": "extractor",
+    "extractor_name": "cumsum_max",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "cumsum_max"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:q33",
+    "feature_id": "q33",
+    "name": "FLOps extractor: q33",
+    "description": "33rd percentile.",
+    "kind": "extractor",
+    "extractor_name": "q33",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "q33"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:q66",
+    "feature_id": "q66",
+    "name": "FLOps extractor: q66",
+    "description": "66th percentile.",
+    "kind": "extractor",
+    "extractor_name": "q66",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "q66"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:range_to_std",
+    "feature_id": "range_to_std",
+    "name": "FLOps extractor: range_to_std",
+    "description": "Range divided by std.",
+    "kind": "extractor",
+    "extractor_name": "range_to_std",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "range_to_std"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:mean_square",
+    "feature_id": "mean_square",
+    "name": "FLOps extractor: mean_square",
+    "description": "Mean of squared values.",
+    "kind": "extractor",
+    "extractor_name": "mean_square",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "mean_square"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:abs_sum_changes",
+    "feature_id": "abs_sum_changes",
+    "name": "FLOps extractor: abs_sum_changes",
+    "description": "Sum of absolute first differences (total variation).",
+    "kind": "extractor",
+    "extractor_name": "abs_sum_changes",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "abs_sum_changes"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:max_diff",
+    "feature_id": "max_diff",
+    "name": "FLOps extractor: max_diff",
+    "description": "Largest single-step increase.",
+    "kind": "extractor",
+    "extractor_name": "max_diff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "max_diff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:min_diff",
+    "feature_id": "min_diff",
+    "name": "FLOps extractor: min_diff",
+    "description": "Largest single-step decrease.",
+    "kind": "extractor",
+    "extractor_name": "min_diff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "min_diff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:var_diff",
+    "feature_id": "var_diff",
+    "name": "FLOps extractor: var_diff",
+    "description": "Variance of first differences.",
+    "kind": "extractor",
+    "extractor_name": "var_diff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "var_diff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:positive_diff_ratio",
+    "feature_id": "positive_diff_ratio",
+    "name": "FLOps extractor: positive_diff_ratio",
+    "description": "Fraction of upward steps.",
+    "kind": "extractor",
+    "extractor_name": "positive_diff_ratio",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "positive_diff_ratio"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:autocorr4",
+    "feature_id": "autocorr4",
+    "name": "FLOps extractor: autocorr4",
+    "description": "Lag-4 autocorrelation.",
+    "kind": "extractor",
+    "extractor_name": "autocorr4",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "autocorr4"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:autocorr7",
+    "feature_id": "autocorr7",
+    "name": "FLOps extractor: autocorr7",
+    "description": "Lag-7 autocorrelation.",
+    "kind": "extractor",
+    "extractor_name": "autocorr7",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "autocorr7"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:num_peaks",
+    "feature_id": "num_peaks",
+    "name": "FLOps extractor: num_peaks",
+    "description": "Count of local maxima.",
+    "kind": "extractor",
+    "extractor_name": "num_peaks",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "num_peaks"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:num_valleys",
+    "feature_id": "num_valleys",
+    "name": "FLOps extractor: num_valleys",
+    "description": "Count of local minima.",
+    "kind": "extractor",
+    "extractor_name": "num_valleys",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "num_valleys"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:longest_above_2std",
+    "feature_id": "longest_above_2std",
+    "name": "FLOps extractor: longest_above_2std",
+    "description": "Longest run beyond 2 std (sustained anomaly).",
+    "kind": "extractor",
+    "extractor_name": "longest_above_2std",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "longest_above_2std"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:zero_crossing_rate",
+    "feature_id": "zero_crossing_rate",
+    "name": "FLOps extractor: zero_crossing_rate",
+    "description": "Mean-crossings per sample.",
+    "kind": "extractor",
+    "extractor_name": "zero_crossing_rate",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "zero_crossing_rate"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:skew_abs",
+    "feature_id": "skew_abs",
+    "name": "FLOps extractor: skew_abs",
+    "description": "Absolute skewness.",
+    "kind": "extractor",
+    "extractor_name": "skew_abs",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "skew_abs"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:p2p_to_std",
+    "feature_id": "p2p_to_std",
+    "name": "FLOps extractor: p2p_to_std",
+    "description": "Peak-to-peak / std.",
+    "kind": "extractor",
+    "extractor_name": "p2p_to_std",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "p2p_to_std"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:band_q1",
+    "feature_id": "band_q1",
+    "name": "FLOps extractor: band_q1",
+    "description": "Spectral-energy fraction, quartile band 0-25%.",
+    "kind": "extractor",
+    "extractor_name": "band_q1",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "band_q1"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:band_q2",
+    "feature_id": "band_q2",
+    "name": "FLOps extractor: band_q2",
+    "description": "Spectral-energy fraction, quartile band 25-50%.",
+    "kind": "extractor",
+    "extractor_name": "band_q2",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "band_q2"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:band_q3",
+    "feature_id": "band_q3",
+    "name": "FLOps extractor: band_q3",
+    "description": "Spectral-energy fraction, quartile band 50-75%.",
+    "kind": "extractor",
+    "extractor_name": "band_q3",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "band_q3"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:band_q4",
+    "feature_id": "band_q4",
+    "name": "FLOps extractor: band_q4",
+    "description": "Spectral-energy fraction, quartile band 75-100%.",
+    "kind": "extractor",
+    "extractor_name": "band_q4",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "band_q4"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:mean_psd",
+    "feature_id": "mean_psd",
+    "name": "FLOps extractor: mean_psd",
+    "description": "Mean power spectral density.",
+    "kind": "extractor",
+    "extractor_name": "mean_psd",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "mean_psd"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:peak_psd_ratio",
+    "feature_id": "peak_psd_ratio",
+    "name": "FLOps extractor: peak_psd_ratio",
+    "description": "Peak PSD / total PSD (spectral peakedness).",
+    "kind": "extractor",
+    "extractor_name": "peak_psd_ratio",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "peak_psd_ratio"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:diff_entropy",
+    "feature_id": "diff_entropy",
+    "name": "FLOps extractor: diff_entropy",
+    "description": "Binned entropy of first differences.",
+    "kind": "extractor",
+    "extractor_name": "diff_entropy",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "diff_entropy"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  },
+  {
+    "_id": "feature:quarter_mean_diff",
+    "feature_id": "quarter_mean_diff",
+    "name": "FLOps extractor: quarter_mean_diff",
+    "description": "Mean of last quarter minus first quarter (drift).",
+    "kind": "extractor",
+    "extractor_name": "quarter_mean_diff",
+    "modality": "timeseries",
+    "interface": "extract",
+    "output_type": "scalar",
+    "provenance": "library",
+    "method": "FLOps",
+    "scenario_categories": [
+      "Analysis & Inference"
+    ],
+    "metrics": [],
+    "tags": [
+      "flops",
+      "extractor",
+      "quarter_mean_diff"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-22T03:27:01+00:00"
+  }
+]
