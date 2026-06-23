@@ -65,7 +65,7 @@ mcp = FastMCP(
 )
 
 # Static site as per original requirement
-SITES = ["MAIN"]
+DEFAULT_SITES = ["MAIN"]
 
 
 class ErrorResult(BaseModel):
@@ -159,24 +159,28 @@ _sensor_list_cache: Dict[str, List[str]] = {}
 
 
 def get_sensor_list(asset_id: str) -> List[str]:
-    """Helper to fetch sensor names for a given asset from CouchDB.
-    Result is cached per asset_id after the first successful call."""
+    """The sensors an asset actually measures = the UNION of measurement keys across ALL of the
+    asset's reading documents.
+ 
+    IoT data may be sparse / non-uniform: different sensors are recorded at different timestamps
+    (a timestamp may carry one sensor, several, or all), so a single document does NOT reveal the
+    full measured set. We therefore scan every reading doc for the asset and union the non-metadata
+    keys. Result is cached per asset_id after the first successful call."""
     if asset_id in _sensor_list_cache:
         return _sensor_list_cache[asset_id]
-
+ 
     if not db:
         return []
-
+ 
     try:
-        # Get one document for the asset to inspect keys
-        res = db.find({"asset_id": asset_id}, limit=1)
-        if not res["docs"]:
+        res = db.find({"asset_id": asset_id}, limit=100000)
+        docs = res["docs"]
+        if not docs:
             return []
-
-        doc = res["docs"][0]
-        # Exclude metadata and standard fields
+ 
+        # Exclude metadata; union the measurement keys across every reading document.
         exclude = {"_id", "_rev", "asset_id", "timestamp"}
-        sensors = sorted(key for key in doc.keys() if key not in exclude)
+        sensors = sorted({key for doc in docs for key in doc.keys() if key not in exclude})
         _sensor_list_cache[asset_id] = sensors
         return sensors
     except Exception as e:
@@ -205,17 +209,46 @@ def get_asset_doc(asset_id: str) -> Optional[Dict[str, Any]]:
         logger.error(f"Error fetching asset doc {asset_id}: {e}")
         return None
 
+_registry_sites_cache: Optional[List[str]] = None
+ 
+ 
+def get_registry_sites() -> List[str]:
+    """Distinct site ids present in the asset registry (from each asset profile's `siteid`). Cached."""
+    global _registry_sites_cache
+    if _registry_sites_cache is not None:
+        return _registry_sites_cache
+    if not asset_db:
+        return []
+    try:
+        res = asset_db.find({"doctype": "asset"}, fields=["siteid"], limit=100000)
+        found = sorted({d.get("siteid") for d in res["docs"] if d.get("siteid")})
+        _registry_sites_cache = found
+        return found
+    except Exception as e:
+        logger.error(f"get_registry_sites failed: {e}")
+        return []
+ 
+ 
+def known_sites() -> List[str]:
+    """The server's site list — discovered DYNAMICALLY from the asset registry (each asset profile's
+    `siteid`). Falls back to DEFAULT_SITES only if the registry is empty / unavailable."""
+    return get_registry_sites() or DEFAULT_SITES
+ 
+ 
+def _is_known_site(site_name: str) -> bool:
+    return site_name in known_sites()
+ 
 
 @mcp.tool(title="List Sites")
 def sites() -> SitesResult:
     """Retrieves a list of sites. Each site is represented by a name."""
-    return SitesResult(sites=SITES)
+    return SitesResult(sites=known_sites())
 
 
 @mcp.tool(title="List Assets")
 def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
     """Returns a list of assets for a given site. Each asset includes an id and a name."""
-    if site_name not in SITES:
+    if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
 
     asset_list = get_asset_list()
@@ -233,7 +266,7 @@ def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
     These are the MEASURED sensors — names discovered from the asset's telemetry documents,
     i.e. points that actually stream to the historian. For the full INSTALLED inventory
     (including sensors fitted but not streaming), use asset_sensors()."""
-    if site_name not in SITES:
+    if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
 
     sensor_list = get_sensor_list(asset_id)
@@ -297,7 +330,7 @@ def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
     """Return registry/nameplate details for one asset (Maximo MXASSET-aligned: description,
     assettype, status, location, installdate, vintage) plus installed/measured sensor counts.
     This is asset IDENTITY — distinct from the telemetry-derived assets() list."""
-    if site_name not in SITES:
+    if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     doc = get_asset_doc(asset_id)
     if not doc:
@@ -325,7 +358,7 @@ def asset_sensors(site_name: str, asset_id: str) -> Union[AssetSensorsResult, Er
     """List the INSTALLED sensors for an asset, by name (installed is assumed). This is the registry
     inventory — distinct from sensors(), which lists only what actually streams (the MEASURED set).
     Compare the two to find installed-but-not-streaming sensors."""
-    if site_name not in SITES:
+    if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     doc = get_asset_doc(asset_id)
     if not doc:
@@ -347,7 +380,7 @@ def registry_assets(
     """List assets from the registry with metadata (assettype, vintage, sensor count), optionally
     filtered by assettype (e.g. 'PUMP'). Complements assets(), which returns bare ids derived from
     telemetry."""
-    if site_name not in SITES:
+    if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
         return ErrorResult(error="CouchDB not connected")
