@@ -64,7 +64,6 @@ mcp = FastMCP(
     ),
 )
 
-# Static site as per original requirement
 DEFAULT_SITES = ["MAIN"]
 
 
@@ -241,7 +240,8 @@ def _is_known_site(site_name: str) -> bool:
 
 @mcp.tool(title="List Sites")
 def sites() -> SitesResult:
-    """Retrieves a list of sites. Each site is represented by a name."""
+    """Retrieves the list of sites, discovered dynamically from the asset registry (the distinct
+    `siteid` across asset profiles). Falls back to the default only if the registry has no assets."""
     return SitesResult(sites=known_sites())
 
 
@@ -328,7 +328,7 @@ def history(
 @mcp.tool(title="Get Asset")
 def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
     """Return registry/nameplate details for one asset (Maximo MXASSET-aligned: description,
-    assettype, status, location, installdate, vintage) plus installed/measured sensor counts.
+    assettype, status, location, installdate, vintage) plus installed sensor count.
     This is asset IDENTITY — distinct from the telemetry-derived assets() list."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -378,7 +378,7 @@ def registry_assets(
     site_name: str, assettype: Optional[str] = None
 ) -> Union[RegistryAssetsResult, ErrorResult]:
     """List assets from the registry with metadata (assettype, vintage, sensor count), optionally
-    filtered by assettype (e.g. 'PUMP'). Complements assets(), which returns bare ids derived from
+    filtered by assettype (e.g. 'PUMP', 'COMPRESSOR'). Complements assets(), which returns bare ids derived from
     telemetry."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
