@@ -213,6 +213,31 @@ def drop_database(db) -> int:
         r.raise_for_status()
     return r.status_code
 
+def export_database(db, include_design=False) -> list:
+    """Return all documents in a database via _all_docs?include_docs=true.
+
+    _rev is stripped so snapshots are stable/diffable across runs. Design docs
+    (_design/*) are skipped unless include_design=True.
+    """
+    r = requests.get(
+        _db_url(db, "_all_docs"),
+        params={"include_docs": "true"},
+        auth=_AUTH,
+        timeout=60,
+    )
+    if r.status_code == 404:
+        return []  # DB not created for this scenario -> empty snapshot, not a crash
+    r.raise_for_status()
+    docs = []
+    for row in r.json().get("rows", []):
+        doc = row.get("doc")
+        if doc is None:
+            continue
+        if doc["_id"].startswith("_design/") and not include_design:
+            continue
+        doc.pop("_rev", None)          # volatile; drop for deterministic comparison
+        docs.append(doc)
+    return docs
 
 def _ensure_db(db, drop):
     if requests.head(_db_url(db), auth=_AUTH, timeout=10).status_code == 200:

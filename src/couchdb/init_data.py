@@ -153,6 +153,31 @@ def init_data(
         )
     return results
 
+def export_state(
+    dest=None,
+    managed_only: bool = True,
+    include_design: bool = False,
+) -> dict:
+    """Snapshot current CouchDB state → {db: [docs]}.
+
+    managed_only=True limits to the default-manifest collections (the ones a scenario
+    touches); False dumps every user database. If `dest` is given, the snapshot is also
+    written there: a directory gets one <db>.json per database, any other path gets a
+    single combined JSON file.
+    """
+    targets = all_databases() if managed_only else loader.list_databases()
+    state = {db: loader.export_database(db, include_design=include_design)
+             for db in targets}
+
+    if dest is not None:
+        if os.path.isdir(dest):
+            for db, docs in state.items():
+                with open(os.path.join(dest, f"{db}.json"), "w") as f:
+                    json.dump(docs, f, indent=2, sort_keys=True)
+        else:
+            with open(dest, "w") as f:
+                json.dump(state, f, indent=2, sort_keys=True)
+    return state
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -181,11 +206,20 @@ def main() -> None:
         action="store_true",
         help="With --reset/--reset-only: drop only the default-manifest collections.",
     )
+    p.add_argument("--export", metavar="DEST",
+                   help="Snapshot current CouchDB state to DEST (dir or .json file) and exit.")
+
     a = p.parse_args()
 
     if a.reset_only:
         for db in reset(managed_only=a.managed_only):
             print(f"dropped\t{db}")
+        return
+
+    if a.export:
+        state = export_state(dest=a.export, managed_only=a.managed_only)
+        for db, docs in state.items():
+            print(f"exported\t{db}\t{len(docs)}")
         return
 
     for key, (db, n) in init_data(

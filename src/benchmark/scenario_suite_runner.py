@@ -77,6 +77,16 @@ def scenario_dir_for_id(scenario_root: Path, scenario_id: str) -> Path:
     """Return the expected scenario folder path for a scenario id."""
     return scenario_root / f"scenario_{scenario_id}"
 
+def export_couchdb_state(scenario_id: str, scenario_root: Path,
+                         out_dir: Path, dry_run: bool) -> None:
+    env = os.environ.copy()
+    env["SCENARIOS_DATA_DIR"] = str(scenario_root)
+    dest = out_dir / f"couchdb_state_{scenario_id}.json"
+    cmd = [sys.executable, "src/couchdb/init_data.py", "--export", str(dest)]
+    print(" ".join(cmd))
+    if dry_run:
+        return
+    subprocess.run(cmd, check=True, cwd=str(REPO_ROOT), env=env)
 
 def read_question(scenario_root: Path, scenario_id: str) -> str:
     """Read question.txt for a scenario."""
@@ -360,6 +370,19 @@ def main() -> None:
                     trajectory_dir=trajectory_dir,
                     dry_run=args.dry_run,
                 )
+                # capture post-run state right after the agent finishes
+                try:
+                    export_couchdb_state(
+                        scenario_id=scenario_id,
+                        scenario_root=args.scenario_root,
+                        out_dir=trajectory_dir,           # or a dedicated states_root
+                        dry_run=args.dry_run,
+                    )
+                except Exception as exc:
+                    print(
+                        f"warning: state export failed for scenario {scenario_id}: {exc}",
+                        file=sys.stderr,
+                    )                
             except Exception as exc:
                 print(
                     f"error: scenario {scenario_id} failed for method {method.agent_name}: {exc}",
