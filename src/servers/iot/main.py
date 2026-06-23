@@ -244,21 +244,31 @@ def sites() -> SitesResult:
     `siteid` across asset profiles). Falls back to the default only if the registry has no assets."""
     return SitesResult(sites=known_sites())
 
-
 @mcp.tool(title="List Assets")
 def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
-    """Returns a list of assets for a given site. Each asset includes an id and a name."""
+    """Returns the assets registered at a given site, from the asset registry filtered by `siteid`.
+    Each returned id is the asset's telemetry id (`iot_asset_id`) where it has one, otherwise its
+    registry `assetnum` — so the id works with sensors()/history() when telemetry exists."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-
-    asset_list = get_asset_list()
-    return AssetsResult(
-        site_name=site_name,
-        total_assets=len(asset_list),
-        assets=asset_list,
-        message=f"found {len(asset_list)} asset ids for site_name {site_name}: {', '.join(asset_list)}.",
-    )
-
+    if not asset_db:
+        return ErrorResult(error="CouchDB not connected")
+    try:
+        res = asset_db.find(
+            {"doctype": "asset", "siteid": site_name},
+            fields=["assetnum", "iot_asset_id"],
+            limit=100000,
+        )
+        ids = sorted((d.get("iot_asset_id") or d["assetnum"]) for d in res["docs"])
+        return AssetsResult(
+            site_name=site_name,
+            total_assets=len(ids),
+            assets=ids,
+            message=f"found {len(ids)} assets at site {site_name}: {', '.join(ids)}.",
+        )
+    except Exception as e:
+        logger.error(f"assets failed: {e}")
+        return ErrorResult(error=str(e))
 
 @mcp.tool(title="List Sensors")
 def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
