@@ -99,6 +99,7 @@ class HistoryResult(BaseModel):
     observations: List[Dict[str, Any]]
     message: str
 
+
 # ── Asset-registry result models (identity / nameplate + installed sensor names) ──
 class AssetDetail(BaseModel):
     site_name: str
@@ -160,57 +161,63 @@ _sensor_list_cache: Dict[str, List[str]] = {}
 def get_sensor_list(asset_id: str) -> List[str]:
     """The sensors an asset actually measures = the UNION of measurement keys across ALL of the
     asset's reading documents.
- 
+
     IoT data may be sparse / non-uniform: different sensors are recorded at different timestamps
     (a timestamp may carry one sensor, several, or all), so a single document does NOT reveal the
     full measured set. We therefore scan every reading doc for the asset and union the non-metadata
     keys. Result is cached per asset_id after the first successful call."""
     if asset_id in _sensor_list_cache:
         return _sensor_list_cache[asset_id]
- 
+
     if not db:
         return []
- 
+
     try:
         res = db.find({"asset_id": asset_id}, limit=100000)
         docs = res["docs"]
         if not docs:
             return []
- 
+
         # Exclude metadata; union the measurement keys across every reading document.
         exclude = {"_id", "_rev", "asset_id", "timestamp"}
-        sensors = sorted({key for doc in docs for key in doc.keys() if key not in exclude})
+        sensors = sorted(
+            {key for doc in docs for key in doc.keys() if key not in exclude}
+        )
         _sensor_list_cache[asset_id] = sensors
         return sensors
     except Exception as e:
         logger.error(f"Error fetching sensors for {asset_id}: {e}")
         return []
 
+
 _asset_doc_cache: Dict[str, Dict[str, Any]] = {}
 
 
 def get_asset_doc(asset_id: str) -> Optional[Dict[str, Any]]:
-    """Helper to fetch one asset-registry document (doctype 'asset', _id 'asset:<assetnum>')
-    by assetnum. Cached per asset_id. The registry holds identity/nameplate + the INSTALLED
-    sensor inventory, separate from the telemetry reading docs."""
+    """Fetch one asset-registry document, resolving ANY of the asset's id spaces — the registry
+    `assetnum` (Maximo id), the telemetry `iot_asset_id`, or the work-order `wo_assetnum`. This lets
+    the same profile be found whether the caller holds the IoT id (e.g. 'Chiller 6') or the WO id
+    ('CHILLER6'). Cached per asset_id."""
     if asset_id in _asset_doc_cache:
         return _asset_doc_cache[asset_id]
     if not asset_db:
         return None
     try:
-        res = asset_db.find({"doctype": "asset", "assetnum": asset_id}, limit=1)
-        docs = res["docs"]
-        if not docs:
-            return None
-        _asset_doc_cache[asset_id] = docs[0]
-        return docs[0]
+        for field in ("assetnum", "iot_asset_id", "wo_assetnum"):
+            res = asset_db.find({"doctype": "asset", field: asset_id}, limit=1)
+            docs = res["docs"]
+            if docs:
+                _asset_doc_cache[asset_id] = docs[0]
+                return docs[0]
+        return None
     except Exception as e:
         logger.error(f"Error fetching asset doc {asset_id}: {e}")
         return None
 
+
 _registry_sites_cache: Optional[List[str]] = None
- 
- 
+
+
 def get_registry_sites() -> List[str]:
     """Distinct site ids present in the asset registry (from each asset profile's `siteid`). Cached."""
     global _registry_sites_cache
@@ -226,29 +233,33 @@ def get_registry_sites() -> List[str]:
     except Exception as e:
         logger.error(f"get_registry_sites failed: {e}")
         return []
- 
- 
+
+
 def known_sites() -> List[str]:
     """The server's site list — discovered DYNAMICALLY from the asset registry (each asset profile's
-    `siteid`). Falls back to DEFAULT_SITES only if the registry is empty / unavailable."""
+    `siteid`). Falls back to DEFAULT_SITES only if the registry is empty / unavailable.
+    """
     return get_registry_sites() or DEFAULT_SITES
- 
- 
+
+
 def _is_known_site(site_name: str) -> bool:
     return site_name in known_sites()
- 
+
 
 @mcp.tool(title="List Sites")
 def sites() -> SitesResult:
     """Retrieves the list of sites, discovered dynamically from the asset registry (the distinct
-    `siteid` across asset profiles). Falls back to the default only if the registry has no assets."""
+    `siteid` across asset profiles). Falls back to the default only if the registry has no assets.
+    """
     return SitesResult(sites=known_sites())
+
 
 @mcp.tool(title="List Assets")
 def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
     """Returns the assets registered at a given site, from the asset registry filtered by `siteid`.
     Each returned id is the asset's telemetry id (`iot_asset_id`) where it has one, otherwise its
-    registry `assetnum` — so the id works with sensors()/history() when telemetry exists."""
+    registry `assetnum` — so the id works with sensors()/history() when telemetry exists.
+    """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
@@ -269,6 +280,7 @@ def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
     except Exception as e:
         logger.error(f"assets failed: {e}")
         return ErrorResult(error=str(e))
+
 
 @mcp.tool(title="List Sensors")
 def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
@@ -335,6 +347,7 @@ def history(
         logger.error(f"CouchDB query failed: {e}")
         return ErrorResult(error=str(e))
 
+
 @mcp.tool(title="Get Asset")
 def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
     """Return registry/nameplate details for one asset (Maximo MXASSET-aligned: description,
@@ -364,7 +377,9 @@ def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
 
 
 @mcp.tool(title="List Asset Sensors")
-def asset_sensors(site_name: str, asset_id: str) -> Union[AssetSensorsResult, ErrorResult]:
+def asset_sensors(
+    site_name: str, asset_id: str
+) -> Union[AssetSensorsResult, ErrorResult]:
     """List the INSTALLED sensors for an asset, by name (installed is assumed). This is the registry
     inventory — distinct from sensors(), which lists only what actually streams (the MEASURED set).
     Compare the two to find installed-but-not-streaming sensors."""
@@ -426,7 +441,6 @@ def registry_assets(
     except Exception as e:
         logger.error(f"registry_assets failed: {e}")
         return ErrorResult(error=str(e))
-
 
 
 def main():
