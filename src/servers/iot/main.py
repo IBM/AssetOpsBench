@@ -359,6 +359,14 @@ def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
     if not doc:
         return ErrorResult(error=f"unknown asset_id {asset_id} in registry")
     n = len(doc.get("sensors", []))
+    parts = [f"asset {asset_id} is a {doc.get('assettype') or 'asset'}"]
+    if doc.get("vintage"):
+        parts.append(f"({doc['vintage']} vintage)")
+    if doc.get("location"):
+        parts.append(f"at {doc['location']}")
+    parts.append(f"with {n} installed sensors.")
+    msg = " ".join(parts)
+
     return AssetDetail(
         site_name=site_name,
         asset_id=doc.get("assetnum", asset_id),
@@ -369,10 +377,7 @@ def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
         installdate=doc.get("installdate"),
         vintage=doc.get("vintage"),
         n_sensors=n,
-        message=(
-            f"asset {asset_id} is a {doc.get('assettype')} "
-            f"({doc.get('vintage')} vintage) at {doc.get('location')} with {n} installed sensors."
-        ),
+        message=msg,
     )
 
 
