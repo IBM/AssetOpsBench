@@ -52,12 +52,13 @@ from .core.results_models import (
 )
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
 from .core.results_models import CardResult, LineageResult, DataQualityResult
+from .core.results_models import CharacterizeResult
 from .reasoning import dataquality as _dq
 from .io import refs
 from .stores import model_store, feature_store, results
 from .engine import composition, plan, evolve
 from .eval import gifteval
-from .reasoning import param_space, profile
+from .reasoning import param_space, profile, patterns
 
 load_dotenv()
 logging.basicConfig(
@@ -291,6 +292,38 @@ def select_features(
         )
     except Exception as exc:
         logger.error("select_features failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Characterize Series (pattern evidence)")
+def characterize_series(
+    dataset_path: str,
+    timestamp_column: Optional[str] = None,
+    channels: Optional[List[str]] = None,
+    groups: Optional[dict] = None,
+    group_rules: Optional[str] = None,
+) -> Union[CharacterizeResult, ErrorResult]:
+    """Describe the SHAPE of a series as structured EVIDENCE for an LLM to reason over (fault,
+    cause, RUL, work-order, …) — it never names a fault. Generic: any signals, any count, any
+    names. Per channel-group it labels a state (stable / rise / decline / spike / level_shift /
+    cessation / oscillation) + rate over changepoint phases, plus the bivariate relation
+    (decoupled / co_move / lead_lag) between groups. Grouping is optional and yours to choose:
+    pass groups={group:[channels]}, or group_rules (a preset name like 'vibration_temperature');
+    default is one group per channel. Reference-free (reads the series' own median/MAD scale)."""
+    if not dataset_path.strip():
+        return ErrorResult(error="dataset_path is required")
+    try:
+        obj = refs.load_series(dataset_path, time_col=timestamp_column, channels=channels)
+        frame = obj if isinstance(obj, pd.DataFrame) else obj.to_frame(
+            name=(channels[0] if channels else "value"))
+        ev = patterns.describe_series(frame, groups=groups, group_rules=group_rules)
+        evidence_file = refs.write_json(ev, name="pattern_evidence")
+        return CharacterizeResult(
+            status="success", summary=ev["summary"], n_observations=ev["n_observations"],
+            evidence_file=evidence_file, groups=ev["groups"], phases=ev["phases"],
+            message=f"Pattern evidence ({len(ev['phases'])} phase(s)). Full object at {evidence_file}.")
+    except Exception as exc:
+        logger.error("characterize_series failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 

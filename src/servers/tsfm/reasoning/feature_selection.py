@@ -341,6 +341,12 @@ EXTRACTORS.update({
     "quarter_mean_diff": lambda w: _safe(np.mean(np.asarray(w, float)[3 * (len(w)//4):]) - np.mean(np.asarray(w, float)[:len(w)//4])) if len(w) >= 4 else 0.0,
 })
 
+# flatline / cessation family — a machine going quiet shows up as a long constant run
+EXTRACTORS.update({
+    "longest_constant_run": lambda w: float(_longest_strike(np.abs(np.diff(np.asarray(w, float))) <= 1e-9)) if len(w) > 1 else float(len(w)),
+    "flatline_fraction": lambda w: _safe(_longest_strike(np.abs(np.diff(np.asarray(w, float))) <= 1e-9) / len(w)) if len(w) > 1 else 0.0,
+})
+
 
 # one-line descriptions per extractor — surfaced on the catalog card so the agent can select
 EXTRACTOR_DOC = {
@@ -435,6 +441,8 @@ EXTRACTOR_DOC = {
     "peak_psd_ratio": "Peak PSD / total PSD (spectral peakedness).",
     "diff_entropy": "Binned entropy of first differences.",
     "quarter_mean_diff": "Mean of last quarter minus first quarter (drift).",
+    "longest_constant_run": "Longest run of (near-)identical consecutive values (flatline length).",
+    "flatline_fraction": "Longest constant run as a fraction of length (cessation/quiet indicator).",
 }
 
 
