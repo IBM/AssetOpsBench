@@ -10,7 +10,8 @@ from ..main import mcp
 
 SURFACE = {
     "list_tasks", "discover_components", "describe_candidates", "find_models", "find_features",
-    "get_component", "profile_series", "select_features", "run_recipe", "run_tabular_recipe",
+    "get_component", "profile_series", "select_features", "characterize_series",
+    "run_recipe", "run_tabular_recipe",
     "run_plan", "evaluate", "data_quality", "register_model", "register_feature",
     "get_result", "list_results", "get_run", "list_runs",
 }

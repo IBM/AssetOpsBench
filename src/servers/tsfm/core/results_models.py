@@ -62,6 +62,17 @@ class FeatureSelectionResult(BaseModel):
     detail_file: str            # file pointer to the full per-scorer scores
 
 
+class CharacterizeResult(BaseModel):
+    """Pattern EVIDENCE for a series: per-group state+rate phases + bivariate relations + a
+    shape-only NL summary. Domain-agnostic; full structured evidence at evidence_file."""
+    model_config = ConfigDict(extra="allow")
+    status: str
+    summary: str                # shape-only NL description (never names a fault)
+    n_observations: int
+    evidence_file: str          # file pointer to the full pattern object
+    message: str
+
+
 # ---- compose + run (file pointers) ----
 class RecipeResult(BaseModel):
     """A recipe run. Forecasting carries metric+backtest_score; anomaly carries n_anomalies+
