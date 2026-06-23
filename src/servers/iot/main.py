@@ -385,6 +385,7 @@ def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
         message=message,
     )
 
+
 @mcp.tool(title="List Asset Sensors")
 def asset_sensors(
     site_name: str, asset_id: str
