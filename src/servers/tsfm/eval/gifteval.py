@@ -98,7 +98,7 @@ def evaluate_recipe(store, recipe: dict, configs: List[dict]) -> dict:
 
     config = {"name", "y", "fh", "sp"}. Normalized score = recipe_metric / seasonal_naive_metric
     (so <1 means 'beats seasonal naive', exactly GIFT-Eval's relative reporting)."""
-    from tsfm.engine import composition as C
+    from ..engine import composition as C
     bf = lambda r: C.build_forecaster(r, store)
     rows, n_mase, n_crps = [], [], []
     for cfg in configs:

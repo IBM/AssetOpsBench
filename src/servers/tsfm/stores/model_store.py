@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from tsfm.core import schemas
+from ..core import schemas
 
 COLLECTION = "model_catalog"
 

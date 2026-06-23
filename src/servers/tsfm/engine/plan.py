@@ -21,9 +21,9 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
-from tsfm.io import refs as io_refs
-from tsfm.engine import composition as C
-from tsfm.eval import gifteval as G
+from ..io import refs as io_refs
+from ..engine import composition as C
+from ..eval import gifteval as G
 
 
 def _now():
@@ -74,7 +74,7 @@ def run_plan(store, plan: dict, *, asset_id: str = "asset", scenario_id: str = N
 
         elif task == "anomaly":
             X = io_refs.load_series(args["data_ref"], channels=args.get("channels"))
-            from tsfm.substrate import resolver as R
+            from ..substrate import resolver as R
             det = R.resolve(s["recipe"]["estimator"])
             Xf = pd.DataFrame(np.asarray(X, float).reshape(len(X), -1))
             det.fit(Xf)

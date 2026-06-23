@@ -46,10 +46,10 @@ def _metric(name):
 
 def _resolve_estimator(spec: dict, store=None):
     """estimator spec → (name, sktime_estimator). spec: {name?, model_id?|sktime_class, params?}."""
-    from tsfm.substrate import resolver as R
+    from ..substrate import resolver as R
     name = spec.get("name") or spec.get("model_id") or spec.get("sktime_class", "est").split(".")[-1]
     if spec.get("model_id") and store is not None:
-        from tsfm.stores import model_store
+        from ..stores import model_store
         card = model_store.get_model(store, spec["model_id"])
         if not card:
             raise ValueError(f"model '{spec['model_id']}' not in catalog")
@@ -79,7 +79,7 @@ def build_forecaster(recipe: dict, store=None):
     transforms = recipe.get("transforms") or []
     if transforms:
         from sktime.forecasting.compose import TransformedTargetForecaster
-        from tsfm.substrate import resolver as R
+        from ..substrate import resolver as R
         steps = []
         for i, t in enumerate(transforms):
             steps.append((t.get("name", f"t{i}"), R.resolve(t)))
@@ -130,7 +130,7 @@ def _backtest_zero_shot(forecaster, y, recipe):
 def _recipe_regime(recipe, store) -> str:
     """Cheapest regime that covers the whole recipe: zero_shot only if every estimator is
     pretrained-zero-shot and no fine-tune is requested; else fit_on_series (or fine_tune)."""
-    from tsfm.substrate import resolver as R
+    from ..substrate import resolver as R
     if recipe.get("finetune"):
         return "fine_tune"
     specs = recipe["ensemble"]["members"] if "ensemble" in recipe else [recipe["estimator"]]
@@ -138,7 +138,7 @@ def _recipe_regime(recipe, store) -> str:
     for s in specs:
         card = s
         if s.get("model_id") and store is not None:
-            from tsfm.stores import model_store
+            from ..stores import model_store
             card = model_store.get_model(store, s["model_id"]) or s
         merged = {**card, "params": {**(card.get("params") or {}), **(s.get("params") or {})}}
         regimes.add(R.training_regime(merged))
@@ -147,12 +147,29 @@ def _recipe_regime(recipe, store) -> str:
     return "zero_shot" if regimes == {"zero_shot"} else "fit_on_series"
 
 
+def _validate_blocks(recipe: dict) -> dict:
+    """Validate any finetune/anomaly recipe blocks against param_space hints (non-fatal): the
+    audit is recorded so the agent's run-time choices are graded and bad values surface."""
+    from ..reasoning import param_space as PS
+    audit = {}
+    for block in ("finetune", "anomaly"):
+        if isinstance(recipe.get(block), dict):
+            audit[block] = PS.validate_block(block, recipe[block])
+    return audit
+
+
 def run_recipe(store, y, recipe: dict, *, asset_id: str = "asset",
                parent_run_id: Optional[str] = None, scenario_id: Optional[str] = None) -> dict:
-    """Compile → backtest → final forecast → per-member diagnostics → persist run (with lineage)."""
+    """Compile → backtest → final forecast → per-member diagnostics → persist run (with lineage).
+    Dispatches by recipe['task']: anomaly_detection routes to the detector path (run_anomaly);
+    everything else is forecasting."""
+    if recipe.get("task") == "tsfm_anomaly_detection":
+        return run_anomaly(store, y, recipe, asset_id=asset_id,
+                           parent_run_id=parent_run_id, scenario_id=scenario_id)
     y = pd.Series(np.asarray(y, float)) if not isinstance(y, pd.Series) else y
     fc = build_forecaster(recipe, store)
     regime = _recipe_regime(recipe, store)
+    block_audit = _validate_blocks(recipe)
     _bt = _backtest_zero_shot if regime == "zero_shot" else _backtest
     score, metric_name, folds = _bt(fc, y, recipe)
 
@@ -181,13 +198,16 @@ def run_recipe(store, y, recipe: dict, *, asset_id: str = "asset",
     rec = {"_id": run_id, "run_id": run_id, "parent_run_id": parent_run_id,
            "asset_id": asset_id, "scenario_id": scenario_id, "recipe": recipe,
            "training_regime": regime, "trained": regime != "zero_shot",
+           "block_audit": block_audit,
            "metric": metric_name, "backtest_score": round(score, 4), "folds": folds,
            "per_member_score": per_member, "forecast_head": forecast[:5],
            "prediction_interval": intervals, "created_at": _now()}
     if store is not None:
         store.put(RUNS, rec)
-    return {"run_id": run_id, "backtest_score": round(score, 4), "metric": metric_name,
+    return {"run_id": run_id, "task": "tsfm_forecasting",
+            "backtest_score": round(score, 4), "metric": metric_name,
             "training_regime": regime, "trained": regime != "zero_shot",
+            "block_audit": block_audit,
             "per_member_score": per_member, "forecast_head": forecast[:5],
             "prediction_interval": intervals, "parent_run_id": parent_run_id,
             "improved": (parent_run_id is not None and store is not None
@@ -205,7 +225,7 @@ def _as_panel(X):
 
 def _lib_features(X, subset=None):
     """Dependency-free 'FeatureUnion': apply the FLOps extractor library per instance/channel."""
-    from tsfm.reasoning import feature_selection as FS
+    from ..reasoning import feature_selection as FS
     names = [n for n in (subset or FS.EXTRACTORS) if n in FS.EXTRACTORS]
     Xp = _as_panel(X)
     cols, colnames = [], []
@@ -228,7 +248,7 @@ def _tabular_features(X, recipe, y=None):
     parts, names = [], []
     for t in transforms:
         if t.get("flops_select"):
-            from tsfm.reasoning import feature_selection as FS
+            from ..reasoning import feature_selection as FS
             F, nm = _lib_features(X)
             if y is not None:
                 keep = _flops_columns(F, np.asarray(y), nm, t.get("flops_select"))
@@ -238,7 +258,7 @@ def _tabular_features(X, recipe, y=None):
         elif t.get("extractors"):
             F, nm = _lib_features(X, t["extractors"]); parts.append(F); names += nm
         elif t.get("sktime_class"):
-            from tsfm.substrate import resolver as R
+            from ..substrate import resolver as R
             tr = R.resolve(t)
             Ft = np.nan_to_num(np.asarray(tr.fit_transform(_as_panel(X))).reshape(len(X), -1))
             parts.append(Ft)
@@ -249,7 +269,7 @@ def _tabular_features(X, recipe, y=None):
 
 def _flops_columns(F, y, names, cfg):
     """Reuse the v2 multi-config scorers to select tabular feature COLUMNS by relevance to y."""
-    from tsfm.reasoning import feature_selection as FS
+    from ..reasoning import feature_selection as FS
     scorers = (cfg.get("scorers") if isinstance(cfg, dict) else None) or ["corr", "f_test", "mutual_info", "model"]
     use = [s for s in scorers if s in FS._SCORERS] or ["corr"]
     ranks = np.zeros(len(names))
@@ -268,7 +288,7 @@ def run_tabular_recipe(store, X, recipe: dict, *, y=None, asset_id: str = "asset
     """Series→tabular run path: FeatureUnion(extractors) → estimator, for regression /
     classification / clustering. CV-scored (supervised) or silhouette (clustering). Same recipe
     grammar + persistence + lineage as forecasting; the agent mixes-and-matches features here too."""
-    from tsfm.substrate import resolver as R
+    from ..substrate import resolver as R
     from sklearn.model_selection import cross_val_score
     task = recipe.get("task", "tsfm_classification")
     F, feat_names = _tabular_features(X, recipe, y)
@@ -307,10 +327,115 @@ def run_tabular_recipe(store, X, recipe: dict, *, y=None, asset_id: str = "asset
             "predictions_head": preds, "training_regime": regime, "parent_run_id": parent_run_id}
 
 
+def _anomaly_labels(pred, n: int):
+    """Normalize an sktime detector's predict() to a dense 0/1 label vector + anomaly indices.
+    sktime detection returns either anomaly POSITIONS (a DataFrame/array of ilocs) or a dense
+    0/1(-1) series — handle both."""
+    arr = np.asarray(getattr(pred, "values", pred)).ravel()
+    labels = np.zeros(n, dtype=int)
+    uniq = set(np.unique(arr).tolist()) if arr.size else set()
+    if arr.size == n and uniq.issubset({0, 1, -1}):          # dense labels
+        labels = (arr != 0).astype(int)
+    else:                                                    # anomaly positions
+        idx = arr[(arr >= 0) & (arr < n)].astype(int)
+        labels[idx] = 1
+    return labels, np.where(labels == 1)[0].tolist()
+
+
+def _conformal_ad(store, y, recipe: dict, *, asset_id, parent_run_id, scenario_id) -> dict:
+    """Prediction-based AD with CONFORMAL intervals: fit a forecaster + sktime ConformalIntervals
+    on the history, predict a calibrated band over the recent window, flag points whose actual
+    value falls OUTSIDE the band as anomalies. The forecaster is any catalog card (zero-shot TTM,
+    classical, …); coverage = recipe.conformal.coverage (false-alarm = 1 − coverage)."""
+    from ..substrate import resolver as R
+    from sktime.forecasting.conformal import ConformalIntervals
+    y = pd.Series(np.asarray(y, float)) if not isinstance(y, pd.Series) else y
+    spec = recipe.get("estimator")
+    if not spec:
+        raise ValueError("conformal AD needs an 'estimator' (a forecaster card)")
+    card = spec
+    if spec.get("model_id") and store is not None:
+        card = model_store_get(store, spec["model_id"]) or spec
+    merged = {**card, "params": {**(card.get("params") or {}), **(spec.get("params") or {})}}
+    regime = R.training_regime(merged)
+    coverage = float((recipe.get("conformal") or {}).get("coverage", 0.9))
+    fh = recipe.get("fh") or list(range(1, max(2, len(y) // 5) + 1))      # recent window to screen
+    H = len(fh)
+    y_train, y_test = y.iloc[:-H], y.iloc[-H:]
+
+    ci = ConformalIntervals(R.resolve(merged))
+    ci.fit(y_train, fh=fh)
+    pi = ci.predict_interval(coverage=coverage)
+    low = np.asarray(pi.iloc[:, 0])[:H]
+    high = np.asarray(pi.iloc[:, 1])[:H]
+    actual = np.asarray(y_test)[:H]
+    out = (actual < low) | (actual > high)
+    labels = np.zeros(len(y), dtype=int)
+    labels[len(y) - H:][out] = 1
+    indices = np.where(labels == 1)[0].tolist()
+    n_anom = int(labels.sum())
+
+    run_id = f"run:{uuid.uuid4().hex[:10]}"
+    rec = {"_id": run_id, "run_id": run_id, "parent_run_id": parent_run_id, "asset_id": asset_id,
+           "scenario_id": scenario_id, "task": "tsfm_anomaly_detection", "method": "conformal",
+           "recipe": recipe, "training_regime": regime, "coverage": coverage,
+           "n_anomalies": n_anom, "n_observations": len(y), "anomaly_indices": indices[:200],
+           "created_at": _now()}
+    if store is not None:
+        store.put(RUNS, rec)
+    return {"run_id": run_id, "task": "tsfm_anomaly_detection", "method": "conformal",
+            "n_anomalies": n_anom, "n_observations": len(y), "anomaly_indices_head": indices[:20],
+            "labels": labels.tolist(), "training_regime": regime, "coverage": coverage,
+            "parent_run_id": parent_run_id}
+
+
+def run_anomaly(store, y, recipe: dict, *, asset_id: str = "asset",
+                parent_run_id: Optional[str] = None, scenario_id: Optional[str] = None) -> dict:
+    """Anomaly run path. method='detector' (default): a detector card → fit → predict → dense
+    labels (TSPulse zero-shot, SubLOF, PyOD). method='conformal': prediction-based AD — a
+    forecaster + sktime ConformalIntervals → flag out-of-band points."""
+    if recipe.get("method") == "conformal":
+        return _conformal_ad(store, y, recipe, asset_id=asset_id,
+                             parent_run_id=parent_run_id, scenario_id=scenario_id)
+    from ..substrate import resolver as R
+    y = pd.Series(np.asarray(y, float)) if not isinstance(y, pd.Series) else y
+    spec = recipe.get("estimator") or recipe.get("detector")
+    if not spec:
+        raise ValueError("anomaly recipe needs an 'estimator' (a detector card)")
+    card = spec
+    if spec.get("model_id") and store is not None:
+        card = model_store_get(store, spec["model_id"]) or spec
+    merged = {**card, "params": {**(card.get("params") or {}), **(spec.get("params") or {})}}
+    regime = R.training_regime(merged)
+    block_audit = _validate_blocks(recipe)
+
+    det = R.resolve(merged)
+    det.fit(y)
+    labels, indices = _anomaly_labels(det.predict(y), len(y))
+    n_anom = int(labels.sum())
+
+    run_id = f"run:{uuid.uuid4().hex[:10]}"
+    rec = {"_id": run_id, "run_id": run_id, "parent_run_id": parent_run_id, "asset_id": asset_id,
+           "scenario_id": scenario_id, "task": "tsfm_anomaly_detection", "recipe": recipe,
+           "training_regime": regime, "trained": regime != "zero_shot", "block_audit": block_audit,
+           "n_anomalies": n_anom, "n_observations": len(y), "anomaly_indices": indices[:200],
+           "created_at": _now()}
+    if store is not None:
+        store.put(RUNS, rec)
+    return {"run_id": run_id, "task": "tsfm_anomaly_detection", "n_anomalies": n_anom,
+            "n_observations": len(y), "anomaly_indices_head": indices[:20], "labels": labels.tolist(),
+            "training_regime": regime, "block_audit": block_audit, "parent_run_id": parent_run_id}
+
+
+def model_store_get(store, model_id):
+    from ..stores import model_store
+    return model_store.get_model(store, model_id)
+
+
 def discover_components(store=None, task: str = "tsfm_forecasting") -> dict:
     """Everything the agent can mix-and-match for a task — including the TRAINING REGIME of each
     option, so the agent can reason cost vs. benefit and prefer zero-shot (no training) first."""
-    from tsfm.substrate import resolver as R
+    from ..substrate import resolver as R
     fnd = R.foundation_forecasters()
     out = {"task": task, "scitype": R.TASK_TO_SCITYPE.get(task),
            "models_installed": R.discover(R.TASK_TO_SCITYPE.get(task, "forecaster"))[:50],
@@ -327,9 +452,17 @@ def discover_components(store=None, task: str = "tsfm_forecasting") -> dict:
                "fine_tune": "OPTIONAL escalation: adapt a foundation model on the data (pass "
                             "fine-tune params or recipe.finetune) — most expensive, rarely needed"},
            "regime_hint": "try zero_shot first; escalate to fine_tune only if evaluate() warrants"}
+    from ..reasoning import param_space as PS
+    out["recipe_blocks"] = {                                # run-time params the agent reasons
+        "finetune": PS.FINETUNE_HINTS, "anomaly": PS.ANOMALY_HINTS}
+    from ..core import glossary as _glossary               # teach the vocabulary inline
+    g = _glossary.glossary()
+    out["glossary"] = g["terms"]
+    out["workflow"] = g["workflow"]
+    out["principles"] = g["principles"]
     if store is not None:
-        from tsfm.stores import model_store
-        from tsfm.stores import feature_store
+        from ..stores import model_store
+        from ..stores import feature_store
         models = model_store.list_models(store, task_id=task)
         out["catalog_models"] = [
             {"model_id": m["model_id"], "training_regime": R.training_regime(m)} for m in models]

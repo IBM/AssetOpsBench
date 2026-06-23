@@ -5,17 +5,16 @@ Layered package:
   substrate/  resolver                       — sktime as the execution substrate
   stores/     model_store, feature_store,    — catalog = pointer index (models/features as data)
               results
-  reasoning/  profile, param_space, scoring, — evidence the agent reasons from + grading
-              selection (T-Daub), feature_selection (FLOps)
+  reasoning/  profile, param_space,          — evidence the agent reasons from
+              feature_selection (FLOps)
   engine/     composition, plan,             — the recipe engine (the pipeline is composed)
-              feature_runner
+              feature_runner, evolve
   eval/       gifteval                       — GIFT-Eval scoring + leaderboard
   io/         refs (file pointers), window   — data I/O
-  server.py   the MCP tool surface           — config.py  the env knobs
-  legacy/     pre-sktime modules (reference only)
+  main.py     the MCP tool surface           — config.py  the env knobs
 
 Design: models & features are DATA (catalog cards), not tools; the agent composes recipes and
-reasons every parameter; the server provides evidence + grades. See docs/STRUCTURE.md.
+reasons every parameter; the server provides evidence. See docs/STRUCTURE.md.
 """
 
 __all__ = ["core", "substrate", "stores", "reasoning", "engine", "eval", "io",

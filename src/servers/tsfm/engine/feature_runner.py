@@ -73,7 +73,7 @@ def validate_and_run(doc: dict, X_fit, X_in, metadata: Optional[dict] = None) ->
     if state is None:
         state = getattr(inst, "state_", inst)
 
-    out = inst.transform(copy.deepcopy(X_in) if False else X_in, state)
+    out = inst.transform(X_in, state)
     checks["no_inplace"] = _no_inplace(X_in, out)
 
     # invertibility round-trip when declared and supported

@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from tsfm.core import schemas
+from ..core import schemas
 
 COLLECTION = "feature_catalog"
 
@@ -118,7 +118,7 @@ def register_feature(store, feature: dict, *, overwrite: bool = False) -> dict:
     """Schema-validate, then run the EFE validity gate (entry points / no-inplace /
     invertibility) before accepting."""
     doc = schemas.validate_feature(feature)
-    from tsfm.engine import feature_runner as fr
+    from ..engine import feature_runner as fr
     import numpy as np
 
     X = np.random.RandomState(0).normal(0, 1, size=(40, 3))
@@ -195,10 +195,12 @@ _EXTRACTOR_CATEGORIES = {
 
 
 def register_extractor(store, name: str, scenario_categories: List[str]) -> dict:
+    from ..reasoning import feature_selection as fsel
     doc = {
         "_id": _id(name),
         "feature_id": name,
         "name": f"FLOps extractor: {name}",
+        "description": fsel.describe(name),
         "kind": "extractor",
         "extractor_name": name,
         "modality": "timeseries",
@@ -218,7 +220,7 @@ def register_extractor(store, name: str, scenario_categories: List[str]) -> dict
 
 
 def register_extractor_library(store) -> int:
-    from tsfm.reasoning import feature_selection as fsel
+    from ..reasoning import feature_selection as fsel
 
     n = 0
     for name in fsel.EXTRACTORS:
@@ -236,7 +238,7 @@ def select_features(
     series, *, reference_feature: str = "mean", lookback=None, cd_margin=0.05
 ):
     """FLOps over the full library (no store needed) — backward-compatible."""
-    from tsfm.reasoning import feature_selection as fsel
+    from ..reasoning import feature_selection as fsel
 
     return fsel.select_features(
         series,
@@ -257,7 +259,7 @@ def select_features_from_catalog(
 ) -> dict:
     """FLOps restricted to the catalog's extractors for `category`; optionally write the
     importance score back onto each extractor doc's metrics (the catalog 'learns')."""
-    from tsfm.reasoning import feature_selection as fsel
+    from ..reasoning import feature_selection as fsel
 
     cands = list_extractors(store, category=category)
     names = [
@@ -291,6 +293,6 @@ def select_features_from_catalog(
 
 
 def discover_lookback(series, max_lw: int = 128) -> int:
-    from tsfm.reasoning import feature_selection as fsel
+    from ..reasoning import feature_selection as fsel
 
     return fsel.discover_lookback(series, max_lw=max_lw)

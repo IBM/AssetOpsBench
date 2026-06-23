@@ -5,7 +5,7 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import numpy as np
-from tsfm.engine import composition as C
+from ..engine import composition as C
 
 
 def _two_class_panel(n=40, T=60, seed=0):
@@ -26,7 +26,7 @@ def test_classification_default_library():
                        "params": {"n_estimators": 60, "random_state": 0}}},
         y=y)
     assert r["metric"] == "accuracy" and r["cv_score"] > 0.8
-    assert r["n_features"] == 15 and r["training_regime"] == "fit_on_series"
+    assert r["n_features"] >= 100 and r["training_regime"] == "fit_on_series"  # full FLOps library
 
 
 def test_regression_with_explicit_extractors():

@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import os
 
-# storage backend
-STORE_BACKEND = os.environ.get("TSFM_STORE", "memory")          # "memory" | "couch"
-COUCH_URL = os.environ.get("TSFM_COUCH_URL", "http://localhost:5984")
+# storage backend — CouchDB by default, exactly like the other AssetOpsBench servers
+STORE_BACKEND = os.environ.get("TSFM_STORE", "couch")           # "couch" (default) | "memory" (tests)
+COUCH_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")
 COUCH_AUTH = os.environ.get("TSFM_COUCH_AUTH")                   # "user:password" | None
 
 # file-pointer working dir (IoT CSVs the agent passes in/out)

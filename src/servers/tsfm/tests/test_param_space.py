@@ -4,7 +4,7 @@ import os, sys, warnings
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from tsfm.reasoning import param_space as PS
+from ..reasoning import param_space as PS
 
 NAIVE = {"model_id": "naive", "sktime_class": "sktime.forecasting.naive.NaiveForecaster"}
 

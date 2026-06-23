@@ -1,36 +1,39 @@
-"""Smoke test for the MCP tool surface — it builds and exposes the expected tools."""
+"""Smoke test for the MCP tool surface — main.py builds and exposes both groups."""
 
-import os, sys, asyncio, warnings
+import asyncio, warnings
 warnings.filterwarnings("ignore")
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import pytest
 
-mcp_lib = pytest.importorskip("mcp")          # skip cleanly if mcp isn't installed
-from tsfm.server import build_server
+pytest.importorskip("mcp")          # skip cleanly if mcp isn't installed
+from ..main import mcp
 
-EXPECTED = {
+SURFACE = {
     "list_tasks", "discover_components", "describe_candidates", "find_models", "find_features",
     "get_component", "profile_series", "select_features", "run_recipe", "run_tabular_recipe",
-    "run_plan", "evaluate", "finetune", "register_model", "register_feature",
+    "run_plan", "evaluate", "data_quality", "register_model", "register_feature",
     "get_result", "list_results", "get_run", "list_runs",
 }
 
 
-def _tool_names():
-    mcp = build_server()
-    tools = asyncio.run(mcp.list_tools())
-    return {t.name for t in tools}
+def _names():
+    return {t.name for t in asyncio.run(mcp.list_tools())}
 
 
-def test_server_builds_and_registers_surface():
-    names = _tool_names()
-    assert len(names) >= 16
-    missing = EXPECTED - names
+def test_surface_present():
+    names = _names()
+    missing = SURFACE - names
     assert not missing, f"missing tools: {missing}"
 
 
+def test_no_legacy_compat_tools():
+    names = _names()
+    gone = {"run_tsfm_forecasting", "run_tsfm_finetuning", "run_tsad", "run_integrated_tsad",
+            "get_ai_tasks", "get_tsfm_models"}
+    assert not (gone & names), f"legacy tools should be removed: {gone & names}"
+
+
 def test_core_recipe_tools_present():
-    names = _tool_names()
+    names = _names()
     for t in ["run_recipe", "run_tabular_recipe", "run_plan", "evaluate", "discover_components"]:
         assert t in names

@@ -7,10 +7,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 import numpy as np
 import pytest
 
-from tsfm.core.store import MemoryStore
-from tsfm.bootstrap import fresh_store, load_seeds
-from tsfm.stores import model_store as ms
-from tsfm.stores import feature_store as fs
+from ..core.store import MemoryStore
+from ..bootstrap import fresh_store, load_seeds
+from ..stores import model_store as ms
+from ..stores import feature_store as fs
+from ..reasoning import feature_selection as _fsel
 
 
 # ---------------- model store ----------------
@@ -101,8 +102,7 @@ def test_flops_select_from_catalog_writeback():
     sig = np.sin(2 * np.pi * np.arange(800) / 24) + 0.02 * np.arange(800)
     res = fs.select_features_from_catalog(s, sig, category="Future State Prediction",
                                           reference_feature="kurtosis", write_back=True)
-    assert res["selected"] and set(res["candidates"]) <= set(__import__("tsfm.reasoning.feature_selection",
-                                   fromlist=["x"]).EXTRACTORS)
+    assert res["selected"] and set(res["candidates"]) <= set(_fsel.EXTRACTORS)
     # importance written back onto an extractor doc
     e = fs.get_feature(s, res["candidates"][0])
     assert any(m["metric"] == "flops_importance" for m in e.get("metrics", []))
