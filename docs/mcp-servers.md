@@ -59,7 +59,7 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 
 **Path:** `src/servers/wo/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`)
-**Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on every start — database is dropped and reloaded each time)
+**Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on every start — database is dropped and reloaded each time). If a tool returns `{"error": "..._not_available"}`, the seeding step didn't run — restart the CouchDB container.
 
 Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-centric**. Tools are registered centrally in `main.py`; set `AOB_READONLY=1` to expose only the read tools (8). The default exposes all 14 (8 read + 6 write).
 
@@ -141,3 +141,25 @@ uv run vibration-mcp-server
 ```
 
 They speak MCP over stdio, so they're idle until a client connects on stdin.
+
+## Inspecting a server directly
+
+To list the tools / resources / prompts a server exposes (and try a tool call) without writing client code:
+
+**Option 1 — the MCP Inspector UI:**
+
+```bash
+npx @modelcontextprotocol/inspector uv run iot-mcp-server
+```
+
+**Option 2 — Claude Code or another MCP client:** copy `.mcp.json.example` at the repo root to `.mcp.json` and the client will launch all six servers as stdio subprocesses. The example file points to the `<name>-mcp-server` console scripts installed by `uv sync`.
+
+**Option 3 — raw stdio JSON-RPC** (useful in scripts/CI):
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | uv run iot-mcp-server
+```
