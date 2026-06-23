@@ -359,27 +359,31 @@ def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
     if not doc:
         return ErrorResult(error=f"unknown asset_id {asset_id} in registry")
     n = len(doc.get("sensors", []))
-    parts = [f"asset {asset_id} is a {doc.get('assettype') or 'asset'}"]
-    if doc.get("vintage"):
-        parts.append(f"({doc['vintage']} vintage)")
-    if doc.get("location"):
-        parts.append(f"at {doc['location']}")
-    parts.append(f"with {n} installed sensors.")
-    msg = " ".join(parts)
+    assettype = doc.get("assettype")
+    vintage = doc.get("vintage")
+    location = doc.get("location")
+
+    # Build a human message that omits clauses whose fields are null.
+    parts = [f"asset {asset_id} is a {assettype or 'asset'}"]
+    if vintage:
+        parts.append(f" ({vintage} vintage)")
+    if location:
+        parts.append(f" at {location}")
+    parts.append(f" with {n} installed sensors.")
+    message = "".join(parts)
 
     return AssetDetail(
         site_name=site_name,
         asset_id=doc.get("assetnum", asset_id),
         description=doc.get("description"),
-        assettype=doc.get("assettype"),
+        assettype=assettype,
         status=doc.get("status"),
-        location=doc.get("location"),
+        location=location,
         installdate=doc.get("installdate"),
-        vintage=doc.get("vintage"),
+        vintage=vintage,
         n_sensors=n,
-        message=msg,
+        message=message,
     )
-
 
 @mcp.tool(title="List Asset Sensors")
 def asset_sensors(
