@@ -9,7 +9,7 @@ matching the sibling AssetOpsBench servers.
 - **bulk data is a FILE POINTER** — `dataset_path` in, `results_file` (a `file://` pointer) out;
 - models & features are **catalog data**, not tools (HuggingGPT principle).
 
-## 35 tools, one sktime-native surface (no legacy)
+## 36 tools, one sktime-native surface (no legacy)
 
 Forecasting **and** anomaly both run through `run_recipe` (anomaly via `recipe.task` +
 `recipe.method`); there is no separate anomaly tool and no `tsfm_public`-specific compat layer.
@@ -26,6 +26,7 @@ Forecasting **and** anomaly both run through `run_recipe` (anomaly via `recipe.t
 | 6 | `get_component(component_id)` | ComponentResult | card (+ `param_schema` for models) |
 | 7 | `profile_series(dataset_path, …)` | ProfileResult | evidence only (seasonality/stationarity/channels) |
 | 8 | `select_features(dataset_path, …)` | FeatureSelectionResult | FLOps multi-config; `detail_file` pointer |
+| 8b | `characterize_series(dataset_path, …, groups?, group_rules?)` | CharacterizeResult | **pattern EVIDENCE** (shape only, no fault): per-group state+rate over changepoint phases + bivariate relation (decoupled/co_move/lead_lag). Generic; grouping opt-in. |
 | 9 | `run_recipe(dataset_path, timestamp_column, target_columns, recipe, …)` | RecipeResult | **forecasting** (default) OR **anomaly** (`recipe.task=tsfm_anomaly_detection`: `method=detector` for TSPulse/SubLOF, `method=conformal` for prediction-based AD) → `results_file` |
 | 10 | `run_tabular_recipe(dataset_path, recipe, label_column?)` | TabularResult | regression/classification/clustering: FeatureUnion → estimator |
 | 11 | `run_plan(plan_spec, …)` | PlanResult | recipe DAG, file-pointer chaining |
