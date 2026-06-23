@@ -60,7 +60,8 @@ src/couchdb/
     └── shared/                data common to many scenarios
         ├── work_order/workorders.csv
         ├── iot/*.json
-        └── failure_code/failure_code_sample.csv
+        ├── failure_code/failure_code_sample.csv
+        └── tsfm/*.csv
 ```
 
 A scenario folder is fully self-contained: its `manifest.json`, its prompt, and any data

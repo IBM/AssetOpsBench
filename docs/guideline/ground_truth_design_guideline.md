@@ -1335,7 +1335,7 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
         "start": "2020-04-27T00:00:00Z",
         "final": "2020-05-03T23:59:59Z",
         "save_series_csv": true,
-        "save_path": "data/raw/iot/main/chiller_9_condenser_water_flow_2020-04-27_to_2020-05-03.csv"
+        "save_path": "shared/tsfm/chiller9_annotated_small_test.csv"
       },
       "outputs": {
         "status": "failure",
@@ -1356,28 +1356,30 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
         "start": "2020-04-27T00:00:00Z",
         "final": "2020-05-03T23:59:59Z",
         "save_series_csv": true,
-        "save_path": "data/raw/iot/main/chiller_9_condenser_water_flow_2020-04-27_to_2020-05-03.csv"
+        "save_path": "shared/tsfm/chiller9_annotated_small_test.csv"
       },
       "outputs": {
         "status": "success",
-        "rows": 581,
-        "sampling_hint": "irregular/partial (expected ~672 @ 15min)",
-        "csv_path": "data/raw/iot/main/chiller_9_condenser_water_flow_2020-04-27_to_2020-05-03.csv",
+        "rows": 192,
+        "sampling_hint": "regular @ 15min",
+        "csv_path": "shared/tsfm/chiller9_annotated_small_test.csv",
         "message": "Series retrieved and saved to CSV."
       },
       "deterministic": {"name": false, "action": false, "arguments": false, "outputs": false}
     },
     {
-      "name": "jsonreader",
-      "agent": "IoTAgent",
-      "action": "DirectFileRead_Attempt",
+      "name": "csvreader",
+      "agent": "TSFMAgent",
+      "action": "LoadCSV_FromCouchDB",
       "arguments": {
-        "file_name": "chiller9_condenser_water_flow_MAIN_2020-04-27.json"
+        "collection": "tsfm",
+        "file": "chiller9_annotated_small_test.csv"
       },
       "outputs": {
-        "status": "failure",
-        "error": "[Errno 2] No such file or directory: 'chiller9_condenser_water_flow_MAIN_2020-04-27.json'",
-        "message": "Direct JSON read failed; proceed with CSV path from history step."
+        "status": "success",
+        "rows": 192,
+        "columns": ["Timestamp", "Chiller_9_Condenser_Water_Flow"],
+        "message": "CSV loaded from CouchDB tsfm collection."
       },
       "deterministic": {"name": false, "action": false, "arguments": false, "outputs": false}
     },
@@ -1404,9 +1406,9 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
       "agent": "TSFMAgent",
       "action": "RunForecast_ttm_96_28_WithCorrectArgs",
       "arguments": {
-        "input_csv": "data/raw/iot/main/chiller_9_condenser_water_flow_2020-04-27_to_2020-05-03.csv",
-        "timestamp_col": "timestamp",
-        "value_col": "value",
+        "input_csv": "shared/tsfm/chiller9_annotated_small_test.csv",
+        "timestamp_col": "Timestamp",
+        "value_col": "Chiller_9_Condenser_Water_Flow",
         "window_start": "2020-04-27T00:00:00Z",
         "window_end": "2020-05-03T23:59:59Z",
         "checkpoint": "ttm_96_28",
@@ -1429,7 +1431,7 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
       "action": "Finish",
       "arguments": {
         "validation_checks": [
-          "exists:data/raw/iot/main/chiller_9_condenser_water_flow_2020-04-27_to_2020-05-03.csv",
+          "exists:shared/tsfm/chiller9_annotated_small_test.csv",
           "exists:data/derived/forecast/chiller_9/condenser_water_flow/forecast_2020-04-27_to_2020-05-03_ttm_96_28.json"
         ],
         "summary_request": "Confirm variable binding, input read, forecast span, row counts, and artifact paths. Note prior failure remediation (assetnum correction; correct TSFM input schema)."

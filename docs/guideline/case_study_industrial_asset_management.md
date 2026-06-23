@@ -156,15 +156,15 @@ This section shows how the generic categories from the [main guideline](utteranc
 
 **Forecasting Queries**:
 - "What is the forecast for 'Chiller 9 Condenser Water Flow' in the week of 2020-04-27?"
-- "Forecast 'Chiller 9 Condenser Water Flow' using data in 'chiller9_annotated_small_test.csv'."
-- "Use data in 'chiller9_annotated_small_test.csv' to forecast with 'Timestamp' as a timestamp."
+- "Forecast 'Chiller 9 Condenser Water Flow' using data from CouchDB collection 'tsfm' with file 'chiller9_annotated_small_test.csv'."
+- "Use data from CouchDB collection 'tsfm' with file 'chiller9_annotated_small_test.csv' to forecast with 'Timestamp' as a timestamp."
 
 **Model Fine-tuning**:
-- "Finetune a forecasting model for 'Chiller 9 Condenser Water Flow' using data in 'chiller9_finetuning_small.csv'."
+- "Finetune a forecasting model for 'Chiller 9 Condenser Water Flow' using data from CouchDB collection 'tsfm' with file 'chiller9_finetuning_small.csv'."
 
 #### Anomaly Detection Examples
 
-- "I need to perform Time Series anomaly detection of 'Chiller 9 Condenser Water Flow' using data in chiller9_tsad.csv."
+- "I need to perform Time Series anomaly detection of 'Chiller 9 Condenser Water Flow' using data from CouchDB collection 'tsfm' with file 'chiller9_tsad.csv'."
 - "Is there any anomaly detected in Chiller 6's Tonnage in the week of 2020-04-27?"
 
 #### Failure Prediction Examples
@@ -383,14 +383,14 @@ Each utterance should follow this enhanced schema with 9 required fields in this
 ```json
 {
   "id": 217,
-  "text": "Forecast 'Chiller 9 Condenser Water Flow' using data in 'chiller9_annotated_small_test.csv'. Use parameter 'Timestamp' as a timestamp.",
+  "text": "Forecast 'Chiller 9 Condenser Water Flow' using data from CouchDB collection 'tsfm' with file 'chiller9_annotated_small_test.csv'. Use parameter 'Timestamp' as a timestamp.",
   "type": "TSFM",
   "category": "Inference Query",
   "deterministic": true,
-  "characteristic_form": "The expected response should be: Forecasting results of 'Chiller 9 Condenser Water Flow' using data in 'chiller9_annotated_small_test.csv' are stored in json file",
+  "characteristic_form": "The expected response should be: Forecasting results of 'Chiller 9 Condenser Water Flow' using data from CouchDB collection 'tsfm' with file 'chiller9_annotated_small_test.csv' are stored in json file",
   "group": "predictive",
   "entity": "Chiller",
-  "note": "Source: Predictive maintenance initiative; Owner: Data Science Team; Requires time series forecasting model; Implementation: Uses TSFM framework with timestamp parameter"
+  "note": "Source: Predictive maintenance initiative; Owner: Data Science Team; Requires time series forecasting model; Implementation: Uses TSFM framework with timestamp parameter; Data loaded from CouchDB tsfm collection"
 }
 ```
 
