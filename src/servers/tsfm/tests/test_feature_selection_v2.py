@@ -5,7 +5,7 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import numpy as np
-from tsfm.reasoning import feature_selection as F
+from ..reasoning import feature_selection as F
 
 
 def _signal(n=400):
@@ -36,6 +36,7 @@ def test_aggregation_is_robust_vs_single_scorer():
     """A feature top-ranked by the aggregate should rank well under >1 scorer, not just one."""
     r = F.select_features(_signal(), reference_feature="mean")
     top = r["ranking"][0][0]
+    k = max(5, len(r["scores"]) // 5)               # top-quintile (scales with library size)
     good = sum(1 for s in r["scorers"]
-               if sorted(r["per_scorer"][s], key=r["per_scorer"][s].get, reverse=True)[:5].count(top))
-    assert good >= 2  # appears in the top-5 of at least two scorers
+               if top in sorted(r["per_scorer"][s], key=r["per_scorer"][s].get, reverse=True)[:k])
+    assert good >= 2  # the aggregate top-ranked feature ranks well under >=2 scorers

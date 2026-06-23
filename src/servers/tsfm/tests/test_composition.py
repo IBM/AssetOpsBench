@@ -5,8 +5,8 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import numpy as np, pandas as pd
-from tsfm.core.store import MemoryStore
-from tsfm.engine import composition as C
+from ..core.store import MemoryStore
+from ..engine import composition as C
 
 NF = "sktime.forecasting.naive.NaiveForecaster"
 _Y = pd.Series(np.sin(np.arange(160) / 4.0) + 0.03 * np.arange(160))

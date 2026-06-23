@@ -22,17 +22,16 @@ tsfm_server/
     feature_store.py     find/register + FLOps select + EFE register (validity-gated)
     results.py           per-task result tables (write_result / get / list)
 
-  reasoning/             evidence the agent reasons from + grading (server decides nothing)
+  reasoning/             evidence the agent reasons from (server decides nothing)
     profile.py           profile_series — facts only (seasonality, stationarity, channels)
     param_space.py       per-model param schema + reasoning hints + validate_params
-    scoring.py           grade the agent's choices (benchmark-only)
-    selection.py         T-Daub budgeted model selection
     feature_selection.py FLOps multi-config selection (|corr|+F-test+MI+model, mean-rank, CD)
 
   engine/                the recipe engine (the pipeline is composed, not fixed)
-    composition.py       run_recipe (forecast) + run_tabular_recipe + discover_components
+    composition.py       run_recipe (forecast + anomaly) + run_tabular_recipe + discover_components
     plan.py              run_plan — recipe DAG, file-pointer chaining (HuggingGPT task-list)
     feature_runner.py    EFE evolved-transform exec (fit/transform/inverse, validity gates)
+    evolve.py            AlphaEvolve MAP-Elites archive + ask/tell
 
   eval/                  GIFT-Eval scoring
     gifteval.py          evaluate_config / evaluate_recipe / leaderboard (MASE+CRPS, geo-mean)
@@ -41,9 +40,12 @@ tsfm_server/
     refs.py              file-pointer data model (load_series / write_series / materialize_iot)
     window.py            store window reader (read_window from the iot collection)
 
-  seeds/                 catalog seed cards (model/feature/anomalykits/sktime method cards)
-  tests/                 current suite ; tests/legacy/ for pre-sktime modules
+  tests/                 the test suite (MemoryStore double; TSFM_STORE=memory)
   docs/                  design docs + ARCHITECTURE.svg
+
+  Catalog seed data lives with the other CouchDB collections at
+  src/couchdb/scenarios_data/shared/tsfm/{model_catalog,feature_catalog}.json
+  (single source of truth; bootstrap reads it, $TSFM_SEEDS_DIR overrides).
   legacy/                pre-sktime modules (operators, pipeline, compute, runner, planner,
                          run_demo, server_legacy) — reference only, superseded by engine/+substrate/
 ```

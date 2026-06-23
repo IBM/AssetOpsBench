@@ -5,8 +5,8 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import numpy as np
-from tsfm.substrate import resolver as R
-from tsfm.engine import composition as C
+from ..substrate import resolver as R
+from ..engine import composition as C
 
 CHRONOS = {"model_id": "chronos", "sktime_class": "sktime.forecasting.chronos.ChronosForecaster"}
 NAIVE = {"model_id": "naive", "sktime_class": "sktime.forecasting.naive.NaiveForecaster"}

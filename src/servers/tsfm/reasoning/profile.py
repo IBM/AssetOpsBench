@@ -12,15 +12,41 @@ from typing import List, Optional
 
 import numpy as np
 
-from tsfm.io import window as io
-from tsfm.stores import model_store
-from tsfm.stores import feature_store
+from ..io import window as io
+from ..stores import model_store
+from ..stores import feature_store
 
 
 def profile_series(store, asset_id: str, channels: Optional[List[str]] = None) -> dict:
-    """Factual characterization of the asset's signal — evidence, not advice."""
+    """Factual characterization of a store-backed asset's signal — evidence, not advice."""
     X, names = io.read_window(asset_id, store=store)
-    X = np.asarray(X, float)
+    return _profile_array(np.asarray(X, float), names, ident=asset_id)
+
+
+def profile_ref(
+    data_ref: str,
+    *,
+    timestamp_column: Optional[str] = None,
+    channels: Optional[List[str]] = None,
+) -> dict:
+    """Profile a time series passed as a FILE POINTER (the IoT data model). Loads the ref into
+    an sktime container and returns the same evidence as profile_series."""
+    from ..io import refs
+
+    obj = refs.load_series(data_ref, time_col=timestamp_column, channels=channels)
+    import pandas as pd
+
+    if isinstance(obj, pd.Series):
+        X, names = obj.to_numpy().reshape(-1, 1), [obj.name or "value"]
+    else:
+        X, names = obj.to_numpy(), list(obj.columns)
+    return _profile_array(np.asarray(X, float), names, ident=data_ref)
+
+
+def _profile_array(X: np.ndarray, names: List[str], *, ident: str) -> dict:
+    """Core profiling on a loaded (n, c) array — shared by the store and file-pointer paths."""
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)
     n, c = X.shape
 
     # seasonality (dominant spectral period) per channel — DETREND first so a strong
@@ -44,8 +70,8 @@ def profile_series(store, asset_id: str, channels: Optional[List[str]] = None) -
 
     # stationarity / trend on channel 0
     t = np.arange(n) - n / 2
-    slope = float((t * (X[:, 0] - X[:, 0].mean())).sum() / ((t ** 2).sum() or 1.0))
-    trend_strength = round(abs(slope) * n / (np.std(X[:, 0]) + 1e-9), 3)
+    slope = float((t * (X[:, 0] - X[:, 0].mean())).sum() / ((t**2).sum() or 1.0))
+    trend_strength = round(float(abs(slope) * n / (np.std(X[:, 0]) + 1e-9)), 3)
 
     # inter-channel correlation summary
     corr = np.corrcoef(X.T) if c > 1 else np.array([[1.0]])
@@ -55,27 +81,55 @@ def profile_series(store, asset_id: str, channels: Optional[List[str]] = None) -
     # missingness / gaps (synthetic data has none, but report the check)
     gaps = int(np.isnan(X).sum())
 
-    return {"asset_id": asset_id, "n_observations": n, "n_channels": c,
-            "channels": names, "dominant_period": dominant_period,
-            "seasonality_strength": seasonality_strength,
-            "trend_slope": round(slope, 5), "trend_strength": trend_strength,
-            "non_stationary": trend_strength > 1.0,
-            "max_abs_channel_corr": max_abs_corr, "n_missing": gaps,
-            "value_range": [round(float(X.min()), 3), round(float(X.max()), 3)]}
+    return {
+        "source": ident,
+        "n_observations": n,
+        "n_channels": c,
+        "channels": names,
+        "dominant_period": dominant_period,
+        "seasonality_strength": seasonality_strength,
+        "trend_slope": round(slope, 5),
+        "trend_strength": trend_strength,
+        "non_stationary": bool(trend_strength > 1.0),
+        "max_abs_channel_corr": max_abs_corr,
+        "n_missing": gaps,
+        "value_range": [round(float(X.min()), 3), round(float(X.max()), 3)],
+    }
 
 
 def available_contexts(store, task_id: str = "tsfm_forecasting") -> dict:
     """What the model store offers for this task — so the agent can match context to lookback."""
     ms = model_store.list_models(store, task_id=task_id)
-    return {"task_id": task_id, "models": [
-        {"model_id": m["model_id"], "context_length": m.get("context_length"),
-         "prediction_length": m.get("prediction_length"), "domain": m.get("domain"),
-         "framework": m.get("framework"), "pipeline_type": m.get("pipeline_type"),
-         "usage_modes": m.get("usage_modes")} for m in ms]}
+    return {
+        "task_id": task_id,
+        "models": [
+            {
+                "model_id": m["model_id"],
+                "context_length": m.get("context_length"),
+                "prediction_length": m.get("prediction_length"),
+                "domain": m.get("domain"),
+                "framework": m.get("framework"),
+                "pipeline_type": m.get("pipeline_type"),
+                "usage_modes": m.get("usage_modes"),
+            }
+            for m in ms
+        ],
+    }
 
 
 def available_features(store, category: Optional[str] = None) -> dict:
     """Transforms + extractors the agent can choose to apply."""
-    return {"transforms": [{"feature_id": f["feature_id"], "scenario_categories": f.get("scenario_categories"),
-                            "invertible": f.get("invertible")} for f in feature_store.find_features(store, category=category)],
-            "extractors": [e["extractor_name"] for e in feature_store.list_extractors(store, category=category)]}
+    return {
+        "transforms": [
+            {
+                "feature_id": f["feature_id"],
+                "scenario_categories": f.get("scenario_categories"),
+                "invertible": f.get("invertible"),
+            }
+            for f in feature_store.find_features(store, category=category)
+        ],
+        "extractors": [
+            e["extractor_name"]
+            for e in feature_store.list_extractors(store, category=category)
+        ],
+    }

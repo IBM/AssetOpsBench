@@ -6,10 +6,10 @@ os.environ.setdefault("TSFM_WORKDIR", tempfile.mkdtemp())
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import numpy as np
-from tsfm.core.store import MemoryStore
-from tsfm.io import refs as io_refs
-from tsfm.engine import plan as P
-from tsfm.stores import model_store as ms
+from ..core.store import MemoryStore
+from ..io import refs as io_refs
+from ..engine import plan as P
+from ..stores import model_store as ms
 
 NF = "sktime.forecasting.naive.NaiveForecaster"
 _Y = np.sin(np.arange(180) / 4.0) + 0.03 * np.arange(180)

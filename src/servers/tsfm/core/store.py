@@ -72,6 +72,9 @@ class Store:
 
 # --------------------------------------------------------------------------- #
 class MemoryStore(Store):
+    """In-memory store — TEST DOUBLE ONLY (hermetic suite). Production never uses this; the
+    server runs on CouchStore (CouchDB). Selected only when TSFM_STORE=memory, which the test
+    conftest sets."""
     def __init__(self):
         self._db: Dict[str, Dict[str, dict]] = {}
 
@@ -156,4 +159,6 @@ class CouchStore(Store):
 
 
 def make_store() -> Store:
-    return CouchStore() if os.environ.get("TSFM_STORE", "memory") == "couch" else MemoryStore()
+    """Backend from TSFM_STORE: couch (default, like the other AssetOpsBench servers) | memory
+    (used for the hermetic test suite)."""
+    return MemoryStore() if os.environ.get("TSFM_STORE") == "memory" else CouchStore()

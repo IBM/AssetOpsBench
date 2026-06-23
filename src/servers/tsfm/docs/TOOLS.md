@@ -1,85 +1,86 @@
-# TSFM MCP server — tool surface & capabilities
+# TSFM MCP tool surface (as-built)
 
-**Design rule (HuggingGPT): models/features are *data* (catalog cards), not tools.** The agent
-gets a small, stable set of **~16 MCP tools** and composes the *large* catalog through recipes.
-You do not add a tool per model — adding a model is adding a card.
+**Entry:** `tsfm-mcp-server` → `tsfm.main:main` (module-level `mcp`, stdio), house contract
+matching the sibling AssetOpsBench servers.
 
-## How many tools: 16 (in 6 groups)
+**Contract for every tool:**
+- decorated `@mcp.tool(title=...)`, returns a **typed Pydantic result** as `Union[XResult, ErrorResult]`;
+- **inputs validated** → `ErrorResult(error=...)` on bad/empty args (never an exception across the wire);
+- **bulk data is a FILE POINTER** — `dataset_path` in, `results_file` (a `file://` pointer) out;
+- models & features are **catalog data**, not tools (HuggingGPT principle).
 
-| # | Tool | Group | Backed by | What it does |
-|---|---|---|---|---|
-| 1 | `list_tasks` | Discover | task_spec | the 8 TS-AI tasks + each one's contract (inputs, scitype, eval protocol, supervised?) |
-| 2 | `discover_components` | Discover | composition | the menu for a task: installed models, foundation models, feature transforms, combiners, metrics, splitters |
-| 3 | `describe_candidates` | Discover | model_store | HuggingGPT model-selection surface: top-K cards by description+downloads |
-| 4 | `find_models` | Discover | model_store | structured filter (task/context/domain/tags) → ranked shortlist (feeds T-Daub) |
-| 5 | `find_features` | Discover | feature_store | feature transforms by scenario category / task / model |
-| 6 | `get_component` | Discover | model_store/feature_store | full card for a model_id or feature_id (incl. lineage) |
-| 7 | `profile_series` | Evidence | profile | facts about a `data_ref` (seasonality, stationarity, channels, length) — no decisions |
-| 8 | `select_features` | Feature-learn | feature_store (FLOps) | dynamic, dataset-specific feature selection (reference + Critical-Difference) |
-| 9 | `run_recipe` | Compose+run | composition | compile a recipe (transforms + single/ensemble + conformal) → sktime → backtest + forecast + per-member diagnostics |
-| 10 | `run_plan` | Compose+run | plan | execute a recipe **DAG** (HuggingGPT task-list: `dep` + `@resource` file-pointer chaining) |
-| 11 | `evaluate` | Compose+run | gifteval | GIFT-Eval leaderboard: seasonal-naive-normalized MASE+CRPS, geo-mean, mean-rank over configs/recipes |
-| 12 | `finetune` | Compose+run | composition/sktime | fine-tune a base model on a `data_ref` → returns a checkpoint **file pointer** (registers nothing) |
-| 13 | `register_model` | Write-back | model_store | agent-decided: point the catalog at a fine-tune checkpoint (provenance + lineage) |
-| 14 | `register_feature` | Write-back | feature_store | add an evolved transform (EFE), validity-gated; lineage |
-| 15 | `get_result` / `list_results` | Results | results | per-task result tables (forecast/anomaly/classification/…) |
-| 16 | `get_run` / `list_runs` | Results | composition/plan | run + plan **lineage** (the iterate trajectory) |
+## 35 tools, one sktime-native surface (no legacy)
 
-> Tools 6, 15, 16 each pair a get/list — count them as one tool each (overloaded). Net **16
-> tools**. All register on one `FastMCP("tsfm")`; no read-only split.
+Forecasting **and** anomaly both run through `run_recipe` (anomaly via `recipe.task` +
+`recipe.method`); there is no separate anomaly tool and no `tsfm_public`-specific compat layer.
 
-### The whole agent loop uses just these
-```
-list_tasks / discover_components / describe_candidates / find_models / find_features / profile_series   ← see the menu + data
-select_features                                                                                          ← FLOps
-run_recipe / run_plan / evaluate                                                                         ← compose, run, score (GIFT-Eval)
-register_model / register_feature / finetune                                                            ← improve & persist
-get_result / get_run                                                                                     ← inspect & iterate
-```
+### Core surface (23) — discover / evidence / compose+run / clean / write-back / results / evolve
 
-## Capabilities (the "many", reached via the 16 tools)
+| # | Tool | Result | Notes |
+|---|------|--------|-------|
+| 1 | `list_tasks` | TasksResult | the 8 standardized TS-AI tasks + contracts |
+| 2 | `discover_components(task)` | ComponentsResult | menu: models/foundation/transforms/combiners/regimes + `recipe_blocks` |
+| 3 | `describe_candidates(task_id, top_k, domain?)` | CandidatesResult | HuggingGPT-ranked cards |
+| 4 | `find_models(task_id, …)` | ModelsResult | structured filter → ranked shortlist |
+| 5 | `find_features(category?, task?, model?)` | FeaturesResult | feature transforms |
+| 6 | `get_component(component_id)` | ComponentResult | card (+ `param_schema` for models) |
+| 7 | `profile_series(dataset_path, …)` | ProfileResult | evidence only (seasonality/stationarity/channels) |
+| 8 | `select_features(dataset_path, …)` | FeatureSelectionResult | FLOps multi-config; `detail_file` pointer |
+| 9 | `run_recipe(dataset_path, timestamp_column, target_columns, recipe, …)` | RecipeResult | **forecasting** (default) OR **anomaly** (`recipe.task=tsfm_anomaly_detection`: `method=detector` for TSPulse/SubLOF, `method=conformal` for prediction-based AD) → `results_file` |
+| 10 | `run_tabular_recipe(dataset_path, recipe, label_column?)` | TabularResult | regression/classification/clustering: FeatureUnion → estimator |
+| 11 | `run_plan(plan_spec, …)` | PlanResult | recipe DAG, file-pointer chaining |
+| 12 | `evaluate(recipe, configs)` | EvaluateResult | GIFT-Eval (MASE+CRPS, geo-mean) |
+| 12b | `data_quality(dataset_path, timestamp_column?)` | DataQualityResult | NaN-clean + summary → cleaned file pointer (pre-step for forecast/AD) |
+| 13 | `register_model(model)` | RegisterResult | validated against `ModelCard` |
+| 14 | `register_feature(feature)` | RegisterResult | validated against `FeatureCard` |
+| 15 | `get_result(task_type, result_id)` | ResultRecord | per-task result table |
+| 16 | `list_results(task_type, …)` | ResultsListResult | |
+| 17 | `get_run(run_id)` | RunRecord | run lineage (recipe/plan) |
+| 18 | `list_runs(asset_id?)` | RunsResult | runs + plans |
+| 19 | `evolve_ask(task, kind, dataset_path?, …)` | EvolveAskResult | AlphaEvolve: sample parents + inspirations + evidence to mutate |
+| 20 | `evolve_tell(task, kind, program, …)` | EvolveTellResult | validate + evaluate→fitness + MAP-Elites archive + lineage |
+| 21 | `evolve_best(task, kind?, top_k)` | EvolveBestResult | the evolved frontier (elites per behaviour cell) |
 
-Tools stay ~16; the **capability surface scales through the catalog** (verified counts on the
-installed sktime 1.0.1 + our seeds):
+### Catalog lifecycle (12) — pull / update / version / add, per store
 
-| Capability axis | Count / content |
-|---|---|
-| **TS-AI tasks** | **8**: forecasting, regression, classification, anomaly_detection, imputation, evaluation, similarity_search, clustering |
-| **Forecasters** (incl. 11 foundation models) | **141** — TTM, Chronos/Chronos2, MOIRAI, TimesFM/2, MOMENT, TimeMoE, PatchTST, LagLlama, AutoARIMA, BATS, … |
-| **Anomaly detectors** | **28** — PyOD zoo (IsolationForest/LOF/…), SubLOF, **TSPulseAnomalyDetector**, AnomalyKiTS pipelines |
-| **Classifiers** | **77** — incl. **TSPulseClassifier**, Rocket |
-| **Transformers (feature ops)** | **148** sktime + **FLOps 130+ extractors** + EFE-evolved |
-| **Clusterers** | **10** (TimeSeriesKMeans, …) |
-| **Ensemble combiners** | **6**: mean, median, min, max, weighted, stack |
-| **Probabilistic** | conformal intervals on **any** forecaster (69 expose intervals natively) → CRPS |
-| **Metrics** | MASE, sMAPE, MAPE, MAE, CRPS (GIFT-Eval point + probabilistic) |
-| **Splitters** | expanding / sliding window backtest |
-| **Selection rankers** | 3 — description (HuggingGPT), tags (sktime), budget T-Daub |
+| Tool | Result | Notes |
+|------|--------|-------|
+| `list_models(task_id?, domain?, status?)` | ModelsResult | enumerate model cards (mirror of list_extractors; unranked) |
+| `search_models(text, tags?, status?)` | ModelsResult | free-text/tag search over the model catalog |
+| `get_model_lineage(model_id)` | LineageResult | version chain (supersedes / superseded_by) |
+| `update_model(model_id, fields)` | CardResult | patch a model card (re-validated) |
+| `deprecate_model(model_id, reason?)` | CardResult | retire a model card |
+| `new_model_version(model_id, fields, new_model_id?)` | CardResult | successor version + lineage link |
+| `register_finetuned(model_id, checkpoint_path, base_model_id, …)` | CardResult | **add a fine-tuned model** (lineage to base) |
+| `search_features(text, tags?, status?)` | FeaturesResult | free-text/tag search over the feature catalog |
+| `list_extractors(category?)` | FeaturesResult | browse the FLOps extractor library |
+| `get_feature_lineage(feature_id)` | LineageResult | EFE evolution chain (parent/generation) |
+| `update_feature(feature_id, fields)` | CardResult | patch a feature card (re-validated) |
+| `deprecate_feature(feature_id, reason?)` | CardResult | retire a feature card |
+| `new_feature_version(feature_id, fields, new_feature_id?)` | CardResult | successor version + lineage link |
 
-So: **16 tools** expose **8 tasks × hundreds of models/transforms × ensembles × conformal ×
-GIFT-Eval scoring** — because the catalog (not the tool list) holds the variety.
+All re-validate the card against `ModelCard`/`FeatureCard` on write — so seed data must be valid
+(linted by `test_catalog_growth.test_every_seed_model_card_validates`). **35 tools total.**
 
-## Why 16 and not 100
+### Legacy removed
+The pre-sktime `legacy/` server and its 4 compat tools (`run_tsfm_forecasting`,
+`run_tsfm_finetuning`, `run_tsad`, `run_integrated_tsad`) and the 2 static tools (`get_ai_tasks`,
+`get_tsfm_models`) are gone. Forecasting → `run_recipe` + a forecaster card; anomaly →
+`run_recipe(task=tsfm_anomaly_detection)`; conformal AD comes from sktime `ConformalIntervals`.
+The substrate is sktime end-to-end (TTM/Chronos/… resolve through sktime's foundation adapters,
+which need `tsfm_public`/`torch` at run time).
 
-- **One tool per model = unmaintainable + token-bloated.** HuggingGPT's lesson: keep the
-  controller's tool set tiny; put models in a catalog the controller *reads*. Adding TTM, a new
-  PyOD detector, or an evolved feature = a catalog card, **zero new tools**.
-- **The recipe is the universal verb.** `run_recipe`/`run_plan` execute *any* composition
-  (single model, ensemble, +conformal, multi-step DAG) — so you don't need `run_ttm`,
-  `run_chronos`, `run_ensemble`, … separately.
-- **Selection is reasoning, not a tool per strategy.** `describe_candidates` + `find_models`
-  + `select_features` give the agent the evidence; the agent decides; `evaluate` (GIFT-Eval)
-  scores. The server stays a broker + grader.
+## Recipe blocks (run-time params — see RECIPE_SCHEMA.md)
+`recipe.estimator.params` / `transforms` (per-component), `recipe.finetune` (training knobs),
+`recipe.anomaly` (conformal-AD knobs), `recipe.conformal` (intervals). All carry `param_space`
+hints; `run_recipe` records a `param_audit` / `block_audit`.
 
-## Optional trims / adds
-- **Minimal (10)**: drop `finetune`, `register_*`, `get_run/list_runs`, `list_tasks` for a
-  read+compose-only profile (no catalog mutation, no fine-tune).
-- **Extended (+2)**: `data_profile_multi` (profile many `data_ref`s for fan-out) and
-  `explain_selection` (return the per-decision rationale for audit/benchmark scoring).
+## Result provenance
+Run records carry: `results_file` pointer + summary + provenance (model · features · dataset) +
+`param_audit` + `block_audit` + `training_regime`. Anomaly/forecast results hand off downstream
+(FMSR → WO → Spot); **no alerts inside TSFM**. State is exportable (`export_state`, #394).
 
-## Source / status
-Tools 2,3,4,5,7,8,9,10,11,13,14 are backed by **implemented + tested** functions
-(`composition.py`, `plan.py`, `gifteval.py`, `model_store.py`, `feature_store.py`,
-`profile.py`, `feature_selection.py`). `server.py` should register exactly this set on
-`FastMCP("tsfm")` (it currently exposes the earlier pre-recipe set — update to these 16).
-See `DOCS_INDEX.md` for the full design map.
+## Tests
+`tests/test_tool_surface.py` exercises **every** tool through the real `mcp.call_tool` boundary
+(success + validation/error paths), `tests/test_main_filepointers.py` the file-pointer contract,
+`tests/test_server.py` the registered surface. No `tsfm_public`/torch required for the suite.

@@ -5,8 +5,8 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import numpy as np
-from tsfm.core.store import MemoryStore
-from tsfm.eval import gifteval as G
+from ..core.store import MemoryStore
+from ..eval import gifteval as G
 
 NF = "sktime.forecasting.naive.NaiveForecaster"
 TR = "sktime.forecasting.trend.TrendForecaster"
