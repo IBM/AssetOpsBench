@@ -228,6 +228,11 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             command="stirrup-agent",
             model_id=args.model_id,
         ),
+        "opencode_agent": MethodConfig(
+            agent_name="opencode_agent",
+            command="opencode-agent",
+            model_id=args.model_id,
+        ),
     }
 
 
@@ -267,7 +272,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--agent_name",
-        choices=["direct_llm", "stirrup_agent", "all"],
+        choices=["direct_llm", "stirrup_agent", "opencode_agent", "all"],
         default="direct_llm",
         help="Which agent to run.",
     )
