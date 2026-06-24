@@ -415,7 +415,6 @@ def registry_assets(
     """List assets from the registry with metadata (assettype, vintage, sensor count), optionally
     filtered by assettype (e.g. 'PUMP', 'COMPRESSOR'). Complements assets(), which returns bare ids derived from
     telemetry."""
-    site_name = site_name or "MAIN"
 
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
