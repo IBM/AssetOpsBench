@@ -410,7 +410,7 @@ def asset_sensors(
 
 @mcp.tool(title="List Registry Assets")
 def registry_assets(
-    site_name: Optional[str] = None, assettype: Optional[str] = None
+    site_name: str, assettype: Optional[str] = None
 ) -> Union[RegistryAssetsResult, ErrorResult]:
     """List assets from the registry with metadata (assettype, vintage, sensor count), optionally
     filtered by assettype (e.g. 'PUMP', 'COMPRESSOR'). Complements assets(), which returns bare ids derived from
