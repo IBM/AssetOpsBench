@@ -127,7 +127,7 @@ Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagn
 
 | Server      | Tools | Categories               | Backing service                        |
 | ----------- | ----- | ------------------------ | -------------------------------------- |
-| `iot`       | 4     | read                     | CouchDB                                |
+| `iot`       | 7     | read                     | CouchDB  (telemetry + asset registry)                              |
 | `utilities` | 3     | read                     | none                                   |
 | `fmsr`      | 2     | read, LLM-use            | LiteLLM + `failure_modes.yaml`         |
 | `wo`        | 14    | read, write              | CouchDB                                |

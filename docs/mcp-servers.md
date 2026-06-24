@@ -13,8 +13,17 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 
 ## iot — IoT Sensor Data
 
+The IoT server reads from **two** databases: telemetry readings (`IOT_DBNAME`, default `iot`) and an
+asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from `asset_profile_sample.json`). The
+two answer different questions: `assets()`/`sensors()` reflect TELEMETRY — what actually streams (the
+**measured** set); `get_asset()`/`asset_sensors()`/`registry_assets()` reflect the REGISTRY — the
+asset nameplate and the **installed** sensor inventory (by name). Comparing `asset_sensors()` against
+`sensors()` surfaces sensors that are installed but not streaming. The registry also reconciles ids
+across systems (Maximo `assetnum`, telemetry `iot_asset_id`, work-order `wo_assetnum`), so an asset
+can be looked up by any of its ids.
+
 **Path:** `src/servers/iot/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `IOT_DBNAME`)
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `IOT_DBNAME`, `ASSET_DBNAME`)
 
 **Sample assets shipped in the `iot` database** (loaded by `src/couchdb/couchdb_setup.sh`):
 
@@ -26,12 +35,15 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 
 Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ships in a separate `vibration` database for the vibration MCP server.
 
-| Tool      | Category | Arguments                                  | Description                                                             |
-| --------- | -------- | ------------------------------------------ | ----------------------------------------------------------------------- |
-| `sites`   | read     | —                                          | List all available sites                                                |
-| `assets`  | read     | `site_name`                                | List all asset IDs for a site                                           |
-| `sensors` | read     | `site_name`, `asset_id`                    | List sensor names for an asset                                          |
-| `history` | read     | `site_name`, `asset_id`, `start`, `final?` | Fetch historical sensor readings for a time range (ISO 8601 timestamps) |
+| Tool              | Arguments                                  | Description                                                                                                  |
+| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `sites`           | —                                          | List all sites, discovered dynamically from the asset registry (`siteid`)                                    |
+| `assets`          | `site_name`                                | List asset ids registered at a site (telemetry id where present, else `assetnum`)                            |
+| `sensors`         | `site_name`, `asset_id`                    | List **measured** sensor names for an asset (union of keys across its telemetry docs)                        |
+| `history`         | `site_name`, `asset_id`, `start`, `final?` | Fetch historical sensor readings for a time range (ISO 8601 timestamps)                                      |
+| `get_asset`       | `site_name`, `asset_id`                    | Registry/nameplate detail for one asset (description, assettype, status, location, vintage, installed count) |
+| `asset_sensors`   | `site_name`, `asset_id`                    | List the **installed** sensors for an asset, by name (registry inventory)                                    |
+| `registry_assets` | `site_name`, `assettype?`                  | List registry assets with metadata (assettype, vintage, sensor count), optionally filtered by assettype     |
 
 ## utilities — Utilities
 
