@@ -410,22 +410,24 @@ def asset_sensors(
 
 @mcp.tool(title="List Registry Assets")
 def registry_assets(
-    site_name: str, assettype: Optional[str] = None
+    site_name: Optional[str] = None, assettype: Optional[str] = None
 ) -> Union[RegistryAssetsResult, ErrorResult]:
     """List assets from the registry with metadata (assettype, vintage, sensor count), optionally
     filtered by assettype (e.g. 'PUMP', 'COMPRESSOR'). Complements assets(), which returns bare ids derived from
     telemetry."""
+    site_name = site_name or "MAIN"
+
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
         return ErrorResult(error="CouchDB not connected")
     try:
-        selector: Dict[str, Any] = {"doctype": "asset"}
+        selector: Dict[str, Any] = {"doctype": "asset", "siteid": site_name}
         if assettype:
             selector["assettype"] = assettype
         res = asset_db.find(
             selector,
-            fields=["assetnum", "assettype", "vintage", "sensors"],
+            fields=["assetnum", "assettype", "description", "vintage", "sensors"],
             limit=100000,
         )
         rows = sorted(
@@ -433,6 +435,7 @@ def registry_assets(
                 {
                     "asset_id": d["assetnum"],
                     "assettype": d.get("assettype"),
+                    "description": d.get("description"),
                     "vintage": d.get("vintage"),
                     "n_sensors": len(d.get("sensors", [])),
                 }
