@@ -39,8 +39,12 @@ _OPENCODE_SYSTEM_PROMPT = (
 Use the configured AssetOpsBench MCP tools for operational data. Do not ask
 the user follow-up questions during benchmark runs; make reasonable
 assumptions and answer with the evidence you found. Do not edit files, run
-shell commands, or browse the web unless those capabilities have been enabled
-for this run.
+shell commands, browse the web, or inspect local files unless those
+capabilities have been enabled for this run.
+
+When file or bash access is enabled, use the current working directory as the
+run workspace. Write any scripts, temporary files, intermediate data, and final
+artifacts there. Do not read or write files outside the current workspace.
 """
 )
 
@@ -79,13 +83,14 @@ def _build_permissions(
     allow_bash: bool = False,
     allow_edit: bool = False,
     allow_web: bool = False,
+    allow_files: bool = False,
 ) -> dict[str, Any]:
     """Build non-interactive permissions for benchmark-safe OpenCode runs."""
     permission: dict[str, Any] = {
-        "read": "deny",
-        "glob": "deny",
-        "grep": "deny",
-        "lsp": "deny",
+        "read": "allow" if allow_files else "deny",
+        "glob": "allow" if allow_files else "deny",
+        "grep": "allow" if allow_files else "deny",
+        "lsp": "allow" if allow_files else "deny",
         "edit": "allow" if allow_edit else "deny",
         "bash": "allow" if allow_bash else "deny",
         "task": "deny",
@@ -93,6 +98,7 @@ def _build_permissions(
         "question": "deny",
         "webfetch": "allow" if allow_web else "deny",
         "websearch": "allow" if allow_web else "deny",
+        "external_directory": "deny",
         "doom_loop": "deny",
     }
     for name in server_names:
@@ -147,6 +153,7 @@ def _build_opencode_config(
     allow_bash: bool = False,
     allow_edit: bool = False,
     allow_web: bool = False,
+    allow_files: bool = False,
 ) -> tuple[dict[str, Any], dict[str, str], str]:
     """Return (OpenCode config, env overrides, resolved OpenCode model)."""
     opencode_model, provider, env = _resolve_opencode_model_and_provider(model)
@@ -155,6 +162,7 @@ def _build_opencode_config(
         allow_bash=allow_bash,
         allow_edit=allow_edit,
         allow_web=allow_web,
+        allow_files=allow_files,
     )
     config: dict[str, Any] = {
         "$schema": "https://opencode.ai/config.json",
@@ -176,6 +184,33 @@ def _build_opencode_config(
     if provider:
         config["provider"] = provider
     return config, env, opencode_model
+
+
+def _resolve_run_dir(
+    *,
+    workspace_dir: Path | str | None = None,
+    allow_bash: bool = False,
+    allow_edit: bool = False,
+    allow_files: bool = False,
+) -> Path:
+    """Return OpenCode's working directory for this run.
+
+    The safe default is the repo root with local file/bash/edit tools denied.
+    Any filesystem/code capability must opt into a dedicated workspace folder.
+    This keeps the default comparable to tools-only MCP agents while allowing a
+    separate CLI/code-capable track.
+    """
+    workspace_requested = allow_bash or allow_edit or allow_files
+    if workspace_requested and workspace_dir is None:
+        raise ValueError(
+            "--workspace-dir is required when enabling files, edits, or bash"
+        )
+    if workspace_dir is None:
+        return _REPO_ROOT
+
+    run_dir = Path(workspace_dir).expanduser().resolve()
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
 
 def _json_events(stdout: str) -> tuple[list[dict[str, Any]], list[str]]:
@@ -375,6 +410,8 @@ class OpenCodeAgentRunner(AgentRunner):
         allow_bash: bool = False,
         allow_edit: bool = False,
         allow_web: bool = False,
+        allow_files: bool = False,
+        workspace_dir: Path | str | None = None,
         dangerously_skip_permissions: bool = True,
     ) -> None:
         super().__init__(llm, server_paths)
@@ -385,6 +422,12 @@ class OpenCodeAgentRunner(AgentRunner):
         self._attach = attach
         self._timeout_s = timeout_s
         self._dangerously_skip_permissions = dangerously_skip_permissions
+        self._run_dir = _resolve_run_dir(
+            workspace_dir=workspace_dir,
+            allow_bash=allow_bash,
+            allow_edit=allow_edit,
+            allow_files=allow_files,
+        )
         self._config, self._env_overrides, self._opencode_model = (
             _build_opencode_config(
                 model=model,
@@ -394,6 +437,7 @@ class OpenCodeAgentRunner(AgentRunner):
                 allow_bash=allow_bash,
                 allow_edit=allow_edit,
                 allow_web=allow_web,
+                allow_files=allow_files,
             )
         )
 
@@ -416,7 +460,7 @@ class OpenCodeAgentRunner(AgentRunner):
                 "--agent",
                 self._agent_name,
                 "--dir",
-                str(_REPO_ROOT),
+                str(self._run_dir),
                 "--title",
                 "AssetOpsBench",
             ]

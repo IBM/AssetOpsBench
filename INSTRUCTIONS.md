@@ -39,7 +39,10 @@ Run from the **repo root**:
 uv sync
 ```
 
-`uv sync` creates a virtual environment at `.venv/`, installs all dependencies, and registers the CLI entry points (`plan-execute`, `*-mcp-server`). You can either prefix commands with `uv run` (no activation needed) or activate the venv once for your shell session:
+`uv sync` creates a virtual environment at `.venv/`, installs all dependencies,
+and registers the CLI entry points (`plan-execute`, `*-agent`, `*-mcp-server`).
+You can either prefix commands with `uv run` (no activation needed) or activate
+the venv once for your shell session:
 
 ```bash
 source .venv/bin/activate   # macOS / Linux
@@ -92,7 +95,7 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `WO_DBNAME`          | `workorder`             | Work order database name      |
 | `VIBRATION_DBNAME`   | `vibration`             | Vibration sensor database name |
 
-**WatsonX** — plan-execute runner (when `--model-id` starts with `watsonx/`)
+**WatsonX** — plan-execute runner and WatsonX-backed agent routes
 
 | Variable             | Default                             | Description                 |
 | -------------------- | ----------------------------------- | --------------------------- |
@@ -100,17 +103,26 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `WATSONX_PROJECT_ID` | _(required)_                        | IBM WatsonX project ID      |
 | `WATSONX_URL`        | `https://us-south.ml.cloud.ibm.com` | WatsonX endpoint (optional) |
 
-**LiteLLM proxy** — used by every runner whenever `--model-id` carries the `litellm_proxy/` prefix (the default for claude-agent, openai-agent, deep-agent)
+**LiteLLM proxy** — used by every runner whenever `--model-id` carries the `litellm_proxy/` prefix
 
 | Variable           | Default      | Description                                                          |
 | ------------------ | ------------ | -------------------------------------------------------------------- |
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
-**TokenRouter** — OpenAI-compatible gateway, used whenever `--model-id` carries the `tokenrouter/` prefix (the default for direct-llm-agent)
+**TokenRouter** — OpenAI-compatible gateway, used whenever `--model-id` carries the `tokenrouter/` prefix
 
-| `TOKENROUTER_API_KEY`  | _(tokenrouter/* models)_ | TokenRouter API key                                          |
-| `TOKENROUTER_BASE_URL` | _(tokenrouter/* models)_ | TokenRouter base URL, e.g. `https://api.tokenrouter.com/v1`  |
+| Variable               | Default                  | Description                                                         |
+| ---------------------- | ------------------------ | ------------------------------------------------------------------- |
+| `TOKENROUTER_API_KEY`  | _(tokenrouter/* models)_ | TokenRouter API key                                                 |
+| `TOKENROUTER_BASE_URL` | _(tokenrouter/* models)_ | TokenRouter base URL, e.g. `https://api.tokenrouter.com/v1`         |
+
+**OpenCode direct providers** — `opencode-agent` with direct provider routes
+
+| Variable            | Default                    | Description                                      |
+| ------------------- | -------------------------- | ------------------------------------------------ |
+| `OPENAI_API_KEY`    | _(openai/* models)_        | OpenAI API key, or configure through OpenCode    |
+| `ANTHROPIC_API_KEY` | _(anthropic/* models)_     | Anthropic API key, or configure through OpenCode |
 
 **Stirrup code track** — `stirrup-agent` with `--code-backend docker`
 
@@ -127,7 +139,7 @@ Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagn
 
 | Server      | Tools | Categories               | Backing service                        |
 | ----------- | ----- | ------------------------ | -------------------------------------- |
-| `iot`       | 7     | read                     | CouchDB  (telemetry + asset registry)                              |
+| `iot`       | 7     | read                     | CouchDB  (telemetry + asset registry)  |
 | `utilities` | 3     | read                     | none                                   |
 | `fmsr`      | 2     | read, LLM-use            | LiteLLM + `failure_modes.yaml`         |
 | `wo`        | 14    | read, write              | CouchDB                                |
@@ -154,16 +166,20 @@ query="What is the current date and time? Also list assets at site MAIN. Also ge
 
 ## Agents
 
-Seven runners are available as CLIs registered by `uv sync`; six use MCP tools, while `direct-llm-agent` is a model-only baseline that makes a direct LiteLLM call without MCP tools, planning, retrieval, or code execution. Each is a CLI registered by `uv sync` that takes a single positional `question` argument and spawns the MCP servers as stdio subprocesses on demand.
+Seven runners are available as CLIs registered by `uv sync`; six use MCP tools,
+while `direct-llm-agent` is a model-only baseline that makes a direct LiteLLM
+call without MCP tools, planning, retrieval, or code execution. Each takes a
+single positional `question` argument and spawns the MCP servers as stdio
+subprocesses on demand.
 
 | Runner         | Source                       | Loop                                                          | Default model                                               |
 | -------------- | ---------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
 | `plan-execute` | `src/agent/plan_execute/`    | Custom plan → execute → summarise (no SDK)                    | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8` |
 | `claude-agent` | `src/agent/claude_agent/`    | [`claude-agent-sdk`](https://github.com/anthropics/claude-agent-sdk-python) agentic loop | `litellm_proxy/aws/claude-opus-4-6` |
-| `openai-agent` | `src/agent/openai_agent/`    | [`openai-agents`](https://github.com/openai/openai-agents-python) SDK Runner | `litellm_proxy/azure/gpt-5.4`                |
+| `openai-agent` | `src/agent/openai_agent/`    | [`openai-agents`](https://github.com/openai/openai-agents-python) SDK Runner | `litellm_proxy/azure/gpt-5.4` |
 | `deep-agent`   | `src/agent/deep_agent/`      | [LangChain deep-agents](https://docs.langchain.com/oss/python/deepagents/overview) (LangGraph), MCP bridged via `langchain-mcp-adapters` | `litellm_proxy/aws/claude-opus-4-6` |
 | `stirrup-agent` | `src/agent/stirrup_agent/` | [Stirrup](https://github.com/ArtificialAnalysis/Stirrup) agent loop (in-process), MCP via its `MCPToolProvider`; **code-capable** (writes/runs Python) | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8` |
-| `opencode-agent` | `src/agent/opencode_agent/` | [OpenCode](https://opencode.ai/docs/) CLI agent loop, MCP via generated OpenCode config; web/bash/edit denied by default | `opencode/gpt-5.1-codex` |
+| `opencode-agent` | `src/agent/opencode_agent/` | [OpenCode](https://opencode.ai/docs/) CLI agent loop, MCP via generated OpenCode config; MCP-only by default with optional CLI workspace mode | `opencode/gpt-5.1-codex` |
 | `direct-llm-agent` | `src/agent/direct_llm_agent/` | Single direct LLM call, no MCP tools, planning, retrieval, or code execution | `litellm_proxy/Azure/gpt-5-mini-2025-08-07` |
 
 - [Agents](#agents) — Stirrup specifics in [docs/stirrup-agent.md](docs/stirrup-agent.md); OpenCode specifics in [docs/opencode-agent.md](docs/opencode-agent.md)
@@ -203,6 +219,7 @@ uv run direct-llm-agent "$query"
 | `--max-tokens N`               | stirrup-agent | Max output tokens per call; keep under provider limit (default 16384) |
 | `--max-steps N`                | opencode-agent | Max OpenCode agentic iterations (default: 30)                      |
 | `--attach URL`                 | opencode-agent | Attach to a running `opencode serve` instance                      |
+| `--allow-files` / `--workspace-dir PATH` | opencode-agent | Enable local file inspection in a dedicated workspace              |
 | `--allow-bash` / `--allow-edit` / `--allow-web` | opencode-agent | Opt into shell, file edits, or web access; all denied by default |
 
 ### Examples
@@ -229,13 +246,51 @@ uv run stirrup-agent --no-code --show-trajectory \
 STIRRUP_CODE_IMAGE=assetops-code \
   uv run stirrup-agent --code-backend docker "$query"
 
-# OpenCode CLI-backed agent, using TokenRouter
+# OpenCode MCP-only CLI-backed agent, using TokenRouter
 uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory "$query"
+
+# OpenCode CLI workspace mode, allowing file inspection and bash in a run workspace
+uv run opencode-agent \
+  --model-id tokenrouter/MiniMax-M3 \
+  --workspace-dir /tmp/assetopsbench-opencode/smoke \
+  --allow-files \
+  --allow-bash \
+  --show-trajectory \
+  "$query"
 
 # Direct model-only baseline, no MCP tools
 uv run direct-llm-agent --model-id litellm_proxy/Azure/gpt-5-mini-2025-08-07 \
   'Return only JSON: {"test": 1}'
 ```
+
+### OpenCode scenario-suite workspace mode
+
+The scenario-suite runner can create one workspace per OpenCode run and pass
+optional CLI capabilities through to `opencode-agent`:
+
+```bash
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name opencode_agent \
+  --model-id tokenrouter/MiniMax-M3 \
+  --opencode-workspace-root traces/opencode_workspaces \
+  --opencode-allow-files \
+  --opencode-allow-bash
+```
+
+For scenario `401`, this creates a workspace like:
+
+```text
+traces/opencode_workspaces/opencode_agent_401
+```
+
+`--opencode-allow-files`, `--opencode-allow-bash`, and
+`--opencode-allow-edit` are opt-in. If any of them are enabled,
+`--opencode-workspace-root` is required.
+
+> `--opencode-allow-bash` is not a hard OS-level sandbox. For strict filesystem
+> isolation, run the benchmark inside Docker or another sandbox.
 
 ---
 
@@ -325,16 +380,17 @@ uv run pytest src/ -k "integration"                # only files / tests with "in
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                          agent/                              │
-│                                                              │
-│   PlanExecuteRunner   ClaudeAgentRunner   StirrupAgentRunner │
-│   OpenAIAgentRunner   DeepAgentRunner                        │
-│                                                              │
-└──────────────────────────┬───────────────────────────────────┘
-                           │ MCP protocol (stdio)
-         ┌─────────────────┼───────────┬──────────┬──────┬───────────┐
-         ▼                 ▼           ▼          ▼      ▼           ▼
-        iot           utilities      fmsr       tsfm    wo      vibration
-      (tools)          (tools)      (tools)   (tools) (tools)    (tools)
+┌────────────────────────────────────────────────────────────────────────┐
+│                                agent/                                  │
+│                                                                        │
+│   PlanExecuteRunner   ClaudeAgentRunner   StirrupAgentRunner           │
+│   OpenAIAgentRunner   DeepAgentRunner     OpenCodeAgentRunner          │
+│   DirectLLMAgentRunner                                                │
+│                                                                        │
+└──────────────────────────────┬─────────────────────────────────────────┘
+                               │ MCP protocol (stdio)
+         ┌─────────────────────┼───────────┬──────────┬──────┬───────────┐
+         ▼                     ▼           ▼          ▼      ▼           ▼
+        iot               utilities      fmsr       tsfm    wo      vibration
+      (tools)              (tools)      (tools)   (tools) (tools)    (tools)
 ```

@@ -44,6 +44,8 @@ class MethodConfig:
     agent_name: str
     command: str
     model_id: str
+    extra_args: tuple[str, ...] = ()
+    workspace_root: Path | None = None
 
 
 def load_scenario_ids(path: Path) -> list[str]:
@@ -150,12 +152,20 @@ def run_agent_for_scenario(
     env = os.environ.copy()
     env["AGENT_TRAJECTORY_DIR"] = str(trajectory_dir)
 
+    extra_args = list(method.extra_args)
+    if method.workspace_root is not None:
+        workspace_dir = method.workspace_root / run_id
+        extra_args.extend(["--workspace-dir", str(workspace_dir)])
+        if not dry_run:
+            workspace_dir.mkdir(parents=True, exist_ok=True)
+
     cmd = [
         "uv",
         "run",
         method.command,
         "--model-id",
         method.model_id,
+        *extra_args,
         "--scenario-id",
         scenario_id,
         "--run-id",
@@ -217,6 +227,14 @@ def run_evaluation(
 
 def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     """Build available method configs from CLI args."""
+    opencode_extra_args: list[str] = []
+    if args.opencode_allow_files:
+        opencode_extra_args.append("--allow-files")
+    if args.opencode_allow_bash:
+        opencode_extra_args.append("--allow-bash")
+    if args.opencode_allow_edit:
+        opencode_extra_args.append("--allow-edit")
+
     return {
         "direct_llm": MethodConfig(
             agent_name="direct_llm",
@@ -232,6 +250,8 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             agent_name="opencode_agent",
             command="opencode-agent",
             model_id=args.model_id,
+            extra_args=tuple(opencode_extra_args),
+            workspace_root=args.opencode_workspace_root,
         ),
     }
 
@@ -294,6 +314,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Model id used by both agents.",
     )
     parser.add_argument(
+        "--opencode-workspace-root",
+        type=Path,
+        default=None,
+        help=(
+            "Root directory for per-run OpenCode workspaces. Required when "
+            "using --opencode-allow-files, --opencode-allow-bash, or "
+            "--opencode-allow-edit."
+        ),
+    )
+    parser.add_argument(
+        "--opencode-allow-files",
+        action="store_true",
+        help="Allow opencode-agent read/glob/grep/lsp tools inside its per-run workspace.",
+    )
+    parser.add_argument(
+        "--opencode-allow-bash",
+        action="store_true",
+        help="Allow opencode-agent bash in its per-run workspace.",
+    )
+    parser.add_argument(
+        "--opencode-allow-edit",
+        action="store_true",
+        help="Allow opencode-agent file edits inside its per-run workspace.",
+    )
+    parser.add_argument(
         "--skip-existing",
         action="store_true",
         help="Skip a scenario if its expected trajectory file already exists.",
@@ -320,6 +365,17 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
+
+    opencode_workspace_required = (
+        args.opencode_allow_files
+        or args.opencode_allow_bash
+        or args.opencode_allow_edit
+    )
+    if opencode_workspace_required and args.opencode_workspace_root is None:
+        parser.error(
+            "--opencode-workspace-root is required when enabling OpenCode "
+            "files, bash, or edits"
+        )
 
     scenario_ids = load_scenario_ids(args.scenario_ids)
     methods = selected_methods(
