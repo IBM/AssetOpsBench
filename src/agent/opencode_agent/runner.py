@@ -82,10 +82,10 @@ def _build_permissions(
 ) -> dict[str, Any]:
     """Build non-interactive permissions for benchmark-safe OpenCode runs."""
     permission: dict[str, Any] = {
-        "read": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "lsp": "allow",
+        "read": "deny",
+        "glob": "deny",
+        "grep": "deny",
+        "lsp": "deny",
         "edit": "allow" if allow_edit else "deny",
         "bash": "allow" if allow_bash else "deny",
         "task": "deny",
