@@ -12,6 +12,7 @@ from agent.opencode_agent.runner import (
     _build_permissions,
     _build_trajectory_from_events,
     _json_events,
+    _resolve_run_dir,
     _resolve_opencode_model_and_provider,
 )
 
@@ -36,20 +37,58 @@ def test_build_permissions_default_safe():
     permission = _build_permissions(["iot", "wo"])
     assert permission["iot_*"] == "allow"
     assert permission["wo_*"] == "allow"
+    assert permission["read"] == "deny"
+    assert permission["glob"] == "deny"
+    assert permission["grep"] == "deny"
+    assert permission["lsp"] == "deny"
     assert permission["bash"] == "deny"
     assert permission["edit"] == "deny"
+    assert permission["webfetch"] == "deny"
     assert permission["websearch"] == "deny"
+    assert permission["external_directory"] == "deny"
     assert permission["question"] == "deny"
 
 
 def test_build_permissions_allows_opt_in_tools():
     permission = _build_permissions(
-        ["iot"], allow_bash=True, allow_edit=True, allow_web=True
+        ["iot"],
+        allow_bash=True,
+        allow_edit=True,
+        allow_web=True,
+        allow_files=True,
     )
+    assert permission["read"] == "allow"
+    assert permission["glob"] == "allow"
+    assert permission["grep"] == "allow"
+    assert permission["lsp"] == "allow"
     assert permission["bash"] == "allow"
     assert permission["edit"] == "allow"
     assert permission["webfetch"] == "allow"
     assert permission["websearch"] == "allow"
+    assert permission["external_directory"] == "deny"
+
+
+def test_resolve_run_dir_defaults_to_repo_root():
+    run_dir = _resolve_run_dir()
+    assert run_dir.name == "AssetOpsBench-main"
+
+
+def test_resolve_run_dir_requires_workspace_for_file_or_code_tools():
+    import pytest
+
+    with pytest.raises(ValueError, match="workspace-dir"):
+        _resolve_run_dir(allow_files=True)
+    with pytest.raises(ValueError, match="workspace-dir"):
+        _resolve_run_dir(allow_bash=True)
+    with pytest.raises(ValueError, match="workspace-dir"):
+        _resolve_run_dir(allow_edit=True)
+
+
+def test_resolve_run_dir_creates_workspace(tmp_path):
+    workspace = tmp_path / "opencode-run"
+    run_dir = _resolve_run_dir(workspace_dir=workspace, allow_files=True)
+    assert run_dir == workspace.resolve()
+    assert run_dir.exists()
 
 
 def test_resolve_direct_opencode_model():
@@ -94,6 +133,7 @@ def test_build_opencode_config_includes_agent_and_mcp():
     assert opencode_model == "opencode/gpt-5"
     assert config["agent"]["assetops"]["steps"] == 7
     assert config["agent"]["assetops"]["permission"]["iot_*"] == "allow"
+    assert config["agent"]["assetops"]["permission"]["read"] == "deny"
     assert config["mcp"]["iot"]["command"] == ["uv", "run", "iot-mcp-server"]
 
 
@@ -144,3 +184,16 @@ def test_runner_defaults():
     assert runner._model_id == "opencode/gpt-5"
     assert runner._opencode_model == "opencode/gpt-5"
     assert runner._agent_name == "assetops"
+    assert runner._run_dir.name == "AssetOpsBench-main"
+
+
+def test_runner_workspace_mode(tmp_path):
+    workspace = tmp_path / "run-401"
+    runner = OpenCodeAgentRunner(
+        server_paths={},
+        model="opencode/gpt-5",
+        allow_files=True,
+        workspace_dir=workspace,
+    )
+    assert runner._run_dir == workspace.resolve()
+    assert runner._config["agent"]["assetops"]["permission"]["read"] == "allow"

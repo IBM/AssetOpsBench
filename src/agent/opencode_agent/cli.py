@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from .._cli_common import add_common_args, print_result, run_sdk_cli
 
@@ -89,6 +90,24 @@ examples:
         help="Allow OpenCode web fetch/search. Disabled by default for benchmark runs.",
     )
     parser.add_argument(
+        "--allow-files",
+        action="store_true",
+        help=(
+            "Allow OpenCode read/glob/grep/lsp tools inside --workspace-dir. "
+            "Disabled by default for tools-only benchmark runs."
+        ),
+    )
+    parser.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Dedicated OpenCode run workspace. Required when enabling files, "
+            "edits, or bash."
+        ),
+    )
+    parser.add_argument(
         "--ask-permissions",
         action="store_true",
         help="Do not auto-approve allowed permissions. Usually unsuitable for batch runs.",
@@ -109,6 +128,8 @@ async def _run(args: argparse.Namespace) -> None:
         allow_bash=args.allow_bash,
         allow_edit=args.allow_edit,
         allow_web=args.allow_web,
+        allow_files=args.allow_files,
+        workspace_dir=args.workspace_dir,
         dangerously_skip_permissions=not args.ask_permissions,
     )
     result = await runner.run(args.question)

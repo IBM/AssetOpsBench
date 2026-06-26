@@ -56,8 +56,11 @@ def test_read_question_raises_when_missing(tmp_path: Path) -> None:
 
 def test_build_methods_uses_cli_defaults() -> None:
     args = Namespace(
-        direct_model_id="tokenrouter/MiniMax-M3",
-        stirrup_model_id="tokenrouter/MiniMax-M3",
+        model_id="tokenrouter/MiniMax-M3",
+        opencode_allow_files=False,
+        opencode_allow_bash=False,
+        opencode_allow_edit=False,
+        opencode_workspace_root=None,
     )
 
     methods = mr.build_methods(args)
@@ -66,6 +69,25 @@ def test_build_methods_uses_cli_defaults() -> None:
     assert methods["direct_llm"].model_id == "tokenrouter/MiniMax-M3"
     assert methods["stirrup_agent"].command == "stirrup-agent"
     assert methods["stirrup_agent"].model_id == "tokenrouter/MiniMax-M3"
+    assert methods["opencode_agent"].command == "opencode-agent"
+    assert methods["opencode_agent"].extra_args == ()
+    assert methods["opencode_agent"].workspace_root is None
+
+
+def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
+    args = Namespace(
+        model_id="tokenrouter/MiniMax-M3",
+        opencode_allow_files=True,
+        opencode_allow_bash=True,
+        opencode_allow_edit=False,
+        opencode_workspace_root=tmp_path / "workspaces",
+    )
+
+    methods = mr.build_methods(args)
+    opencode = methods["opencode_agent"]
+
+    assert opencode.extra_args == ("--allow-files", "--allow-bash")
+    assert opencode.workspace_root == tmp_path / "workspaces"
 
 
 def test_selected_methods_direct_llm_only() -> None:
@@ -120,7 +142,7 @@ def test_run_agent_for_scenario_dry_run_does_not_call_subprocess(
     monkeypatch.setattr(mr.subprocess, "run", fake_run)
 
     method = mr.MethodConfig(
-        name="direct_llm",
+        agent_name="direct_llm",
         command="direct-llm-agent",
         model_id="tokenrouter/MiniMax-M3",
     )
@@ -134,6 +156,53 @@ def test_run_agent_for_scenario_dry_run_does_not_call_subprocess(
     )
 
     assert called is False
+
+
+def test_run_agent_for_scenario_adds_opencode_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(mr.subprocess, "run", fake_run)
+
+    method = mr.MethodConfig(
+        agent_name="opencode_agent",
+        command="opencode-agent",
+        model_id="tokenrouter/MiniMax-M3",
+        extra_args=("--allow-files", "--allow-bash"),
+        workspace_root=tmp_path / "workspaces",
+    )
+
+    mr.run_agent_for_scenario(
+        method=method,
+        scenario_id="401",
+        question="Which excavator costs the most?",
+        trajectory_dir=tmp_path / "traj",
+        dry_run=False,
+    )
+
+    expected_workspace = tmp_path / "workspaces" / "opencode_agent_401"
+    assert expected_workspace.exists()
+    assert captured["cmd"] == [
+        "uv",
+        "run",
+        "opencode-agent",
+        "--model-id",
+        "tokenrouter/MiniMax-M3",
+        "--allow-files",
+        "--allow-bash",
+        "--workspace-dir",
+        str(expected_workspace),
+        "--scenario-id",
+        "401",
+        "--run-id",
+        "opencode_agent_401",
+        "Which excavator costs the most?",
+    ]
 
 
 def test_run_evaluation_dry_run_does_not_call_subprocess(

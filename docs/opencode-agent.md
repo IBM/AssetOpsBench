@@ -6,15 +6,21 @@ the AssetOpsBench MCP servers. It is a peer to `plan-execute`, `claude-agent`,
 persisted `Trajectory`, scored by the same `uv run evaluate`.
 
 OpenCode is a general CLI coding agent, but this runner is configured as a
-**tools-first benchmark agent** by default. It can call the AssetOpsBench MCP
-servers, read/search local files, and return an answer. Shell commands, file
-edits, web access, and follow-up questions are denied unless explicitly enabled.
+**tools-first benchmark agent** by default. In the default mode, it can call the
+AssetOpsBench MCP servers while local file reads, shell commands, file edits,
+web access, external directory access, and follow-up questions are denied unless
+explicitly enabled.
+
+The runner also supports an optional **CLI workspace mode**. In that mode, each
+benchmark run gets a dedicated workspace directory and OpenCode can be allowed
+to inspect files and/or run shell commands inside that run workspace.
 
 ## Contents
 
 - [Why OpenCode](#why-opencode)
 - [Install](#install)
 - [Quick start](#quick-start)
+- [Execution modes](#execution-modes)
 - [Model routing](#model-routing)
 - [Permissions and web access](#permissions-and-web-access)
 - [Headless server mode](#headless-server-mode)
@@ -34,6 +40,8 @@ edits, web access, and follow-up questions are denied unless explicitly enabled.
   other tool-using runner.
 - **Headless automation**, via `opencode run --format json`, which makes it
   usable in scripts and benchmark runs.
+- **Optional CLI workspace mode**, so benchmark runs can evaluate agents that
+  write and run local analysis code.
 - **Server/API mode**, via `opencode serve`, which can keep OpenCode warm across
   repeated runs.
 - **Provider flexibility**, including direct OpenCode providers and
@@ -52,7 +60,7 @@ Install the project dependencies from the repo root:
 uv sync
 ```
 
-Confirm the AssetOpsBench entry point resolved (no model call):
+Confirm the AssetOpsBench entry point resolved:
 
 ```bash
 uv run opencode-agent --help
@@ -71,7 +79,8 @@ docs, for example:
 npm install -g opencode-ai
 ```
 
-Run the unit tests for the config and trajectory mapping:
+Run the unit tests for config, permissions, workspace handling, and trajectory
+mapping:
 
 ```bash
 uv run pytest src/agent/opencode_agent/tests/ -q
@@ -100,6 +109,69 @@ OpenCode discovered and called the AssetOpsBench MCP tools.
 > **Quiet runs.** `opencode-agent` runs OpenCode as a subprocess. During long
 > questions, the terminal may look quiet until OpenCode finishes. The persisted
 > trajectory is written only after the run completes.
+
+---
+
+## Execution modes
+
+### Default MCP-only mode
+
+By default, OpenCode is allowed to use AssetOpsBench MCP tools only.
+
+The following capabilities are denied by default:
+
+- local file inspection
+- shell/bash commands
+- file edits
+- web fetch/search
+- external directory access
+- follow-up questions
+
+This is the recommended mode for normal benchmark runs where answers should come
+from the configured MCP tools.
+
+```bash
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name opencode_agent \
+  --model-id tokenrouter/MiniMax-M3
+```
+
+### CLI workspace mode
+
+CLI workspace mode is opt-in. It gives each OpenCode run a dedicated workspace
+directory and can allow file inspection and/or shell execution.
+
+This mode is useful when evaluating CLI-style agents that can write small Python
+scripts, run local analysis, and use intermediate artifacts while still using
+MCP tools for operational data.
+
+```bash
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name opencode_agent \
+  --model-id tokenrouter/MiniMax-M3 \
+  --opencode-workspace-root traces/opencode_workspaces \
+  --opencode-allow-files \
+  --opencode-allow-bash
+```
+
+For scenario `401`, this creates a workspace such as:
+
+```text
+traces/opencode_workspaces/opencode_agent_401
+```
+
+OpenCode is instructed to use the current working directory as the run workspace
+when file or bash access is enabled. It should write scripts, temporary files,
+intermediate data, and final artifacts there.
+
+> **Safety note.** `--opencode-allow-bash` is not a hard OS-level sandbox. A
+> shell or Python process can still attempt to access files outside the workspace.
+> For strict filesystem isolation, run the benchmark inside Docker or another
+> sandboxed environment.
 
 ---
 
@@ -136,10 +208,11 @@ The runner configures OpenCode permissions for benchmark use:
 | Capability | Default | Flag to allow |
 | ---------- | ------- | ------------- |
 | AssetOpsBench MCP tools | allowed | always enabled |
-| `read`, `glob`, `grep`, `lsp` | allowed | always enabled |
+| `read`, `glob`, `grep`, `lsp` | denied | `--allow-files` |
 | shell commands | denied | `--allow-bash` |
 | file edits | denied | `--allow-edit` |
 | web fetch/search | denied | `--allow-web` |
+| external directory access | denied | not exposed |
 | follow-up questions | denied | not exposed |
 
 Benchmark runs should not pass `--allow-web`. Without that flag, OpenCode's
@@ -200,10 +273,23 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--opencode-bin PATH` | OpenCode executable path (default: `opencode`). |
 | `--attach URL` | Attach to a running `opencode serve` instance. |
 | `--timeout-s N` | Wall-clock timeout for `opencode run` (default: 900). |
+| `--allow-files` | Allow file inspection tools (`read`, `glob`, `grep`, `lsp`). Disabled by default. |
 | `--allow-bash` | Allow shell commands. Disabled by default. |
 | `--allow-edit` | Allow file edits. Disabled by default. |
 | `--allow-web` | Allow web fetch/search. Disabled by default. |
+| `--workspace-dir PATH` | Workspace directory required when files, bash, or edits are enabled. |
 | `--ask-permissions` | Do not auto-approve allowed permissions. Not suitable for batch runs. |
+
+Direct CLI workspace example:
+
+```bash
+uv run opencode-agent \
+  --model-id tokenrouter/MiniMax-M3 \
+  --workspace-dir /tmp/assetopsbench-opencode/smoke \
+  --allow-files \
+  --allow-bash \
+  "Analyze the maintenance cost distribution."
+```
 
 ---
 
@@ -236,6 +322,31 @@ uv run python -m benchmark.scenario_suite_runner \
   --no-evaluate
 ```
 
+To run with CLI workspace capabilities:
+
+```bash
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name opencode_agent \
+  --model-id tokenrouter/MiniMax-M3 \
+  --opencode-workspace-root traces/opencode_workspaces \
+  --opencode-allow-files \
+  --opencode-allow-bash
+```
+
+Scenario-suite OpenCode flags:
+
+| Flag | Description |
+| ---- | ----------- |
+| `--opencode-workspace-root PATH` | Root directory for per-run OpenCode workspaces. |
+| `--opencode-allow-files` | Pass `--allow-files` to `opencode-agent`. |
+| `--opencode-allow-bash` | Pass `--allow-bash` to `opencode-agent`. |
+| `--opencode-allow-edit` | Pass `--allow-edit` to `opencode-agent`. |
+
+If any OpenCode file, bash, or edit capability is enabled, then
+`--opencode-workspace-root` is required.
+
 ---
 
 ## Validation runs
@@ -251,25 +362,44 @@ opencode --version
 # 1. unit tests (no model call)
 uv run pytest src/agent/opencode_agent/tests/ -q
 
-# 2. direct smoke test
+# 2. direct MCP-only smoke test
 export TOKENROUTER_BASE_URL=https://api.tokenrouter.com/v1
 export TOKENROUTER_API_KEY=...
 uv run opencode-agent --show-trajectory \
   --model-id tokenrouter/MiniMax-M3 \
   "What sites are available?"
 
-# 3. persist a trajectory
+# 3. direct CLI workspace smoke test
+uv run opencode-agent --show-trajectory \
+  --model-id tokenrouter/MiniMax-M3 \
+  --workspace-dir /tmp/assetopsbench-opencode/smoke \
+  --allow-files \
+  --allow-bash \
+  "What is the current time?"
+
+# 4. persist a trajectory
 export AGENT_TRAJECTORY_DIR=$(pwd)/traces/trajectories
 uv run opencode-agent --run-id opencode-smoke --scenario-id smoke \
   --model-id tokenrouter/MiniMax-M3 \
   "What sites are available?"
 
-# 4. benchmark-suite dry run
+# 5. benchmark-suite dry run
 uv run python -m benchmark.scenario_suite_runner \
   --scenario-ids benchmarks/scenario_suite/scenarios.txt \
   --scenario-root /path/to/scenarios_data \
   --agent_name opencode_agent \
   --model-id tokenrouter/MiniMax-M3 \
+  --dry-run
+
+# 6. benchmark-suite CLI workspace dry run
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name opencode_agent \
+  --model-id tokenrouter/MiniMax-M3 \
+  --opencode-workspace-root traces/opencode_workspaces \
+  --opencode-allow-files \
+  --opencode-allow-bash \
   --dry-run
 ```
 
@@ -283,9 +413,13 @@ uv run python -m benchmark.scenario_suite_runner \
 | `Model not found: openai/MiniMax-M3` | Old router mapping. Use the current runner, which maps `tokenrouter/<model>` to a custom `tokenrouter` provider instead of `openai/<model>`. |
 | `TOKENROUTER_BASE_URL and TOKENROUTER_API_KEY must be set` | Set both env vars when using `tokenrouter/*`. The base URL should be OpenAI-compatible, usually ending in `/v1`. |
 | `LITELLM_BASE_URL and LITELLM_API_KEY must be set` | Set both env vars when using `litellm_proxy/*`. |
+| `--workspace-dir is required when enabling files, edits, or bash` | Direct `opencode-agent` runs require a workspace when `--allow-files`, `--allow-bash`, or `--allow-edit` is passed. |
+| `--opencode-workspace-root is required when enabling OpenCode files, bash, or edits` | Scenario-suite runs require a workspace root when any OpenCode CLI capability is enabled. |
+| Workspace folders are empty | Normal if OpenCode did not need to write scripts or intermediate files. The workspace is available as scratch space, but files are created only if the model/tooling writes them. |
 | Run appears stuck after `Command: uv run opencode-agent ...` | Normal for long scenarios: `scenario_suite_runner` is quiet while OpenCode works. Check `traces/trajectories/scenario_suite/opencode_agent/` after completion. |
 | Evaluator fails even though the answer text contains the right label | The answer may be too verbose for `static_json` extraction. Prefer concise answers such as `C` or JSON like `{"answer": "C"}` for strict structured tasks. |
 | Web access concern | Web is denied by default. Do not pass `--allow-web` for benchmark runs. |
+| Bash isolation concern | `--allow-bash` is not a hard OS sandbox. Use Docker or another sandbox for strict filesystem isolation. |
 | OpenCode prompts for permissions in a batch run | Do not pass `--ask-permissions`; the default auto-approves allowed tools and still denies explicitly denied tools. |
 
 ---
@@ -295,7 +429,10 @@ uv run python -m benchmark.scenario_suite_runner \
 - `src/agent/opencode_agent/` — `runner.py`, `cli.py`, `__init__.py`, and
   `tests/test_runner.py`.
 - `pyproject.toml` — `opencode-agent` entry point.
-- `src/benchmark/scenario_suite_runner.py` — `opencode_agent` benchmark method.
+- `src/benchmark/scenario_suite_runner.py` — `opencode_agent` benchmark method
+  and optional OpenCode workspace flags.
+- `docs/opencode-agent.md` — OpenCode usage, permissions, and workspace-mode
+  documentation.
 
 No MCP servers are modified. The runner generates OpenCode MCP/provider config
 at runtime.
