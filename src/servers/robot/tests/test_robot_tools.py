@@ -1,471 +1,541 @@
-"""Integration and unit tests for all 8 Robot MCP server tools.
+"""Unit tests for the 12 Layer 1 Spot SDK intrinsic tools.
 
-Tests marked @requires_couchdb are skipped when CouchDB is unreachable.
-All other tests use mocked DB via conftest fixtures.
+All tests mock the CouchDB layer — no live database required.
+CouchDB integration tests are guarded by @requires_couchdb.
+
+Tools under test:
+    navigate_to     open_panel     get_battery
+    get_pose        list_waypoints  capture_image
+    power_on        power_off      stand
+    sit             dock           undock
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
 
-from servers.robot.main import mcp
 from .conftest import call_tool, requires_couchdb
+from servers.robot.main import mcp
 
 
-# Shared mock profile document
-_PROFILE = {
-    "_id": "profile:chiller_6",
-    "_rev": "1-abc",
-    "physical_location": {"x": 10.0, "y": 5.0, "z": 0.0, "room_id": "B1"},
-    "gauge_range": [0.0, 100.0],
-    "gauge_value": 75.0,
-    "panel_stuck_prob": 0.05,
-    "human_present": False,
-    "maintenance_slot": "day",
-    "active_work_order": None,
-    "inspection_frequency_days": 7,
-    "last_inspection": "2024-06-01",
-    "sensor_type": "pressure",
-}
-
-_PROFILE_HUMAN = {**_PROFILE, "human_present": True}
-_PROFILE_STUCK = {**_PROFILE, "panel_stuck_prob": 1.0}  # always stuck
-_PROFILE_FREE  = {**_PROFILE, "panel_stuck_prob": 0.0}  # never stuck
-
-_IOT_DOC = {
-    "asset_id": "Chiller 6",
-    "timestamp": "2024-06-01T00:00:00",
-    "Chiller 6 Pressure": 75.0,
-}
+# ===========================================================================
+# navigate_to
+# ===========================================================================
 
 
-def _db_for(profile):
+@pytest.mark.asyncio
+async def test_navigate_to_nominal(mock_db):
+    result = await call_tool(mcp, "navigate_to", {"asset_id": "Motor 01"})
+    assert result["success"] is True
+    assert result["asset_id"] == "Motor 01"
+    assert result["distance_m"] > 0
+    assert result["steps_taken"] >= 1
+    assert result["blocked_reason"] is None
+    assert "Motor 01" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_navigate_to_no_db(no_db):
+    result = await call_tool(mcp, "navigate_to", {"asset_id": "Motor 01"})
+    assert "error" in result
+    assert "unavailable" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_navigate_to_unknown_asset(mock_db):
+    result = await call_tool(mcp, "navigate_to", {"asset_id": "NonExistentPump"})
+    assert "error" in result
+    assert "profile" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_navigate_to_no_location(mock_db):
+    """Profile exists but physical_location is None."""
+    import copy
+    from unittest.mock import patch
+    from .conftest import NOMINAL_PROFILE, _make_mock_db
+    profile = copy.deepcopy(NOMINAL_PROFILE)
+    profile["physical_location"] = None
+    with patch("servers.robot.main.db", _make_mock_db(profile=profile)):
+        result = await call_tool(mcp, "navigate_to", {"asset_id": "Motor 01"})
+    assert result["success"] is False
+    assert result["blocked_reason"] is not None
+    assert "physical_location" in result["blocked_reason"]
+
+
+# ===========================================================================
+# open_panel
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_open_panel_nominal(mock_db):
+    result = await call_tool(mcp, "open_panel", {"asset_id": "Motor 01"})
+    assert result["success"] is True
+    assert result["access_granted"] is True
+    assert result["stuck_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_open_panel_stuck(mock_db_panel_stuck):
+    """FM-1: panel_stuck=True → access_granted=False, escalation required."""
+    result = await call_tool(mcp, "open_panel", {"asset_id": "Motor 01"})
+    assert result["success"] is False
+    assert result["access_granted"] is False
+    assert result["stuck_reason"] is not None
+    assert "FM-1" in result["stuck_reason"]
+    assert "Escalate" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_open_panel_no_db(no_db):
+    result = await call_tool(mcp, "open_panel", {"asset_id": "Motor 01"})
+    assert "error" in result
+
+
+# ===========================================================================
+# get_battery
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_battery_nominal(mock_db):
+    result = await call_tool(mcp, "get_battery", {})
+    assert result["low_battery"] is False
+    assert result["battery_charge_pct"] == 85.0
+    assert result["battery_low_threshold"] == 20.0
+    assert result["battery_estimated_runtime_s"] == 5400.0
+    assert "OK" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_get_battery_low(mock_db_low_battery):
+    """FM-9: battery below threshold → low_battery=True, abort instruction."""
+    result = await call_tool(mcp, "get_battery", {})
+    assert result["low_battery"] is True
+    assert result["battery_charge_pct"] == 18.0
+    assert "LOW BATTERY" in result["message"]
+    assert "Abort" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_get_battery_no_db(no_db):
+    result = await call_tool(mcp, "get_battery", {})
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_get_battery_missing_state_doc(mock_db):
+    """robot_state doc not found → error with helpful message."""
+    from unittest.mock import MagicMock, patch
     mock = MagicMock()
-    mock.get.side_effect = lambda doc_id: profile if "profile:" in doc_id else None
-    mock.find.return_value = {"docs": [_IOT_DOC]}
-    mock.save.return_value = {"ok": True, "id": "x", "rev": "1-x"}
-    return mock
+    mock.get.return_value = None
+    with patch("servers.robot.main.db", mock):
+        result = await call_tool(mcp, "get_battery", {})
+    assert "error" in result
+    assert "robot_state" in result["error"]
 
 
-# ---------------------------------------------------------------------------
-# Tool 1: navigate_to
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# get_pose
+# ===========================================================================
 
 
-class TestNavigateTo:
-    @pytest.mark.anyio
-    async def test_returns_success_for_known_asset(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(mcp, "navigate_to", {"asset_id": "Chiller 6"})
-        assert data["success"] is True
-        assert data["distance_m"] > 0
-        assert data["steps_taken"] >= 1
-
-    @pytest.mark.anyio
-    async def test_blocked_when_no_location(self):
-        profile_no_loc = {k: v for k, v in _PROFILE.items() if k != "physical_location"}
-        with patch("servers.robot.main.db", _db_for(profile_no_loc)):
-            data = await call_tool(mcp, "navigate_to", {"asset_id": "Chiller 6"})
-        assert data["success"] is False
-        assert data["blocked_reason"] is not None
-
-    @pytest.mark.anyio
-    async def test_error_when_db_none(self, no_db):
-        data = await call_tool(mcp, "navigate_to", {"asset_id": "Chiller 6"})
-        assert "error" in data
-
-    @pytest.mark.anyio
-    async def test_error_when_profile_not_found(self):
-        mock = MagicMock()
-        mock.get.return_value = None
-        with patch("servers.robot.main.db", mock):
-            data = await call_tool(mcp, "navigate_to", {"asset_id": "Unknown Asset"})
-        assert "error" in data
-
-    @requires_couchdb
-    @pytest.mark.anyio
-    async def test_integration_chiller6(self):
-        data = await call_tool(mcp, "navigate_to", {"asset_id": "Chiller 6"})
-        assert "success" in data
-        assert "distance_m" in data
+@pytest.mark.asyncio
+async def test_get_pose_nominal(mock_db):
+    result = await call_tool(mcp, "get_pose", {})
+    assert result["localization_ok"] is True
+    assert result["pose_drift_m"] == 0.0
+    assert result["fault_state"] is None
+    assert "OK" in result["message"]
 
 
-# ---------------------------------------------------------------------------
-# Tool 2: safety_gate_check
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_get_pose_localization_failure(mock_db_loc_failure):
+    """FM-10: localization_ok=False, drift=1.8 m → abort instruction."""
+    result = await call_tool(mcp, "get_pose", {})
+    assert result["localization_ok"] is False
+    assert result["pose_drift_m"] == 1.8
+    assert "LOCALIZATION FAILURE" in result["message"]
+    assert "Abort" in result["message"]
 
 
-class TestSafetyGateCheck:
-    @pytest.mark.anyio
-    async def test_clearance_true_when_no_human_no_wo(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(mcp, "safety_gate_check", {"asset_id": "Chiller 6"})
-        assert data["safety_clearance"] is True
-        assert data["human_present"] is False
-        assert data["active_work_order"] is None
-
-    @pytest.mark.anyio
-    async def test_clearance_false_when_human_present(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE_HUMAN)):
-            data = await call_tool(mcp, "safety_gate_check", {"asset_id": "Chiller 6"})
-        assert data["safety_clearance"] is False
-        assert data["human_present"] is True
-
-    @pytest.mark.anyio
-    async def test_missing_slot_defaults_to_day(self):
-        profile_no_slot = {k: v for k, v in _PROFILE.items() if k != "maintenance_slot"}
-        with patch("servers.robot.main.db", _db_for(profile_no_slot)):
-            data = await call_tool(mcp, "safety_gate_check", {"asset_id": "Chiller 6"})
-        assert data["slot"] == "day"
-
-    @pytest.mark.anyio
-    async def test_missing_active_wo_defaults_to_none(self):
-        profile_no_wo = {k: v for k, v in _PROFILE.items() if k != "active_work_order"}
-        with patch("servers.robot.main.db", _db_for(profile_no_wo)):
-            data = await call_tool(mcp, "safety_gate_check", {"asset_id": "Chiller 6"})
-        assert data["active_work_order"] is None
-
-    @pytest.mark.anyio
-    async def test_error_when_db_none(self, no_db):
-        data = await call_tool(mcp, "safety_gate_check", {"asset_id": "Chiller 6"})
-        assert "error" in data
+@pytest.mark.asyncio
+async def test_get_pose_no_db(no_db):
+    result = await call_tool(mcp, "get_pose", {})
+    assert "error" in result
 
 
-# ---------------------------------------------------------------------------
-# Tool 3: open_panel
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# list_waypoints
+# ===========================================================================
 
 
-class TestOpenPanel:
-    @pytest.mark.anyio
-    async def test_panel_opens_with_zero_stuck_prob(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE_FREE)):
-            data = await call_tool(mcp, "open_panel", {"asset_id": "Chiller 6"})
-        assert data["success"] is True
-        assert data["access_granted"] is True
-
-    @pytest.mark.anyio
-    async def test_panel_stuck_with_certain_prob(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE_STUCK)):
-            data = await call_tool(mcp, "open_panel", {"asset_id": "Chiller 6"})
-        assert data["success"] is False
-        assert data["stuck_reason"] is not None
-
-    @pytest.mark.anyio
-    async def test_rng_deterministic_after_reset(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            result1 = await call_tool(mcp, "open_panel", {"asset_id": "Chiller 6"})
-
-        import random
-        import servers.robot.main as robot_main
-        robot_main._simulator._rng = random.Random(42)
-
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            result2 = await call_tool(mcp, "open_panel", {"asset_id": "Chiller 6"})
-
-        assert result1["success"] == result2["success"]
-        assert result1["access_granted"] == result2["access_granted"]
-
-    @pytest.mark.anyio
-    async def test_error_when_db_none(self, no_db):
-        data = await call_tool(mcp, "open_panel", {"asset_id": "Chiller 6"})
-        assert "error" in data
+@pytest.mark.asyncio
+async def test_list_waypoints_all(mock_db):
+    result = await call_tool(mcp, "list_waypoints", {})
+    assert result["total"] == 3
+    assert result["active_count"] == 3
+    assert all(wp["active"] for wp in result["waypoints"])
+    assert "all active" in result["message"]
 
 
-# ---------------------------------------------------------------------------
-# Tool 4: read_gauge
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_list_waypoints_filtered(mock_db):
+    result = await call_tool(mcp, "list_waypoints", {"asset_id": "motor_01"})
+    assert result["total"] == 1
+    assert result["waypoints"][0]["waypoint_id"] == "wp_motor_01_panel"
 
 
-class TestReadGauge:
-    @pytest.mark.anyio
-    async def test_reading_within_range(self):
-        import servers.robot.main as robot_main
-        robot_main._simulator.generate_scenario("chiller_6", [0.0, 100.0], "normal")
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp, "read_gauge", {"asset_id": "Chiller 6", "attempt_n": 1}
-            )
-        assert 0.0 <= data["reading"] <= 100.0
-        assert 0.0 <= data["confidence"] <= 1.0
+@pytest.mark.asyncio
+async def test_list_waypoints_missing(mock_db_waypoint_missing):
+    """FM-11: motor_01 waypoint is inactive → escalation instruction."""
+    result = await call_tool(mcp, "list_waypoints", {"asset_id": "motor_01"})
+    assert result["active_count"] == 0
+    inactive = result["waypoints"][0]
+    assert inactive["active"] is False
+    assert "INACTIVE" in result["message"]
+    assert "FM-11" in result["message"]
 
-    @pytest.mark.anyio
-    async def test_no_gauge_value_in_response(self):
-        import servers.robot.main as robot_main
-        robot_main._simulator.generate_scenario("chiller_6", [0.0, 100.0], "normal")
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp, "read_gauge", {"asset_id": "Chiller 6", "attempt_n": 1}
-            )
-        assert "gauge_value" not in data
 
-    @pytest.mark.anyio
-    async def test_attempt_n_reflected_in_response(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp, "read_gauge", {"asset_id": "Chiller 6", "attempt_n": 3}
-            )
-        assert data["attempt_n"] == 3
+@pytest.mark.asyncio
+async def test_list_waypoints_no_db(no_db):
+    result = await call_tool(mcp, "list_waypoints", {})
+    assert "error" in result
 
-    @pytest.mark.anyio
-    async def test_gauge_range_present(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp, "read_gauge", {"asset_id": "Chiller 6", "attempt_n": 1}
-            )
-        assert "gauge_range" in data
 
-    @pytest.mark.anyio
-    async def test_error_when_db_none(self, no_db):
-        data = await call_tool(
-            mcp, "read_gauge", {"asset_id": "Chiller 6", "attempt_n": 1}
+@pytest.mark.asyncio
+async def test_list_waypoints_no_doc(mock_db):
+    """waypoints doc returns None → error with helpful message."""
+    from unittest.mock import MagicMock, patch
+    mock = MagicMock()
+    mock.get.return_value = None
+    with patch("servers.robot.main.db", mock):
+        result = await call_tool(mcp, "list_waypoints", {})
+    assert "error" in result
+    assert "waypoints" in result["error"]
+
+
+# ===========================================================================
+# capture_image
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_capture_image_no_gauge_path(mock_db):
+    """Nominal profile: gauge_path=None → image_available=False."""
+    result = await call_tool(mcp, "capture_image", {"asset_id": "Motor 01"})
+    assert result["image_available"] is False
+    assert result["occlusion_flag"] is False
+    assert result["gauge_path"] is None
+    assert result["gauge_range"] == [0, 200]
+    assert "pending" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_capture_image_with_gauge_path(mock_db_with_gauge_path):
+    """gauge_path set → image_available=True, vlm_hint populated."""
+    result = await call_tool(mcp, "capture_image", {"asset_id": "Motor 01"})
+    assert result["image_available"] is True
+    assert result["occlusion_flag"] is False
+    assert result["gauge_path"] == "/data/gauges/motor_01/gauge_001.jpg"
+    assert "vlm_hint" in result
+    assert "0" in result["vlm_hint"]    # range low
+    assert "200" in result["vlm_hint"]  # range high
+    assert "Pass to VLM" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_capture_image_panel_stuck(mock_db_panel_stuck):
+    """panel_stuck=True → occlusion_flag=True, image_available=False."""
+    result = await call_tool(mcp, "capture_image", {"asset_id": "Motor 01"})
+    assert result["occlusion_flag"] is True
+    assert result["image_available"] is False
+    assert "BLOCKED" in result["message"]
+    assert "FM-2" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_capture_image_no_db(no_db):
+    result = await call_tool(mcp, "capture_image", {"asset_id": "Motor 01"})
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_capture_image_unknown_asset(mock_db):
+    result = await call_tool(mcp, "capture_image", {"asset_id": "GhostPump"})
+    assert "error" in result
+
+
+# ===========================================================================
+# gauge_value isolation — no tool must return gauge_value
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_no_tool_returns_gauge_value(mock_db_with_gauge_path):
+    """None of the 12 tools should return a gauge_value field."""
+    tools_and_args = [
+        ("navigate_to",    {"asset_id": "Motor 01"}),
+        ("open_panel",     {"asset_id": "Motor 01"}),
+        ("get_battery",    {}),
+        ("get_pose",       {}),
+        ("list_waypoints", {}),
+        ("capture_image",  {"asset_id": "Motor 01"}),
+        ("power_on",       {}),
+        ("power_off",      {}),
+        ("stand",          {}),
+        ("sit",            {}),
+        ("dock",           {}),
+        ("undock",         {}),
+    ]
+    for tool_name, args in tools_and_args:
+        result = await call_tool(mcp, tool_name, args)
+        assert "gauge_value" not in result, (
+            f"Tool '{tool_name}' leaked gauge_value field: {result}"
         )
-        assert "error" in data
 
 
-# ---------------------------------------------------------------------------
-# Tool 5: check_human_presence
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# power_on
+# ===========================================================================
 
 
-class TestCheckHumanPresence:
-    @pytest.mark.anyio
-    async def test_no_human(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp, "check_human_presence", {"asset_id": "Chiller 6"}
-            )
-        assert data["human_present"] is False
-
-    @pytest.mark.anyio
-    async def test_human_present(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE_HUMAN)):
-            data = await call_tool(
-                mcp, "check_human_presence", {"asset_id": "Chiller 6"}
-            )
-        assert data["human_present"] is True
-
-    @pytest.mark.anyio
-    async def test_slot_default(self):
-        profile_no_slot = {k: v for k, v in _PROFILE.items() if k != "maintenance_slot"}
-        with patch("servers.robot.main.db", _db_for(profile_no_slot)):
-            data = await call_tool(
-                mcp, "check_human_presence", {"asset_id": "Chiller 6"}
-            )
-        assert data["slot"] == "day"
-
-    @pytest.mark.anyio
-    async def test_error_when_db_none(self, no_db):
-        data = await call_tool(
-            mcp, "check_human_presence", {"asset_id": "Chiller 6"}
-        )
-        assert "error" in data
+@pytest.mark.asyncio
+async def test_power_on_nominal(mock_db):
+    result = await call_tool(mcp, "power_on", {})
+    assert result["success"] is True
+    assert result["power_state"] == "POWERED_ON"
+    assert result["transition"] == "power_on"
+    assert result["robot_id"] == "spot_1"
 
 
-# ---------------------------------------------------------------------------
-# Tool 6: commit_reading
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_power_on_already_on(mock_db):
+    """Calling power_on when already powered on returns success (idempotent)."""
+    result = await call_tool(mcp, "power_on", {})
+    assert result["success"] is True
+    assert "already" in result["message"].lower()
 
 
-class TestCommitReading:
-    @pytest.mark.anyio
-    async def test_blocked_when_n_lt_3(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp,
-                "commit_reading",
-                {
-                    "asset_id": "Chiller 6",
-                    "readings": [74.0, 76.0],
-                    "decision": "close_normal",
-                },
-            )
-        assert data["status"] == "BLOCKED"
-        assert data["fm_flag"] == "FM-7b"
-
-    @pytest.mark.anyio
-    async def test_status_field_present(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp,
-                "commit_reading",
-                {
-                    "asset_id": "Chiller 6",
-                    "readings": [73.0, 75.0, 77.0],
-                    "decision": "close_normal",
-                },
-            )
-        assert data["status"] in {"COMMIT", "BLOCKED", "ESCALATE", "OOD_FLAG", "PANEL_RECHECK"}
-
-    @pytest.mark.anyio
-    async def test_score_present(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp,
-                "commit_reading",
-                {
-                    "asset_id": "Chiller 6",
-                    "readings": [73.0, 75.0, 77.0],
-                    "decision": "close_normal",
-                },
-            )
-        assert "score" in data
-        assert isinstance(data["score"], float)
-
-    @pytest.mark.anyio
-    async def test_error_when_db_none(self, no_db):
-        data = await call_tool(
-            mcp,
-            "commit_reading",
-            {
-                "asset_id": "Chiller 6",
-                "readings": [73.0, 75.0, 77.0],
-                "decision": "close_normal",
-            },
-        )
-        assert "error" in data
-
-    @requires_couchdb
-    @pytest.mark.anyio
-    async def test_integration_commit_or_escalate(self):
-        data = await call_tool(
-            mcp,
-            "commit_reading",
-            {
-                "asset_id": "Chiller 6",
-                "readings": [49.5, 50.0, 50.5],
-                "decision": "close_normal",
-            },
-        )
-        assert data["status"] in {"COMMIT", "ESCALATE", "OOD_FLAG", "PANEL_RECHECK"}
+@pytest.mark.asyncio
+async def test_power_on_from_off(mock_db_powered_off):
+    """power_on transitions from POWERED_OFF to POWERED_ON."""
+    result = await call_tool(mcp, "power_on", {})
+    assert result["success"] is True
+    assert result["power_state"] == "POWERED_ON"
+    assert "powered on" in result["message"].lower()
 
 
-# ---------------------------------------------------------------------------
-# Tool 7: check_wo_similarity
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_power_on_no_db(no_db):
+    result = await call_tool(mcp, "power_on", {})
+    assert "error" in result
 
 
-class TestCheckWoSimilarity:
-    def _wo_mock(self, docs):
-        mock = MagicMock()
-        mock.find.return_value = {"docs": docs}
-        return mock
-
-    @pytest.mark.anyio
-    async def test_error_when_wo_db_none(self, no_wo_db):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(
-                mcp,
-                "check_wo_similarity",
-                {
-                    "asset_id": "Chiller 6",
-                    "failure_description": "water leak near chiller",
-                },
-            )
-        assert "error" in data
-
-    @pytest.mark.anyio
-    async def test_proceed_when_no_similar_wos(self):
-        wo_doc = {
-            "wonum": "1000045",
-            "description": "completely unrelated electrical work",
-            "assetnum": "CHILLER6",
-            "status": "COMP",
-        }
-        with patch("servers.robot.main._get_wo_db", return_value=self._wo_mock([wo_doc])):
-            with patch("servers.robot.main.db", _db_for(_PROFILE)):
-                data = await call_tool(
-                    mcp,
-                    "check_wo_similarity",
-                    {
-                        "asset_id": "Chiller 6",
-                        "failure_description": "water leak near chiller",
-                    },
-                )
-        assert data["recommendation"] in {"proceed", "review", "consolidate"}
-        assert "similar_wos" in data
-        assert "scores" in data
-
-    @pytest.mark.anyio
-    async def test_consolidate_for_identical_description(self):
-        wo_doc = {
-            "wonum": "1000046",
-            "description": "water leak near chiller unit",
-            "assetnum": "CHILLER6",
-            "status": "WAPPR",
-        }
-        with patch("servers.robot.main._get_wo_db", return_value=self._wo_mock([wo_doc])):
-            with patch("servers.robot.main.db", _db_for(_PROFILE)):
-                data = await call_tool(
-                    mcp,
-                    "check_wo_similarity",
-                    {
-                        "asset_id": "Chiller 6",
-                        "failure_description": "water leak near chiller unit",
-                    },
-                )
-        assert data["recommendation"] == "consolidate"
-        assert data["duplicate_risk"] is True
-
-    @requires_couchdb
-    @pytest.mark.anyio
-    async def test_integration_wo_similarity(self):
-        data = await call_tool(
-            mcp,
-            "check_wo_similarity",
-            {
-                "asset_id": "Chiller 6",
-                "failure_description": "anomaly on chiller condenser",
-            },
-        )
-        assert "recommendation" in data
-        assert data["recommendation"] in {"proceed", "review", "consolidate"}
+# ===========================================================================
+# power_off
+# ===========================================================================
 
 
-# ---------------------------------------------------------------------------
-# Tool 8: detect_anomaly
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_power_off_sitting(mock_db_sitting):
+    """Sitting + powered on → power_off succeeds."""
+    result = await call_tool(mcp, "power_off", {})
+    assert result["success"] is True
+    assert result["power_state"] == "POWERED_OFF"
+    assert result["transition"] == "power_off"
 
 
-class TestDetectAnomaly:
-    @pytest.mark.anyio
-    async def test_returns_all_expected_fields(self):
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(mcp, "detect_anomaly", {"asset_id": "Chiller 6"})
-        for field in (
-            "spill_detected",
-            "leakage_detected",
-            "pipe_damage_detected",
-            "pooled_liquid_detected",
-            "anomaly_confidence",
-        ):
-            assert field in data, f"Missing field '{field}' in detect_anomaly response"
+@pytest.mark.asyncio
+async def test_power_off_while_standing(mock_db):
+    """Robot is STANDING → power_off must refuse."""
+    result = await call_tool(mcp, "power_off", {})
+    assert result["success"] is False
+    assert "STANDING" in result["message"]
+    assert "sit()" in result["message"]
 
-    @pytest.mark.anyio
-    async def test_spill_scenario_detected(self):
-        import servers.robot.main as robot_main
-        robot_main._simulator.generate_scenario("chiller_6", [0.0, 100.0], "spill")
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(mcp, "detect_anomaly", {"asset_id": "Chiller 6"})
-        assert data["spill_detected"] is True
-        assert data["leakage_detected"] is True
 
-    @pytest.mark.anyio
-    async def test_normal_scenario_no_spill(self):
-        import servers.robot.main as robot_main
-        robot_main._simulator.generate_scenario("chiller_6", [0.0, 100.0], "normal")
-        with patch("servers.robot.main.db", _db_for(_PROFILE)):
-            data = await call_tool(mcp, "detect_anomaly", {"asset_id": "Chiller 6"})
-        assert data["spill_detected"] is False
-        assert data["leakage_detected"] is False
+@pytest.mark.asyncio
+async def test_power_off_already_off(mock_db_powered_off):
+    """Already powered off → idempotent success."""
+    result = await call_tool(mcp, "power_off", {})
+    assert result["success"] is True
+    assert "already" in result["message"].lower()
 
-    @pytest.mark.anyio
-    async def test_error_when_db_none(self, no_db):
-        data = await call_tool(mcp, "detect_anomaly", {"asset_id": "Chiller 6"})
-        assert "error" in data
 
-    @requires_couchdb
-    @pytest.mark.anyio
-    async def test_integration_anomaly_fields(self):
-        data = await call_tool(mcp, "detect_anomaly", {"asset_id": "Chiller 6"})
-        assert "spill_detected" in data
-        assert isinstance(data["anomaly_confidence"], float)
+@pytest.mark.asyncio
+async def test_power_off_no_db(no_db):
+    result = await call_tool(mcp, "power_off", {})
+    assert "error" in result
+
+
+# ===========================================================================
+# stand
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_stand_nominal(mock_db_sitting):
+    """Powered on and sitting → stand succeeds."""
+    result = await call_tool(mcp, "stand", {})
+    assert result["success"] is True
+    assert result["stance_state"] == "STANDING"
+    assert result["power_state"] == "POWERED_ON"
+    assert result["transition"] == "stand"
+
+
+@pytest.mark.asyncio
+async def test_stand_already_standing(mock_db):
+    """Already standing → idempotent success."""
+    result = await call_tool(mcp, "stand", {})
+    assert result["success"] is True
+    assert "already" in result["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_stand_powered_off(mock_db_powered_off):
+    """Power off → stand must refuse."""
+    result = await call_tool(mcp, "stand", {})
+    assert result["success"] is False
+    assert "not powered on" in result["message"].lower()
+    assert "power_on()" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_stand_no_db(no_db):
+    result = await call_tool(mcp, "stand", {})
+    assert "error" in result
+
+
+# ===========================================================================
+# sit
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_sit_nominal(mock_db):
+    """Powered on and standing → sit succeeds."""
+    result = await call_tool(mcp, "sit", {})
+    assert result["success"] is True
+    assert result["stance_state"] == "SITTING"
+    assert result["transition"] == "sit"
+
+
+@pytest.mark.asyncio
+async def test_sit_already_sitting(mock_db_sitting):
+    """Already sitting → idempotent success."""
+    result = await call_tool(mcp, "sit", {})
+    assert result["success"] is True
+    assert "already" in result["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_sit_powered_off(mock_db_powered_off):
+    """Power off → sit must refuse."""
+    result = await call_tool(mcp, "sit", {})
+    assert result["success"] is False
+    assert "not powered on" in result["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_sit_no_db(no_db):
+    result = await call_tool(mcp, "sit", {})
+    assert "error" in result
+
+
+# ===========================================================================
+# dock
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_dock_nominal(mock_db):
+    """Nominal state with dock waypoint active → dock succeeds."""
+    result = await call_tool(mcp, "dock", {})
+    assert result["docked"] is True
+    assert result["at_charge_station"] is True
+    assert result["dock_waypoint_id"] == "wp_dock_main"
+    assert result["battery_charge_pct"] == 85.0
+
+
+@pytest.mark.asyncio
+async def test_dock_no_db(no_db):
+    result = await call_tool(mcp, "dock", {})
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_dock_no_dock_waypoint(mock_db):
+    """Waypoints doc has no dock waypoint → dock fails gracefully."""
+    import copy
+    from unittest.mock import patch
+    from .conftest import NOMINAL_ROBOT_STATE, NOMINAL_PROFILE, _make_mock_db
+    wps_no_dock = {
+        "_id":      "waypoints",
+        "doc_type": "waypoints",
+        "waypoints": [
+            {"waypoint_id": "wp_motor_01_panel", "waypoint_name": "Motor 01",
+             "asset_id": "motor_01", "location_description": "Plant A",
+             "x": 7.2, "y": 44.8, "active": True},
+        ],
+    }
+    with patch("servers.robot.main.db", _make_mock_db(waypoints=wps_no_dock)):
+        result = await call_tool(mcp, "dock", {})
+    assert result["docked"] is False
+    assert result["at_charge_station"] is False
+    assert "not found" in result["message"].lower()
+
+
+# ===========================================================================
+# undock
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_undock_nominal(mock_db):
+    """Nominal battery 85% → undock succeeds."""
+    result = await call_tool(mcp, "undock", {})
+    assert result["docked"] is False
+    assert result["at_charge_station"] is False
+    assert result["battery_charge_pct"] == 85.0
+
+
+@pytest.mark.asyncio
+async def test_undock_low_battery(mock_db_low_battery):
+    """Battery 18% (below threshold 20%) → undock refused."""
+    result = await call_tool(mcp, "undock", {})
+    assert result["docked"] is True
+    assert result["at_charge_station"] is True
+    assert "UNDOCK REFUSED" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_undock_no_db(no_db):
+    result = await call_tool(mcp, "undock", {})
+    assert "error" in result
+
+
+# ===========================================================================
+# Integration (live CouchDB required)
+# ===========================================================================
+
+
+@requires_couchdb
+def test_get_battery_live():
+    """Live CouchDB: get_battery returns a valid result or a clear 'not seeded' error."""
+    from servers.robot.main import get_battery
+    result = get_battery()
+    if hasattr(result, "error"):
+        assert "robot_state" in result.error
+    else:
+        assert result.battery_charge_pct >= 0
+
+
+@requires_couchdb
+def test_list_waypoints_live():
+    """Live CouchDB: list_waypoints returns waypoints or a clear 'not seeded' error."""
+    from servers.robot.main import list_waypoints
+    result = list_waypoints()
+    if hasattr(result, "error"):
+        assert "waypoints" in result.error
+    else:
+        assert result.total >= 0
