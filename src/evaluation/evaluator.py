@@ -28,12 +28,7 @@ _log = logging.getLogger(__name__)
 
 
 class Evaluator:
-    """Run a batch of scenarios against their saved trajectories.
-
-    ``default_scorer`` names the registered scorer to use when a
-    scenario does not set ``scoring_method``.  Per-scenario overrides
-    take precedence.
-    """
+    """Run a batch of scenarios against their saved trajectories."""
 
     def __init__(
         self,
