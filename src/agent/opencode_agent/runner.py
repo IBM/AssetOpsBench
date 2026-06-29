@@ -288,12 +288,55 @@ def _walk_dicts(value: Any):
             yield from _walk_dicts(child)
 
 
+def _token_count(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _opencode_usage_tokens(tokens: dict[str, Any]) -> tuple[int, int]:
+    """Return input/output totals from OpenCode's step-finish token schema."""
+    cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+    input_tokens = (
+        _token_count(tokens.get("input"))
+        + _token_count(cache.get("read"))
+        + _token_count(cache.get("write"))
+    )
+    output_tokens = _token_count(tokens.get("output")) + _token_count(
+        tokens.get("reasoning")
+    )
+    return input_tokens, output_tokens
+
+
 def _usage_from_events(events: list[dict[str, Any]]) -> tuple[int, int]:
-    """Extract a conservative max token usage from possibly cumulative events."""
+    """Extract token usage from OpenCode events.
+
+    OpenCode emits per-step usage as ``tokens.input`` / ``tokens.output`` plus
+    cache and reasoning buckets. Older/test fixtures may use SDK-style usage
+    names, which are treated as possibly cumulative and deduplicated by max.
+    """
     input_tokens = 0
     output_tokens = 0
+    sdk_input_tokens = 0
+    sdk_output_tokens = 0
     for event in events:
         for item in _walk_dicts(event):
+            tokens = item.get("tokens")
+            if isinstance(tokens, dict):
+                in_value, out_value = _opencode_usage_tokens(tokens)
+                input_tokens += in_value
+                output_tokens += out_value
+                continue
+
             in_value = (
                 item.get("input_tokens")
                 or item.get("inputTokens")
@@ -306,11 +349,9 @@ def _usage_from_events(events: list[dict[str, Any]]) -> tuple[int, int]:
                 or item.get("completion_tokens")
                 or item.get("completionTokens")
             )
-            if isinstance(in_value, int):
-                input_tokens = max(input_tokens, in_value)
-            if isinstance(out_value, int):
-                output_tokens = max(output_tokens, out_value)
-    return input_tokens, output_tokens
+            sdk_input_tokens = max(sdk_input_tokens, _token_count(in_value))
+            sdk_output_tokens = max(sdk_output_tokens, _token_count(out_value))
+    return input_tokens or sdk_input_tokens, output_tokens or sdk_output_tokens
 
 
 def _build_trajectory_from_events(

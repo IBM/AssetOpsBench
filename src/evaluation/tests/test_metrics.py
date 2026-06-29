@@ -43,6 +43,52 @@ class TestMetricsFromTrajectory:
         rec = PersistedTrajectory.from_raw(make_persisted_record(trajectory=None))
         assert metrics_from_trajectory(rec) == OpsMetrics()
 
+    def test_sdk_trajectory_falls_back_to_raw_event_tokens(self, make_persisted_record):
+        rec = PersistedTrajectory.from_raw(
+            make_persisted_record(
+                trajectory={
+                    "turns": [
+                        {
+                            "index": 0,
+                            "text": "answer",
+                            "tool_calls": [],
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                        }
+                    ],
+                    "raw_events": [
+                        {
+                            "type": "step_finish",
+                            "part": {
+                                "tokens": {
+                                    "input": 13084,
+                                    "output": 33,
+                                    "reasoning": 61,
+                                    "cache": {"read": 128, "write": 2},
+                                }
+                            },
+                        },
+                        {
+                            "type": "step_finish",
+                            "part": {
+                                "tokens": {
+                                    "input": 209,
+                                    "output": 84,
+                                    "reasoning": 17,
+                                    "cache": {"read": 13184, "write": 0},
+                                }
+                            },
+                        },
+                    ],
+                }
+            )
+        )
+
+        m = metrics_from_trajectory(rec)
+
+        assert m.tokens_in == 26607
+        assert m.tokens_out == 195
+
     def test_plan_execute_list_trajectory(self, make_persisted_record):
         rec = PersistedTrajectory.from_raw(
             make_persisted_record(
