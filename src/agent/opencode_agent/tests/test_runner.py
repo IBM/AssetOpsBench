@@ -179,6 +179,42 @@ def test_build_trajectory_from_text_and_tool_parts():
     assert trajectory.turns[0].tool_calls[0].name == "iot_get_asset"
 
 
+def test_build_trajectory_from_opencode_step_finish_usage():
+    events = [
+        {
+            "type": "step_finish",
+            "part": {
+                "type": "step-finish",
+                "tokens": {
+                    "input": 13084,
+                    "output": 33,
+                    "reasoning": 61,
+                    "cache": {"read": 128, "write": 2},
+                },
+            },
+        },
+        {
+            "type": "step_finish",
+            "part": {
+                "type": "step-finish",
+                "tokens": {
+                    "input": 209,
+                    "output": 84,
+                    "reasoning": 17,
+                    "cache": {"read": 13184, "write": 0},
+                },
+            },
+        },
+    ]
+
+    answer, trajectory = _build_trajectory_from_events(events, [])
+
+    assert answer == ""
+    assert len(trajectory.turns) == 1
+    assert trajectory.turns[0].input_tokens == 26607
+    assert trajectory.turns[0].output_tokens == 195
+
+
 def test_runner_defaults():
     runner = OpenCodeAgentRunner(server_paths={}, model="opencode/gpt-5")
     assert runner._model_id == "opencode/gpt-5"
