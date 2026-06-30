@@ -7,6 +7,7 @@ from pathlib import Path
 from agent.models import ToolCall
 from agent.opencode_agent.runner import (
     OpenCodeAgentRunner,
+    _REPO_ROOT,
     _build_mcp_config,
     _build_opencode_config,
     _build_permissions,
@@ -70,7 +71,7 @@ def test_build_permissions_allows_opt_in_tools():
 
 def test_resolve_run_dir_defaults_to_repo_root():
     run_dir = _resolve_run_dir()
-    assert run_dir.name == "AssetOpsBench-main"
+    assert run_dir == _REPO_ROOT
 
 
 def test_resolve_run_dir_requires_workspace_for_file_or_code_tools():
@@ -211,8 +212,12 @@ def test_build_trajectory_from_opencode_step_finish_usage():
 
     assert answer == ""
     assert len(trajectory.turns) == 2
-    assert trajectory.turns[0].input_tokens == 26607
-    assert trajectory.turns[0].output_tokens == 195
+    assert trajectory.turns[0].input_tokens == 13214
+    assert trajectory.turns[0].output_tokens == 94
+    assert trajectory.turns[1].input_tokens == 13393
+    assert trajectory.turns[1].output_tokens == 101
+    assert trajectory.total_input_tokens == 26607
+    assert trajectory.total_output_tokens == 195
 
 
 def test_runner_defaults():
@@ -220,7 +225,7 @@ def test_runner_defaults():
     assert runner._model_id == "opencode/gpt-5"
     assert runner._opencode_model == "opencode/gpt-5"
     assert runner._agent_name == "assetops"
-    assert runner._run_dir.name == "AssetOpsBench-main"
+    assert runner._run_dir == _REPO_ROOT
 
 
 def test_runner_workspace_mode(tmp_path):
