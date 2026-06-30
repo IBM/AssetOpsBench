@@ -4,7 +4,6 @@ Usage:
     opencode-agent "What sensors are on Chiller 6?"
     opencode-agent --model-id opencode/gpt-5.1-codex --max-steps 20 "List failure modes"
     opencode-agent --model-id tokenrouter/MiniMax-M3 "What is the current time?"
-    opencode-agent --model-id rits/qwen3-30b-a3b-thinking-2507 "What is the current time?"
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ model-id examples:
   anthropic/claude-sonnet-4-5  Direct Anthropic provider in OpenCode
   litellm_proxy/<model>        Use LITELLM_BASE_URL / LITELLM_API_KEY
   tokenrouter/<model>          Use TOKENROUTER_BASE_URL / TOKENROUTER_API_KEY
-  rits/<endpoint-path>         Use IBM RITS per-model endpoint with RITS_API_KEY
 
 environment variables:
   OPENAI_API_KEY          Direct OpenAI key, or set through `opencode /connect`
@@ -38,15 +36,10 @@ environment variables:
   LITELLM_BASE_URL        LiteLLM OpenAI-compatible base URL
   TOKENROUTER_API_KEY     TokenRouter key for tokenrouter/* models
   TOKENROUTER_BASE_URL    TokenRouter OpenAI-compatible base URL
-  RITS_API_KEY            IBM RITS API key for rits/* models
-  RITS_BASE_URL           Optional RITS root or full model endpoint
-  RITS_SERVED_MODEL_NAME  Optional served model name if different from endpoint
-  RITS_AUTH_HEADER        Optional RITS auth header name (default: RITS_API_KEY)
 
 examples:
   opencode-agent "What assets are at site MAIN?"
   opencode-agent --model-id tokenrouter/MiniMax-M3 "List sensors on Chiller 6"
-  opencode-agent --model-id rits/qwen3-30b-a3b-thinking-2507 "What is the current time?"
   opencode-agent --attach http://localhost:4096 "What is the current time?"
   opencode-agent --show-trajectory "What sensors are on Chiller 6?"
 """,
