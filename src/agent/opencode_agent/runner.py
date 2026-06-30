@@ -19,7 +19,6 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from llm.routers import resolve_model, resolve_router_creds
 from observability import agent_run_span, persist_trajectory
@@ -33,11 +32,6 @@ _log = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MODEL = "opencode/gpt-5.1-codex"
 _DEFAULT_AGENT_NAME = "assetops"
-_RITS_PREFIX = "rits/"
-_RITS_PROVIDER_ID = "rits"
-_RITS_DEFAULT_BASE_URL = (
-    "https://inference-3scale-apicast-production.apps.rits.fmaas.res.ibm.com"
-)
 
 _OPENCODE_SYSTEM_PROMPT = (
     AGENT_SYSTEM_PROMPT
@@ -122,9 +116,6 @@ def _resolve_opencode_model_and_provider(
     as ``litellm_proxy/`` and ``tokenrouter/``, declare a custom
     OpenAI-compatible provider and register the requested model explicitly.
     """
-    if model_id.startswith(_RITS_PREFIX):
-        return _resolve_rits_model_and_provider(model_id)
-
     creds = resolve_router_creds(model_id, strict=True)
     if creds is None:
         return model_id, {}, {}
@@ -150,80 +141,6 @@ def _resolve_opencode_model_and_provider(
     }
     env = {
         "ASSETOPSBENCH_OPENCODE_API_KEY": creds.api_key,
-    }
-    return opencode_model, provider, env
-
-
-def _with_v1_suffix(url: str) -> str:
-    stripped = url.rstrip("/")
-    return stripped if stripped.endswith("/v1") else f"{stripped}/v1"
-
-
-def _join_url(base_url: str, *parts: str) -> str:
-    stripped_parts = [part.strip("/") for part in parts if part.strip("/")]
-    if not stripped_parts:
-        return base_url.rstrip("/")
-    return f"{base_url.rstrip('/')}/{'/'.join(stripped_parts)}"
-
-
-def _rits_base_url_for_endpoint(endpoint_path: str) -> str:
-    """Return the OpenAI-compatible base URL for one RITS endpoint.
-
-    RITS model cards expose per-model inference endpoints such as
-    ``https://.../qwen3-30b-a3b-thinking-2507``. The OpenCode
-    OpenAI-compatible provider expects the API root that contains
-    ``/chat/completions``, so this helper accepts either the RITS service root,
-    the full model endpoint, or an already-normalized ``.../v1`` URL.
-    """
-    configured_base = os.environ.get("RITS_BASE_URL") or _RITS_DEFAULT_BASE_URL
-    configured_base = configured_base.rstrip("/")
-    endpoint_path = endpoint_path.strip("/")
-
-    if configured_base.endswith("/v1"):
-        return configured_base
-
-    parsed_path = urlparse(configured_base).path.strip("/")
-    if parsed_path.endswith(endpoint_path):
-        return _with_v1_suffix(configured_base)
-
-    return _with_v1_suffix(_join_url(configured_base, endpoint_path))
-
-
-def _resolve_rits_model_and_provider(
-    model_id: str,
-) -> tuple[str, dict[str, Any], dict[str, str]]:
-    """Translate ``rits/<endpoint-path>`` into an OpenCode provider config."""
-    endpoint_path = model_id[len(_RITS_PREFIX) :].strip("/")
-    if not endpoint_path:
-        raise ValueError("RITS model id must use the form rits/<endpoint-path>")
-
-    api_key = os.environ.get("RITS_API_KEY")
-    if not api_key:
-        raise ValueError("RITS_API_KEY must be set when using rits/* models")
-
-    served_model_name = os.environ.get("RITS_SERVED_MODEL_NAME") or endpoint_path
-    auth_header = os.environ.get("RITS_AUTH_HEADER", "RITS_API_KEY")
-    opencode_model = f"{_RITS_PROVIDER_ID}/{served_model_name}"
-    provider = {
-        _RITS_PROVIDER_ID: {
-            "npm": "@ai-sdk/openai-compatible",
-            "name": "IBM RITS",
-            "options": {
-                "baseURL": _rits_base_url_for_endpoint(endpoint_path),
-                "apiKey": "{env:ASSETOPSBENCH_OPENCODE_API_KEY}",
-                "headers": {
-                    auth_header: "{env:ASSETOPSBENCH_OPENCODE_API_KEY}",
-                },
-            },
-            "models": {
-                served_model_name: {
-                    "name": served_model_name,
-                }
-            },
-        }
-    }
-    env = {
-        "ASSETOPSBENCH_OPENCODE_API_KEY": api_key,
     }
     return opencode_model, provider, env
 
@@ -438,9 +355,67 @@ def _usage_from_events(events: list[dict[str, Any]]) -> tuple[int, int]:
     return input_tokens or sdk_input_tokens, output_tokens or sdk_output_tokens
 
 
+_REASONING_HINTS = ("reasoning", "thinking", "thought")
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", flags=re.DOTALL | re.IGNORECASE)
+
+
 def _visible_text(text: str) -> str:
-    """Remove optional OpenCode thinking blocks from user-facing text."""
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    """Remove optional model thinking markup from user-facing text."""
+    text = _THINK_BLOCK_RE.sub("", text)
+    if "</think>" in text.lower() and "<think>" not in text.lower():
+        text = re.split(r"</think>", text, flags=re.IGNORECASE)[-1]
+    return re.sub(r"</?think>", "", text, flags=re.IGNORECASE).strip()
+
+
+def _is_answer_text(part_type: str, part: dict[str, Any]) -> bool:
+    """Whether a part contributes to the user-facing answer."""
+    if any(hint in part_type for hint in _REASONING_HINTS):
+        return False
+    if "text" in part_type:
+        return True
+    if not part_type and part.get("role") == "assistant":
+        return True
+    return False
+
+
+def _merge_text(existing: str, new: str) -> str:
+    """Combine repeated emissions for one text part id.
+
+    OpenCode streams can look like snapshots (new value contains the previous
+    value) or deltas (new value is only the next chunk). Handle both shapes.
+    """
+    if not existing:
+        return new
+    if new.startswith(existing):
+        return new
+    if existing.startswith(new):
+        return existing
+    return existing + new
+
+
+def _is_step_finish(event: dict[str, Any], part: dict[str, Any], part_type: str) -> bool:
+    """True for OpenCode step-finish boundaries."""
+    event_type = str(event.get("type") or "").lower()
+    return ("step" in part_type and "finish" in part_type) or (
+        "step" in event_type and "finish" in event_type
+    )
+
+
+def _final_answer(
+    text_by_part: OrderedDict[str, str], msg_by_part: dict[str, str]
+) -> str:
+    """Return text from the final assistant message only."""
+    if not text_by_part:
+        return ""
+    last_msg = None
+    for part_id in text_by_part:
+        last_msg = msg_by_part.get(part_id, part_id)
+    answer = "".join(
+        text
+        for part_id, text in text_by_part.items()
+        if msg_by_part.get(part_id, part_id) == last_msg
+    )
+    return _visible_text(answer)
 
 
 def _build_trajectory_from_events(
@@ -450,16 +425,40 @@ def _build_trajectory_from_events(
     duration_ms: float | None = None,
     stderr: str = "",
 ) -> tuple[str, OpenCodeTrajectory]:
-    """Convert OpenCode events into the shared SDK-style trajectory shape."""
-    text_parts: OrderedDict[str, str] = OrderedDict()
+    """Convert OpenCode events into the shared SDK-style trajectory shape.
+
+    Text/tool parts are merged by part id, turns are split on OpenCode
+    step-finish boundaries, and the canonical answer is scoped to the final
+    assistant message instead of concatenating all intermediate narration.
+    """
+    text_by_part: OrderedDict[str, str] = OrderedDict()
+    msg_by_part: dict[str, str] = {}
     tool_calls: OrderedDict[str, ToolCall] = OrderedDict()
+
+    steps: list[dict[str, Any]] = []
+    pending_text: list[str] = []
+    pending_tools: list[str] = []
+
+    def _close_step(input_tokens: int, output_tokens: int) -> None:
+        if not (pending_text or pending_tools or input_tokens or output_tokens):
+            return
+        steps.append(
+            {
+                "text_ids": list(pending_text),
+                "tool_ids": list(pending_tools),
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+        )
+        pending_text.clear()
+        pending_tools.clear()
 
     for index, event in enumerate(events):
         part = _candidate_part(event)
         if part is None:
             part = event
 
-        part_type = str(part.get("type") or part.get("kind") or "")
+        part_type = str(part.get("type") or part.get("kind") or "").lower()
         part_id = str(
             part.get("id")
             or part.get("partID")
@@ -467,11 +466,21 @@ def _build_trajectory_from_events(
             or f"event_{index}"
         )
 
+        if _is_step_finish(event, part, part_type):
+            step_in, step_out = _usage_from_events([event])
+            _close_step(step_in, step_out)
+            continue
+
         text_value = part.get("text") or part.get("content")
-        if isinstance(text_value, str) and (
-            not part_type or "text" in part_type or part.get("role") == "assistant"
-        ):
-            text_parts[part_id] = text_value
+        if isinstance(text_value, str) and _is_answer_text(part_type, part):
+            text_by_part[part_id] = _merge_text(
+                text_by_part.get(part_id, ""), text_value
+            )
+            msg_by_part[part_id] = str(
+                part.get("messageID") or part.get("messageId") or part_id
+            )
+            if part_id not in pending_text:
+                pending_text.append(part_id)
 
         tool_name = (
             part.get("tool")
@@ -503,26 +512,50 @@ def _build_trajectory_from_events(
                 id=part_id,
                 output=output,
             )
+            if part_id not in pending_tools:
+                pending_tools.append(part_id)
 
-    text_values = list(text_parts.values())
-    answer = ""
-    for text_value in reversed(text_values):
-        answer = _visible_text(text_value)
-        if answer:
-            break
+    _close_step(0, 0)
+
+    answer = _final_answer(text_by_part, msg_by_part)
     if not answer and plain_lines:
         answer = _visible_text("\n".join(plain_lines))
 
-    input_tokens, output_tokens = _usage_from_events(events)
+    total_input, total_output = _usage_from_events(events)
     trajectory = OpenCodeTrajectory(raw_events=events, stderr=stderr)
-    if answer or tool_calls or input_tokens or output_tokens:
+
+    if steps:
+        for index, step in enumerate(steps):
+            turn_text = _visible_text(
+                "".join(text_by_part.get(tid, "") for tid in step["text_ids"])
+            )
+            turn_tools = [
+                tool_calls[tid] for tid in step["tool_ids"] if tid in tool_calls
+            ]
+            trajectory.turns.append(
+                TurnRecord(
+                    index=index,
+                    text=turn_text,
+                    tool_calls=turn_tools,
+                    input_tokens=step["input_tokens"],
+                    output_tokens=step["output_tokens"],
+                )
+            )
+        if (
+            sum(step["input_tokens"] + step["output_tokens"] for step in steps) == 0
+            and (total_input or total_output)
+        ):
+            trajectory.turns[-1].input_tokens = total_input
+            trajectory.turns[-1].output_tokens = total_output
+        trajectory.turns[-1].duration_ms = duration_ms
+    elif answer or tool_calls or total_input or total_output:
         trajectory.turns.append(
             TurnRecord(
                 index=0,
                 text=answer,
                 tool_calls=list(tool_calls.values()),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
+                input_tokens=total_input,
+                output_tokens=total_output,
                 duration_ms=duration_ms,
             )
         )
