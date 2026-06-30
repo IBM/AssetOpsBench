@@ -7,6 +7,7 @@ from pathlib import Path
 from agent.models import ToolCall
 from agent.opencode_agent.runner import (
     OpenCodeAgentRunner,
+    _REPO_ROOT,
     _build_mcp_config,
     _build_opencode_config,
     _build_permissions,
@@ -70,7 +71,7 @@ def test_build_permissions_allows_opt_in_tools():
 
 def test_resolve_run_dir_defaults_to_repo_root():
     run_dir = _resolve_run_dir()
-    assert run_dir.name == "AssetOpsBench-main"
+    assert run_dir == _REPO_ROOT
 
 
 def test_resolve_run_dir_requires_workspace_for_file_or_code_tools():
@@ -120,6 +121,65 @@ def test_resolve_tokenrouter_model(monkeypatch):
     assert provider["tokenrouter"]["options"]["baseURL"] == "https://router.example/v1"
     assert provider["tokenrouter"]["models"]["MiniMax-M3"]["name"] == "MiniMax-M3"
     assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test"
+
+
+def test_resolve_rits_model_from_root_url(monkeypatch):
+    monkeypatch.setenv("RITS_BASE_URL", "https://rits.example")
+    monkeypatch.setenv("RITS_API_KEY", "rits-test")
+    model, provider, env = _resolve_opencode_model_and_provider(
+        "rits/qwen3-30b-a3b-thinking-2507"
+    )
+    assert model == "rits/qwen3-30b-a3b-thinking-2507"
+    assert provider["rits"]["npm"] == "@ai-sdk/openai-compatible"
+    assert (
+        provider["rits"]["options"]["baseURL"]
+        == "https://rits.example/qwen3-30b-a3b-thinking-2507/v1"
+    )
+    assert provider["rits"]["options"]["headers"] == {
+        "RITS_API_KEY": "{env:ASSETOPSBENCH_OPENCODE_API_KEY}",
+    }
+    assert (
+        provider["rits"]["models"]["qwen3-30b-a3b-thinking-2507"]["name"]
+        == "qwen3-30b-a3b-thinking-2507"
+    )
+    assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "rits-test"
+
+
+def test_resolve_rits_model_with_served_model_name(monkeypatch):
+    monkeypatch.setenv(
+        "RITS_BASE_URL",
+        "https://rits.example/byom-gb-40365e1f",
+    )
+    monkeypatch.setenv("RITS_API_KEY", "rits-test")
+    monkeypatch.setenv(
+        "RITS_SERVED_MODEL_NAME",
+        "ibm-granite/granite-guardian-4-1-8b-Q2_K",
+    )
+    model, provider, env = _resolve_opencode_model_and_provider(
+        "rits/byom-gb-40365e1f"
+    )
+    assert model == "rits/ibm-granite/granite-guardian-4-1-8b-Q2_K"
+    assert provider["rits"]["options"]["baseURL"] == (
+        "https://rits.example/byom-gb-40365e1f/v1"
+    )
+    assert provider["rits"]["models"][
+        "ibm-granite/granite-guardian-4-1-8b-Q2_K"
+    ]["name"] == "ibm-granite/granite-guardian-4-1-8b-Q2_K"
+    assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "rits-test"
+
+
+def test_resolve_rits_model_with_custom_auth_header(monkeypatch):
+    monkeypatch.setenv("RITS_BASE_URL", "https://rits.example")
+    monkeypatch.setenv("RITS_API_KEY", "rits-test")
+    monkeypatch.setenv("RITS_AUTH_HEADER", "user_key")
+    model, provider, env = _resolve_opencode_model_and_provider(
+        "rits/qwen3-30b-a3b-thinking-2507"
+    )
+    assert model == "rits/qwen3-30b-a3b-thinking-2507"
+    assert provider["rits"]["options"]["headers"] == {
+        "user_key": "{env:ASSETOPSBENCH_OPENCODE_API_KEY}",
+    }
+    assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "rits-test"
 
 
 def test_build_opencode_config_includes_agent_and_mcp():
@@ -179,6 +239,43 @@ def test_build_trajectory_from_text_and_tool_parts():
     assert trajectory.turns[0].tool_calls[0].name == "iot_get_asset"
 
 
+def test_build_trajectory_uses_last_visible_text_not_concatenated_thinking():
+    events = [
+        {
+            "type": "text",
+            "part": {
+                "id": "text_1",
+                "type": "text",
+                "text": "<think>Planning with tools.</think>\nI will inspect the data.",
+            },
+        },
+        {
+            "type": "tool_use",
+            "part": {
+                "id": "tool_1",
+                "type": "tool",
+                "tool": "wo_list_workorders",
+                "input": {"asset_num": "C"},
+                "output": {"total": 10},
+            },
+        },
+        {
+            "type": "text",
+            "part": {
+                "id": "text_2",
+                "type": "text",
+                "text": "<think>Now prepare the final answer.</think>\nExcavator C",
+            },
+        },
+    ]
+
+    answer, trajectory = _build_trajectory_from_events(events, [])
+
+    assert answer == "Excavator C"
+    assert trajectory.turns[0].text == "Excavator C"
+    assert len(trajectory.turns[0].tool_calls) == 1
+
+
 def test_build_trajectory_from_opencode_step_finish_usage():
     events = [
         {
@@ -220,7 +317,20 @@ def test_runner_defaults():
     assert runner._model_id == "opencode/gpt-5"
     assert runner._opencode_model == "opencode/gpt-5"
     assert runner._agent_name == "assetops"
-    assert runner._run_dir.name == "AssetOpsBench-main"
+    assert runner._run_dir == _REPO_ROOT
+    assert runner._thinking is False
+    assert runner._variant is None
+
+
+def test_runner_accepts_thinking_and_variant():
+    runner = OpenCodeAgentRunner(
+        server_paths={},
+        model="opencode/gpt-5",
+        thinking=True,
+        variant="high",
+    )
+    assert runner._thinking is True
+    assert runner._variant == "high"
 
 
 def test_runner_workspace_mode(tmp_path):

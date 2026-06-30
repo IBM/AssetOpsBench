@@ -13,11 +13,13 @@ import datetime as _dt
 import json
 import logging
 import os
+import re
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from llm.routers import resolve_model, resolve_router_creds
 from observability import agent_run_span, persist_trajectory
@@ -31,6 +33,11 @@ _log = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MODEL = "opencode/gpt-5.1-codex"
 _DEFAULT_AGENT_NAME = "assetops"
+_RITS_PREFIX = "rits/"
+_RITS_PROVIDER_ID = "rits"
+_RITS_DEFAULT_BASE_URL = (
+    "https://inference-3scale-apicast-production.apps.rits.fmaas.res.ibm.com"
+)
 
 _OPENCODE_SYSTEM_PROMPT = (
     AGENT_SYSTEM_PROMPT
@@ -115,6 +122,9 @@ def _resolve_opencode_model_and_provider(
     as ``litellm_proxy/`` and ``tokenrouter/``, declare a custom
     OpenAI-compatible provider and register the requested model explicitly.
     """
+    if model_id.startswith(_RITS_PREFIX):
+        return _resolve_rits_model_and_provider(model_id)
+
     creds = resolve_router_creds(model_id, strict=True)
     if creds is None:
         return model_id, {}, {}
@@ -140,6 +150,80 @@ def _resolve_opencode_model_and_provider(
     }
     env = {
         "ASSETOPSBENCH_OPENCODE_API_KEY": creds.api_key,
+    }
+    return opencode_model, provider, env
+
+
+def _with_v1_suffix(url: str) -> str:
+    stripped = url.rstrip("/")
+    return stripped if stripped.endswith("/v1") else f"{stripped}/v1"
+
+
+def _join_url(base_url: str, *parts: str) -> str:
+    stripped_parts = [part.strip("/") for part in parts if part.strip("/")]
+    if not stripped_parts:
+        return base_url.rstrip("/")
+    return f"{base_url.rstrip('/')}/{'/'.join(stripped_parts)}"
+
+
+def _rits_base_url_for_endpoint(endpoint_path: str) -> str:
+    """Return the OpenAI-compatible base URL for one RITS endpoint.
+
+    RITS model cards expose per-model inference endpoints such as
+    ``https://.../qwen3-30b-a3b-thinking-2507``. The OpenCode
+    OpenAI-compatible provider expects the API root that contains
+    ``/chat/completions``, so this helper accepts either the RITS service root,
+    the full model endpoint, or an already-normalized ``.../v1`` URL.
+    """
+    configured_base = os.environ.get("RITS_BASE_URL") or _RITS_DEFAULT_BASE_URL
+    configured_base = configured_base.rstrip("/")
+    endpoint_path = endpoint_path.strip("/")
+
+    if configured_base.endswith("/v1"):
+        return configured_base
+
+    parsed_path = urlparse(configured_base).path.strip("/")
+    if parsed_path.endswith(endpoint_path):
+        return _with_v1_suffix(configured_base)
+
+    return _with_v1_suffix(_join_url(configured_base, endpoint_path))
+
+
+def _resolve_rits_model_and_provider(
+    model_id: str,
+) -> tuple[str, dict[str, Any], dict[str, str]]:
+    """Translate ``rits/<endpoint-path>`` into an OpenCode provider config."""
+    endpoint_path = model_id[len(_RITS_PREFIX) :].strip("/")
+    if not endpoint_path:
+        raise ValueError("RITS model id must use the form rits/<endpoint-path>")
+
+    api_key = os.environ.get("RITS_API_KEY")
+    if not api_key:
+        raise ValueError("RITS_API_KEY must be set when using rits/* models")
+
+    served_model_name = os.environ.get("RITS_SERVED_MODEL_NAME") or endpoint_path
+    auth_header = os.environ.get("RITS_AUTH_HEADER", "RITS_API_KEY")
+    opencode_model = f"{_RITS_PROVIDER_ID}/{served_model_name}"
+    provider = {
+        _RITS_PROVIDER_ID: {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "IBM RITS",
+            "options": {
+                "baseURL": _rits_base_url_for_endpoint(endpoint_path),
+                "apiKey": "{env:ASSETOPSBENCH_OPENCODE_API_KEY}",
+                "headers": {
+                    auth_header: "{env:ASSETOPSBENCH_OPENCODE_API_KEY}",
+                },
+            },
+            "models": {
+                served_model_name: {
+                    "name": served_model_name,
+                }
+            },
+        }
+    }
+    env = {
+        "ASSETOPSBENCH_OPENCODE_API_KEY": api_key,
     }
     return opencode_model, provider, env
 
@@ -354,6 +438,11 @@ def _usage_from_events(events: list[dict[str, Any]]) -> tuple[int, int]:
     return input_tokens or sdk_input_tokens, output_tokens or sdk_output_tokens
 
 
+def _visible_text(text: str) -> str:
+    """Remove optional OpenCode thinking blocks from user-facing text."""
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
 def _build_trajectory_from_events(
     events: list[dict[str, Any]],
     plain_lines: list[str],
@@ -415,9 +504,14 @@ def _build_trajectory_from_events(
                 output=output,
             )
 
-    answer = "".join(text_parts.values()).strip()
+    text_values = list(text_parts.values())
+    answer = ""
+    for text_value in reversed(text_values):
+        answer = _visible_text(text_value)
+        if answer:
+            break
     if not answer and plain_lines:
-        answer = "\n".join(plain_lines).strip()
+        answer = _visible_text("\n".join(plain_lines))
 
     input_tokens, output_tokens = _usage_from_events(events)
     trajectory = OpenCodeTrajectory(raw_events=events, stderr=stderr)
@@ -448,6 +542,8 @@ class OpenCodeAgentRunner(AgentRunner):
         opencode_bin: str = "opencode",
         attach: str | None = None,
         timeout_s: float | None = 900,
+        thinking: bool = False,
+        variant: str | None = None,
         allow_bash: bool = False,
         allow_edit: bool = False,
         allow_web: bool = False,
@@ -462,6 +558,8 @@ class OpenCodeAgentRunner(AgentRunner):
         self._opencode_bin = opencode_bin
         self._attach = attach
         self._timeout_s = timeout_s
+        self._thinking = thinking
+        self._variant = variant
         self._dangerously_skip_permissions = dangerously_skip_permissions
         self._run_dir = _resolve_run_dir(
             workspace_dir=workspace_dir,
@@ -507,6 +605,10 @@ class OpenCodeAgentRunner(AgentRunner):
             ]
             if self._attach:
                 cmd.extend(["--attach", self._attach])
+            if self._variant:
+                cmd.extend(["--variant", self._variant])
+            if self._thinking:
+                cmd.append("--thinking")
             if self._dangerously_skip_permissions:
                 cmd.append("--dangerously-skip-permissions")
             cmd.append(question)
