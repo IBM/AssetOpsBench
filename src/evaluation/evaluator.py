@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 from . import scorers as scorer_registry
@@ -27,12 +28,7 @@ _log = logging.getLogger(__name__)
 
 
 class Evaluator:
-    """Run a batch of scenarios against their saved trajectories.
-
-    ``default_scorer`` names the registered scorer to use when a
-    scenario does not set ``scoring_method``.  Per-scenario overrides
-    take precedence.
-    """
+    """Run a batch of scenarios against their saved trajectories."""
 
     def __init__(
         self,
@@ -64,7 +60,8 @@ class Evaluator:
         scorer = self._resolve(name)
         self._validate_judge_model(name, traj)
         trajectory_text = _trajectory_to_text(traj)
-        score = scorer(scenario, traj.answer, trajectory_text)
+        answer = _strip_think_blocks(traj.answer)
+        score = scorer(scenario, answer, trajectory_text)
 
         return ScenarioResult(
             scenario_id=scenario.id,
@@ -73,7 +70,7 @@ class Evaluator:
             runner=traj.runner,
             model=traj.model,
             question=traj.question,
-            answer=traj.answer,
+            answer=answer,
             score=score,
             ops=metrics_from_trajectory(traj),
         )
@@ -106,6 +103,16 @@ def _trajectory_to_text(traj: PersistedTrajectory) -> str:
         return json.dumps(traj.trajectory, indent=2, default=str)
     except (TypeError, ValueError):
         return str(traj.trajectory)
+
+
+def _strip_think_blocks(answer: str) -> str:
+    """Remove model-private <think>...</think> blocks before scoring."""
+    return re.sub(
+        r"<think\b[^>]*>.*?</think>",
+        "",
+        answer,
+        flags=re.IGNORECASE | re.DOTALL,
+    ).strip()
 
 
 def _normalize_model_id(model_id: str | None) -> str:
