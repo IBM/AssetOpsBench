@@ -353,7 +353,70 @@ def _usage_from_events(events: list[dict[str, Any]]) -> tuple[int, int]:
             sdk_output_tokens = max(sdk_output_tokens, _token_count(out_value))
     return input_tokens or sdk_input_tokens, output_tokens or sdk_output_tokens
 
-
+_REASONING_HINTS = ("reasoning", "thinking", "thought")
+ 
+ 
+def _is_answer_text(part_type: str, part: dict[str, Any]) -> bool:
+    """Whether a part contributes to the user-facing answer.
+ 
+    Reasoning/thinking parts are excluded so internal scratch text never
+    leaks into the final answer.  Explicit text parts and untyped
+    assistant parts are accepted.
+    """
+    if any(hint in part_type for hint in _REASONING_HINTS):
+        return False
+    if "text" in part_type:
+        return True
+    if not part_type and part.get("role") == "assistant":
+        return True
+    return False
+ 
+ 
+def _merge_text(existing: str, new: str) -> str:
+    """Combine repeated emissions for one text part id.
+ 
+    Tolerates both snapshot streams (each event carries the full
+    cumulative text) and delta streams (each event carries an increment),
+    so neither truncates the answer.
+    """
+    if not existing:
+        return new
+    if new.startswith(existing):  # snapshot that grew
+        return new
+    if existing.startswith(new):  # stale/duplicate snapshot
+        return existing
+    return existing + new  # delta append
+ 
+ 
+def _is_step_finish(event: dict[str, Any], part: dict[str, Any], part_type: str) -> bool:
+    """True for OpenCode ``step-finish`` boundaries (event or part typed)."""
+    event_type = str(event.get("type") or "")
+    return ("step" in part_type and "finish" in part_type) or (
+        "step" in event_type and "finish" in event_type
+    )
+ 
+ 
+def _final_answer(
+    text_by_part: "OrderedDict[str, str]", msg_by_part: dict[str, str]
+) -> str:
+    """Answer text from the final assistant message only.
+ 
+    Intermediate narration emitted between tool calls belongs to earlier
+    messages and is excluded, instead of being concatenated into the
+    answer.
+    """
+    if not text_by_part:
+        return ""
+    last_msg = None
+    for part_id in text_by_part:
+        last_msg = msg_by_part.get(part_id, part_id)
+    return "".join(
+        text
+        for part_id, text in text_by_part.items()
+        if msg_by_part.get(part_id, part_id) == last_msg
+    ).strip()
+ 
+ 
 def _build_trajectory_from_events(
     events: list[dict[str, Any]],
     plain_lines: list[str],
@@ -361,15 +424,43 @@ def _build_trajectory_from_events(
     duration_ms: float | None = None,
     stderr: str = "",
 ) -> tuple[str, OpenCodeTrajectory]:
-    """Convert OpenCode events into the shared SDK-style trajectory shape."""
-    text_parts: OrderedDict[str, str] = OrderedDict()
-    tool_calls: OrderedDict[str, ToolCall] = OrderedDict()
-
+    """Convert OpenCode events into the shared SDK-style trajectory shape.
+ 
+    Text is matched and merged by part id, tool calls by part id (so
+    parallel calls keep their own outputs), and turns are split on
+    ``step-finish`` boundaries so step count and per-step token usage are
+    preserved.  The answer is scoped to the final assistant message.
+    """
+    # --- accumulators across the whole run ---------------------------------
+    text_by_part: "OrderedDict[str, str]" = OrderedDict()
+    msg_by_part: dict[str, str] = {}
+    tool_calls: "OrderedDict[str, ToolCall]" = OrderedDict()
+ 
+    # --- per-step grouping; one TurnRecord is emitted per step-finish ------
+    steps: list[dict[str, Any]] = []
+    pending_text: list[str] = []   # text part ids seen in the open step
+    pending_tools: list[str] = []  # tool part ids seen in the open step
+ 
+    def _close_step(input_tokens: int, output_tokens: int) -> None:
+        # Skip empty boundaries (e.g. a step-finish with nothing in it).
+        if not (pending_text or pending_tools or input_tokens or output_tokens):
+            return
+        steps.append(
+            {
+                "text_ids": list(pending_text),
+                "tool_ids": list(pending_tools),
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+        )
+        pending_text.clear()
+        pending_tools.clear()
+ 
     for index, event in enumerate(events):
         part = _candidate_part(event)
         if part is None:
             part = event
-
+ 
         part_type = str(part.get("type") or part.get("kind") or "")
         part_id = str(
             part.get("id")
@@ -377,13 +468,26 @@ def _build_trajectory_from_events(
             or part.get("messageID")
             or f"event_{index}"
         )
-
+ 
+        # 1) A step boundary: read this step's tokens and close the turn.
+        if _is_step_finish(event, part, part_type):
+            step_in, step_out = _usage_from_events([event])
+            _close_step(step_in, step_out)
+            continue
+ 
+        # 2) Assistant text: merge by id, remember which message it belongs to.
         text_value = part.get("text") or part.get("content")
-        if isinstance(text_value, str) and (
-            not part_type or "text" in part_type or part.get("role") == "assistant"
-        ):
-            text_parts[part_id] = text_value
-
+        if isinstance(text_value, str) and _is_answer_text(part_type, part):
+            text_by_part[part_id] = _merge_text(
+                text_by_part.get(part_id, ""), text_value
+            )
+            msg_by_part[part_id] = str(
+                part.get("messageID") or part.get("messageId") or part_id
+            )
+            if part_id not in pending_text:
+                pending_text.append(part_id)
+ 
+        # 3) Tool call: store by id so parallel calls keep their own output.
         tool_name = (
             part.get("tool")
             or part.get("toolName")
@@ -414,26 +518,62 @@ def _build_trajectory_from_events(
                 id=part_id,
                 output=output,
             )
-
-    answer = "".join(text_parts.values()).strip()
+            if part_id not in pending_tools:
+                pending_tools.append(part_id)
+ 
+    # Trailing content not closed by a step-finish becomes a final step.
+    _close_step(0, 0)
+ 
+    # The answer is only the final assistant message's text.
+    answer = _final_answer(text_by_part, msg_by_part)
     if not answer and plain_lines:
         answer = "\n".join(plain_lines).strip()
-
-    input_tokens, output_tokens = _usage_from_events(events)
+ 
+    # Authoritative run totals (used as a safety net for cost accounting).
+    total_input, total_output = _usage_from_events(events)
     trajectory = OpenCodeTrajectory(raw_events=events, stderr=stderr)
-    if answer or tool_calls or input_tokens or output_tokens:
+ 
+    if steps:
+        # One TurnRecord per step, carrying that step's text/tools/tokens.
+        for i, step in enumerate(steps):
+            turn_text = "".join(
+                text_by_part.get(tid, "") for tid in step["text_ids"]
+            ).strip()
+            turn_tools = [
+                tool_calls[tid] for tid in step["tool_ids"] if tid in tool_calls
+            ]
+            trajectory.turns.append(
+                TurnRecord(
+                    index=i,
+                    text=turn_text,
+                    tool_calls=turn_tools,
+                    input_tokens=step["input_tokens"],
+                    output_tokens=step["output_tokens"],
+                )
+            )
+        # If step-finish events carried no usage, fall back to the
+        # authoritative totals so cost accounting is never lost.
+        if (
+            sum(s["input_tokens"] + s["output_tokens"] for s in steps) == 0
+            and (total_input or total_output)
+        ):
+            trajectory.turns[-1].input_tokens = total_input
+            trajectory.turns[-1].output_tokens = total_output
+        trajectory.turns[-1].duration_ms = duration_ms
+    elif answer or tool_calls or total_input or total_output:
+        # No step boundaries were seen: keep a single summary turn.
         trajectory.turns.append(
             TurnRecord(
                 index=0,
                 text=answer,
                 tool_calls=list(tool_calls.values()),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
+                input_tokens=total_input,
+                output_tokens=total_output,
                 duration_ms=duration_ms,
             )
         )
+ 
     return answer, trajectory
-
 
 class OpenCodeAgentRunner(AgentRunner):
     """Agent runner that delegates the agentic loop to ``opencode run``."""
