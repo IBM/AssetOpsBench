@@ -75,6 +75,20 @@ examples:
         help="Wall-clock timeout for `opencode run` in seconds (default: 900).",
     )
     parser.add_argument(
+        "--thinking",
+        action="store_true",
+        help="Pass --thinking to `opencode run`. Disabled by default.",
+    )
+    parser.add_argument(
+        "--variant",
+        default=None,
+        metavar="NAME",
+        help=(
+            "OpenCode model variant / reasoning effort, e.g. minimal, low, "
+            "medium, high, or max. Omitted by default."
+        ),
+    )
+    parser.add_argument(
         "--allow-bash",
         action="store_true",
         help="Allow OpenCode's bash tool. Disabled by default for benchmark runs.",
@@ -125,6 +139,8 @@ async def _run(args: argparse.Namespace) -> None:
         opencode_bin=args.opencode_bin,
         attach=args.attach,
         timeout_s=args.timeout_s,
+        thinking=args.thinking,
+        variant=args.variant,
         allow_bash=args.allow_bash,
         allow_edit=args.allow_edit,
         allow_web=args.allow_web,

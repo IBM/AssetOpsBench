@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 _DEFAULT_MODEL_ID = "tokenrouter/MiniMax-M3"
+_DEFAULT_GEMINI_MODEL_ID = "tokenrouter_gemini/google/gemma-4-26b-a4b-it"
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,31 @@ class MethodConfig:
     model_id: str
     extra_args: tuple[str, ...] = ()
     workspace_root: Path | None = None
+
+
+def model_dir_name(model_id: str) -> str:
+    """Return a filesystem-safe directory name for a model id."""
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", model_id.strip().replace("/", "-"))
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return slug or "unknown-model"
+
+
+def method_output_paths(
+    *,
+    trajectory_root: Path,
+    reports_root: Path,
+    method: MethodConfig,
+) -> tuple[Path, Path, Path | None]:
+    """Return trajectory, report, and workspace roots nested by agent/model."""
+    model_dir = model_dir_name(method.model_id)
+    trajectory_dir = trajectory_root / method.agent_name / model_dir
+    report_dir = reports_root / method.agent_name / model_dir
+    workspace_root = (
+        method.workspace_root / method.agent_name / model_dir
+        if method.workspace_root is not None
+        else None
+    )
+    return trajectory_dir, report_dir, workspace_root
 
 
 def load_scenario_ids(path: Path) -> list[str]:
@@ -234,6 +261,35 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
         opencode_extra_args.append("--allow-bash")
     if args.opencode_allow_edit:
         opencode_extra_args.append("--allow-edit")
+    if getattr(args, "opencode_thinking", False):
+        opencode_extra_args.append("--thinking")
+    opencode_variant = getattr(args, "opencode_variant", None)
+    if opencode_variant:
+        opencode_extra_args.extend(["--variant", opencode_variant])
+
+    gemini_extra_args: list[str] = []
+    if args.gemini_allow_files:
+        gemini_extra_args.append("--allow-files")
+    if args.gemini_allow_bash:
+        gemini_extra_args.append("--allow-bash")
+    if args.gemini_allow_edit:
+        gemini_extra_args.append("--allow-edit")
+    if args.gemini_allow_web:
+        gemini_extra_args.append("--allow-web")
+    if args.gemini_sandbox:
+        gemini_extra_args.append("--sandbox")
+
+    openclaw_extra_args: list[str] = []
+    if args.openclaw_allow_files:
+        openclaw_extra_args.append("--allow-files")
+    if args.openclaw_allow_bash:
+        openclaw_extra_args.append("--allow-bash")
+    if args.openclaw_allow_edit:
+        openclaw_extra_args.append("--allow-edit")
+    if args.openclaw_allow_web:
+        openclaw_extra_args.append("--allow-web")
+    if args.openclaw_thinking:
+        openclaw_extra_args.extend(["--thinking", args.openclaw_thinking])
 
     return {
         "direct_llm": MethodConfig(
@@ -252,6 +308,20 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             model_id=args.model_id,
             extra_args=tuple(opencode_extra_args),
             workspace_root=args.opencode_workspace_root,
+        ),
+        "gemini_cli_agent": MethodConfig(
+            agent_name="gemini_cli_agent",
+            command="gemini-cli-agent",
+            model_id=args.gemini_model_id,
+            extra_args=tuple(gemini_extra_args),
+            workspace_root=args.gemini_workspace_root,
+        ),
+        "openclaw_cli_agent": MethodConfig(
+            agent_name="openclaw_cli_agent",
+            command="openclaw-cli-agent",
+            model_id=args.openclaw_model_id,
+            extra_args=tuple(openclaw_extra_args),
+            workspace_root=args.openclaw_workspace_root,
         ),
     }
 
@@ -292,7 +362,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--agent_name",
-        choices=["direct_llm", "stirrup_agent", "opencode_agent", "all"],
+        choices=[
+            "direct_llm",
+            "stirrup_agent",
+            "opencode_agent",
+            "gemini_cli_agent",
+            "openclaw_cli_agent",
+            "all",
+        ],
         default="direct_llm",
         help="Which agent to run.",
     )
@@ -300,18 +377,34 @@ def _build_parser() -> argparse.ArgumentParser:
         "--trajectory-root",
         type=Path,
         default=Path("traces/trajectories/scenario_suite"),
-        help="Root directory for saved trajectories.",
+        help="Root directory for saved trajectories; outputs are nested by agent/model.",
     )
     parser.add_argument(
         "--reports-root",
         type=Path,
         default=Path("reports/scenario_suite"),
-        help="Root directory for evaluation reports.",
+        help="Root directory for evaluation reports; outputs are nested by agent/model.",
     )
     parser.add_argument(
         "--model-id",
         default=_DEFAULT_MODEL_ID,
-        help="Model id used by both agents.",
+        help="Model id used by direct_llm, stirrup_agent, and opencode_agent.",
+    )
+    parser.add_argument(
+        "--gemini-model-id",
+        default=_DEFAULT_GEMINI_MODEL_ID,
+        help=(
+            "Model id used by gemini_cli_agent "
+            f"(default: {_DEFAULT_GEMINI_MODEL_ID})."
+        ),
+    )
+    parser.add_argument(
+        "--openclaw-model-id",
+        default=_DEFAULT_MODEL_ID,
+        help=(
+            "Model id used by openclaw_cli_agent "
+            f"(default: {_DEFAULT_MODEL_ID})."
+        ),
     )
     parser.add_argument(
         "--opencode-workspace-root",
@@ -320,7 +413,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Root directory for per-run OpenCode workspaces. Required when "
             "using --opencode-allow-files, --opencode-allow-bash, or "
-            "--opencode-allow-edit."
+            "--opencode-allow-edit. Workspaces are nested by agent/model/run_id."
         ),
     )
     parser.add_argument(
@@ -337,6 +430,89 @@ def _build_parser() -> argparse.ArgumentParser:
         "--opencode-allow-edit",
         action="store_true",
         help="Allow opencode-agent file edits inside its per-run workspace.",
+    )
+    parser.add_argument(
+        "--opencode-thinking",
+        action="store_true",
+        help="Pass --thinking to opencode-agent. Disabled by default.",
+    )
+    parser.add_argument(
+        "--opencode-variant",
+        default=None,
+        help=(
+            "OpenCode model variant / reasoning effort for opencode_agent, "
+            "e.g. minimal, low, medium, high, or max. Omitted by default."
+        ),
+    )
+    parser.add_argument(
+        "--gemini-workspace-root",
+        type=Path,
+        default=None,
+        help=(
+            "Root directory for per-run Gemini CLI workspaces. Required when "
+            "using --gemini-allow-files, --gemini-allow-bash, or "
+            "--gemini-allow-edit. Workspaces are nested by agent/model/run_id."
+        ),
+    )
+    parser.add_argument(
+        "--gemini-allow-files",
+        action="store_true",
+        help="Allow gemini-cli-agent file inspection tools inside its per-run workspace.",
+    )
+    parser.add_argument(
+        "--gemini-allow-bash",
+        action="store_true",
+        help="Allow gemini-cli-agent shell commands in its per-run workspace.",
+    )
+    parser.add_argument(
+        "--gemini-allow-edit",
+        action="store_true",
+        help="Allow gemini-cli-agent file edits inside its per-run workspace.",
+    )
+    parser.add_argument(
+        "--gemini-allow-web",
+        action="store_true",
+        help="Allow gemini-cli-agent web search/fetch. Disabled by default.",
+    )
+    parser.add_argument(
+        "--gemini-sandbox",
+        action="store_true",
+        help="Pass --sandbox to Gemini CLI for supported local sandbox setups.",
+    )
+    parser.add_argument(
+        "--openclaw-workspace-root",
+        type=Path,
+        default=None,
+        help=(
+            "Root directory for per-run OpenClaw workspaces. Required when "
+            "using --openclaw-allow-files, --openclaw-allow-bash, or "
+            "--openclaw-allow-edit. Workspaces are nested by agent/model/run_id."
+        ),
+    )
+    parser.add_argument(
+        "--openclaw-allow-files",
+        action="store_true",
+        help="Allow openclaw-cli-agent file inspection tools inside its per-run workspace.",
+    )
+    parser.add_argument(
+        "--openclaw-allow-bash",
+        action="store_true",
+        help="Allow openclaw-cli-agent shell commands in its per-run workspace.",
+    )
+    parser.add_argument(
+        "--openclaw-allow-edit",
+        action="store_true",
+        help="Allow openclaw-cli-agent file edits inside its per-run workspace.",
+    )
+    parser.add_argument(
+        "--openclaw-allow-web",
+        action="store_true",
+        help="Allow openclaw-cli-agent web search/fetch. Disabled by default.",
+    )
+    parser.add_argument(
+        "--openclaw-thinking",
+        default="off",
+        help="OpenClaw thinking level for openclaw_cli_agent (default: off).",
     )
     parser.add_argument(
         "--skip-existing",
@@ -376,6 +552,24 @@ def main() -> None:
             "--opencode-workspace-root is required when enabling OpenCode "
             "files, bash, or edits"
         )
+    gemini_workspace_required = (
+        args.gemini_allow_files or args.gemini_allow_bash or args.gemini_allow_edit
+    )
+    if gemini_workspace_required and args.gemini_workspace_root is None:
+        parser.error(
+            "--gemini-workspace-root is required when enabling Gemini CLI "
+            "files, bash, or edits"
+        )
+    openclaw_workspace_required = (
+        args.openclaw_allow_files
+        or args.openclaw_allow_bash
+        or args.openclaw_allow_edit
+    )
+    if openclaw_workspace_required and args.openclaw_workspace_root is None:
+        parser.error(
+            "--openclaw-workspace-root is required when enabling OpenClaw "
+            "files, bash, or edits"
+        )
 
     scenario_ids = load_scenario_ids(args.scenario_ids)
     methods = selected_methods(
@@ -387,8 +581,18 @@ def main() -> None:
     print(f"Selected methods: {', '.join(method.agent_name for method in methods)}")
 
     for method in methods:
-        trajectory_dir = args.trajectory_root / method.agent_name
-        report_dir = args.reports_root / method.agent_name
+        trajectory_dir, report_dir, method_workspace_root = method_output_paths(
+            trajectory_root=args.trajectory_root,
+            reports_root=args.reports_root,
+            method=method,
+        )
+        method_for_run = MethodConfig(
+            agent_name=method.agent_name,
+            command=method.command,
+            model_id=method.model_id,
+            extra_args=method.extra_args,
+            workspace_root=method_workspace_root,
+        )
 
         if not args.dry_run:
             trajectory_dir.mkdir(parents=True, exist_ok=True)
@@ -415,7 +619,7 @@ def main() -> None:
                 )
 
                 run_agent_for_scenario(
-                    method=method,
+                    method=method_for_run,
                     scenario_id=scenario_id,
                     question=question,
                     trajectory_dir=trajectory_dir,
