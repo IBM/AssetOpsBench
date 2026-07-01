@@ -155,8 +155,7 @@ Tool signatures, required env vars, and how to launch a server directly: **[docs
 
 `src/mcphub/` calls the MCP tools directly from Python — the same servers the
 agents use, but without an LLM in the loop. It exposes a ToolUniverse-style
-`load_tools → run` interface and adds no dependencies beyond the `mcp` client the
-project already requires.
+`load_tools → run` interface and adds no dependencies beyond the `mcp` client the project already requires.
 
 ​```python
 from mcphub import ToolUniverse
@@ -202,7 +201,7 @@ planning.
 
 The CLI examples below use a `$query` shell variable so you can swap in any question without editing the commands. Pick one of these to get started:
 
-```bash
+```python
 # Simple single-server queries
 query="What sensors are on Chiller 6?"
 query="Is LSTM model supported in TSFM?"
