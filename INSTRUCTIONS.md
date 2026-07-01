@@ -8,6 +8,7 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
 - [MCP Servers](#mcp-servers) — full reference in [docs/mcp-servers.md](docs/mcp-servers.md)
+- [Python client (mcphub)](#python-client-mcphub)
 - [Example queries](#example-queries)
 - [Agents](#agents)
 - [Observability](#observability)
@@ -149,6 +150,53 @@ Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagn
 Tool signatures, required env vars, and how to launch a server directly: **[docs/mcp-servers.md](docs/mcp-servers.md)**.
 
 ---
+
+## Python client (mcphub)
+
+`src/mcphub/` calls the MCP tools directly from Python — the same servers the
+agents use, but without an LLM in the loop. It exposes a ToolUniverse-style
+`load_tools → run` interface and adds no dependencies beyond the `mcp` client the
+project already requires.
+
+​```python
+from mcphub import ToolUniverse
+
+tu = ToolUniverse()                                   # 1. init
+tu.load_tools()                                       # 2. connect + discover
+result = tu.run({                                     # 3. run
+    "name": "iot.sensors",
+    "arguments": {"site_name": "MAIN", "asset_id": "Chiller 6"},
+})
+tu.close()
+​```
+
+- Tools are namespaced `<server>.<tool>` (e.g. `iot.sensors`,
+  `wo.generate_work_order`); a bare name works when unambiguous.
+- `load_tools(servers=["iot", "fmsr"])` limits the set; no args loads all six.
+- Discovery: `tu.find_tools("failure mode")`, `tu.list_tools()`,
+  `tu.tool_specification("iot.sensors")`.
+- Servers are spawned via `uv run <server>-mcp-server` and inherit your `.env`.
+  Run inside the project (`uv run python ...`) or an activated venv. Override the
+  launch table with `ToolUniverse(servers={...})`.
+
+**Workflows** — multi-tool routines are plain functions registered under a name
+and invoked through the same entrypoint:
+
+​```python
+tu.run({"name": "chiller_triage", "arguments": {"asset_id": "Chiller 6"}})
+​```
+
+Built in: `chiller_triage` (sensors → failure modes → mapping → work order) and
+`sensor_inventory_gap` (installed vs measured sensors). Add your own in
+`src/mcphub/workflows.py`. Runnable example:
+`uv run python examples/quickstart_tooluniverse.py`.
+
+Reach for `mcphub` when you want deterministic, scripted tool orchestration
+(pipelines, tests, data prep); use the agent runners when you want LLM-driven
+planning.
+
+---
+
 
 ## Example queries
 

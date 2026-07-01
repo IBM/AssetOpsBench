@@ -4,7 +4,7 @@ Quick start — ToolUniverse-style interface. Prereqs (repo root):
     docker compose -f src/couchdb/docker-compose.yaml up -d
     cp .env.public .env                       # WATSONX_* for fmsr
 Run:
-    uv run python examples/quickstart.py
+    uv run python examples/quickstart_tooluniverse.py
 """
 import json
 
