@@ -155,9 +155,10 @@ Tool signatures, required env vars, and how to launch a server directly: **[docs
 
 `src/mcphub/` calls the MCP tools directly from Python — the same servers the
 agents use, but without an LLM in the loop. It exposes a ToolUniverse-style
-`load_tools → run` interface and adds no dependencies beyond the `mcp` client the project already requires.
+`load_tools → run` interface and adds no dependencies beyond the `mcp` client the
+project already requires.
 
-​```python
+```python
 from mcphub import ToolUniverse
 
 tu = ToolUniverse()                                   # 1. init
@@ -167,7 +168,7 @@ result = tu.run({                                     # 3. run
     "arguments": {"site_name": "MAIN", "asset_id": "Chiller 6"},
 })
 tu.close()
-​```
+```
 
 - Tools are namespaced `<server>.<tool>` (e.g. `iot.sensors`,
   `wo.generate_work_order`); a bare name works when unambiguous.
@@ -181,9 +182,9 @@ tu.close()
 **Workflows** — multi-tool routines are plain functions registered under a name
 and invoked through the same entrypoint:
 
-​```python
+```python
 tu.run({"name": "chiller_triage", "arguments": {"asset_id": "Chiller 6"}})
-​```
+```
 
 Built in: `chiller_triage` (sensors → failure modes → mapping → work order) and
 `sensor_inventory_gap` (installed vs measured sensors). Add your own in
@@ -196,12 +197,11 @@ planning.
 
 ---
 
-
 ## Example queries
 
 The CLI examples below use a `$query` shell variable so you can swap in any question without editing the commands. Pick one of these to get started:
 
-```python
+```bash
 # Simple single-server queries
 query="What sensors are on Chiller 6?"
 query="Is LSTM model supported in TSFM?"
@@ -428,12 +428,8 @@ uv run pytest src/ -k "integration"                # only files / tests with "in
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                                agent/                                  │
-│                                                                        │
-│   PlanExecuteRunner   ClaudeAgentRunner   StirrupAgentRunner           │
-│   OpenAIAgentRunner   DeepAgentRunner     OpenCodeAgentRunner          │
-│   DirectLLMAgentRunner                                                │
-│                                                                        │
+│                  agent runners              mcphub (Python client)      │
+│   PlanExecute · Claude · OpenAI · Deep · Stirrup · OpenCode · DirectLLM  │
 └──────────────────────────────┬─────────────────────────────────────────┘
                                │ MCP protocol (stdio)
          ┌─────────────────────┼───────────┬──────────┬──────┬───────────┐
