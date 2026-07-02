@@ -1335,7 +1335,7 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
         "start": "2020-04-27T00:00:00Z",
         "final": "2020-05-03T23:59:59Z",
         "save_series_csv": true,
-        "save_path": "shared/tsfm/chiller9_annotated_small_test.csv"
+        "save_path": "shared/iot/chiller9_annotated_small_test.csv"
       },
       "outputs": {
         "status": "failure",
@@ -1356,13 +1356,13 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
         "start": "2020-04-27T00:00:00Z",
         "final": "2020-05-03T23:59:59Z",
         "save_series_csv": true,
-        "save_path": "shared/tsfm/chiller9_annotated_small_test.csv"
+        "save_path": "shared/iot/chiller9_annotated_small_test.csv"
       },
       "outputs": {
         "status": "success",
         "rows": 192,
         "sampling_hint": "regular @ 15min",
-        "csv_path": "shared/tsfm/chiller9_annotated_small_test.csv",
+        "csv_path": "shared/iot/chiller9_annotated_small_test.csv",
         "message": "Series retrieved and saved to CSV."
       },
       "deterministic": {"name": false, "action": false, "arguments": false, "outputs": false}
@@ -1372,7 +1372,7 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
       "agent": "TSFMAgent",
       "action": "LoadCSV_FromCouchDB",
       "arguments": {
-        "collection": "tsfm",
+        "collection": "iot",
         "file": "chiller9_annotated_small_test.csv"
       },
       "outputs": {
@@ -1406,7 +1406,7 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
       "agent": "TSFMAgent",
       "action": "RunForecast_ttm_96_28_WithCorrectArgs",
       "arguments": {
-        "input_csv": "shared/tsfm/chiller9_annotated_small_test.csv",
+        "input_csv": "shared/iot/chiller9_annotated_small_test.csv",
         "timestamp_col": "Timestamp",
         "value_col": "Chiller_9_Condenser_Water_Flow",
         "window_start": "2020-04-27T00:00:00Z",
@@ -1431,7 +1431,7 @@ This section presents real-world patterns from AssetOpsBench ground truth scenar
       "action": "Finish",
       "arguments": {
         "validation_checks": [
-          "exists:shared/tsfm/chiller9_annotated_small_test.csv",
+          "exists:shared/iot/chiller9_annotated_small_test.csv",
           "exists:data/derived/forecast/chiller_9/condenser_water_flow/forecast_2020-04-27_to_2020-05-03_ttm_96_28.json"
         ],
         "summary_request": "Confirm variable binding, input read, forecast span, row counts, and artifact paths. Note prior failure remediation (assetnum correction; correct TSFM input schema)."
