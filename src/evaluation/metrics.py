@@ -39,6 +39,10 @@ def _from_sdk_trajectory(traj: dict, model: str) -> OpsMetrics:
     turns = traj.get("turns", []) or []
     tokens_in = sum(int(t.get("input_tokens") or 0) for t in turns)
     tokens_out = sum(int(t.get("output_tokens") or 0) for t in turns)
+    if tokens_in == 0 and tokens_out == 0:
+        raw_events = traj.get("raw_events") or []
+        if isinstance(raw_events, list):
+            tokens_in, tokens_out = _usage_from_raw_events(raw_events)
 
     durations_ms = [t.get("duration_ms") for t in turns if t.get("duration_ms") is not None]
     duration_ms = sum(durations_ms) if durations_ms else None
@@ -59,6 +63,69 @@ def _from_sdk_trajectory(traj: dict, model: str) -> OpsMetrics:
         duration_ms=duration_ms,
         est_cost_usd=_estimate_cost(model, tokens_in, tokens_out),
     )
+
+
+def _walk_dicts(value: Any):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_dicts(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_dicts(child)
+
+
+def _token_count(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _usage_from_raw_events(events: list[Any]) -> tuple[int, int]:
+    """Extract token usage from raw event schemas kept for parser fallback."""
+    input_tokens = 0
+    output_tokens = 0
+    sdk_input_tokens = 0
+    sdk_output_tokens = 0
+    for event in events:
+        for item in _walk_dicts(event):
+            tokens = item.get("tokens")
+            if isinstance(tokens, dict):
+                cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+                input_tokens += (
+                    _token_count(tokens.get("input"))
+                    + _token_count(cache.get("read"))
+                    + _token_count(cache.get("write"))
+                )
+                output_tokens += _token_count(tokens.get("output")) + _token_count(
+                    tokens.get("reasoning")
+                )
+                continue
+
+            in_value = (
+                item.get("input_tokens")
+                or item.get("inputTokens")
+                or item.get("prompt_tokens")
+                or item.get("promptTokens")
+            )
+            out_value = (
+                item.get("output_tokens")
+                or item.get("outputTokens")
+                or item.get("completion_tokens")
+                or item.get("completionTokens")
+            )
+            sdk_input_tokens = max(sdk_input_tokens, _token_count(in_value))
+            sdk_output_tokens = max(sdk_output_tokens, _token_count(out_value))
+    return input_tokens or sdk_input_tokens, output_tokens or sdk_output_tokens
 
 
 def _from_plan_execute(steps: list[Any], model: str) -> OpsMetrics:

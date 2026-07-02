@@ -415,17 +415,18 @@ def registry_assets(
     """List assets from the registry with metadata (assettype, vintage, sensor count), optionally
     filtered by assettype (e.g. 'PUMP', 'COMPRESSOR'). Complements assets(), which returns bare ids derived from
     telemetry."""
+
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
         return ErrorResult(error="CouchDB not connected")
     try:
-        selector: Dict[str, Any] = {"doctype": "asset"}
+        selector: Dict[str, Any] = {"doctype": "asset", "siteid": site_name}
         if assettype:
             selector["assettype"] = assettype
         res = asset_db.find(
             selector,
-            fields=["assetnum", "assettype", "vintage", "sensors"],
+            fields=["assetnum", "assettype", "description", "vintage", "sensors"],
             limit=100000,
         )
         rows = sorted(
@@ -433,6 +434,7 @@ def registry_assets(
                 {
                     "asset_id": d["assetnum"],
                     "assettype": d.get("assettype"),
+                    "description": d.get("description"),
                     "vintage": d.get("vintage"),
                     "n_sensors": len(d.get("sensors", [])),
                 }
