@@ -54,6 +54,61 @@ def test_read_question_raises_when_missing(tmp_path: Path) -> None:
         mr.read_question(tmp_path, "11")
 
 
+def test_stage_scenario_workspace_copies_inputs_without_groundtruth(
+    tmp_path: Path,
+) -> None:
+    scenario_root = tmp_path / "scenarios_data"
+    scenario_dir = scenario_root / "scenario_1001"
+    shared_iot = scenario_root / "shared" / "iot"
+    shared_failure = scenario_root / "shared" / "failure_code"
+    scenario_dir.mkdir(parents=True)
+    shared_iot.mkdir(parents=True)
+    shared_failure.mkdir(parents=True)
+
+    (scenario_dir / "question.txt").write_text("Find anomaly.", encoding="utf-8")
+    (scenario_dir / "groundtruth.txt").write_text(
+        '{"condition":"faulty"}',
+        encoding="utf-8",
+    )
+    (scenario_dir / "manifest.json").write_text(
+        """
+        {
+          "iot": "shared/iot/asset_data.json",
+          "asset": ["shared/iot/asset_registry.json"],
+          "failure_code": "shared/failure_code/failure_codes.csv"
+        }
+        """,
+        encoding="utf-8",
+    )
+    (shared_iot / "asset_data.json").write_text("[]", encoding="utf-8")
+    (shared_iot / "asset_registry.json").write_text("[]", encoding="utf-8")
+    (shared_failure / "failure_codes.csv").write_text("code,name\n", encoding="utf-8")
+
+    workspace = tmp_path / "workspace"
+    copied = mr.stage_scenario_workspace(
+        scenario_root=scenario_root,
+        scenario_id="1001",
+        workspace_dir=workspace,
+    )
+
+    copied_relative = {path.relative_to(workspace) for path in copied}
+    assert Path("scenario_1001/question.txt") in copied_relative
+    assert Path("scenario_1001/manifest.json") in copied_relative
+    assert Path("shared/iot/asset_data.json") in copied_relative
+    assert Path("shared/iot/asset_registry.json") in copied_relative
+    assert Path("shared/failure_code/failure_codes.csv") in copied_relative
+    assert Path("README.md") in copied_relative
+    assert not (workspace / "scenario_1001" / "groundtruth.txt").exists()
+
+
+def test_validate_workspace_root_rejects_repo_paths() -> None:
+    with pytest.raises(ValueError):
+        mr.validate_workspace_root_outside_repo(
+            mr.REPO_ROOT / "traces" / "opencode_workspaces",
+            "--opencode-workspace-root",
+        )
+
+
 def test_model_dir_name_normalizes_router_model_ids() -> None:
     assert mr.model_dir_name("tokenrouter/MiniMax-M3") == "tokenrouter-MiniMax-M3"
     assert (
@@ -162,6 +217,7 @@ def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
 
     assert opencode.extra_args == ("--allow-files", "--allow-bash")
     assert opencode.workspace_root == tmp_path / "workspaces"
+    assert opencode.stage_workspace is True
 
 
 def test_build_methods_opencode_thinking_and_variant() -> None:
@@ -382,6 +438,56 @@ def test_run_agent_for_scenario_adds_opencode_workspace(
         "opencode_agent_401",
         "Which excavator costs the most?",
     ]
+
+
+def test_run_agent_for_scenario_stages_opencode_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(mr.subprocess, "run", fake_run)
+
+    scenario_root = tmp_path / "scenarios_data"
+    scenario_dir = scenario_root / "scenario_1001"
+    shared_iot = scenario_root / "shared" / "iot"
+    scenario_dir.mkdir(parents=True)
+    shared_iot.mkdir(parents=True)
+    (scenario_dir / "question.txt").write_text("Find anomaly.", encoding="utf-8")
+    (scenario_dir / "groundtruth.txt").write_text("secret", encoding="utf-8")
+    (scenario_dir / "manifest.json").write_text(
+        '{"iot": "shared/iot/asset_data.json"}',
+        encoding="utf-8",
+    )
+    (shared_iot / "asset_data.json").write_text("[]", encoding="utf-8")
+
+    method = mr.MethodConfig(
+        agent_name="opencode_agent",
+        command="opencode-agent",
+        model_id="tokenrouter/MiniMax-M3",
+        extra_args=("--allow-files",),
+        workspace_root=tmp_path / "workspaces",
+        stage_workspace=True,
+    )
+
+    mr.run_agent_for_scenario(
+        method=method,
+        scenario_id="1001",
+        question="Find anomaly.",
+        trajectory_dir=tmp_path / "traj",
+        dry_run=False,
+        scenario_root=scenario_root,
+    )
+
+    expected_workspace = tmp_path / "workspaces" / "opencode_agent_1001"
+    assert (expected_workspace / "scenario_1001" / "question.txt").exists()
+    assert (expected_workspace / "scenario_1001" / "manifest.json").exists()
+    assert (expected_workspace / "shared" / "iot" / "asset_data.json").exists()
+    assert not (expected_workspace / "scenario_1001" / "groundtruth.txt").exists()
+    assert "--workspace-dir" in captured["cmd"]
 
 
 def test_run_agent_for_scenario_adds_gemini_workspace(
