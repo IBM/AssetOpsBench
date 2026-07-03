@@ -46,6 +46,8 @@ capabilities have been enabled for this run.
 When file or bash access is enabled, use the current working directory as the
 run workspace. Write any scripts, temporary files, intermediate data, and final
 artifacts there. Do not read or write files outside the current workspace.
+Do not inspect parent directories, repository folders, reports, traces,
+groundtruth files, previous agent outputs, or hidden evaluation artifacts.
 """
 )
 
@@ -647,6 +649,11 @@ class OpenCodeAgentRunner(AgentRunner):
             cmd.append(question)
 
             env = os.environ.copy()
+            # The OpenCode subprocess should not expose host-side evaluation
+            # output paths to file/bash tools. The Python wrapper persists the
+            # trajectory after OpenCode exits, using the parent process env.
+            env.pop("AGENT_TRAJECTORY_DIR", None)
+            env.pop("SCENARIOS_DATA_DIR", None)
             env.update(self._env_overrides)
             env["OPENCODE_CONFIG_CONTENT"] = json.dumps(self._config)
             env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
@@ -659,7 +666,7 @@ class OpenCodeAgentRunner(AgentRunner):
             )
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                cwd=str(_REPO_ROOT),
+                cwd=str(self._run_dir),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
