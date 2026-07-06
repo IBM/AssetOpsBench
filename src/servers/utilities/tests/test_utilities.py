@@ -175,6 +175,7 @@ class TestCatalogTools:
         assert fake_catalog_db.calls[-1]["selector"] == {
             "sensor": {"$exists": True}
         }
+        assert fake_catalog_db.calls[-1]["limit"] == utilities.CATALOG_QUERY_LIMIT
 
     @pytest.mark.anyio
     async def test_get_asset_catalog_filters_asset_and_category(self, fake_catalog_db):

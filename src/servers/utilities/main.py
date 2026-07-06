@@ -28,6 +28,7 @@ COUCHDB_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")
 COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME", "admin")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD", "password")
 CATALOG_DBNAME = os.environ.get("CATALOG_DBNAME", "catalog")
+CATALOG_QUERY_LIMIT = 1000
 
 try:
     catalog_db = couchdb3.Database(
@@ -95,17 +96,12 @@ def _clean_filter(value: Optional[str]) -> Optional[str]:
     return value or None
 
 
-def _catalog_limit(limit: int) -> int:
-    return max(1, min(limit, 5000))
-
-
 def _find_catalog(
     *,
     catalog_type: str,
     field: str,
     value: Optional[str],
     fields: list[str],
-    limit: int,
     category: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
     if catalog_db is None:
@@ -121,7 +117,7 @@ def _find_catalog(
         res = catalog_db.find(
             selector,
             fields=fields,
-            limit=_catalog_limit(limit),
+            limit=CATALOG_QUERY_LIMIT,
         )
         docs = res.get("docs", [])
     except Exception as e:
@@ -165,7 +161,6 @@ def json_reader(file_name: str) -> str:
 @mcp.tool(title="Get Sensor Catalog")
 def get_sensor_catalog(
     sensor: Optional[str] = None,
-    limit: int = 1000,
 ) -> Union[CatalogResult, ErrorResult]:
     """Return sensor catalog entries. Pass sensor for an exact sensor-name lookup."""
     return _find_catalog(
@@ -173,7 +168,6 @@ def get_sensor_catalog(
         field="sensor",
         value=sensor,
         fields=["sensor", "description"],
-        limit=limit,
     )
 
 
@@ -181,7 +175,6 @@ def get_sensor_catalog(
 def get_asset_catalog(
     asset: Optional[str] = None,
     category: Optional[str] = None,
-    limit: int = 1000,
 ) -> Union[CatalogResult, ErrorResult]:
     """Return asset catalog entries. Pass asset and/or category for exact lookups."""
     return _find_catalog(
@@ -190,7 +183,6 @@ def get_asset_catalog(
         value=asset,
         category=category,
         fields=["category", "category_description", "asset", "description"],
-        limit=limit,
     )
 
 
@@ -198,7 +190,6 @@ def get_asset_catalog(
 def get_failure_model_catalog(
     failure_mode: Optional[str] = None,
     category: Optional[str] = None,
-    limit: int = 1000,
 ) -> Union[CatalogResult, ErrorResult]:
     """Return failure-mode catalog entries.
 
@@ -210,7 +201,6 @@ def get_failure_model_catalog(
         value=failure_mode,
         category=category,
         fields=["category", "failure_mode", "description"],
-        limit=limit,
     )
 
 
