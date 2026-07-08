@@ -31,6 +31,12 @@ def test_default_manifest_uses_failure_code_collection_key() -> None:
 
     assert "failure_code" in manifest
     assert "failurecode" not in manifest
+    assert manifest["catalog"] == [
+        "shared/catalog/assets.csv",
+        "shared/catalog/failure_modes.csv",
+        "shared/catalog/sensors.csv",
+    ]
+    assert manifest["failure_mode"] == "shared/fmea/failure_modes_sample.json"
 
 
 def test_failure_mode_collection_parses_shared_json() -> None:
