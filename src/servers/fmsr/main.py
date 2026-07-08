@@ -18,12 +18,10 @@ from __future__ import annotations
 import logging
 import os
 import re
-from pathlib import Path
 from typing import Dict, List, Union
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import yaml
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -39,9 +37,24 @@ logger = logging.getLogger("fmsr-mcp-server")
 
 # ── Hardcoded asset data ──────────────────────────────────────────────────────
 
-_FAILURE_MODES_FILE = Path(__file__).parent / "failure_modes.yaml"
-with _FAILURE_MODES_FILE.open() as _f:
-    _ASSET_FAILURE_MODES: dict[str, list[str]] = yaml.safe_load(_f)
+_ASSET_FAILURE_MODES: dict[str, list[str]] = {
+    "chiller": [
+        "Compressor Overheating: Failed due to Normal wear, overheating",
+        "Heat Exchangers: Fans: Degraded motor or worn bearing due to Normal use",
+        "Evaporator Water side fouling",
+        "Condenser Water side fouling",
+        "Condenser Improper water side flow rate",
+        "Purge Unit Excessive purge",
+        "Refrigerant Operated Control Valve Failed spring",
+    ],
+    "ahu": [
+        "Pressure Regulators Diaphragm failure",
+        "Steam Heating Coils Air side fouling",
+        "Belts or sheaves Wear",
+        "Improper switch position",
+        "Solenoid Valves Bound due to hardened grease",
+    ],
+}
 
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
