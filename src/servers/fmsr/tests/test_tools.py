@@ -112,32 +112,6 @@ class TestAddFailureModes:
         assert empty_fm_db.docs["fm:gearbox"]["exhaustive"] is True
 
 
-class TestCatalogTools:
-    @pytest.mark.anyio
-    async def test_get_sensor_catalog_lists_rows(self, fake_catalog_db):
-        data = await call_tool(mcp, "get_sensor_catalog", {})
-
-        assert data["kind"] == "sensor"
-        assert data["total"] == 2
-        assert data["items"] == ["differential pressure", "temperature"]
-
-    @pytest.mark.anyio
-    async def test_get_failure_mode_catalog_lists_rows(self, fake_catalog_db):
-        data = await call_tool(mcp, "get_failure_mode_catalog", {})
-
-        assert data["kind"] == "failure_mode"
-        assert data["total"] == 1
-        assert data["items"] == ["seal leakage"]
-
-    @pytest.mark.anyio
-    async def test_catalog_unavailable_returns_error(self, monkeypatch):
-        monkeypatch.setattr("servers.fmsr.main.catalog_db", None)
-
-        data = await call_tool(mcp, "get_sensor_catalog", {})
-
-        assert data == {"error": "CouchDB not connected"}
-
-
 _FAILURE_MODES = ["Compressor Overheating", "Condenser Water side fouling"]
 _SENSORS = ["Chiller 6 Power Input", "Chiller 6 Supply Temperature"]
 

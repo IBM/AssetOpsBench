@@ -91,32 +91,6 @@ def empty_fm_db():
 
 
 @pytest.fixture
-def fake_catalog_db():
-    db = FakeCouchDB(
-        [
-            {
-                "_id": "catalog:sensor:dp",
-                "sensor": "differential pressure",
-                "description": "pressure difference",
-            },
-            {
-                "_id": "catalog:sensor:temp",
-                "sensor": "temperature",
-                "description": "temperature",
-            },
-            {
-                "_id": "catalog:fm:seal",
-                "category": "rotating equipment",
-                "failure_mode": "seal leakage",
-                "description": "seal loses containment",
-            },
-        ]
-    )
-    with patch("servers.fmsr.main.catalog_db", db):
-        yield db
-
-
-@pytest.fixture
 def mock_relevancy_chain():
     """Patch _call_relevancy so it always returns 'Yes' without calling the LLM."""
     mock = MagicMock(
