@@ -1,94 +1,169 @@
-"""Tests for FMSR MCP server tools.
-
-Unit tests use mocked LLM chains; integration tests require live WatsonX
-credentials (skipped unless WATSONX_APIKEY is set).
-"""
+"""Tests for FMSR MCP server tools."""
 
 import pytest
+
 from servers.fmsr.main import mcp
+
 from .conftest import call_tool, requires_watsonx
-
-
-# ---------------------------------------------------------------------------
-# get_failure_modes
-# ---------------------------------------------------------------------------
 
 
 class TestGetFailureModes:
     @pytest.mark.anyio
-    async def test_chiller_returns_hardcoded(self):
+    async def test_reads_failure_modes_from_db(self, fake_fm_db):
         data = await call_tool(mcp, "get_failure_modes", {"asset_name": "chiller"})
-        assert "failure_modes" in data
-        assert len(data["failure_modes"]) == 7
-        assert any("Compressor" in fm for fm in data["failure_modes"])
+
+        assert data["failure_modes"] == ["Compressor overheating", "Condenser fouling"]
+        assert data["exhaustive"] is False
+        assert data["source"] == "test"
 
     @pytest.mark.anyio
-    async def test_chiller_number_stripped(self):
-        """'Chiller 6' normalises to 'chiller' for the lookup."""
+    async def test_chiller_number_stripped(self, fake_fm_db):
         data = await call_tool(mcp, "get_failure_modes", {"asset_name": "Chiller 6"})
-        assert "failure_modes" in data
-        assert len(data["failure_modes"]) == 7
+
+        assert data["failure_modes"] == ["Compressor overheating", "Condenser fouling"]
 
     @pytest.mark.anyio
-    async def test_ahu_returns_hardcoded(self):
-        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "ahu"})
-        assert "failure_modes" in data
-        assert len(data["failure_modes"]) == 5
-
-    @pytest.mark.anyio
-    async def test_empty_asset_name_returns_error(self):
+    async def test_empty_asset_name_returns_error(self, fake_fm_db):
         data = await call_tool(mcp, "get_failure_modes", {"asset_name": ""})
+
         assert "error" in data
 
     @pytest.mark.anyio
-    async def test_unknown_asset_no_llm(self, no_llm):
-        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "Pump"})
+    async def test_missing_asset_returns_error(self, empty_fm_db):
+        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "unknown"})
+
         assert "error" in data
+        assert "try generate_failure_modes" in data["error"]
 
     @pytest.mark.anyio
-    async def test_unknown_asset_llm_fallback(self, mock_asset2fm_chain):
-        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "Pump"})
-        assert "failure_modes" in data
+    async def test_db_unavailable_returns_error(self, monkeypatch):
+        monkeypatch.setattr("servers.fmsr.main.fm_db", None)
+
+        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "pump"})
+
+        assert data == {"error": "CouchDB not connected"}
+
+
+class TestGenerateFailureModes:
+    @pytest.mark.anyio
+    async def test_generate_from_scratch(self, empty_fm_db, mock_asset2fm_chain):
+        data = await call_tool(mcp, "generate_failure_modes", {"asset_name": "Pump"})
+
+        assert data["known"] == []
+        assert data["generated"] == ["Fan Failure", "Belt Wear"]
         assert data["failure_modes"] == ["Fan Failure", "Belt Wear"]
         mock_asset2fm_chain.assert_called_once_with("Pump")
 
-    @requires_watsonx
     @pytest.mark.anyio
-    async def test_unknown_asset_integration(self):
-        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "Boiler"})
-        assert "failure_modes" in data
-        assert len(data["failure_modes"]) > 0
+    async def test_generate_extends_known_modes(
+        self, fake_fm_db, mock_asset2fm_extend_chain
+    ):
+        data = await call_tool(mcp, "generate_failure_modes", {"asset_name": "Pump 1"})
+
+        assert data["known"] == ["seal leakage"]
+        assert data["generated"] == ["Bearing Wear"]
+        assert data["failure_modes"] == ["seal leakage", "Bearing Wear"]
+        mock_asset2fm_extend_chain.assert_called_once_with("Pump 1", ["seal leakage"])
+
+    @pytest.mark.anyio
+    async def test_generate_llm_unavailable_returns_error(self, no_llm):
+        data = await call_tool(mcp, "generate_failure_modes", {"asset_name": "Pump"})
+
+        assert data == {"error": "LLM unavailable"}
 
 
-# ---------------------------------------------------------------------------
-# get_failure_mode_sensor_mapping
-# ---------------------------------------------------------------------------
+class TestAddFailureModes:
+    @pytest.mark.anyio
+    async def test_add_failure_modes_merges_existing(self, fake_fm_db):
+        data = await call_tool(
+            mcp,
+            "add_failure_modes",
+            {
+                "asset_class": "Pump 1",
+                "failure_modes": ["seal leakage", "Bearing Wear"],
+                "source": "unit-test",
+            },
+        )
+
+        assert data["asset_class"] == "pump"
+        assert data["added"] == ["Bearing Wear"]
+        assert data["total"] == 2
+        assert fake_fm_db.docs["fm:pump"]["failure_modes"] == [
+            "Bearing Wear",
+            "seal leakage",
+        ]
+        assert fake_fm_db.docs["fm:pump"]["source"] == "unit-test"
+
+    @pytest.mark.anyio
+    async def test_add_failure_modes_creates_new_doc(self, empty_fm_db):
+        data = await call_tool(
+            mcp,
+            "add_failure_modes",
+            {
+                "asset_class": "Gearbox",
+                "failure_modes": ["Gear tooth wear"],
+                "exhaustive": True,
+            },
+        )
+
+        assert data["asset_class"] == "gearbox"
+        assert data["added"] == ["Gear tooth wear"]
+        assert data["total"] == 1
+        assert empty_fm_db.docs["fm:gearbox"]["exhaustive"] is True
+
+
+class TestCatalogTools:
+    @pytest.mark.anyio
+    async def test_get_sensor_catalog_lists_rows(self, fake_catalog_db):
+        data = await call_tool(mcp, "get_sensor_catalog", {})
+
+        assert data["kind"] == "sensor"
+        assert data["total"] == 2
+        assert data["items"] == ["differential pressure", "temperature"]
+
+    @pytest.mark.anyio
+    async def test_get_failure_mode_catalog_lists_rows(self, fake_catalog_db):
+        data = await call_tool(mcp, "get_failure_mode_catalog", {})
+
+        assert data["kind"] == "failure_mode"
+        assert data["total"] == 1
+        assert data["items"] == ["seal leakage"]
+
+    @pytest.mark.anyio
+    async def test_catalog_unavailable_returns_error(self, monkeypatch):
+        monkeypatch.setattr("servers.fmsr.main.catalog_db", None)
+
+        data = await call_tool(mcp, "get_sensor_catalog", {})
+
+        assert data == {"error": "CouchDB not connected"}
 
 
 _FAILURE_MODES = ["Compressor Overheating", "Condenser Water side fouling"]
 _SENSORS = ["Chiller 6 Power Input", "Chiller 6 Supply Temperature"]
 
 
-class TestGetFailureModeSensorMapping:
+class TestGenerateFailureModeSensorMapping:
     @pytest.mark.anyio
     async def test_returns_expected_keys(self, mock_relevancy_chain):
         data = await call_tool(
             mcp,
-            "get_failure_mode_sensor_mapping",
+            "generate_failure_mode_sensor_mapping",
             {
                 "asset_name": "Chiller 6",
                 "failure_modes": _FAILURE_MODES,
                 "sensors": _SENSORS,
             },
         )
+
         assert "fm2sensor" in data
         assert "sensor2fm" in data
         assert "full_relevancy" in data
         assert data["metadata"]["asset_name"] == "Chiller 6"
 
     @pytest.mark.anyio
-    async def test_full_relevancy_count(self, mock_relevancy_chain):
-        """2 sensors × 2 failure modes = 4 pairs."""
+    async def test_compatibility_alias_returns_expected_keys(
+        self, mock_relevancy_chain
+    ):
         data = await call_tool(
             mcp,
             "get_failure_mode_sensor_mapping",
@@ -98,51 +173,72 @@ class TestGetFailureModeSensorMapping:
                 "sensors": _SENSORS,
             },
         )
+
+        assert "fm2sensor" in data
+        assert "sensor2fm" in data
+        assert "full_relevancy" in data
+
+    @pytest.mark.anyio
+    async def test_full_relevancy_count(self, mock_relevancy_chain):
+        data = await call_tool(
+            mcp,
+            "generate_failure_mode_sensor_mapping",
+            {
+                "asset_name": "Chiller 6",
+                "failure_modes": _FAILURE_MODES,
+                "sensors": _SENSORS,
+            },
+        )
+
         assert len(data["full_relevancy"]) == 4
 
     @pytest.mark.anyio
     async def test_empty_failure_modes_returns_error(self, mock_relevancy_chain):
         data = await call_tool(
             mcp,
-            "get_failure_mode_sensor_mapping",
+            "generate_failure_mode_sensor_mapping",
             {"asset_name": "Chiller 6", "failure_modes": [], "sensors": _SENSORS},
         )
+
         assert "error" in data
 
     @pytest.mark.anyio
     async def test_empty_sensors_returns_error(self, mock_relevancy_chain):
         data = await call_tool(
             mcp,
-            "get_failure_mode_sensor_mapping",
+            "generate_failure_mode_sensor_mapping",
             {"asset_name": "Chiller 6", "failure_modes": _FAILURE_MODES, "sensors": []},
         )
+
         assert "error" in data
 
     @pytest.mark.anyio
     async def test_llm_unavailable_returns_error(self, no_llm):
         data = await call_tool(
             mcp,
-            "get_failure_mode_sensor_mapping",
+            "generate_failure_mode_sensor_mapping",
             {
                 "asset_name": "Chiller 6",
                 "failure_modes": _FAILURE_MODES,
                 "sensors": _SENSORS,
             },
         )
-        assert "error" in data
+
+        assert data == {"error": "LLM unavailable"}
 
     @requires_watsonx
     @pytest.mark.anyio
     async def test_integration(self):
         data = await call_tool(
             mcp,
-            "get_failure_mode_sensor_mapping",
+            "generate_failure_mode_sensor_mapping",
             {
                 "asset_name": "Chiller 6",
                 "failure_modes": ["Compressor Overheating"],
                 "sensors": ["Chiller 6 Power Input"],
             },
         )
+
         assert "full_relevancy" in data
         assert len(data["full_relevancy"]) == 1
         assert data["full_relevancy"][0]["relevancy_answer"] in ("Yes", "No", "Unknown")
