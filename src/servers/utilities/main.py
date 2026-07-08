@@ -186,8 +186,8 @@ def get_asset_catalog(
     )
 
 
-@mcp.tool(title="Get Failure Model Catalog")
-def get_failure_model_catalog(
+@mcp.tool(title="Get Failure Mode Catalog")
+def get_failure_mode_catalog(
     failure_mode: Optional[str] = None,
     category: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
