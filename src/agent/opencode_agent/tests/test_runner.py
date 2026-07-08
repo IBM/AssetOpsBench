@@ -123,6 +123,22 @@ def test_resolve_tokenrouter_model(monkeypatch):
     assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test" # pragma: allowlist secret
 
 
+def test_resolve_tokenrouter_anthropic_model(monkeypatch):
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://router.example/v1")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "tr-test")
+    model, provider, env = _resolve_opencode_model_and_provider(
+        "tokenrouter/anthropic/claude-opus-4.8"
+    )
+    assert model == "tokenrouter/anthropic/claude-opus-4.8"
+    assert provider["tokenrouter"]["npm"] == "@ai-sdk/anthropic"
+    assert provider["tokenrouter"]["options"]["baseURL"] == "https://router.example/v1"
+    assert (
+        provider["tokenrouter"]["models"]["anthropic/claude-opus-4.8"]["name"]
+        == "anthropic/claude-opus-4.8"
+    )
+    assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test" # pragma: allowlist secret
+
+
 def test_build_opencode_config_includes_agent_and_mcp():
     config, env, opencode_model = _build_opencode_config(
         model="opencode/gpt-5",
