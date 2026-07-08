@@ -13,7 +13,7 @@ known and signals when generation is needed. Retrieval (get_*) and generation
 (generate_*) are separate by design.
 
 LLM backend is configured via FMSR_MODEL_ID (default: watsonx/meta-llama/llama-3-3-70b-instruct).
-CouchDB via COUCHDB_URL / FAILURE_MODE_DBNAME / CATALOG_DBNAME /
+CouchDB via COUCHDB_URL / FAILURE_MODE_DBNAME /
 COUCHDB_USERNAME / COUCHDB_PASSWORD.
 """
 
@@ -41,16 +41,14 @@ logger = logging.getLogger("fmsr-mcp-server")
 
 
 # ── CouchDB stores ────────────────────────────────────────────────────────────
-# Under AssetOpsBench's loader, database name == collection key, so the FMSR data is two separate
-# databases (loaded from the manifest, no seed): 'failure_mode' and 'catalog'. We open one handle
-# each — there is no single 'fmsr' database.
+# Under AssetOpsBench's loader, database name == collection key. Failure modes
+# live in the 'failure_mode' database; generic catalog lookups live in the
+# utilities MCP server.
 
 COUCHDB_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")
 COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME", "admin")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD", "password")
 FAILURE_MODE_DBNAME = os.environ.get("FAILURE_MODE_DBNAME", "failure_mode")
-CATALOG_DBNAME = os.environ.get("CATALOG_DBNAME", "catalog")
-CATALOG_QUERY_LIMIT = 1000
 
 
 def _connect(dbname):
@@ -69,7 +67,6 @@ def _connect(dbname):
 
 
 fm_db = _connect(FAILURE_MODE_DBNAME)
-catalog_db = _connect(CATALOG_DBNAME)
 
 
 def _asset_key(asset_name: str) -> str:
@@ -247,15 +244,6 @@ class AddFailureModesResult(BaseModel):
     message: str
 
 
-class CatalogResult(BaseModel):
-    kind: str  # "sensor" | "failure_mode"
-    scenario_id: Optional[str]  # which scope was served (None = global default)
-    total: int
-    items: List[str]
-    source: Optional[str]
-    message: str
-
-
 class RelevancyEntry(BaseModel):
     asset_name: str
     failure_mode: str
@@ -287,9 +275,7 @@ mcp = FastMCP(
         "failure modes from CouchDB; generate_failure_modes GENERATES them via the LLM when the DB "
         "is missing or incomplete (exhaustive=false); add_failure_modes WRITES them back; "
         "generate_failure_mode_sensor_mapping GENERATES which sensors can detect each failure. "
-        "get_sensor_catalog / get_failure_mode_catalog READ the global (class-independent) reference "
-        "lists from the loaded catalog dataset (scenario-scoped if a scenario_id catalog was loaded); "
-        "if no catalog collection is loaded they report that none is available."
+        "Use the utilities MCP server for asset, sensor, and failure-mode catalog lookups."
     ),
 )
 
@@ -434,76 +420,6 @@ def add_failure_modes(
     except Exception as exc:  # noqa: BLE001
         logger.error("add_failure_modes failed: %s", exc)
         return ErrorResult(error=str(exc))
-
-
-def _read_catalog(
-    kind: str, scenario_id: Optional[str]
-) -> tuple[list[str], Optional[str], Optional[str]]:
-    """Return row-based catalog entries for kind from the loaded catalog collection."""
-    if not catalog_db:
-        return [], None, None
-
-    field = "sensor" if kind == "sensor" else "failure_mode"
-    selector: dict[str, object] = {field: {"$exists": True}}
-    if scenario_id:
-        selector["scenario_id"] = scenario_id
-
-    res = catalog_db.find(
-        selector,
-        fields=[field, "scenario_id", "source"],
-        limit=CATALOG_QUERY_LIMIT,
-    )
-    docs = res.get("docs", [])
-    if not docs and scenario_id:
-        res = catalog_db.find(
-            {field: {"$exists": True}},
-            fields=[field, "scenario_id", "source"],
-            limit=CATALOG_QUERY_LIMIT,
-        )
-        docs = res.get("docs", [])
-
-    items = sorted({str(value) for doc in docs if (value := doc.get(field))})
-    served = docs[0].get("scenario_id") if docs else None
-    source = docs[0].get("source") if docs else None
-    return items, served, source
-
-
-def _catalog_result(
-    kind: str, scenario_id: Optional[str]
-) -> Union[CatalogResult, ErrorResult]:
-    if not catalog_db:
-        return ErrorResult(error="CouchDB not connected")
-    items, served, source = _read_catalog(kind, scenario_id)
-    if not items:
-        return ErrorResult(error=f"no catalog information available for kind '{kind}'")
-    return CatalogResult(
-        kind=kind,
-        scenario_id=served,
-        total=len(items),
-        items=items,
-        source=source,
-        message=f"{len(items)} {kind} items "
-        f"({'scenario ' + served if served else 'global default'} catalog).",
-    )
-
-
-@mcp.tool(title="Get Sensor Catalog")
-def get_sensor_catalog(
-    scenario_id: Optional[str] = None,
-) -> Union[CatalogResult, ErrorResult]:
-    """READ the catalog of all potential sensors / monitoring parameters (class-independent reference
-    list). If scenario_id is given and a scenario-scoped catalog exists, it is returned; otherwise the
-    global default. Useful as the candidate-sensor input to generate_failure_mode_sensor_mapping."""
-    return _catalog_result("sensor", scenario_id)
-
-
-@mcp.tool(title="Get Failure Mode Catalog")
-def get_failure_mode_catalog(
-    scenario_id: Optional[str] = None,
-) -> Union[CatalogResult, ErrorResult]:
-    """READ the catalog of all potential failure modes (class-independent reference list). Scenario-
-    scoped if scenario_id matches a registered catalog, else the global default."""
-    return _catalog_result("failure_mode", scenario_id)
 
 
 @mcp.tool(title="Generate Failure Mode Sensor Mapping")
