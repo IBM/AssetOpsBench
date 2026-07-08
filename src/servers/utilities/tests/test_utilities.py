@@ -195,12 +195,12 @@ class TestCatalogTools:
         }
 
     @pytest.mark.anyio
-    async def test_get_failure_model_catalog_queries_failure_mode(
+    async def test_get_failure_mode_catalog_queries_failure_mode(
         self, fake_catalog_db
     ):
         data = await call_tool(
             mcp,
-            "get_failure_model_catalog",
+            "get_failure_mode_catalog",
             {"failure_mode": "Air inlet blockage"},
         )
 
