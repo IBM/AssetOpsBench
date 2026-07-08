@@ -16,24 +16,16 @@ from .conftest import call_tool, requires_watsonx
 
 class TestGetFailureModes:
     @pytest.mark.anyio
-    async def test_chiller_returns_hardcoded(self):
-        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "chiller"})
-        assert "failure_modes" in data
-        assert len(data["failure_modes"]) == 7
-        assert any("Compressor" in fm for fm in data["failure_modes"])
-
-    @pytest.mark.anyio
-    async def test_chiller_number_stripped(self):
-        """'Chiller 6' normalises to 'chiller' for the lookup."""
+    async def test_asset_uses_llm_lookup(self, mock_asset2fm_chain):
         data = await call_tool(mcp, "get_failure_modes", {"asset_name": "Chiller 6"})
         assert "failure_modes" in data
-        assert len(data["failure_modes"]) == 7
+        assert data["failure_modes"] == ["Fan Failure", "Belt Wear"]
+        mock_asset2fm_chain.assert_called_once_with("Chiller 6")
 
     @pytest.mark.anyio
-    async def test_ahu_returns_hardcoded(self):
-        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "ahu"})
-        assert "failure_modes" in data
-        assert len(data["failure_modes"]) == 5
+    async def test_none_asset_name_returns_error(self):
+        data = await call_tool(mcp, "get_failure_modes", {"asset_name": "none"})
+        assert "error" in data
 
     @pytest.mark.anyio
     async def test_empty_asset_name_returns_error(self):

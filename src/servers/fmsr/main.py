@@ -4,8 +4,7 @@ Exposes two tools:
   get_failure_modes               – lists failure modes for an asset
   get_failure_mode_sensor_mapping – returns bidirectional FM↔sensor relevancy mapping
 
-For chillers and AHUs get_failure_modes returns a curated hardcoded list.
-For any other asset type the LLM is queried as a fallback.
+get_failure_modes queries the LLM for the requested asset.
 The mapping tool always calls the LLM to determine per-pair relevancy.
 
 LLM backend is configured via the FMSR_MODEL_ID environment variable
@@ -18,12 +17,10 @@ from __future__ import annotations
 import logging
 import os
 import re
-from pathlib import Path
 from typing import Dict, List, Union
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import yaml
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -35,13 +32,6 @@ _log_level = getattr(
 )
 logging.basicConfig(level=_log_level)
 logger = logging.getLogger("fmsr-mcp-server")
-
-
-# ── Hardcoded asset data ──────────────────────────────────────────────────────
-
-_FAILURE_MODES_FILE = Path(__file__).parent / "failure_modes.yaml"
-with _FAILURE_MODES_FILE.open() as _f:
-    _ASSET_FAILURE_MODES: dict[str, list[str]] = yaml.safe_load(_f)
 
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
@@ -126,7 +116,7 @@ try:
     _llm = _build_llm()
     _llm_available = True
 except Exception as _e:
-    logger.warning("LLM unavailable (FMSR will use curated data only): %s", _e)
+    logger.warning("LLM unavailable (FMSR failure-mode lookup disabled): %s", _e)
     _llm = None
     _llm_available = False
 
@@ -212,20 +202,12 @@ mcp = FastMCP(
 
 @mcp.tool(title="Get Failure Modes")
 def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]:
-    """Returns a list of known failure modes for the given asset.
-    For chillers and AHUs returns a curated list. For other assets queries the LLM."""
-    asset_key = re.sub(r"\d+", "", asset_name).strip().lower()
-    if not asset_key or asset_key == "none":
+    """Return failure modes for the given asset by querying the LLM."""
+    if not asset_name or asset_name.strip().lower() == "none":
         return ErrorResult(error="asset_name is required")
 
-    if asset_key in _ASSET_FAILURE_MODES:
-        return FailureModesResult(
-            asset_name=asset_name,
-            failure_modes=_ASSET_FAILURE_MODES[asset_key],
-        )
-
     if not _llm_available:
-        return ErrorResult(error="LLM unavailable and asset not in local database")
+        return ErrorResult(error="LLM unavailable")
 
     try:
         result = _call_asset2fm(asset_name)
