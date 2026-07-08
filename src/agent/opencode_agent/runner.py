@@ -401,7 +401,9 @@ def _merge_text(existing: str, new: str) -> str:
     return existing + new
 
 
-def _is_step_finish(event: dict[str, Any], part: dict[str, Any], part_type: str) -> bool:
+def _is_step_finish(
+    event: dict[str, Any], part: dict[str, Any], part_type: str
+) -> bool:
     """True for OpenCode step-finish boundaries."""
     event_type = str(event.get("type") or "").lower()
     return ("step" in part_type and "finish" in part_type) or (
@@ -549,10 +551,9 @@ def _build_trajectory_from_events(
                     output_tokens=step["output_tokens"],
                 )
             )
-        if (
-            sum(step["input_tokens"] + step["output_tokens"] for step in steps) == 0
-            and (total_input or total_output)
-        ):
+        if sum(
+            step["input_tokens"] + step["output_tokens"] for step in steps
+        ) == 0 and (total_input or total_output):
             trajectory.turns[-1].input_tokens = total_input
             trajectory.turns[-1].output_tokens = total_output
         trajectory.turns[-1].duration_ms = duration_ms
