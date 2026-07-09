@@ -16,7 +16,7 @@ async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:
     return json.loads(contents[0].text)
 
 
-class FakeCouchDB:
+class FakeDatabase:
     def __init__(self, docs=None):
         self.docs = {doc["_id"]: dict(doc) for doc in docs or []}
 
@@ -30,9 +30,11 @@ class FakeCouchDB:
             ]
         return {"docs": docs}
 
-    def get(self, doc_id):
+    def get(self, doc_id, *, check=False, default_value=None):
         if doc_id not in self.docs:
-            raise KeyError(doc_id)
+            if check:
+                raise KeyError(doc_id)
+            return default_value
         return dict(self.docs[doc_id])
 
     def save(self, doc):
@@ -50,6 +52,17 @@ class FakeCouchDB:
         return True
 
 
+class BrokenDatabase(FakeDatabase):
+    def find(self, selector, fields=None, limit=None):
+        raise RuntimeError("database read failed")
+
+    def get(self, doc_id, *, check=False, default_value=None):
+        raise RuntimeError("database read failed")
+
+    def save(self, doc):
+        raise RuntimeError("database write failed")
+
+
 @pytest.fixture
 def no_llm():
     """Simulate missing WatsonX credentials."""
@@ -59,7 +72,7 @@ def no_llm():
 
 @pytest.fixture
 def fake_fm_db():
-    db = FakeCouchDB(
+    db = FakeDatabase(
         [
             {
                 "_id": "fm:pump",
@@ -76,7 +89,14 @@ def fake_fm_db():
 
 @pytest.fixture
 def empty_fm_db():
-    db = FakeCouchDB()
+    db = FakeDatabase()
+    with patch("servers.fmsr.main.fm_db", db):
+        yield db
+
+
+@pytest.fixture
+def broken_fm_db():
+    db = BrokenDatabase()
     with patch("servers.fmsr.main.fm_db", db):
         yield db
 

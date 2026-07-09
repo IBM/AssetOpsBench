@@ -24,8 +24,13 @@ def _asset_class_from_asset_id(asset_id):
 def chiller_triage(tu, asset_id, site="MAIN", raise_work_order=True, priority="2"):
     """Sensors -> failure modes -> mode/sensor mapping -> (optional) work order."""
     asset_class = _asset_class_from_asset_id(asset_id)
-    sensors = tu.run("iot.sensors", {"site_name": site, "asset_id": asset_id})
-    failure_modes = tu.run("fmsr.get_failure_modes", {"asset_class": asset_class})
+    sensors = _names(tu.run("iot.sensors", {"site_name": site, "asset_id": asset_id}))
+    failure_modes_result = tu.run("fmsr.get_failure_modes", {"asset_class": asset_class})
+    failure_modes = (
+        failure_modes_result.get("failure_modes", [])
+        if isinstance(failure_modes_result, dict)
+        else failure_modes_result
+    )
     mapping = tu.run("fmsr.generate_failure_mode_sensor_mapping", {
         "asset_class": asset_class,
         "failure_modes": failure_modes,
@@ -37,6 +42,7 @@ def chiller_triage(tu, asset_id, site="MAIN", raise_work_order=True, priority="2
         "asset_class": asset_class,
         "site_name": site,
         "sensors": sensors,
+        "failure_modes_result": failure_modes_result,
         "failure_modes": failure_modes,
         "failure_mode_sensor_mapping": mapping,
     }
