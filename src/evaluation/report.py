@@ -54,6 +54,9 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
         "range_value_matches",
         "delta_1_eligible_keys",
         "delta_1_value_matches",
+        "mode_key_match",
+        "mode_exactly_one_key",
+        "mode_term_coverage",
     ]
 
     score_values: dict[str, list[float]] = {name: [] for name in metric_names}
@@ -121,6 +124,9 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
         "range_value_matches_avg": _avg(score_values["range_value_matches"]),
         "delta_1_eligible_keys_avg": _avg(score_values["delta_1_eligible_keys"]),
         "delta_1_value_matches_avg": _avg(score_values["delta_1_value_matches"]),
+        "mode_key_match_avg": _avg(score_values["mode_key_match"]),
+        "mode_exactly_one_key_avg": _avg(score_values["mode_exactly_one_key"]),
+        "mode_term_coverage_avg": _avg(score_values["mode_term_coverage"]),
         "missing_keys_total": missing_keys_total,
         "extra_keys_total": extra_keys_total,
         "detail_entries_total": detail_entries_total,
