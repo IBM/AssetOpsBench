@@ -2,8 +2,7 @@ import os
 import logging
 import statistics
 from datetime import datetime, timezone
-from functools import lru_cache
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 import couchdb3
@@ -252,7 +251,7 @@ def get_sensor_list(asset_id: str) -> List[str]:
         return []
 
 
-_asset_doc_cache: Dict[str, Dict[str, Any]] = {}
+_asset_doc_cache: Dict[Tuple[str, Optional[str]], Optional[Dict[str, Any]]] = {}
 
 
 def get_asset_doc(asset_id: str, site_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
