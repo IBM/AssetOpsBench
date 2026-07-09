@@ -199,6 +199,94 @@ The custom provider route is important because OpenCode's built-in `openai/*`
 provider validates model names against its own model registry. Router-hosted
 models such as `MiniMax-M3` must be registered explicitly.
 
+### FMSR tool model
+
+`--model-id` controls the OpenCode agent model: the model that decides which
+tools to call and writes the final answer. It does not automatically control
+LLM calls made inside MCP servers.
+
+The FMSR tools `generate_failure_modes` and
+`generate_failure_mode_sensor_mapping` make their own LLM calls, configured by
+`FMSR_MODEL_ID` in `src/servers/fmsr/main.py`. To use the same router model for
+both the OpenCode agent and the FMSR generation tools, set one shell variable
+and pass it to both places:
+
+```bash
+MODEL_ID=tokenrouter/MiniMax-M3
+
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
+  "Call generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor']."
+```
+
+The shared value must be valid for both systems. For example,
+`tokenrouter/MiniMax-M3` can be used by both OpenCode routing and FMSR. An
+OpenCode-only model such as `opencode/big-pickle` is not a valid FMSR backend.
+
+### FMSR smoke tests
+
+`get_failure_modes` reads CouchDB and does not make an LLM call. It takes
+`asset_class`, not `asset_name`; the current shared sample data includes
+`asset_class: pump`.
+
+```bash
+uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory \
+  "Use the FMSR get_failure_modes tool for asset_class pump. Return only the asset_class, failure_modes, source, and exhaustive fields."
+```
+
+To check normalization, use mixed case, extra whitespace, digits, underscores,
+or hyphens:
+
+```bash
+uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory \
+  "Use the FMSR get_failure_modes tool for asset_class '  Pump-1  '. Return the normalized asset_class and failure_modes."
+```
+
+To check missing-class guidance:
+
+```bash
+uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory \
+  "Use the FMSR get_failure_modes tool for asset_class compressor and report the tool error exactly."
+```
+
+`generate_failure_modes` creates a new or extended list but does not edit
+CouchDB. When `known` is omitted, it uses the current DB list for `asset_class`
+as context if one exists:
+
+```bash
+MODEL_ID=tokenrouter/MiniMax-M3
+
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
+  "Use generate_failure_modes for asset_class pump with max_modes 5. Return known, generated, failure_modes, and message."
+```
+
+To generate from caller-provided context instead of the DB:
+
+```bash
+MODEL_ID=tokenrouter/MiniMax-M3
+
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
+  "Use generate_failure_modes for asset_class compressor with known ['bearing wear'] and max_modes 4. Return only generated and failure_modes."
+```
+
+`generate_failure_mode_sensor_mapping` calls the FMSR backend model once per
+failure-mode/sensor pair. Set `FMSR_MODEL_ID` when you want the mapping tool to
+use the same TokenRouter model as the OpenCode agent:
+
+```bash
+MODEL_ID=tokenrouter/MiniMax-M3
+
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
+  "Use generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage', 'impeller wear'] and sensors ['Discharge pressure sensor', 'Motor current sensor', 'Vibration sensor', 'Flow sensor']. Return fm2sensor, sensor2fm, and full_relevancy."
+```
+
+The mapping response no longer includes `temporal_behavior`; per-pair entries
+contain `asset_class`, `failure_mode`, `sensor`, `relevancy_answer`, and
+`relevancy_reason`.
+
 ---
 
 ## Permissions and web access
@@ -383,7 +471,26 @@ uv run opencode-agent --run-id opencode-smoke --scenario-id smoke \
   --model-id tokenrouter/MiniMax-M3 \
   "What sites are available?"
 
-# 5. benchmark-suite dry run
+# 5. FMSR get_failure_modes smoke test
+uv run opencode-agent --show-trajectory \
+  --model-id tokenrouter/MiniMax-M3 \
+  "Use the FMSR get_failure_modes tool for asset_class pump. Return only the failure_modes list."
+
+# 6. FMSR generate_failure_modes smoke test
+MODEL_ID=tokenrouter/MiniMax-M3
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --show-trajectory \
+  --model-id "$MODEL_ID" \
+  "Use generate_failure_modes for asset_class pump with max_modes 3. Return generated and message."
+
+# 7. FMSR mapping smoke test
+MODEL_ID=tokenrouter/MiniMax-M3
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --show-trajectory \
+  --model-id "$MODEL_ID" \
+  "Use generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor', 'Vibration sensor']."
+
+# 8. benchmark-suite dry run
 uv run python -m benchmark.scenario_suite_runner \
   --scenario-ids benchmarks/scenario_suite/scenarios.txt \
   --scenario-root /path/to/scenarios_data \
@@ -391,7 +498,7 @@ uv run python -m benchmark.scenario_suite_runner \
   --model-id tokenrouter/MiniMax-M3 \
   --dry-run
 
-# 6. benchmark-suite CLI workspace dry run
+# 9. benchmark-suite CLI workspace dry run
 uv run python -m benchmark.scenario_suite_runner \
   --scenario-ids benchmarks/scenario_suite/scenarios.txt \
   --scenario-root /path/to/scenarios_data \
