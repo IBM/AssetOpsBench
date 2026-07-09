@@ -201,99 +201,15 @@ models such as `MiniMax-M3` must be registered explicitly.
 
 ### FMSR tool model
 
-`--model-id` controls the OpenCode agent model: the model that decides which
-tools to call and writes the final answer. It does not automatically control
-LLM calls made inside MCP servers.
-
-The FMSR tools `generate_failure_modes` and
-`generate_failure_mode_sensor_mapping` make their own LLM calls, configured by
-`FMSR_MODEL_ID` in `src/servers/fmsr/main.py`. To use the same router model for
-both the OpenCode agent and the FMSR generation tools, set one shell variable
-and pass it to both places:
+FMSR tools take `asset_class`. `--model-id` controls OpenCode; LLM-backed FMSR
+tools use `FMSR_MODEL_ID`.
 
 ```bash
 MODEL_ID=tokenrouter/MiniMax-M3
-
 FMSR_MODEL_ID="$MODEL_ID" \
 uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
-  "Call generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor']."
+  "Use generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor']."
 ```
-
-The shared value must be valid for both systems. For example,
-`tokenrouter/MiniMax-M3` can be used by both OpenCode routing and FMSR. An
-OpenCode-only model such as `opencode/big-pickle` is not a valid FMSR backend.
-
-### FMSR smoke tests
-
-`get_failure_modes` reads the database and does not make an LLM call. It takes
-`asset_class`, not `asset_name`; the current shared sample data includes
-`asset_class: pump`.
-
-```bash
-uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory \
-  "Use the FMSR get_failure_modes tool for asset_class pump. Return only the asset_class, failure_modes, source, and exhaustive fields."
-```
-
-To check normalization, use mixed case, extra whitespace, digits, underscores,
-or hyphens:
-
-```bash
-uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory \
-  "Use the FMSR get_failure_modes tool for asset_class '  Pump-1  '. Return the normalized asset_class and failure_modes."
-```
-
-To check missing-class guidance:
-
-```bash
-uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory \
-  "Use the FMSR get_failure_modes tool for asset_class compressor and report the tool error exactly."
-```
-
-`generate_failure_modes` creates a new or extended list but does not edit the
-database. If the normalized `asset_class` exists in the database, the stored
-list is used as context; otherwise, the tool generates a new list from scratch:
-
-```bash
-MODEL_ID=tokenrouter/MiniMax-M3
-
-FMSR_MODEL_ID="$MODEL_ID" \
-uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
-  "Use generate_failure_modes for asset_class pump with max_modes 5. Return known, generated, failure_modes, and message."
-```
-
-To generate from scratch for a class that is not currently in the failure-mode
-database:
-
-```bash
-MODEL_ID=tokenrouter/MiniMax-M3
-
-FMSR_MODEL_ID="$MODEL_ID" \
-uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
-  "Use generate_failure_modes for asset_class compressor with max_modes 4. Return known, generated, failure_modes, and message."
-```
-
-`add_failure_modes` writes to the database and does not call an LLM:
-
-```bash
-uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory \
-  "Use add_failure_modes for asset_class pump with failure_modes ['bearing wear', 'seal leakage'], exhaustive false, and source 'manual smoke test'. Return asset_class, added, failure_modes, total, source, and message."
-```
-
-`generate_failure_mode_sensor_mapping` calls the FMSR backend model once per
-failure-mode/sensor pair. Set `FMSR_MODEL_ID` when you want the mapping tool to
-use the same TokenRouter model as the OpenCode agent:
-
-```bash
-MODEL_ID=tokenrouter/MiniMax-M3
-
-FMSR_MODEL_ID="$MODEL_ID" \
-uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
-  "Use generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage', 'impeller wear'] and sensors ['Discharge pressure sensor', 'Motor current sensor', 'Vibration sensor', 'Flow sensor']. Return fm2sensor, sensor2fm, and full_relevancy."
-```
-
-The mapping response no longer includes `temporal_behavior`; per-pair entries
-contain `asset_class`, `failure_mode`, `sensor`, `relevancy_answer`, and
-`relevancy_reason`.
 
 ---
 

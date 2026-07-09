@@ -62,59 +62,16 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 **Requires:** LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`; `get_failure_modes` reads the database.
 **Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection.
 
-The active FMSR surface is intentionally small:
-
-- `get_failure_modes` reads known data only. It does not call an LLM and does
-  not generate or persist new failure modes.
-- `generate_failure_modes` calls an LLM to create a new failure-mode list or
-  extend existing modes for an `asset_class`. If the class exists in the database,
-  the stored list is used as context; otherwise, the LLM generates a new list
-  from scratch. It never writes to the database.
-- `add_failure_modes` writes curated or generated modes to the database. It
-  merges with the current list and de-duplicates modes case-insensitively.
-- `generate_failure_mode_sensor_mapping` calls an LLM to score supplied
-  `(failure_mode, sensor)` pairs. It does not write to the database.
-
-Use `asset_class` for FMSR calls, not `asset_name`. `asset_class` is the
-equipment class stored in the FMEA data, such as `pump`, rather than a specific
-asset id such as `Pump 3`. The server normalizes case, repeated whitespace,
-underscores, hyphens, and digits before lookup or prompting, so values like
-`Pump_3`, `pump-3`, and `  PUMP  ` normalize to `pump`. If no matching
-failure-mode record is found, the tool returns an error that includes the
-normalized class and a short list of available `asset_class` values from the
-database.
-
-Current failure-mode JSON rows use this shape:
-
-```json
-{
-  "asset_class": "pump",
-  "failure_modes": ["seal leakage", "impeller wear"],
-  "source": "synthetic sample",
-  "exhaustive": false
-}
-```
-
-`generate_failure_modes` and `generate_failure_mode_sensor_mapping` use the FMSR
-server's own model setting, `FMSR_MODEL_ID`, not the calling agent's
-`--model-id`. The default is `watsonx/meta-llama/llama-3-3-70b-instruct`. To
-share one model value with an agent run, set a shell variable and pass it to
-both:
-
-```bash
-MODEL_ID=tokenrouter/MiniMax-M3
-
-FMSR_MODEL_ID="$MODEL_ID" \
-uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
-  "Call generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor']."
-```
+FMSR tools take `asset_class`, not `asset_name`; the server normalizes case,
+whitespace, digits, underscores, and hyphens. LLM-backed FMSR tools use
+`FMSR_MODEL_ID`, independent of the calling agent model.
 
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_failure_modes`               | read          | `asset_class`                            | Return known failure modes for an asset class from the database. Returns `asset_class`, `failure_modes`, `exhaustive`, and `source`.                    |
-| `generate_failure_modes`          | read, LLM-use | `asset_class`, `max_modes?`              | Generate a new or extended failure-mode list. Current database modes for the class are used as context when available. Returns `known`, `generated`, and combined `failure_modes`; does not edit the database. |
-| `add_failure_modes`               | write         | `asset_class`, `failure_modes`, `exhaustive?`, `source?` | Persist/augment failure modes for an asset class. Merges with existing modes, returns `added`, `failure_modes`, `total`, `exhaustive`, and `source`. If `exhaustive` is omitted, existing records preserve their stored value and new records default to false. |
-| `generate_failure_mode_sensor_mapping` | read, LLM-use | `asset_class`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns `metadata`, `fm2sensor`, `sensor2fm`, and `full_relevancy`; per-pair details include `relevancy_answer` and `relevancy_reason`, not `temporal_behavior`. |
+| `generate_failure_modes`          | read, LLM-use | `asset_class`, `max_modes?`              | Generate or extend a failure-mode list without writing the database. |
+| `add_failure_modes`               | write         | `asset_class`, `failure_modes`, `exhaustive?`, `source?` | Persist failure modes for an asset class. |
+| `generate_failure_mode_sensor_mapping` | read, LLM-use | `asset_class`, `failure_modes`, `sensors` | Score failure-mode/sensor relevancy via LLM and return bidirectional mappings. |
 
 ## wo — Work Order
 
