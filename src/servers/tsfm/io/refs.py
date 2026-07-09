@@ -44,8 +44,8 @@ def load_series(data_ref: str, *, value_col: Optional[str] = None,
     if time_col and time_col in df.columns:
         df = df.drop(columns=[time_col])
     # numeric value columns only; drop any column that isn't numeric (coerces all-NaN away)
-    num = df.apply(pd.to_numeric, errors="coerce")
-    num = num.loc[:, num.notna().any(axis=0)]            # drop all-NaN (non-numeric) columns
+    num = df.apply(pd.to_numeric, errors="coerce").astype("float64")  # no nullable dtypes / pd.NA
+    num = num.loc[:, num.notna().any(axis=0)]
     cols = channels or list(num.columns)
     out = num[cols].reset_index(drop=True)               # RangeIndex keeps sktime happy offline
     return out[cols[0]] if len(cols) == 1 else out
