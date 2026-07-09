@@ -134,7 +134,7 @@ class AssetSummary(BaseModel):
     description: Optional[str]
     assettype: Optional[str]
     vintage: Optional[str]
-    n_sensors: int                      # installed sensor count
+    n_sensors: int  # installed sensor count
 
 
 class AssetsWithMetadataResult(BaseModel):
@@ -202,7 +202,7 @@ class SensorStat(BaseModel):
 class SensorStatsResult(BaseModel):
     site_name: str
     asset_id: str
-    stats: List[SensorStat]             # one entry if `sensor` given, else every measured sensor
+    stats: List[SensorStat]  # one entry if `sensor` given, else every measured sensor
     message: str
 
 
@@ -213,32 +213,6 @@ class LatestReadingResult(BaseModel):
     values: Dict[str, Any]
     age_seconds: Optional[float]
     message: str
-
-
-_asset_list_cache: Optional[List[str]] = None
-
-
-def get_asset_list() -> List[str]:
-    """Helper to fetch unique asset IDs from CouchDB.  Result is cached after
-    the first successful call to avoid repeated full-table scans."""
-    global _asset_list_cache
-    if _asset_list_cache is not None:
-        return _asset_list_cache
-
-    if not db:
-        return []
-
-    try:
-        # We limit the fields to just asset_id to minimize data transfer
-        res = db.find(
-            {"asset_id": {"$exists": True}}, fields=["asset_id"], limit=100000
-        )
-        assets = {doc["asset_id"] for doc in res["docs"] if "asset_id" in doc}
-        _asset_list_cache = sorted(list(assets))
-        return _asset_list_cache
-    except Exception as e:
-        logger.error(f"Error fetching assets: {e}")
-        return []
 
 
 _sensor_list_cache: Dict[str, List[str]] = {}
@@ -259,16 +233,18 @@ def get_sensor_list(asset_id: str) -> List[str]:
         return []
 
     try:
-        res = db.find({"asset_id": asset_id}, limit=100000)
-        docs = res["docs"]
-        if not docs:
+        found: set = set()
+        seen = False
+        for doc in _iter_docs(
+            {"asset_id": asset_id}
+        ):  # walks all pages via Mango bookmark
+            seen = True
+            for key in doc.keys():
+                if key not in RESERVED_FIELDS:
+                    found.add(key)
+        if not seen:
             return []
-
-        # Exclude metadata; union the measurement keys across every reading document.
-        exclude = {"_id", "_rev", "asset_id", "timestamp"}
-        sensors = sorted(
-            {key for doc in docs for key in doc.keys() if key not in exclude}
-        )
+        sensors = sorted(found)
         _sensor_list_cache[asset_id] = sensors
         return sensors
     except Exception as e:
@@ -278,25 +254,29 @@ def get_sensor_list(asset_id: str) -> List[str]:
 
 _asset_doc_cache: Dict[str, Dict[str, Any]] = {}
 
-def get_asset_doc(asset_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch one asset-registry document by asset_id. Cached per asset_id."""
-    # impl: registry docs are keyed by `assetnum`, which holds the same value as the telemetry
-    # `asset_id` (e.g. "CHILLER 6"), so one equality query resolves the profile.
-    if asset_id in _asset_doc_cache:
-        return _asset_doc_cache[asset_id]
+
+def get_asset_doc(asset_id: str, site_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Fetch one asset-registry document by assetnum, optionally constrained to a site so both
+    conditions must hold. Cached per (asset_id, site_name)."""
+    # impl: registry docs are keyed by `assetnum`, whose value equals the telemetry `asset_id`.
+    cache_key = (asset_id, site_name)
+    if cache_key in _asset_doc_cache:
+        return _asset_doc_cache[cache_key]
     if not asset_db:
         return None
     try:
-        res = asset_db.find({"doctype": "asset", "assetnum": asset_id}, limit=1)
+        selector: Dict[str, Any] = {"doctype": "asset", "assetnum": asset_id}
+        if site_name is not None:
+            selector["siteid"] = site_name
+        res = asset_db.find(selector, limit=1)
         docs = res["docs"]
-        if docs:
-            _asset_doc_cache[asset_id] = docs[0]
-            return docs[0]
-        return None
+        doc = docs[0] if docs else None
+        _asset_doc_cache[cache_key] = doc          # cache hit AND miss (asset is static per run)
+        return doc
     except Exception as e:
         logger.error(f"Error fetching asset doc {asset_id}: {e}")
         return None
-    
+
 _registry_sites_cache: Optional[List[str]] = None
 
 
@@ -308,7 +288,7 @@ def get_registry_sites() -> List[str]:
     if not asset_db:
         return []
     try:
-        res = asset_db.find({"doctype": "asset"}, fields=["siteid"], limit=100000)
+        res = asset_db.find({"doctype": "asset"}, fields=["siteid"], limit=10**12)
         found = sorted({d.get("siteid") for d in res["docs"] if d.get("siteid")})
         _registry_sites_cache = found
         return found
@@ -456,10 +436,9 @@ def _site_asset_ids(site_name: str) -> List[str]:
         logger.error(f"_site_asset_ids failed: {e}")
         return []
 
-def _installed_sensors(asset_id: str) -> List[str]:
-    doc = get_asset_doc(asset_id)
+def _installed_sensors(asset_id: str, site_name: Optional[str] = None) -> List[str]:
+    doc = get_asset_doc(asset_id, site_name)
     return list(doc.get("sensors", [])) if doc else []
-
 
 # ---------------------------------------------------------------------------
 # Original tools (unchanged)
@@ -475,8 +454,7 @@ def sites() -> SitesResult:
 @mcp.tool(title="List Asset IDs")
 def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
     """List the asset IDs at a site. Use an ID from this list as the `asset_id` argument in the
-    other tools (measured_sensors, history, stream_extent, ...). For assets with metadata
-    (description, type, vintage, installed sensor count), use `assets`.
+    other tools (measured_sensors, history, stream_extent, ...).
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -501,10 +479,12 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
 
 
 @mcp.tool(title="List Measured Sensors")
-def measured_sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
+def measured_sensors(
+    site_name: str, asset_id: str
+) -> Union[SensorsResult, ErrorResult]:
     """Lists the MEASURED sensors for a specified asset at a given site — names discovered from the
-    asset's telemetry documents, i.e. points that actually stream to the historian. For the full
-    INSTALLED inventory (including sensors fitted but not streaming), use installed_sensors()."""
+    asset's telemetry documents, i.e. points that actually stream to the historian.
+    """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
 
@@ -588,16 +568,15 @@ def history(
         message=f"{len(docs)} observation(s) for asset_id {asset_id}; has_more={has_more}.",
     )
 
+
 @mcp.tool(title="Get Asset Detail")
 def get_asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
-    """Return registry/nameplate details for one asset (Maximo MXASSET-aligned: description,
-    assettype, status, location, installdate, vintage) plus installed sensor count.
-    This is asset IDENTITY — distinct from the telemetry-derived asset_ids() list."""
+    """Return registry/nameplate details for one asset."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    doc = get_asset_doc(asset_id)
+    doc = get_asset_doc(asset_id, site_name)
     if not doc:
-        return ErrorResult(error=f"unknown asset_id {asset_id} in registry")
+        return ErrorResult(error=f"unknown asset_id {asset_id} at site {site_name}")
     n = len(doc.get("sensors", []))
     assettype = doc.get("assettype")
     vintage = doc.get("vintage")
@@ -635,9 +614,9 @@ def installed_sensors(
     set). Compare the two to find installed-but-not-streaming sensors."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    doc = get_asset_doc(asset_id)
+    doc = get_asset_doc(asset_id, site_name)
     if not doc:
-        return ErrorResult(error=f"unknown asset_id {asset_id} in registry")
+        return ErrorResult(error=f"unknown asset_id {asset_id} at site {site_name}")
     names = list(doc.get("sensors", []))
     return AssetSensorsResult(
         site_name=site_name,
@@ -724,7 +703,7 @@ def find_assets_by_sensors(
         available = (
             get_sensor_list(asset_id)
             if source == "measured"
-            else _installed_sensors(asset_id)
+            else _installed_sensors(asset_id, site_name)
         )
 
         def _hits(w: str) -> List[str]:
@@ -750,6 +729,7 @@ def find_assets_by_sensors(
         message=f"{len(matches)} asset(s) at {site_name} match {sensors} "
         f"(match={match}, substring={substring}, source={source}).",
     )
+
 
 @mcp.tool(title="Stream Extent")
 def stream_extent(
@@ -927,7 +907,11 @@ def sensor_stats(
                 min=min(vals) if vals else None,
                 max=max(vals) if vals else None,
                 mean=statistics.fmean(vals) if vals else None,
-                stddev=(statistics.pstdev(vals) if len(vals) > 1 else (0.0 if vals else None)),
+                stddev=(
+                    statistics.pstdev(vals)
+                    if len(vals) > 1
+                    else (0.0 if vals else None)
+                ),
                 first_timestamp=a["first"],
                 last_timestamp=a["last"],
             )
