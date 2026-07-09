@@ -35,7 +35,7 @@ environment variables:
   LITELLM_API_KEY         LiteLLM router key for litellm_proxy/* models
   LITELLM_BASE_URL        LiteLLM OpenAI-compatible base URL
   TOKENROUTER_API_KEY     TokenRouter key for tokenrouter/* models
-  TOKENROUTER_BASE_URL    TokenRouter OpenAI-compatible base URL
+  TOKENROUTER_BASE_URL    TokenRouter base URL; Claude models use Anthropic protocol
 
 examples:
   opencode-agent "What assets are at site MAIN?"

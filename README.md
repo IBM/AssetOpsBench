@@ -85,7 +85,7 @@ AssetOpsBench is a **unified framework for developing, orchestrating, and evalua
 | MCP Servers | Important tools |
 |---|---|
 | **IoT** | `sites`, `asset_ids`, `measured_sensors`, `history`, `installed_sensors`, `assets`, `stream_extent`, ... |
-| **FMSR** | `get_sensors`, `get_failure_modes`, `get_failure_sensor_mapping` |
+| **FMSR** | `get_failure_modes`, `generate_failure_modes`, `add_failure_modes`, `generate_failure_mode_sensor_mapping` |
 | **TSFM** | `forecasting`, `timeseries_anomaly_detection` |
 | **WO** | `get_work_order_distribution`, `predict_next_work_order`, ... |
 | **Vibration** | `compute_fft_spectrum`, `compute_envelope_spectrum`, ... |
@@ -111,7 +111,7 @@ The `src/` directory contains MCP servers and a plan-execute runner built on the
 | Domain | Example Task |
 |---|---|
 | **IoT** | "List all sensors of Chiller 6 in MAIN site" |
-| **FMSR** | "Identify failure modes detected by Chiller 6 Supply Temperature" |
+| **FMSR** | "List known failure modes for asset class pump" |
 | **TSFM** | "Forecast Chiller 9 Condenser Water Flow for the week of 2020-04-27" |
 | **WO** | "Generate a work order for Chiller 6 anomaly detection" |
 
