@@ -33,16 +33,27 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
     numeric metrics and count totals across the full batch.
     """
     metric_names = [
+        "partial_match_accuracy",
         "partial_exact_match_accuracy",
         "strict_exact_match_accuracy",
         "partial_similarity_score",
+        "partial_numeric_match_accuracy",
+        "range_match_accuracy",
+        "delta_1_match_accuracy",
         "precision",
         "recall",
         "f1",
         "total_gold_keys",
         "total_model_keys",
         "matched_keys",
+        "accepted_value_matches",
         "exact_value_matches",
+        "numeric_gold_keys",
+        "numeric_value_matches",
+        "range_eligible_keys",
+        "range_value_matches",
+        "delta_1_eligible_keys",
+        "delta_1_value_matches",
     ]
 
     score_values: dict[str, list[float]] = {name: [] for name in metric_names}
@@ -87,16 +98,29 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
         "score_avg": _avg(score_values["score"]),
         "score_min": round(min(score_values["score"]), 4) if score_values["score"] else None,
         "score_max": round(max(score_values["score"]), 4) if score_values["score"] else None,
+        "partial_match_accuracy_avg": _avg(score_values["partial_match_accuracy"]),
         "partial_exact_match_accuracy_avg": _avg(score_values["partial_exact_match_accuracy"]),
         "strict_exact_match_accuracy_avg": _avg(score_values["strict_exact_match_accuracy"]),
         "partial_similarity_score_avg": _avg(score_values["partial_similarity_score"]),
+        "partial_numeric_match_accuracy_avg": _avg(
+            score_values["partial_numeric_match_accuracy"]
+        ),
+        "range_match_accuracy_avg": _avg(score_values["range_match_accuracy"]),
+        "delta_1_match_accuracy_avg": _avg(score_values["delta_1_match_accuracy"]),
         "precision_avg": _avg(score_values["precision"]),
         "recall_avg": _avg(score_values["recall"]),
         "f1_avg": _avg(score_values["f1"]),
         "total_gold_keys_avg": _avg(score_values["total_gold_keys"]),
         "total_model_keys_avg": _avg(score_values["total_model_keys"]),
         "matched_keys_avg": _avg(score_values["matched_keys"]),
+        "accepted_value_matches_avg": _avg(score_values["accepted_value_matches"]),
         "exact_value_matches_avg": _avg(score_values["exact_value_matches"]),
+        "numeric_gold_keys_avg": _avg(score_values["numeric_gold_keys"]),
+        "numeric_value_matches_avg": _avg(score_values["numeric_value_matches"]),
+        "range_eligible_keys_avg": _avg(score_values["range_eligible_keys"]),
+        "range_value_matches_avg": _avg(score_values["range_value_matches"]),
+        "delta_1_eligible_keys_avg": _avg(score_values["delta_1_eligible_keys"]),
+        "delta_1_value_matches_avg": _avg(score_values["delta_1_value_matches"]),
         "missing_keys_total": missing_keys_total,
         "extra_keys_total": extra_keys_total,
         "detail_entries_total": detail_entries_total,
@@ -189,6 +213,10 @@ def render_summary(report: EvalReport) -> str:
             lines.append(f"  score_min:                  {s['score_min']:.4f}")
         if s.get("score_max") is not None:
             lines.append(f"  score_max:                  {s['score_max']:.4f}")
+        if s.get("partial_match_accuracy_avg") is not None:
+            lines.append(
+                f"  partial_match_avg:           {s['partial_match_accuracy_avg']:.4f}"
+            )
         if s.get("partial_exact_match_accuracy_avg") is not None:
             lines.append(
                 f"  partial_exact_match_avg:     {s['partial_exact_match_accuracy_avg']:.4f}"
@@ -200,6 +228,18 @@ def render_summary(report: EvalReport) -> str:
         if s.get("partial_similarity_score_avg") is not None:
             lines.append(
                 f"  partial_similarity_avg:      {s['partial_similarity_score_avg']:.4f}"
+            )
+        if s.get("partial_numeric_match_accuracy_avg") is not None:
+            lines.append(
+                f"  partial_numeric_match_avg:   {s['partial_numeric_match_accuracy_avg']:.4f}"
+            )
+        if s.get("range_match_accuracy_avg") is not None:
+            lines.append(
+                f"  range_match_avg:             {s['range_match_accuracy_avg']:.4f}"
+            )
+        if s.get("delta_1_match_accuracy_avg") is not None:
+            lines.append(
+                f"  delta_1_match_avg:           {s['delta_1_match_accuracy_avg']:.4f}"
             )
         if s.get("precision_avg") is not None:
             lines.append(f"  precision_avg:               {s['precision_avg']:.4f}")
