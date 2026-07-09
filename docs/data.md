@@ -21,7 +21,7 @@ docker compose -f src/couchdb/docker-compose.yaml up -d
 
 # 2. Verify (Fauxton UI: http://localhost:5984/_utils — admin / password)
 curl -s -u admin:password http://localhost:5984/_all_dbs
-# → ["workorder","iot","vibration","failurecode", ...]
+# → ["workorder","iot","vibration","failure_code", ...]
 
 curl -s -u admin:password http://localhost:5984/workorder/wo:MAIN:1000045
 ```
@@ -133,7 +133,7 @@ init_data()                      # back to default
     "workorder":   "shared/work_order/workorders.csv",
     "iot":         ["shared/iot/chiller_6.json", "shared/iot/metro_pump_1.json"],
     "vibration":   "shared/iot/motor_01.json",
-    "failurecode": "shared/failure_code/failure_code_sample.csv"
+    "failure_code": "shared/failure_code/failure_code_sample.csv"
 }
 ```
 
@@ -154,7 +154,7 @@ Edit this file and re-run `init_data.py` — that's the whole change.
 ### 2. Change *how* a collection is parsed — `collections.json`
 
 ```json
-"failurecode": {
+"failure_code": {
     "format": "csv",
     "primary_key": ["code"],
     "id_prefix": "fc",

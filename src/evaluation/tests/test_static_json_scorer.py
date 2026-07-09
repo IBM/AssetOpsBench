@@ -34,6 +34,10 @@ def test_parse_noisy_count_answer():
     assert parse_structured_answer("The answer is 34.") == 34
 
 
+def test_parse_fault_code_as_categorical_string():
+    assert parse_structured_answer("FC101") == "FC101"
+
+
 def test_flatten_nested_json():
     answer = {"a": {"b": 2}, "c": [3, {"d": 4}]}
 
@@ -101,6 +105,86 @@ def test_numeric_partial_similarity():
 
     assert score.strict_exact_match_accuracy == 0.0
     assert score.partial_similarity_score == 0.7
+
+
+def test_anomaly_segment_scores_exact_categorical_and_numeric_delta():
+    gold = {
+        "condition": "faulty",
+        "start_point": "240",
+        "end_point": "511",
+        "fault_type": "FC101",
+    }
+    model = {
+        "condition": "faulty",
+        "start_point": "241",
+        "end_point": "512",
+        "fault_type": "FC101",
+    }
+
+    score = evaluate_static_json(gold, model)
+    details = {item.key: item for item in score.details}
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.partial_exact_match_accuracy == 0.5
+    assert score.partial_match_accuracy == 1.0
+    assert score.partial_numeric_match_accuracy == 1.0
+    assert score.range_match_accuracy == 0.5
+    assert score.delta_1_match_accuracy == 1.0
+    assert details["answer.condition"].match_type == "exact"
+    assert details["answer.fault_type"].match_type == "exact"
+    assert details["answer.start_point"].match_type == "partial_delta_1"
+    assert details["answer.start_point"].range_match is True
+    assert details["answer.start_point"].delta_1_match is True
+    assert details["answer.end_point"].match_type == "partial_delta_1"
+    assert details["answer.end_point"].range_match is False
+    assert details["answer.end_point"].delta_1_match is True
+
+
+def test_anomaly_segment_scores_numeric_range_match():
+    gold = {
+        "condition": "faulty",
+        "start_point": "240",
+        "end_point": "511",
+        "fault_type": "FC101",
+    }
+    model = {
+        "condition": "faulty",
+        "start_point": "300",
+        "end_point": "500",
+        "fault_type": "FC101",
+    }
+
+    score = evaluate_static_json(gold, model)
+    details = {item.key: item for item in score.details}
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.partial_exact_match_accuracy == 0.5
+    assert score.partial_match_accuracy == 1.0
+    assert score.range_match_accuracy == 1.0
+    assert score.delta_1_match_accuracy == 0.0
+    assert details["answer.start_point"].match_type == "partial_range"
+    assert details["answer.end_point"].match_type == "partial_range"
+
+
+def test_count_only_delta_one_is_numeric_partial_match():
+    score = evaluate_static_json("34", "35")
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.partial_exact_match_accuracy == 0.0
+    assert score.partial_match_accuracy == 1.0
+    assert score.partial_numeric_match_accuracy == 1.0
+    assert score.delta_1_match_accuracy == 1.0
+    assert score.details[0].match_type == "partial_delta_1"
+
+
+def test_numeric_answer_can_match_explicit_ground_truth_range():
+    score = evaluate_static_json({"count": "10-12"}, {"count": 11})
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.partial_match_accuracy == 1.0
+    assert score.partial_numeric_match_accuracy == 1.0
+    assert score.range_match_accuracy == 1.0
+    assert score.details[0].match_type == "partial_range"
 
 
 def test_count_only_exact_match():
