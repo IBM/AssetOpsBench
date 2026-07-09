@@ -280,28 +280,25 @@ def get_sensor_list(asset_id: str) -> List[str]:
 
 _asset_doc_cache: Dict[str, Dict[str, Any]] = {}
 
-
 def get_asset_doc(asset_id: str) -> Optional[Dict[str, Any]]:
     """Fetch one asset-registry document by asset_id. Cached per asset_id."""
-    # impl: resolves across the internal id spaces (assetnum / iot_asset_id / wo_assetnum) so the
-    # same profile is found whether the caller holds the telemetry id or the work-order id.
+    # impl: registry docs are keyed by `assetnum`, which holds the same value as the telemetry
+    # `asset_id` (e.g. "CHILLER 6"), so one equality query resolves the profile.
     if asset_id in _asset_doc_cache:
         return _asset_doc_cache[asset_id]
     if not asset_db:
         return None
     try:
-        for field in ("assetnum", "iot_asset_id", "wo_assetnum"):
-            res = asset_db.find({"doctype": "asset", field: asset_id}, limit=1)
-            docs = res["docs"]
-            if docs:
-                _asset_doc_cache[asset_id] = docs[0]
-                return docs[0]
+        res = asset_db.find({"doctype": "asset", "assetnum": asset_id}, limit=1)
+        docs = res["docs"]
+        if docs:
+            _asset_doc_cache[asset_id] = docs[0]
+            return docs[0]
         return None
     except Exception as e:
         logger.error(f"Error fetching asset doc {asset_id}: {e}")
         return None
-
-
+    
 _registry_sites_cache: Optional[List[str]] = None
 
 
@@ -453,14 +450,13 @@ def _site_asset_ids(site_name: str) -> List[str]:
     try:
         res = asset_db.find(
             {"doctype": "asset", "siteid": site_name},
-            fields=["assetnum", "iot_asset_id"],
+            fields=["assetnum"],
             limit=100000,
         )
-        return sorted((d.get("iot_asset_id") or d.get("assetnum")) for d in res["docs"])
+        return sorted(d["assetnum"] for d in res["docs"])
     except Exception as e:
         logger.error(f"_site_asset_ids failed: {e}")
         return []
-
 
 def _installed_sensors(asset_id: str) -> List[str]:
     doc = get_asset_doc(asset_id)
@@ -491,10 +487,10 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
     try:
         res = asset_db.find(
             {"doctype": "asset", "siteid": site_name},
-            fields=["assetnum", "iot_asset_id"],
+            fields=["assetnum"],
             limit=100000,
         )
-        ids = sorted((d.get("iot_asset_id") or d["assetnum"]) for d in res["docs"])
+        ids = sorted(d["assetnum"] for d in res["docs"])
         return AssetsResult(
             site_name=site_name,
             total_assets=len(ids),
