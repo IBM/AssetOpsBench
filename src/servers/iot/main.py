@@ -100,10 +100,12 @@ class SensorsResult(BaseModel):
 class HistoryResult(BaseModel):
     site_name: str
     asset_id: str
-    total_observations: int
-    start: str
-    final: Optional[str]
     observations: List[Dict[str, Any]]
+    returned: int
+    next_cursor: Optional[str]
+    has_more: bool
+    start: Optional[str]
+    end: Optional[str]
     message: str
 
 
@@ -129,10 +131,18 @@ class AssetSensorsResult(BaseModel):
     message: str
 
 
-class RegistryAssetsResult(BaseModel):
+class AssetSummary(BaseModel):
+    asset_id: str
+    description: Optional[str]
+    assettype: Optional[str]
+    vintage: Optional[str]
+    n_sensors: int                      # installed sensor count
+
+
+class AssetsWithMetadataResult(BaseModel):
     site_name: str
     total_assets: int
-    assets: List[Dict[str, Any]]
+    assets: List[AssetSummary]
     message: str
 
 
@@ -179,19 +189,7 @@ class StreamExtentResult(BaseModel):
     message: str
 
 
-class PagedHistoryResult(BaseModel):
-    site_name: str
-    asset_id: str
-    total_in_page: int
-    observations: List[Dict[str, Any]]
-    next_bookmark: Optional[str]
-    has_more: bool
-    message: str
-
-
-class SensorStatsResult(BaseModel):
-    site_name: str
-    asset_id: str
+class SensorStat(BaseModel):
     sensor: str
     count: int
     null_count: int
@@ -201,6 +199,12 @@ class SensorStatsResult(BaseModel):
     stddev: Optional[float]
     first_timestamp: Optional[str]
     last_timestamp: Optional[str]
+
+
+class SensorStatsResult(BaseModel):
+    site_name: str
+    asset_id: str
+    stats: List[SensorStat]             # one entry if `sensor` given, else every measured sensor
     message: str
 
 
@@ -278,10 +282,9 @@ _asset_doc_cache: Dict[str, Dict[str, Any]] = {}
 
 
 def get_asset_doc(asset_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch one asset-registry document, resolving ANY of the asset's id spaces — the registry
-    `assetnum` (Maximo id), the telemetry `iot_asset_id`, or the work-order `wo_assetnum`. This lets
-    the same profile be found whether the caller holds the IoT id (e.g. 'Chiller 6') or the WO id
-    ('CHILLER6'). Cached per asset_id."""
+    """Fetch one asset-registry document by asset_id. Cached per asset_id."""
+    # impl: resolves across the internal id spaces (assetnum / iot_asset_id / wo_assetnum) so the
+    # same profile is found whether the caller holds the telemetry id or the work-order id.
     if asset_id in _asset_doc_cache:
         return _asset_doc_cache[asset_id]
     if not asset_db:
@@ -333,29 +336,29 @@ def _is_known_site(site_name: str) -> bool:
 # ---------------------------------------------------------------------------
 # Shared helpers for the new tools
 # ---------------------------------------------------------------------------
-def _validate_dates(start: Optional[str], final: Optional[str]) -> Optional[str]:
+def _validate_dates(start: Optional[str], end: Optional[str]) -> Optional[str]:
     """Return None if ok, else an error message. None inputs are allowed."""
     try:
         if start is not None:
             datetime.fromisoformat(start)
-        if final is not None:
-            datetime.fromisoformat(final)
+        if end is not None:
+            datetime.fromisoformat(end)
     except ValueError as e:
-        return f"Invalid date format: {e}"
-    if start is not None and final is not None and start >= final:
-        return "start >= final"
+        return f"Invalid date format (expected ISO 8601, e.g. 2024-01-15T00:00:00): {e}"
+    if start is not None and end is not None and start >= end:
+        return "start >= end"
     return None
 
 
 def _time_selector(
-    asset_id: str, start: Optional[str], final: Optional[str]
+    asset_id: str, start: Optional[str], end: Optional[str]
 ) -> Dict[str, Any]:
     selector: Dict[str, Any] = {"asset_id": asset_id}
     ts: Dict[str, Any] = {}
     if start is not None:
         ts["$gte"] = datetime.fromisoformat(start).isoformat()
-    if final is not None:
-        ts["$lt"] = datetime.fromisoformat(final).isoformat()
+    if end is not None:
+        ts["$lt"] = datetime.fromisoformat(end).isoformat()
     if ts:
         selector["timestamp"] = ts
     return selector
@@ -444,7 +447,7 @@ def _age_seconds(ts_iso: str) -> Optional[float]:
 
 
 def _site_asset_ids(site_name: str) -> List[str]:
-    """Asset ids registered at a site (iot_asset_id where present, else assetnum) — mirrors asset_ids()."""
+    """Asset ids registered at a site — mirrors asset_ids()."""
     if not asset_db:
         return []
     try:
@@ -477,10 +480,9 @@ def sites() -> SitesResult:
 
 @mcp.tool(title="List Asset IDs")
 def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
-    """Returns the asset IDs registered at a given site, from the asset registry filtered by `siteid`.
-    Each returned id is the asset's telemetry id (`iot_asset_id`) where it has one, otherwise its
-    registry `assetnum` — so the id works with measured_sensors()/history() when telemetry exists.
-    For assets with metadata (type, vintage, sensor count), use assets().
+    """List the asset IDs at a site. Use an ID from this list as the `asset_id` argument in the
+    other tools (measured_sensors, history, stream_extent, ...). For assets with metadata
+    (description, type, vintage, installed sensor count), use `assets`.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -527,47 +529,70 @@ def measured_sensors(site_name: str, asset_id: str) -> Union[SensorsResult, Erro
 
 @mcp.tool(title="Get Sensor History")
 def history(
-    site_name: str, asset_id: str, start: str, final: Optional[str] = None
+    site_name: str,
+    asset_id: str,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    sensors: Optional[List[str]] = None,
+    limit: int = PAGE_SIZE,
+    cursor: Optional[str] = None,
 ) -> Union[HistoryResult, ErrorResult]:
-    """Returns a list of historical sensor values for the specified asset(s) at a site within a given time range (start to final)."""
-    try:
-        start_iso = datetime.fromisoformat(start).isoformat()
-        if final:
-            datetime.fromisoformat(final)
-            if start >= final:
-                return ErrorResult(error="start >= final")
-    except ValueError as e:
-        return ErrorResult(error=f"Invalid date format: {e}")
+    """Return historical sensor readings for an asset, one page at a time.
 
+    Timestamps are ISO 8601 strings, e.g. "2024-01-15T00:00:00" (offset allowed,
+    "2024-01-15T00:00:00+00:00"). The range is half-open [start, end). Omit `start`/`end` to
+    use the full available range; call stream_extent(site_name, asset_id) first to learn the
+    exact bounds and total record count.
+
+    Paging: `limit` = rows per page (<=1000). Leave `cursor` empty on the first call; each
+    response returns `next_cursor` and `has_more` — repeat with cursor=next_cursor until
+    `has_more` is false. Pass `sensors` to return only those columns.
+
+    On a malformed timestamp or start >= end, returns {"error": ...}.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    err = _validate_dates(start, end)
+    if err:
+        return ErrorResult(error=err)
     if not db:
         return ErrorResult(error="CouchDB not connected")
+    limit = max(1, min(limit, PAGE_SIZE))
 
-    selector = {
-        "asset_id": asset_id,
-        "timestamp": {"$gte": start_iso},
+    selector = _time_selector(asset_id, start, end)
+    fields: Optional[List[str]] = None
+    if sensors:
+        fields = ["_id", "asset_id", "timestamp"] + list(sensors)
+
+    kwargs: Dict[str, Any] = {
+        "limit": limit,
+        "sort": [{"asset_id": "asc"}, {"timestamp": "asc"}],
     }
-    if final:
-        selector["timestamp"]["$lt"] = datetime.fromisoformat(final).isoformat()
+    if fields is not None:
+        kwargs["fields"] = fields
+    if cursor is not None:
+        kwargs["bookmark"] = cursor
 
-    logger.info(f"Querying CouchDB with selector: {selector}")
     try:
-        res = db.find(
-            selector, limit=1000, sort=[{"asset_id": "asc"}, {"timestamp": "asc"}]
-        )
-        docs = res["docs"]
-        return HistoryResult(
-            site_name=site_name,
-            asset_id=asset_id,
-            total_observations=len(docs),
-            start=start,
-            final=final,
-            observations=docs,
-            message=f"found {len(docs)} observations for asset_id {asset_id} from {start} to {final or 'now'}.",
-        )
+        res = db.find(selector, **kwargs)
     except Exception as e:
         logger.error(f"CouchDB query failed: {e}")
         return ErrorResult(error=str(e))
 
+    docs = res.get("docs", [])
+    next_cursor = res.get("bookmark")
+    has_more = len(docs) == limit
+    return HistoryResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        observations=docs,
+        returned=len(docs),
+        next_cursor=next_cursor if has_more else None,
+        has_more=has_more,
+        start=start,
+        end=end,
+        message=f"{len(docs)} observation(s) for asset_id {asset_id}; has_more={has_more}.",
+    )
 
 @mcp.tool(title="Get Asset Detail")
 def get_asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
@@ -632,11 +657,10 @@ def installed_sensors(
 @mcp.tool(title="List Assets")
 def assets(
     site_name: str, assettype: Optional[str] = None
-) -> Union[RegistryAssetsResult, ErrorResult]:
-    """List assets from the registry with metadata (assettype, vintage, sensor count), optionally
-    filtered by assettype (e.g. 'PUMP', 'COMPRESSOR'). Complements asset_ids(), which returns bare
-    ids derived from telemetry."""
-
+) -> Union[AssetsWithMetadataResult, ErrorResult]:
+    """List assets at a site with metadata: description, assettype, vintage, and installed sensor
+    count (one AssetSummary per asset). Optionally filter by `assettype` (e.g. 'PUMP',
+    'COMPRESSOR'). For just the bare IDs to pass to other tools, use `asset_ids`."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
@@ -652,22 +676,22 @@ def assets(
         )
         rows = sorted(
             (
-                {
-                    "asset_id": d["assetnum"],
-                    "assettype": d.get("assettype"),
-                    "description": d.get("description"),
-                    "vintage": d.get("vintage"),
-                    "n_sensors": len(d.get("sensors", [])),
-                }
+                AssetSummary(
+                    asset_id=d["assetnum"],
+                    description=d.get("description"),
+                    assettype=d.get("assettype"),
+                    vintage=d.get("vintage"),
+                    n_sensors=len(d.get("sensors", [])),
+                )
                 for d in res["docs"]
             ),
-            key=lambda r: r["asset_id"],
+            key=lambda r: r.asset_id,
         )
-        return RegistryAssetsResult(
+        return AssetsWithMetadataResult(
             site_name=site_name,
             total_assets=len(rows),
             assets=rows,
-            message=f"found {len(rows)} registry assets"
+            message=f"found {len(rows)} assets"
             + (f" of type '{assettype}'" if assettype else "")
             + ".",
         )
@@ -734,25 +758,26 @@ def find_assets_by_sensors(
     )
 
 
-@mcp.tool(title="Stream Extent")
 def stream_extent(
     site_name: str,
     asset_id: str,
     sensor: Optional[str] = None,
     start: Optional[str] = None,
-    final: Optional[str] = None,
+    end: Optional[str] = None,
 ) -> Union[StreamExtentResult, ErrorResult]:
-    """Time bounds + record count for an asset's stream (optionally one sensor and/or a window),
-    so callers can size a history() request and know if it exceeds the 1000-row page limit."""
+    """Time bounds + record count for an asset's stream (optionally one sensor and/or a window).
+    Use this before history() to learn start_time / end_time / total_records and whether the
+    result will page (exceeds_page_limit). Timestamps are ISO 8601, half-open [start, end);
+    omit both for the full range."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    err = _validate_dates(start, final)
+    err = _validate_dates(start, end)
     if err:
         return ErrorResult(error=err)
     if not db:
         return ErrorResult(error="CouchDB not connected")
 
-    selector = _time_selector(asset_id, start, final)
+    selector = _time_selector(asset_id, start, end)
     if sensor:
         selector[sensor] = {"$exists": True, "$ne": None}
 
@@ -794,71 +819,16 @@ def stream_extent(
     )
 
 
-@mcp.tool(title="Get Sensor History (Paged)")
-def history_paged(
-    site_name: str,
-    asset_id: str,
-    start: str,
-    final: Optional[str] = None,
-    sensors: Optional[List[str]] = None,
-    page_size: int = PAGE_SIZE,
-    bookmark: Optional[str] = None,
-) -> Union[PagedHistoryResult, ErrorResult]:
-    """Like history() but paginated past the 1000-row limit via a CouchDB bookmark cursor.
-    Pass `sensors` to project only those columns. Call repeatedly, feeding back next_bookmark,
-    until has_more is false."""
-    if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    err = _validate_dates(start, final)
-    if err:
-        return ErrorResult(error=err)
-    if not db:
-        return ErrorResult(error="CouchDB not connected")
-    page_size = max(1, min(page_size, PAGE_SIZE))
-
-    selector = _time_selector(asset_id, start, final)
-    fields: Optional[List[str]] = None
-    if sensors:
-        fields = ["_id", "asset_id", "timestamp"] + list(sensors)
-
-    kwargs: Dict[str, Any] = {
-        "limit": page_size,
-        "sort": [{"asset_id": "asc"}, {"timestamp": "asc"}],
-    }
-    if fields is not None:
-        kwargs["fields"] = fields
-    if bookmark is not None:
-        kwargs["bookmark"] = bookmark
-
-    try:
-        res = db.find(selector, **kwargs)
-    except Exception as e:
-        logger.error(f"CouchDB query failed: {e}")
-        return ErrorResult(error=str(e))
-
-    docs = res.get("docs", [])
-    next_bookmark = res.get("bookmark")
-    has_more = len(docs) == page_size
-    return PagedHistoryResult(
-        site_name=site_name,
-        asset_id=asset_id,
-        total_in_page=len(docs),
-        observations=docs,
-        next_bookmark=next_bookmark if has_more else None,
-        has_more=has_more,
-        message=f"page of {len(docs)} observation(s) for asset_id {asset_id}; has_more={has_more}.",
-    )
-
-
 @mcp.tool(title="Sensor Coverage")
 def sensor_coverage(
     site_name: str,
     asset_id: str,
-    sample_limit: int = 5000,
+    max_scan_docs: int = 5000,
 ) -> Union[SensorCoverageResult, ErrorResult]:
     """Per-measured-sensor record counts and time coverage (non-null count, first/last timestamp)
-    for an asset. Complements measured_sensors(), which lists names but not how much data each channel has.
-    sample_limit=0 scans all docs."""
+    for an asset. Complements measured_sensors(), which lists names but not how much data each
+    channel has. `max_scan_docs` = maximum reading documents to scan (0 = scan all; larger =
+    more complete, slower)."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not db:
@@ -872,7 +842,7 @@ def sensor_coverage(
     for doc in _iter_docs(
         {"asset_id": asset_id},
         sort=[{"asset_id": "asc"}, {"timestamp": "asc"}],
-        max_docs=sample_limit if sample_limit > 0 else None,
+        max_docs=max_scan_docs if max_scan_docs > 0 else None,
     ):
         scanned += 1
         ts = doc.get("timestamp")
@@ -910,61 +880,69 @@ def sensor_coverage(
 def sensor_stats(
     site_name: str,
     asset_id: str,
-    sensor: str,
+    sensor: Optional[str] = None,
     start: Optional[str] = None,
-    final: Optional[str] = None,
+    end: Optional[str] = None,
 ) -> Union[SensorStatsResult, ErrorResult]:
-    """Numeric summary (count/min/max/mean/stddev) for one sensor over an optional time window,
-    without returning the raw rows."""
+    """Numeric summary (count/min/max/mean/stddev) per sensor over an optional time window,
+    without returning raw rows. Omit `sensor` to summarize EVERY measured sensor; give one to
+    summarize just that channel. Timestamps are ISO 8601, half-open [start, end); omit both for
+    the full range."""
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    err = _validate_dates(start, final)
+    err = _validate_dates(start, end)
     if err:
         return ErrorResult(error=err)
     if not db:
         return ErrorResult(error="CouchDB not connected")
 
-    selector = _time_selector(asset_id, start, final)
-    selector[sensor] = {"$exists": True}
+    targets = [sensor] if sensor else get_sensor_list(asset_id)
+    if not targets:
+        return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
 
-    values: List[float] = []
-    null_count = 0
-    first_ts: Optional[str] = None
-    last_ts: Optional[str] = None
-
-    for doc in _iter_docs(selector, fields=["timestamp", sensor]):
+    acc = {s: {"vals": [], "nulls": 0, "first": None, "last": None} for s in targets}
+    tset = set(targets)
+    for doc in _iter_docs(_time_selector(asset_id, start, end)):
         ts = doc.get("timestamp")
-        if ts is not None:
-            if first_ts is None:
-                first_ts = ts
-            last_ts = ts
-        v = doc.get(sensor)
-        if v is None:
-            null_count += 1
-            continue
-        try:
-            values.append(float(v))
-        except (TypeError, ValueError):
-            null_count += 1
+        for s in tset:
+            if s not in doc:
+                continue
+            a = acc[s]
+            if ts is not None:
+                if a["first"] is None:
+                    a["first"] = ts
+                a["last"] = ts
+            v = doc.get(s)
+            if v is None:
+                a["nulls"] += 1
+                continue
+            try:
+                a["vals"].append(float(v))
+            except (TypeError, ValueError):
+                a["nulls"] += 1
 
-    if not values and null_count == 0:
-        return ErrorResult(error=f"no records for asset_id {asset_id} sensor {sensor}")
-
-    stddev = statistics.pstdev(values) if len(values) > 1 else 0.0
+    stats: List[SensorStat] = []
+    for s in targets:
+        a = acc[s]
+        vals = a["vals"]
+        stats.append(
+            SensorStat(
+                sensor=s,
+                count=len(vals),
+                null_count=a["nulls"],
+                min=min(vals) if vals else None,
+                max=max(vals) if vals else None,
+                mean=statistics.fmean(vals) if vals else None,
+                stddev=(statistics.pstdev(vals) if len(vals) > 1 else (0.0 if vals else None)),
+                first_timestamp=a["first"],
+                last_timestamp=a["last"],
+            )
+        )
     return SensorStatsResult(
         site_name=site_name,
         asset_id=asset_id,
-        sensor=sensor,
-        count=len(values),
-        null_count=null_count,
-        min=min(values) if values else None,
-        max=max(values) if values else None,
-        mean=statistics.fmean(values) if values else None,
-        stddev=stddev if values else None,
-        first_timestamp=first_ts,
-        last_timestamp=last_ts,
-        message=f"{len(values)} value(s) for sensor {sensor} on asset_id {asset_id} "
-        f"({null_count} null/non-numeric).",
+        stats=stats,
+        message=f"stats for {len(stats)} sensor(s) on asset_id {asset_id}.",
     )
 
 
