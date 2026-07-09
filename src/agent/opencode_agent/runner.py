@@ -46,6 +46,8 @@ capabilities have been enabled for this run.
 When file or bash access is enabled, use the current working directory as the
 run workspace. Write any scripts, temporary files, intermediate data, and final
 artifacts there. Do not read or write files outside the current workspace.
+Do not inspect parent directories, repository folders, reports, traces,
+groundtruth files, previous agent outputs, or hidden evaluation artifacts.
 """
 )
 
@@ -113,8 +115,9 @@ def _resolve_opencode_model_and_provider(
     """Translate AssetOpsBench router model IDs into OpenCode config.
 
     OpenCode wants ``provider/model``.  For AssetOpsBench router prefixes such
-    as ``litellm_proxy/`` and ``tokenrouter/``, declare a custom
-    OpenAI-compatible provider and register the requested model explicitly.
+    as ``litellm_proxy/`` and ``tokenrouter/``, declare a custom provider and
+    register the requested model explicitly. TokenRouter Claude models need the
+    Anthropic protocol so OpenCode preserves native Anthropic message handling.
     """
     creds = resolve_router_creds(model_id, strict=True)
     if creds is None:
@@ -124,9 +127,14 @@ def _resolve_opencode_model_and_provider(
     provider_name = "TokenRouter" if provider_id == "tokenrouter" else "LiteLLM Proxy"
     model_name = resolve_model(model_id)
     opencode_model = f"{provider_id}/{model_name}"
+    provider_npm = (
+        "@ai-sdk/anthropic"
+        if provider_id == "tokenrouter" and model_name.startswith("anthropic/")
+        else "@ai-sdk/openai-compatible"
+    )
     provider = {
         provider_id: {
-            "npm": "@ai-sdk/openai-compatible",
+            "npm": provider_npm,
             "name": provider_name,
             "options": {
                 "baseURL": creds.base_url,
@@ -393,7 +401,9 @@ def _merge_text(existing: str, new: str) -> str:
     return existing + new
 
 
-def _is_step_finish(event: dict[str, Any], part: dict[str, Any], part_type: str) -> bool:
+def _is_step_finish(
+    event: dict[str, Any], part: dict[str, Any], part_type: str
+) -> bool:
     """True for OpenCode step-finish boundaries."""
     event_type = str(event.get("type") or "").lower()
     return ("step" in part_type and "finish" in part_type) or (
@@ -541,10 +551,9 @@ def _build_trajectory_from_events(
                     output_tokens=step["output_tokens"],
                 )
             )
-        if (
-            sum(step["input_tokens"] + step["output_tokens"] for step in steps) == 0
-            and (total_input or total_output)
-        ):
+        if sum(
+            step["input_tokens"] + step["output_tokens"] for step in steps
+        ) == 0 and (total_input or total_output):
             trajectory.turns[-1].input_tokens = total_input
             trajectory.turns[-1].output_tokens = total_output
         trajectory.turns[-1].duration_ms = duration_ms
@@ -647,6 +656,11 @@ class OpenCodeAgentRunner(AgentRunner):
             cmd.append(question)
 
             env = os.environ.copy()
+            # The OpenCode subprocess should not expose host-side evaluation
+            # output paths to file/bash tools. The Python wrapper persists the
+            # trajectory after OpenCode exits, using the parent process env.
+            env.pop("AGENT_TRAJECTORY_DIR", None)
+            env.pop("SCENARIOS_DATA_DIR", None)
             env.update(self._env_overrides)
             env["OPENCODE_CONFIG_CONTENT"] = json.dumps(self._config)
             env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
@@ -659,7 +673,7 @@ class OpenCodeAgentRunner(AgentRunner):
             )
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
-                cwd=str(_REPO_ROOT),
+                cwd=str(self._run_dir),
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
