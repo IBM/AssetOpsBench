@@ -444,7 +444,7 @@ def _age_seconds(ts_iso: str) -> Optional[float]:
 
 
 def _site_asset_ids(site_name: str) -> List[str]:
-    """Asset ids registered at a site (iot_asset_id where present, else assetnum) — mirrors assets()."""
+    """Asset ids registered at a site (iot_asset_id where present, else assetnum) — mirrors asset_ids()."""
     if not asset_db:
         return []
     try:
@@ -500,7 +500,7 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
             message=f"found {len(ids)} assets at site {site_name}: {', '.join(ids)}.",
         )
     except Exception as e:
-        logger.error(f"assets failed: {e}")
+        logger.error(f"asset_ids failed: {e}")
         return ErrorResult(error=str(e))
 
 
@@ -672,7 +672,7 @@ def assets(
             + ".",
         )
     except Exception as e:
-        logger.error(f"registry_assets failed: {e}")
+        logger.error(f"assets failed: {e}")
         return ErrorResult(error=str(e))
 
 
