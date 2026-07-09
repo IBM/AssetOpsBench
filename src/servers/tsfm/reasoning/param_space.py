@@ -227,6 +227,14 @@ ANOMALY_HINTS = {
         "description": "fit a new AD model or run inference",
         "choices": ["fit", "inference"],
     },
+    "impute": {
+        "description": "how to handle missing values before a classical (non-foundation) "
+        "detector; omit to let the model raise on NaN (foundation detectors "
+        "such as tspulse accept NaN natively)",
+        "choices": ["interpolate", "drop", "zero"],
+        "suggest": "interpolate for sensor gaps; drop to avoid fabricating values; "
+        "zero only when 0 is meaningful",
+    },
 }
 
 BLOCK_HINTS = {"finetune": FINETUNE_HINTS, "anomaly": ANOMALY_HINTS}

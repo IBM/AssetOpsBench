@@ -30,6 +30,19 @@ warnings.filterwarnings("ignore")
 
 RUNS = "tsfm_runs"
 
+def _impute(y: pd.Series, how: str) -> pd.Series:
+    """Apply an EXPLICIT imputation strategy from recipe['impute'].
+    interpolate = linear fill of interior gaps + nearest at edges (0.0 if all-NaN);
+    drop        = remove NaN rows (indices are remapped to original positions by the caller);
+    zero        = fill NaN with 0.0."""
+    if how == "interpolate":
+        y = y.astype(float).interpolate(method="linear", limit_direction="both")
+        return y.ffill().bfill().fillna(0.0)
+    if how == "drop":
+        return y.dropna()
+    if how == "zero":
+        return y.astype(float).fillna(0.0)
+    raise ValueError(f"unknown impute strategy '{how}' (use interpolate|drop|zero)")
 
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -350,6 +363,9 @@ def _conformal_ad(store, y, recipe: dict, *, asset_id, parent_run_id, scenario_i
     from ..substrate import resolver as R
     from sktime.forecasting.conformal import ConformalIntervals
     y = pd.Series(np.asarray(y, float)) if not isinstance(y, pd.Series) else y
+    impute = recipe.get("impute")
+    if impute:
+        y = _impute(y, impute)
     spec = recipe.get("estimator")
     if not spec:
         raise ValueError("conformal AD needs an 'estimator' (a forecaster card)")
@@ -410,8 +426,33 @@ def run_anomaly(store, y, recipe: dict, *, asset_id: str = "asset",
     block_audit = _validate_blocks(recipe)
 
     det = R.resolve(merged)
-    det.fit(y)
-    labels, indices = _anomaly_labels(det.predict(y), len(y))
+    n = len(y)
+    impute = recipe.get("impute")
+    if impute == "drop":
+        y_fit = y.dropna()
+        kept = np.where(y.notna().to_numpy())[0]      # original positions retained after drop
+    elif impute:
+        y_fit = _impute(y, impute)                    # interpolate | zero (length preserved)
+        kept = np.arange(n)
+    else:
+        y_fit = y                                     # no imputation → let the model decide
+        kept = np.arange(n)
+
+    try:
+        det.fit(y_fit)
+        _, raw_idx = _anomaly_labels(det.predict(y_fit), len(y_fit))
+    except ValueError as e:                           # surface the model's own NaN error + hint
+        if "nan" in str(e).lower() and not impute:
+            raise ValueError(
+                f"{type(det).__name__} received missing values and cannot handle NaN: {e} "
+                "Set recipe['impute'] to 'interpolate', 'drop', or 'zero'."
+            ) from e
+        raise
+
+    labels = np.zeros(n, dtype=int)                   # map detector output back to ORIGINAL length
+    orig = kept[np.asarray(raw_idx, dtype=int)] if raw_idx else np.array([], dtype=int)
+    labels[orig] = 1
+    indices = orig.tolist()
     n_anom = int(labels.sum())
 
     run_id = f"run:{uuid.uuid4().hex[:10]}"
