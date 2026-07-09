@@ -37,16 +37,16 @@ try:
         user=COUCHDB_USERNAME,
         password=COUCHDB_PASSWORD,
     )
-    logger.info("Connected to CouchDB catalog database: %s", CATALOG_DBNAME)
+    logger.info("Connected to catalog database: %s", CATALOG_DBNAME)
 except Exception as e:
-    logger.error("Failed to connect to CouchDB catalog database: %s", e)
+    logger.error("Failed to connect to catalog database: %s", e)
     catalog_db = None
 
 mcp = FastMCP(
     "utilities",
     instructions=(
         "General utilities: read JSON files, get current date/time, and query "
-        "asset, sensor, and failure-mode catalog data from CouchDB."
+        "asset, sensor, and failure-mode catalog data."
     ),
 )
 
@@ -162,7 +162,11 @@ def json_reader(file_name: str) -> str:
 def get_sensor_catalog(
     sensor: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
-    """Return sensor catalog entries. Pass sensor for an exact sensor-name lookup."""
+    """Return cataloged sensor names and descriptions.
+
+    Without a sensor argument, returns all cataloged sensor entries. Pass sensor
+    for an exact sensor-name lookup.
+    """
     return _find_catalog(
         catalog_type="sensor",
         field="sensor",
