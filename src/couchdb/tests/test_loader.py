@@ -53,5 +53,5 @@ def test_failure_mode_collection_parses_shared_json() -> None:
     assert cfg["format"] == "json"
     assert cfg["primary_key"] == ["asset_class"]
     assert len(docs) == 1
-    assert docs[0]["asset_class"] == "sample pump"
+    assert docs[0]["asset_class"] == "pump"
     assert docs[0]["failure_modes"] == ["seal leakage", "impeller wear"]

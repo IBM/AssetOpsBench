@@ -62,20 +62,11 @@ def fake_fm_db():
     db = FakeCouchDB(
         [
             {
-                "_id": "fm:chiller",
-                "doctype": "failure_mode",
-                "asset_class": "chiller",
-                "failure_modes": ["Compressor overheating", "Condenser fouling"],
-                "exhaustive": False,
-                "source": "test",
-            },
-            {
                 "_id": "fm:pump",
-                "doctype": "failure_mode",
                 "asset_class": "pump",
-                "failure_modes": ["seal leakage"],
+                "failure_modes": ["seal leakage", "impeller wear"],
                 "exhaustive": False,
-                "source": "test",
+                "source": "synthetic sample",
             },
         ]
     )
@@ -97,7 +88,6 @@ def mock_relevancy_chain():
         return_value={
             "answer": "Yes",
             "reason": "Relevant sensor",
-            "temporal_behavior": "Increases",
         }
     )
     with patch("servers.fmsr.main._call_relevancy", mock):
@@ -106,18 +96,15 @@ def mock_relevancy_chain():
 
 
 @pytest.fixture
-def mock_asset2fm_chain():
-    """Patch _call_asset2fm to return a fixed failure mode list."""
-    mock = MagicMock(return_value=["Fan Failure", "Belt Wear"])
-    with patch("servers.fmsr.main._call_asset2fm", mock):
-        with patch("servers.fmsr.main._llm_available", True):
-            yield mock
-
-
-@pytest.fixture
-def mock_asset2fm_extend_chain():
-    """Patch _call_asset2fm_extend to return duplicate and new failure modes."""
-    mock = MagicMock(return_value=["Seal Leakage", "Bearing Wear"])
-    with patch("servers.fmsr.main._call_asset2fm_extend", mock):
+def mock_failure_mode_generation():
+    """Patch failure-mode generation so tests do not call the LLM."""
+    mock = MagicMock(
+        return_value=[
+            "bearing wear",
+            "seal leakage",
+            "motor overheating",
+        ]
+    )
+    with patch("servers.fmsr.main._call_failure_mode_generation", mock):
         with patch("servers.fmsr.main._llm_available", True):
             yield mock
