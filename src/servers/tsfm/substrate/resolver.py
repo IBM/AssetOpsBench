@@ -11,6 +11,16 @@ Our catalog (CouchDB) is a *superset* of sktime's in-memory registry: it also ho
 not-installed / remote / fine-tuned models with provenance, lineage, metrics — and is
 agent-queryable and state-exportable (#394). sktime supplies fit/predict/pipeline/splitter/
 metric; we supply catalog + selection (T-Daub) + reasoning + persistence + MCP.
+
+Nested estimators (#pyod_iforest): some sktime estimators take *another estimator instance*
+as a constructor arg (e.g. the PyOD adapter's `estimator=IsolationForest()`). JSON can't hold a
+live object, so a param value may instead be a nested spec dict:
+
+    {"_target_": "pyod.models.iforest.IForest", "params": {"contamination": 0.1}}
+
+`_build` recursively turns any such spec into `Class(**params)` before the outer estimator is
+instantiated. Plain params (and dicts without `_target_`) pass through unchanged, so this is
+fully backward-compatible with existing cards.
 """
 
 from __future__ import annotations
@@ -35,15 +45,47 @@ _VERB = {"forecaster": "predict", "regressor": "predict", "classifier": "predict
          "clusterer": "predict", "detector": "predict", "transformer": "transform",
          "metric": None}
 
+# Marker key: a param value that is a dict carrying this key is a nested estimator spec.
+_TARGET_KEY = "_target_"
+
+
+def _import_target(path: str):
+    """Import a dotted path 'pkg.module.Name' -> the class/callable Name."""
+    module, name = path.rsplit(".", 1)
+    return getattr(importlib.import_module(module), name)
+
+
+def _build(spec: Any) -> Any:
+    """Recursively realize a param value.
+
+    - dict with `_target_`  -> instantiate `Class(**built(params))` (a nested estimator)
+    - other dict            -> rebuild values (a plain kwargs dict, e.g. sktime pipeline steps)
+    - list/tuple            -> rebuild elements
+    - anything else         -> returned as-is
+    """
+    if isinstance(spec, dict):
+        if _TARGET_KEY in spec:
+            Cls = _import_target(spec[_TARGET_KEY])
+            params = spec.get("params") or {}
+            return Cls(**{k: _build(v) for k, v in params.items()})
+        return {k: _build(v) for k, v in spec.items()}
+    if isinstance(spec, (list, tuple)):
+        return type(spec)(_build(v) for v in spec)
+    return spec
+
 
 def resolve(card: dict):
-    """Instantiate the sktime estimator a catalog card points at."""
+    """Instantiate the sktime estimator a catalog card points at.
+
+    Card `params` are realized with `_build`, so any nested `_target_` estimator specs
+    (e.g. the PyOD adapter's `estimator`) are constructed before the outer estimator.
+    """
     path = card.get("sktime_class")
     if not path:
         raise ValueError(f"card '{card.get('model_id')}' has no sktime_class")
-    module, cls = path.rsplit(".", 1)
-    Est = getattr(importlib.import_module(module), cls)
-    return Est(**(card.get("params") or {}))
+    Est = _import_target(path)
+    params = {k: _build(v) for k, v in (card.get("params") or {}).items()}
+    return Est(**params)
 
 
 def discover(scitype: str, filter_tags: Optional[dict] = None) -> List[str]:
