@@ -62,10 +62,6 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 **Requires:** LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`; `get_failure_modes` reads the database.
 **Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection.
 
-FMSR tools take `asset_class`, not `asset_name`; the server normalizes case,
-whitespace, digits, underscores, and hyphens. LLM-backed FMSR tools use
-`FMSR_MODEL_ID`, independent of the calling agent model.
-
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_failure_modes`               | read          | `asset_class`                            | Return known failure modes for an asset class from the database. Returns `asset_class`, `failure_modes`, `exhaustive`, and `source`.                    |
