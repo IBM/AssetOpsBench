@@ -480,16 +480,6 @@ def generate_failure_mode_sensor_mapping(
     )
 
 
-@mcp.tool(title="Get Failure Mode Sensor Mapping")
-def get_failure_mode_sensor_mapping(
-    asset_name: str,
-    failure_modes: List[str],
-    sensors: List[str],
-) -> Union[FailureModeSensorMappingResult, ErrorResult]:
-    """Backward-compatible alias for generate_failure_mode_sensor_mapping."""
-    return generate_failure_mode_sensor_mapping(asset_name, failure_modes, sensors)
-
-
 def main():
     mcp.run(transport="stdio")
 

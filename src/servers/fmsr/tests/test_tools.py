@@ -135,24 +135,6 @@ class TestGenerateFailureModeSensorMapping:
         assert data["metadata"]["asset_name"] == "Chiller 6"
 
     @pytest.mark.anyio
-    async def test_compatibility_alias_returns_expected_keys(
-        self, mock_relevancy_chain
-    ):
-        data = await call_tool(
-            mcp,
-            "get_failure_mode_sensor_mapping",
-            {
-                "asset_name": "Chiller 6",
-                "failure_modes": _FAILURE_MODES,
-                "sensors": _SENSORS,
-            },
-        )
-
-        assert "fm2sensor" in data
-        assert "sensor2fm" in data
-        assert "full_relevancy" in data
-
-    @pytest.mark.anyio
     async def test_full_relevancy_count(self, mock_relevancy_chain):
         data = await call_tool(
             mcp,
