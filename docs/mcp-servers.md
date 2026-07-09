@@ -22,10 +22,11 @@ REGISTRY — the asset nameplate and the **installed** sensor inventory (by name
 `installed_sensors()` against `measured_sensors()` surfaces sensors that are installed but not
 streaming. The registry also reconciles ids across systems (Maximo `assetnum`, telemetry
 `iot_asset_id`, work-order `wo_assetnum`), so an asset can be looked up by any of its ids.
-Additional telemetry tools help plan and page history queries: `stream_extent` and `sensor_coverage`
-report a stream's time bounds and per-sensor record counts, `history_paged` walks results past the
-1000-row page cap, and `sensor_stats`, `latest_reading`, and `find_assets_by_sensors` provide quick
-summaries and reverse lookup.
+Beyond browsing: `stream_extent` and `sensor_coverage` report a stream's time bounds and
+per-sensor record counts so you can size a query; `history` returns readings a page at a time
+(`limit` rows per page, follow `cursor`); and `sensor_stats`, `latest_reading`, and
+`find_assets_by_sensors` provide quick summaries and reverse lookup. Timestamps are ISO 8601 and
+time ranges are half-open `[start, end)`.
 
 **Path:** `src/servers/iot/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `IOT_DBNAME`, `ASSET_DBNAME`)
@@ -40,21 +41,20 @@ summaries and reverse lookup.
 
 Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ships in a separate `vibration` database for the vibration MCP server.
 
-| Tool                     | Arguments                                                              | Description                                                                                                   |
-| ------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `sites`                  | —                                                                     | List all sites, discovered dynamically from the asset registry (`siteid`)                                    |
-| `asset_ids`              | `site_name`                                                           | List asset ids registered at a site (telemetry id where present, else `assetnum`)                            |
-| `measured_sensors`       | `site_name`, `asset_id`                                               | List **measured** sensor names for an asset (union of keys across its telemetry docs)                        |
-| `history`                | `site_name`, `asset_id`, `start`, `final?`                            | Fetch historical sensor readings for a time range (ISO 8601 timestamps); capped at 1000 rows                |
-| `get_asset_detail`       | `site_name`, `asset_id`                                               | Registry/nameplate detail for one asset (description, assettype, status, location, vintage, installed count) |
-| `installed_sensors`      | `site_name`, `asset_id`                                               | List the **installed** sensors for an asset, by name (registry inventory)                                    |
-| `assets`                 | `site_name`, `assettype?`                                             | List registry assets with metadata (assettype, vintage, sensor count), optionally filtered by assettype     |
-| `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?`            | Reverse lookup: assets that have the given sensor(s); `source`=`measured`\|`installed`, `match`=`all`\|`any` |
-| `stream_extent`          | `site_name`, `asset_id`, `sensor?`, `start?`, `final?`               | Time bounds + record count for a stream; flags if it exceeds the 1000-row page cap                          |
-| `history_paged`          | `site_name`, `asset_id`, `start`, `final?`, `sensors?`, `page_size?`, `bookmark?` | Paginated `history` past the 1000-row cap via a CouchDB bookmark cursor; optional column projection          |
-| `sensor_coverage`        | `site_name`, `asset_id`, `sample_limit?`                             | Per-measured-sensor record counts and first/last timestamps                                                 |
-| `sensor_stats`           | `site_name`, `asset_id`, `sensor`, `start?`, `final?`               | Numeric summary (count/min/max/mean/stddev) for one sensor over an optional window                          |
-| `latest_reading`         | `site_name`, `asset_id`, `sensor?`                                   | Most recent observation for an asset (+ age in seconds for staleness)                                       |
+| Tool                     | Arguments                                                             | Description                                                                                                   |
+| ------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `sites`                  | —                                                                    | List all sites, discovered dynamically from the asset registry (`siteid`)                                    |
+| `asset_ids`              | `site_name`                                                          | List the bare asset IDs at a site — use one as `asset_id` in the other tools                                 |
+| `assets`                 | `site_name`, `assettype?`                                            | Assets with metadata (description, assettype, vintage, installed sensor count); optionally filter by assettype |
+| `measured_sensors`       | `site_name`, `asset_id`                                              | **Measured** sensor names for an asset (what actually streams; union across telemetry docs)                 |
+| `installed_sensors`      | `site_name`, `asset_id`                                              | **Installed** sensor names for an asset (registry nameplate inventory)                                       |
+| `get_asset_detail`       | `site_name`, `asset_id`                                              | Registry/nameplate detail for one asset (description, assettype, status, location, vintage, installed count) |
+| `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?`           | Reverse lookup: assets that have the given sensor(s); `source`=`measured`\|`installed`, `match`=`all`\|`any` |
+| `history`                | `site_name`, `asset_id`, `start?`, `end?`, `sensors?`, `limit?`, `cursor?` | Historical readings, one page at a time. ISO 8601, half-open `[start,end)`; omit range for all. Page with `limit` (≤1000) + `cursor`; response gives `next_cursor`/`has_more`. `sensors` projects columns. |
+| `stream_extent`          | `site_name`, `asset_id`, `sensor?`, `start?`, `end?`                | Time bounds + record count for a stream (pre-flight for `history`); flags if it exceeds the page limit       |
+| `sensor_coverage`        | `site_name`, `asset_id`, `max_scan_docs?`                           | Per-measured-sensor record counts and first/last timestamps (`max_scan_docs`=0 scans all)                    |
+| `sensor_stats`           | `site_name`, `asset_id`, `sensor?`, `start?`, `end?`               | Numeric summary (count/min/max/mean/stddev) per sensor; omit `sensor` to summarize every measured sensor     |
+| `latest_reading`         | `site_name`, `asset_id`, `sensor?`                                  | Most recent observation for an asset (+ `age_seconds` for staleness)                                        |
 
 ## utilities — Utilities
 
