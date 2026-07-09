@@ -59,9 +59,7 @@ mcp = FastMCP(
     instructions=(
         "IoT sensor data + asset registry. Browse sites, assets, and sensors, read the asset "
         "nameplate (registry), see which installed sensors are actually measured (streaming), and "
-        "query historical readings from CouchDB. NOTE: asset_ids()/measured_sensors() reflect TELEMETRY "
-        "(what streams = measured); get_asset_detail()/installed_sensors()/assets() reflect the REGISTRY "
-        "(what is installed, by name). Compare the two to find installed-but-not-streaming sensors."
+        "query historical readings."
     ),
 )
 
