@@ -20,9 +20,7 @@ two answer different questions: `asset_ids()`/`measured_sensors()` reflect TELEM
 streams (the **measured** set); `get_asset_detail()`/`installed_sensors()`/`assets()` reflect the
 REGISTRY — the asset nameplate and the **installed** sensor inventory (by name). Comparing
 `installed_sensors()` against `measured_sensors()` surfaces sensors that are installed but not
-streaming. The registry also reconciles ids across systems (Maximo `assetnum`, telemetry
-`iot_asset_id`, work-order `wo_assetnum`), so an asset can be looked up by any of its ids.
-Beyond browsing: `stream_extent` and `sensor_coverage` report a stream's time bounds and
+streaming. Beyond browsing: `stream_extent` and `sensor_coverage` report a stream's time bounds and
 per-sensor record counts so you can size a query; `history` returns readings a page at a time
 (`limit` rows per page, follow `cursor`); and `sensor_stats`, `latest_reading`, and
 `find_assets_by_sensors` provide quick summaries and reverse lookup. Timestamps are ISO 8601 and
