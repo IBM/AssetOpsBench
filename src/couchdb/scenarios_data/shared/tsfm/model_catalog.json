@@ -1411,7 +1411,9 @@
     "model_id": "chronos",
     "scitype": "forecaster",
     "sktime_class": "sktime.forecasting.chronos.ChronosForecaster",
-    "params": {},
+    "params": {
+      "model_path": "amazon/chronos-t5-small"
+    },
     "task_ids": [
       "tsfm_forecasting"
     ],
@@ -1421,6 +1423,9 @@
       "torch",
       "transformers"
     ],
+    "param_hints": {
+      "model_path": "HF repo id, e.g. amazon/chronos-t5-{tiny,small,base}"
+    },
     "description": "Amazon Chronos foundation forecaster.",
     "status": "active"
   },
@@ -1429,7 +1434,14 @@
     "model_id": "conformal_wrapper",
     "scitype": "forecaster",
     "sktime_class": "sktime.forecasting.conformal.ConformalIntervals",
-    "params": {},
+    "params": {
+      "forecaster": {
+        "_target_": "sktime.forecasting.naive.NaiveForecaster",
+        "params": {
+          "strategy": "last"
+        }
+      }
+    },
     "task_ids": [
       "tsfm_forecasting"
     ],
@@ -1441,7 +1453,7 @@
       "prediction_interval",
       "quantiles"
     ],
-    "description": "Conformal prediction intervals around ANY forecaster/ensemble. In a recipe use {\"conformal\":{\"coverage\":0.9}}.",
+    "description": "Conformal prediction intervals around a base forecaster.",
     "status": "active"
   },
   {
@@ -1459,11 +1471,15 @@
         }
       }
     },
-    "task_ids": ["tsfm_anomaly_detection"],
+    "task_ids": [
+      "tsfm_anomaly_detection"
+    ],
     "family": "sklearn_ad",
     "provenance": "toolkit",
     "training_regime": "fit_on_series",
-    "soft_deps": ["pyod"],
+    "soft_deps": [
+      "pyod"
+    ],
     "param_hints": {
       "estimator.params.n_estimators": "number of isolation trees; higher = more stable, slower (default 100)",
       "estimator.params.contamination": "expected outlier fraction in (0, 0.5]; sets the decision threshold (default 0.1)",
