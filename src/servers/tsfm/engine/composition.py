@@ -363,7 +363,7 @@ def _conformal_ad(store, y, recipe: dict, *, asset_id, parent_run_id, scenario_i
     from ..substrate import resolver as R
     from sktime.forecasting.conformal import ConformalIntervals
     y = pd.Series(np.asarray(y, float)) if not isinstance(y, pd.Series) else y
-    impute = recipe.get("impute")
+    impute = recipe.get("impute") or (recipe.get("anomaly") or {}).get("impute")
     if impute:
         y = _impute(y, impute)
     spec = recipe.get("estimator")
@@ -427,7 +427,7 @@ def run_anomaly(store, y, recipe: dict, *, asset_id: str = "asset",
 
     det = R.resolve(merged)
     n = len(y)
-    impute = recipe.get("impute")
+    impute = recipe.get("impute") or (recipe.get("anomaly") or {}).get("impute")
     if impute == "drop":
         y_fit = y.dropna()
         kept = np.where(y.notna().to_numpy())[0]      # original positions retained after drop
