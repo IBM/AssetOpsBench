@@ -1,9 +1,12 @@
+from evaluation.models import Scenario
 from evaluation.scorers.static_json import (
+    StaticJsonScorer,
     evaluate_static_json,
     evaluate_static_json_batch,
     flatten_answer,
     parse_structured_answer,
 )
+
 
 def test_parse_json_object_from_noisy_markdown_answer():
     raw = 'Answer:\n```json\n{"energy": 3, "material": 12}\n```'
@@ -122,11 +125,6 @@ def test_batch_evaluation():
     assert result["strict_exact_match_accuracy"] == 0.5
 
 
-
-from evaluation.models import Scenario
-from evaluation.scorers.static_json import StaticJsonScorer
-
-
 def test_static_json_scorer_wrapper_exact_match():
     scenario = Scenario.from_raw(
         {
@@ -148,3 +146,62 @@ def test_static_json_scorer_wrapper_exact_match():
     assert result.passed is True
     assert result.score == 1.0
     assert result.details["strict_exact_match_accuracy"] == 1.0
+
+
+def test_static_json_scorer_abstention():
+    scenario = Scenario.from_raw(
+        {
+            "id": "12",
+            "text": "Which machine should be prioritized?",
+            "expected_answer": '{"machine": "Motor_B", "severity": "Zone_D"}',
+            "scoring_method": "static_json",
+        }
+    )
+    scorer = StaticJsonScorer()
+    result = scorer(scenario, "I don't know the answer.", "")
+    assert result.passed is False
+    assert result.score == 0.0
+    assert result.abstained is True
+    assert result.rationale == "agent abstained from answering"
+
+
+def test_static_json_scorer_comparison_match():
+    scenario = Scenario.from_raw(
+        {
+            "id": "13",
+            "text": "Which machine should be prioritized?",
+            "expected_answer": '{"machine": "Motor_B", "severity": "Zone_D"}',
+            "scoring_method": "static_json",
+        }
+    )
+    scorer = StaticJsonScorer()
+    result = scorer(
+        scenario,
+        "Motor_B should be prioritized because it is in Zone_D severity.",
+        "",
+    )
+    assert result.passed is False
+    assert result.score == 0.5
+    assert result.abstained is False
+    assert "comparison match" in result.rationale
+
+
+def test_static_json_scorer_wrong_comparison():
+    scenario = Scenario.from_raw(
+        {
+            "id": "14",
+            "text": "Which machine should be prioritized?",
+            "expected_answer": '{"machine": "Motor_B", "severity": "Zone_D"}',
+            "scoring_method": "static_json",
+        }
+    )
+    scorer = StaticJsonScorer()
+    result = scorer(
+        scenario,
+        "Motor_A is the machine to prioritize because it is in Zone_C.",
+        "",
+    )
+    assert result.passed is False
+    assert result.score == 0.0
+    assert result.abstained is False
+    assert "structured answer differs" in result.rationale

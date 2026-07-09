@@ -114,9 +114,7 @@ def _extract_balanced_structure(content: str) -> str:
         (content.find("("), "(", ")"),
     ]
     candidates = [
-        (idx, open_ch, close_ch)
-        for idx, open_ch, close_ch in candidates
-        if idx != -1
+        (idx, open_ch, close_ch) for idx, open_ch, close_ch in candidates if idx != -1
     ]
 
     if not candidates:
@@ -367,9 +365,7 @@ def evaluate_static_json(
     precision = exact_matches / total_model_keys if total_model_keys else 0.0
     recall = exact_matches / total_gold_keys if total_gold_keys else 0.0
     f1 = (
-        2 * precision * recall / (precision + recall)
-        if precision + recall > 0
-        else 0.0
+        2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
     )
 
     partial_exact = exact_matches / total_gold_keys if total_gold_keys else 0.0
@@ -391,6 +387,7 @@ def evaluate_static_json(
         extra_keys=extra_keys,
         details=details,
     )
+
 
 def evaluate_static_json_batch(
     pairs: list[tuple[Any, Any]],
@@ -439,6 +436,30 @@ def evaluate_static_json_batch(
         "examples": [score.to_dict() for score in scores],
     }
 
+
+def is_abstained(answer: Any) -> bool:
+    """Detect if the answer is empty or explicitly abstains."""
+    if answer is None:
+        return True
+    raw = str(answer).strip().lower()
+    if not raw:
+        return True
+    content = extract_answer_text(answer).strip().lower()
+    if not content:
+        return True
+
+    abstention_phrases = [
+        "i don't know",
+        "i do not know",
+        "i cannot answer",
+        "i can't answer",
+        "not enough information",
+        "unable to determine",
+        "cannot determine",
+    ]
+    return any(phrase in raw or phrase in content for phrase in abstention_phrases)
+
+
 class StaticJsonScorer:
     """Evaluation scorer wrapper for the trajectory-based pipeline."""
 
@@ -466,16 +487,47 @@ class StaticJsonScorer:
 
         static_score = evaluate_static_json(gold_answer, answer)
         passed = static_score.strict_exact_match_accuracy == 1.0
+        score = round(static_score.f1, 3)
+        abstained = False
+        rationale = (
+            "strict structured match"
+            if passed
+            else "structured answer differs from ground truth"
+        )
+
+        if not passed and static_score.exact_value_matches == 0:
+            if is_abstained(answer):
+                abstained = True
+                rationale = "agent abstained from answering"
+            else:
+                gold_flat = flatten_answer(gold_answer)
+                if gold_flat and len(gold_flat) <= 2:
+                    raw_answer_lower = str(answer).lower()
+                    values_found = sum(
+                        1
+                        for val in gold_flat.values()
+                        if str(val).lower() in raw_answer_lower
+                    )
+                    if values_found == len(gold_flat):
+                        score = 0.5
+                        rationale = "comparison match (values found in text but structure missing)"
+                        static_score.details.append(
+                            KeyComparison(
+                                key="comparison_match",
+                                gold_value=str(list(gold_flat.values())),
+                                model_value="found in text",
+                                exact=False,
+                                match_type="comparison",
+                                similarity=0.5,
+                            )
+                        )
 
         return ScorerResult(
             scorer=self.name,
             passed=passed,
-            score=round(static_score.f1, 3),
-            rationale=(
-                "strict structured match"
-                if passed
-                else "structured answer differs from ground truth"
-            ),
+            score=score,
+            abstained=abstained,
+            rationale=rationale,
             details=static_score.to_dict(),
         )
 

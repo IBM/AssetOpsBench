@@ -77,6 +77,7 @@ class ScorerResult(BaseModel):
     scorer: str
     passed: bool
     score: float = 0.0
+    abstained: bool = False
     rationale: str = ""
     details: dict[str, Any] = Field(default_factory=dict)
 
