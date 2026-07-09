@@ -84,7 +84,7 @@ AssetOpsBench is a **unified framework for developing, orchestrating, and evalua
 
 | MCP Servers | Important tools |
 |---|---|
-| **IoT** | `get_sites`, `get_history`, `get_assets`, `get_sensors` |
+| **IoT** | `sites`, `asset_ids`, `measured_sensors`, `history`, `installed_sensors`, `assets`, `stream_extent`, ... |
 | **FMSR** | `get_sensors`, `get_failure_modes`, `get_failure_sensor_mapping` |
 | **TSFM** | `forecasting`, `timeseries_anomaly_detection` |
 | **WO** | `get_work_order_distribution`, `predict_next_work_order`, ... |
