@@ -220,9 +220,21 @@ def run_recipe(
             parent_run_id=parent_run_id,
             scenario_id=scenario_id,
         )
-    y = pd.Series(np.asarray(y, float)) if not isinstance(y, pd.Series) else y
-    fc = build_forecaster(recipe, store)
+
+    # normalize to plain float64 (nullable dtypes keep pd.NA, which crashes int() inside sktime)
+    y = pd.Series(np.asarray(y, dtype=float))
     regime = _recipe_regime(recipe, store)
+    # missing values: apply an EXPLICIT recipe['impute'] (interpolate|drop|zero); otherwise, if a
+    # classical forecaster is asked to fit a gapped series, fail clearly. Foundation/zero-shot
+    # models tolerate gaps, so they proceed untouched.
+    if recipe.get("impute"):
+        y = _impute(y, recipe["impute"])
+    elif y.isna().any() and regime != "zero_shot":
+        raise ValueError(
+            "target series has missing values; set recipe['impute'] to "
+            "'interpolate', 'drop', or 'zero' (classical forecasters cannot fit gaps)."
+        )
+    fc = build_forecaster(recipe, store)
     block_audit = _validate_blocks(recipe)
     _bt = _backtest_zero_shot if regime == "zero_shot" else _backtest
     score, metric_name, folds = _bt(fc, y, recipe)
