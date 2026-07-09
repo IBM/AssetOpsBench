@@ -17,7 +17,7 @@ def chiller_triage(tu, asset_id, site="MAIN", raise_work_order=True, priority="2
     """Sensors -> failure modes -> mode/sensor mapping -> (optional) work order."""
     sensors = tu.run("iot.sensors", {"site_name": site, "asset_id": asset_id})
     failure_modes = tu.run("fmsr.get_failure_modes", {"asset_name": asset_id})
-    mapping = tu.run("fmsr.get_failure_mode_sensor_mapping", {
+    mapping = tu.run("fmsr.generate_failure_mode_sensor_mapping", {
         "asset_name": asset_id,
         "failure_modes": failure_modes,
         "sensors": sensors,

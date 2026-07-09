@@ -65,7 +65,7 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_failure_modes`               | read, LLM-use | `asset_name`                             | Return known failure modes for an asset. Uses a curated YAML list for chillers and AHUs; falls back to the LLM for other types.                         |
-| `get_failure_mode_sensor_mapping` | read, LLM-use | `asset_name`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns bidirectional `fm→sensors` and `sensor→fms` maps plus full per-pair details. |
+| `generate_failure_mode_sensor_mapping` | read, LLM-use | `asset_name`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns bidirectional `fm→sensors` and `sensor→fms` maps plus full per-pair details. |
 
 ## wo — Work Order
 
