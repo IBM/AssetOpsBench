@@ -73,6 +73,11 @@ class StaticJsonScore:
     missing_keys: list[str] = field(default_factory=list)
     extra_keys: list[str] = field(default_factory=list)
     details: list[KeyComparison] = field(default_factory=list)
+    mode_key_match: float | None = None
+    mode_exactly_one_key: float | None = None
+    mode_required_terms: list[str] = field(default_factory=list)
+    mode_matched_terms: list[str] = field(default_factory=list)
+    mode_term_coverage: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dictionary."""
@@ -89,12 +94,12 @@ def extract_answer_text(text: Any) -> str:
     content = text.strip()
 
     patterns = [
-        r"<Answer>\s*:?\s*(.*)$",
-        r"Final Answer\s*:?\s*(.*)$",
-        r"Answer\s*:?\s*(.*)$",
-        r"Output\s*:?\s*(.*)$",
-        r"Result\s*:?\s*(.*)$",
-        r"Response\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*<Answer>\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Final Answer\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Answer\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Output\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Result\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Response\s*:?\s*(.*)$",
     ]
 
     for pattern in patterns:
@@ -201,10 +206,6 @@ def parse_structured_answer(value: Any) -> Any:
     content = extract_answer_text(value)
     content = _strip_markdown_fence(content)
 
-    count = _extract_count_from_text(content)
-    if count is not None:
-        return count
-
     content = _extract_balanced_structure(content)
 
     try:
@@ -306,6 +307,236 @@ def similarity_score(gold_value: str, model_value: str) -> float:
         score = max(score, 0.6)
 
     return score
+
+
+_MODE_KEYS = frozenset({"response", "clarification", "abstain"})
+_IMPORTANT_MODE_TERMS = (
+    "air conditioner",
+    "cannot determine",
+    "date",
+    "dataset",
+    "exhaust leak",
+    "handrail",
+    "lately",
+    "main unit",
+    "pressure vessel",
+    "pump",
+    "steering",
+    "tag",
+    "time",
+    "unreliable",
+    "usual suspect",
+)
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "because",
+        "by",
+        "do",
+        "does",
+        "for",
+        "has",
+        "have",
+        "is",
+        "it",
+        "of",
+        "or",
+        "the",
+        "this",
+        "to",
+        "what",
+        "which",
+        "why",
+        "with",
+        "you",
+    }
+)
+
+
+def _normalize_text_for_terms(value: Any) -> str:
+    if value is None:
+        text = ""
+    elif isinstance(value, (dict, list, tuple)):
+        text = json.dumps(value, sort_keys=True)
+    else:
+        text = str(value).strip().lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _strip_leading_article(term: str) -> str:
+    parts = term.split()
+    if parts and parts[0] in {"a", "an", "the"}:
+        return " ".join(parts[1:])
+    return term
+
+
+def _dedupe_terms(terms: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        normalized = _normalize_text_for_terms(term)
+        normalized = _strip_leading_article(normalized)
+        if not normalized or normalized in _STOPWORDS or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
+def _extract_required_mode_terms(value: Any) -> list[str]:
+    """Extract lightweight required terms for mode-selection scenarios.
+
+    The mode scenarios are not exact-string tasks: answers can be phrased
+    differently as long as they choose the correct mode and mention the
+    important ambiguity/evidence. We therefore extract only high-signal terms:
+    quoted phrases, asset/fault identifiers, yes/no stance, and a small
+    domain-term allowlist.
+    """
+    text = str(value)
+    terms: list[str] = []
+
+    quoted = re.findall(r"""["'“”‘’]([^"'“”‘’]{2,80})["'“”‘’]""", text)
+    quoted = [
+        phrase
+        for phrase in quoted
+        if not re.fullmatch(r"[A-Z]{2,4}", phrase.strip())
+    ]
+    terms.extend(quoted)
+
+    identifiers = re.findall(r"\b[A-Z]{2,}[A-Z0-9-]*\d+[A-Z0-9-]*\b", text)
+    terms.extend(identifiers)
+
+    normalized = _normalize_text_for_terms(text)
+    for term in _IMPORTANT_MODE_TERMS:
+        if f" {term} " in f" {normalized} ":
+            terms.append(term)
+
+    if normalized.startswith("no "):
+        terms.append("no")
+    elif normalized.startswith("yes "):
+        terms.append("yes")
+
+    return _dedupe_terms(terms)
+
+
+def _is_mode_gold_answer(value: Any) -> bool:
+    parsed = parse_structured_answer(value)
+    if not isinstance(parsed, dict) or len(parsed) != 1:
+        return False
+    key = str(next(iter(parsed))).strip().lower()
+    return key in _MODE_KEYS
+
+
+def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
+    gold = parse_structured_answer(gold_answer)
+    model = parse_structured_answer(model_answer)
+
+    gold_key = str(next(iter(gold))).strip().lower()
+    gold_value = next(iter(gold.values()))
+
+    model_is_dict = isinstance(model, dict)
+    model_keys = [str(key).strip().lower() for key in model.keys()] if model_is_dict else []
+    model_exactly_one_key = len(model_keys) == 1
+    model_key = model_keys[0] if model_exactly_one_key else "INVALID"
+    model_value = next(iter(model.values())) if model_is_dict and model_exactly_one_key else ""
+
+    key_match = model_exactly_one_key and model_key == gold_key
+    required_terms = _extract_required_mode_terms(gold_value)
+    model_text = _normalize_text_for_terms(model_value)
+    matched_terms = [
+        term for term in required_terms if f" {term} " in f" {model_text} "
+    ]
+    term_coverage = (
+        len(matched_terms) / len(required_terms) if required_terms else 1.0
+    )
+
+    details = [
+        KeyComparison(
+            key="answer.mode",
+            gold_value=gold_key,
+            model_value=model_key,
+            exact=key_match,
+            match_type="exact" if key_match else "mode_mismatch",
+            similarity=1.0 if key_match else similarity_score(gold_key, model_key),
+            accepted=key_match,
+        )
+    ]
+
+    for term in required_terms:
+        matched = term in matched_terms
+        details.append(
+            KeyComparison(
+                key=f"answer.required_term.{term}",
+                gold_value=term,
+                model_value=term if matched else "MISSING",
+                exact=matched,
+                match_type="term_present" if matched else "term_missing",
+                similarity=1.0 if matched else 0.0,
+                accepted=matched,
+            )
+        )
+
+    missing_keys = [] if key_match else [f"answer.{gold_key}"]
+    extra_keys = []
+    if model_is_dict:
+        extra_keys = [
+            f"answer.{key}"
+            for key in model_keys
+            if key not in {gold_key} or not model_exactly_one_key
+        ]
+    else:
+        extra_keys = ["answer"] if model is not None else []
+
+    total_gold_keys = 1 + len(required_terms)
+    total_model_keys = 1 + len(required_terms) + len(extra_keys)
+    exact_matches = (1 if key_match else 0) + len(matched_terms)
+
+    precision = exact_matches / total_model_keys if total_model_keys else 0.0
+    recall = exact_matches / total_gold_keys if total_gold_keys else 0.0
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if precision + recall > 0
+        else 0.0
+    )
+    strict_exact = 1.0 if key_match and term_coverage == 1.0 and not extra_keys else 0.0
+
+    return StaticJsonScore(
+        partial_match_accuracy=recall,
+        partial_exact_match_accuracy=recall,
+        strict_exact_match_accuracy=strict_exact,
+        partial_similarity_score=sum(item.similarity for item in details)
+        / total_gold_keys,
+        partial_numeric_match_accuracy=0.0,
+        range_match_accuracy=0.0,
+        delta_1_match_accuracy=0.0,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        total_gold_keys=total_gold_keys,
+        total_model_keys=total_model_keys,
+        matched_keys=1 if key_match else 0,
+        accepted_value_matches=exact_matches,
+        exact_value_matches=exact_matches,
+        numeric_gold_keys=0,
+        numeric_value_matches=0,
+        range_eligible_keys=0,
+        range_value_matches=0,
+        delta_1_eligible_keys=0,
+        delta_1_value_matches=0,
+        missing_keys=missing_keys,
+        extra_keys=extra_keys,
+        details=details,
+        mode_key_match=1.0 if key_match else 0.0,
+        mode_exactly_one_key=1.0 if model_exactly_one_key else 0.0,
+        mode_required_terms=required_terms,
+        mode_matched_terms=matched_terms,
+        mode_term_coverage=term_coverage,
+    )
 
 
 _NUMBER_RE = r"[+-]?\d+(?:\.\d+)?"
@@ -493,6 +724,9 @@ def evaluate_static_json(
     similarity_threshold: float = 0.0,
 ) -> StaticJsonScore:
     """Evaluate one structured gold answer against one model answer."""
+    if _is_mode_gold_answer(gold_answer):
+        return _evaluate_mode_json(gold_answer, model_answer)
+
     gold_flat = flatten_answer(gold_answer)
     model_flat = flatten_answer(model_answer)
     context_ranges = _build_context_ranges(gold_flat)
