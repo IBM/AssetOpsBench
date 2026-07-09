@@ -757,7 +757,7 @@ def find_assets_by_sensors(
         f"(match={match}, substring={substring}, source={source}).",
     )
 
-
+@mcp.tool(title="Stream Extent")
 def stream_extent(
     site_name: str,
     asset_id: str,
