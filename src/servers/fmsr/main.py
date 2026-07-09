@@ -1,20 +1,4 @@
-"""FMSR (Failure Mode and Sensor Reasoning) MCP Server.
-
-Tools:
-  get_failure_modes                    – READ the (partial) failure-mode list for an asset class from the database
-  generate_failure_modes               – GENERATE a new/extended failure-mode list via the LLM without writing the database
-  add_failure_modes                    – WRITE: persist/augment an asset class's failure modes in the database
-  generate_failure_mode_sensor_mapping – GENERATE the bidirectional FM↔sensor relevancy via the LLM
-
-Failure modes live in the database (collection "failure_mode", one doc per asset class,
-loaded from scenario manifests). Coverage is NOT exhaustive: docs carry
-`exhaustive: false`, so get_failure_modes returns what is known. Retrieval (get_*),
-failure-mode generation, database writes, and sensor-mapping generation are separate by design.
-
-LLM backend is configured via FMSR_MODEL_ID (default: watsonx/meta-llama/llama-3-3-70b-instruct).
-Database via COUCHDB_URL / FAILURE_MODE_DBNAME /
-COUCHDB_USERNAME / COUCHDB_PASSWORD.
-"""
+"""Failure mode and sensor reasoning for industrial asset classes."""
 
 from __future__ import annotations
 
@@ -292,13 +276,7 @@ class FailureModeSensorMappingResult(BaseModel):
 
 mcp = FastMCP(
     "fmsr",
-    instructions=(
-        "Failure mode and sensor reasoning. get_failure_modes READS an asset class's (possibly partial) "
-        "failure modes; generate_failure_modes GENERATES a new or extended list without writing the database; "
-        "add_failure_modes WRITES curated or generated modes to the database; "
-        "generate_failure_mode_sensor_mapping GENERATES which sensors can detect each failure. "
-        "Use the utilities MCP server for asset, sensor, and failure-mode catalog lookups."
-    ),
+    instructions="Failure mode and sensor reasoning for industrial asset classes.",
 )
 
 
