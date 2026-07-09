@@ -101,27 +101,6 @@ class TestGenerateFailureModes:
         mock_failure_mode_generation.assert_called_once_with("compressor", [], 3)
 
     @pytest.mark.anyio
-    async def test_known_argument_overrides_db(
-        self, fake_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {
-                "asset_class": "Pump-1",
-                "known": ["bearing wear"],
-                "max_modes": 10,
-            },
-        )
-
-        assert data["asset_class"] == "pump"
-        assert data["known"] == ["bearing wear"]
-        assert data["generated"] == ["seal leakage", "motor overheating"]
-        mock_failure_mode_generation.assert_called_once_with(
-            "pump", ["bearing wear"], 10
-        )
-
-    @pytest.mark.anyio
     async def test_empty_asset_class_returns_error(self, mock_failure_mode_generation):
         data = await call_tool(
             mcp,
@@ -159,7 +138,6 @@ class TestGenerateFailureModes:
             "generate_failure_modes",
             {
                 "asset_class": "pump",
-                "known": ["seal leakage"],
                 "max_modes": 2,
             },
         )
