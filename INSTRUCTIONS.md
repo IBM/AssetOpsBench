@@ -140,7 +140,7 @@ Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagn
 
 | Server      | Tools | Categories               | Backing service                        |
 | ----------- | ----- | ------------------------ | -------------------------------------- |
-| `iot`       | 7     | read                     | CouchDB  (telemetry + asset registry)  |
+| `iot`       | 13     | read                     | CouchDB  (telemetry + asset registry)  |
 | `utilities` | 3     | read                     | none                                   |
 | `fmsr`      | 2     | read, LLM-use            | LiteLLM + `failure_modes.yaml`         |
 | `wo`        | 14    | read, write              | CouchDB                                |
@@ -164,17 +164,17 @@ from mcphub import ToolUniverse
 tu = ToolUniverse()                                   # 1. init
 tu.load_tools()                                       # 2. connect + discover
 result = tu.run({                                     # 3. run
-    "name": "iot.sensors",
+    "name": "iot.measured_sensors",
     "arguments": {"site_name": "MAIN", "asset_id": "Chiller 6"},
 })
 tu.close()
 ```
 
-- Tools are namespaced `<server>.<tool>` (e.g. `iot.sensors`,
+- Tools are namespaced `<server>.<tool>` (e.g. `iot.measured_sensors`,
   `wo.generate_work_order`); a bare name works when unambiguous.
 - `load_tools(servers=["iot", "fmsr"])` limits the set; no args loads all six.
 - Discovery: `tu.find_tools("failure mode")`, `tu.list_tools()`,
-  `tu.tool_specification("iot.sensors")`.
+  `tu.tool_specification("iot.measured_sensors")`.
 - Servers are spawned via `uv run <server>-mcp-server` and inherit your `.env`.
   Run inside the project (`uv run python ...`) or an activated venv. Override the
   launch table with `ToolUniverse(servers={...})`.
