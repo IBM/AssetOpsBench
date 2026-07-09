@@ -250,25 +250,26 @@ uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory \
 ```
 
 `generate_failure_modes` creates a new or extended list but does not edit
-CouchDB. When `known` is omitted, it uses the current DB list for `asset_class`
-as context if one exists:
+CouchDB. If the normalized `asset_class` exists in CouchDB, the stored list is
+used as context; otherwise, the tool generates a new list from scratch:
 
 ```bash
 MODEL_ID=tokenrouter/MiniMax-M3
 
 FMSR_MODEL_ID="$MODEL_ID" \
 uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
-  "Use generate_failure_modes for asset_class pump with max_modes 5. Return known, generated, failure_modes, and message."
+  "Use generate_failure_modes for asset_class pump with max_modes 5. Return generated, failure_modes, and message."
 ```
 
-To generate from caller-provided context instead of the DB:
+To generate from scratch for a class that is not currently in the failure-mode
+DB:
 
 ```bash
 MODEL_ID=tokenrouter/MiniMax-M3
 
 FMSR_MODEL_ID="$MODEL_ID" \
 uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
-  "Use generate_failure_modes for asset_class compressor with known ['bearing wear'] and max_modes 4. Return only generated and failure_modes."
+  "Use generate_failure_modes for asset_class compressor with max_modes 4. Return generated, failure_modes, and message."
 ```
 
 `generate_failure_mode_sensor_mapping` calls the FMSR backend model once per

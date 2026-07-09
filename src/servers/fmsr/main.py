@@ -345,21 +345,19 @@ def _known_failure_modes(asset_class: str) -> List[str]:
 @mcp.tool(title="Generate Failure Modes")
 def generate_failure_modes(
     asset_class: str,
-    known: Optional[List[str]] = None,
     max_modes: int = 10,
 ) -> Union[GenerateFailureModesResult, ErrorResult]:
     """GENERATE a new or extended failure-mode list for an asset class.
 
-    This tool does not write to CouchDB. If `known` is omitted, the current
-    CouchDB failure modes for `asset_class` are used as context when available.
-    If no stored modes exist, the LLM generates a new list from scratch.
+    This tool does not write to CouchDB. If the normalized `asset_class` exists
+    in CouchDB, the current stored failure modes are used as context and the LLM
+    generates additional modes. If no stored modes exist, the LLM generates a
+    new list from scratch.
 
     Args:
         asset_class: Asset class to reason about, such as "pump". Case,
             whitespace, underscores, and hyphens are normalized before prompting
             the LLM.
-        known: Optional known failure modes to extend. When provided, this list
-            is used instead of reading the current CouchDB list.
         max_modes: Maximum number of new failure modes to request from the LLM.
     """
     key = _asset_class_key(asset_class)
@@ -370,7 +368,7 @@ def generate_failure_modes(
     if not _llm_available:
         return ErrorResult(error="LLM unavailable")
 
-    base = known if known is not None else _known_failure_modes(key)
+    base = _known_failure_modes(key)
     base = [mode.strip() for mode in base if mode and mode.strip()]
 
     try:
