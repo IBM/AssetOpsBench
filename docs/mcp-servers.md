@@ -59,13 +59,59 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 ## fmsr — Failure Mode and Sensor Relations
 
 **Path:** `src/servers/fmsr/main.py`
-**Requires:** `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` for unknown assets; curated lists for `chiller` and `ahu` work without credentials.
-**Failure-mode data:** `src/servers/fmsr/failure_modes.yaml` (edit to add/change asset entries)
+**Requires:** LLM credentials for `generate_failure_mode_sensor_mapping`; `get_failure_modes` reads CouchDB.
+**Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` CouchDB collection.
+
+The active FMSR surface is intentionally small:
+
+- `get_failure_modes` reads known data only. It does not call an LLM and does
+  not generate or persist new failure modes.
+- `generate_failure_modes` calls an LLM to create a new failure-mode list or
+  extend known modes for an `asset_class`. It may read the existing CouchDB list
+  as context, but it never writes to CouchDB.
+- `generate_failure_mode_sensor_mapping` calls an LLM to score supplied
+  `(failure_mode, sensor)` pairs. It does not write to CouchDB.
+- `add_failure_modes` is not exposed for now.
+
+Use `asset_class` for FMSR calls, not `asset_name`. `asset_class` is the
+equipment class stored in the FMEA data, such as `pump`, rather than a specific
+asset id such as `Pump 3`. The server normalizes case, repeated whitespace,
+underscores, hyphens, and digits before lookup or prompting, so values like
+`Pump_3`, `pump-3`, and `  PUMP  ` normalize to `pump`. If no matching
+failure-mode record is found, the tool returns an error that includes the
+normalized class and a short list of available `asset_class` values from the
+database.
+
+Current failure-mode JSON rows use this shape:
+
+```json
+{
+  "asset_class": "pump",
+  "failure_modes": ["seal leakage", "impeller wear"],
+  "source": "synthetic sample",
+  "exhaustive": false
+}
+```
+
+`generate_failure_modes` and `generate_failure_mode_sensor_mapping` use the FMSR
+server's own model setting, `FMSR_MODEL_ID`, not the calling agent's
+`--model-id`. The default is `watsonx/meta-llama/llama-3-3-70b-instruct`. To
+share one model value with an agent run, set a shell variable and pass it to
+both:
+
+```bash
+MODEL_ID=tokenrouter/MiniMax-M3
+
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
+  "Call generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor']."
+```
 
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_failure_modes`               | read, LLM-use | `asset_name`                             | Return known failure modes for an asset. Uses a curated YAML list for chillers and AHUs; falls back to the LLM for other types.                         |
-| `generate_failure_mode_sensor_mapping` | read, LLM-use | `asset_name`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns bidirectional `fm→sensors` and `sensor→fms` maps plus full per-pair details. |
+| `get_failure_modes`               | read          | `asset_class`                            | Return known failure modes for an asset class from CouchDB. Returns `asset_class`, `failure_modes`, `exhaustive`, and `source`.                         |
+| `generate_failure_modes`          | read, LLM-use | `asset_class`, `known?`, `max_modes?`    | Generate a new or extended failure-mode list. If `known` is omitted, current CouchDB modes for the class are used as context when available. Returns `known`, `generated`, and combined `failure_modes`; does not edit CouchDB. |
+| `generate_failure_mode_sensor_mapping` | read, LLM-use | `asset_class`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns `metadata`, `fm2sensor`, `sensor2fm`, and `full_relevancy`; per-pair details include `relevancy_answer` and `relevancy_reason`, not `temporal_behavior`. |
 
 ## wo — Work Order
 
