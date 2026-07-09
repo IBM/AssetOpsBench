@@ -1450,17 +1450,26 @@
     "scitype": "detector",
     "sktime_class": "sktime.detection.adapters._pyod.PyODDetector",
     "params": {
-      "estimator": "<sklearn/pyod outlier detector, e.g. IsolationForest()>"
+      "estimator": {
+        "_target_": "pyod.models.iforest.IForest",
+        "params": {
+          "n_estimators": 100,
+          "contamination": 0.1,
+          "random_state": 42
+        }
+      }
     },
-    "task_ids": [
-      "tsfm_anomaly_detection"
-    ],
+    "task_ids": ["tsfm_anomaly_detection"],
     "family": "sklearn_ad",
     "provenance": "toolkit",
-    "soft_deps": [
-      "pyod"
-    ],
-    "description": "sklearn/PyOD-based anomaly detection (IsolationForest, LOF, OCSVM, ...) on time series via the sktime PyOD adapter.",
+    "training_regime": "fit_on_series",
+    "soft_deps": ["pyod"],
+    "param_hints": {
+      "estimator.params.n_estimators": "number of isolation trees; higher = more stable, slower (default 100)",
+      "estimator.params.contamination": "expected outlier fraction in (0, 0.5]; sets the decision threshold (default 0.1)",
+      "estimator.params.random_state": "seed for reproducible splits"
+    },
+    "description": "PyOD IsolationForest anomaly detection on a univariate time series via the sktime PyOD adapter. Fits on the series' own history (fit_on_series). Requires `pip install pyod`.",
     "status": "active"
   },
   {
