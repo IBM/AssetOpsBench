@@ -76,13 +76,12 @@ def _resolve_estimator(spec: dict, store=None):
     )
     if spec.get("model_id") and store is not None:
         from ..stores import model_store
-
         card = model_store.get_model(store, spec["model_id"])
         if not card:
             raise ValueError(f"model '{spec['model_id']}' not in catalog")
-        return name, R.resolve(card)
-    return name, R.resolve(spec)  # sktime_class + params directly
-
+        merged = {**card, "params": {**(card.get("params") or {}), **(spec.get("params") or {})}}
+        return name, R.resolve(merged)
+    return name, R.resolve(spec)
 
 def build_forecaster(recipe: dict, store=None):
     """Compile a recipe into a single sktime forecaster (ensemble/transform-aware)."""
