@@ -59,20 +59,21 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 ## fmsr — Failure Mode and Sensor Relations
 
 **Path:** `src/servers/fmsr/main.py`
-**Requires:** LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`; `get_failure_modes` reads CouchDB.
-**Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` CouchDB collection.
+**Requires:** LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`; `get_failure_modes` reads the database.
+**Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection.
 
 The active FMSR surface is intentionally small:
 
 - `get_failure_modes` reads known data only. It does not call an LLM and does
   not generate or persist new failure modes.
 - `generate_failure_modes` calls an LLM to create a new failure-mode list or
-  extend existing modes for an `asset_class`. If the class exists in CouchDB,
+  extend existing modes for an `asset_class`. If the class exists in the database,
   the stored list is used as context; otherwise, the LLM generates a new list
-  from scratch. It never writes to CouchDB.
+  from scratch. It never writes to the database.
+- `add_failure_modes` writes curated or generated modes to the database. It
+  merges with the current list and de-duplicates modes case-insensitively.
 - `generate_failure_mode_sensor_mapping` calls an LLM to score supplied
-  `(failure_mode, sensor)` pairs. It does not write to CouchDB.
-- `add_failure_modes` is not exposed for now.
+  `(failure_mode, sensor)` pairs. It does not write to the database.
 
 Use `asset_class` for FMSR calls, not `asset_name`. `asset_class` is the
 equipment class stored in the FMEA data, such as `pump`, rather than a specific
@@ -110,8 +111,9 @@ uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
 
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_failure_modes`               | read          | `asset_class`                            | Return known failure modes for an asset class from CouchDB. Returns `asset_class`, `failure_modes`, `exhaustive`, and `source`.                         |
-| `generate_failure_modes`          | read, LLM-use | `asset_class`, `max_modes?`              | Generate a new or extended failure-mode list. Current CouchDB modes for the class are used as context when available. Returns DB context, `generated`, and combined `failure_modes`; does not edit CouchDB. |
+| `get_failure_modes`               | read          | `asset_class`                            | Return known failure modes for an asset class from the database. Returns `asset_class`, `failure_modes`, `exhaustive`, and `source`.                    |
+| `generate_failure_modes`          | read, LLM-use | `asset_class`, `max_modes?`              | Generate a new or extended failure-mode list. Current database modes for the class are used as context when available. Returns `known`, `generated`, and combined `failure_modes`; does not edit the database. |
+| `add_failure_modes`               | write         | `asset_class`, `failure_modes`, `exhaustive?`, `source?` | Persist/augment failure modes for an asset class. Merges with existing modes, returns `added`, `failure_modes`, `total`, `exhaustive`, and `source`. If `exhaustive` is omitted, existing records preserve their stored value and new records default to false. |
 | `generate_failure_mode_sensor_mapping` | read, LLM-use | `asset_class`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns `metadata`, `fm2sensor`, `sensor2fm`, and `full_relevancy`; per-pair details include `relevancy_answer` and `relevancy_reason`, not `temporal_behavior`. |
 
 ## wo — Work Order
