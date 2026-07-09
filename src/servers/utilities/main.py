@@ -162,10 +162,10 @@ def json_reader(file_name: str) -> str:
 def get_sensor_catalog(
     sensor: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
-    """Return cataloged sensor names and descriptions.
+    """Return cataloged sensor types.
 
-    Without a sensor argument, returns all cataloged sensor entries. Pass sensor
-    for an exact sensor-name lookup.
+    Entries contain `sensor` and `description`. Omit sensor to list all cataloged
+    sensor types, or pass sensor for an exact sensor-name lookup.
     """
     return _find_catalog(
         catalog_type="sensor",
@@ -180,7 +180,12 @@ def get_asset_catalog(
     asset: Optional[str] = None,
     category: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
-    """Return asset catalog entries. Pass asset and/or category for exact lookups."""
+    """Return cataloged asset classes and categories.
+
+    Entries contain `category`, `category_description`, `asset`, and
+    `description`. Omit filters to list all cataloged asset classes, or pass
+    asset and/or category for exact lookups.
+    """
     return _find_catalog(
         catalog_type="asset",
         field="asset",
@@ -195,9 +200,11 @@ def get_failure_mode_catalog(
     failure_mode: Optional[str] = None,
     category: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
-    """Return failure-mode catalog entries.
+    """Return cataloged failure modes by asset category.
 
-    Pass failure_mode and/or category for exact lookups.
+    Entries contain `category`, `failure_mode`, and `description`. Omit filters
+    to list all cataloged failure modes, or pass failure_mode and/or category
+    for exact lookups.
     """
     return _find_catalog(
         catalog_type="failure_mode",
