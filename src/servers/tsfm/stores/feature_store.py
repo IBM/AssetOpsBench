@@ -196,6 +196,7 @@ _EXTRACTOR_CATEGORIES = {
 
 def register_extractor(store, name: str, scenario_categories: List[str]) -> dict:
     from ..reasoning import feature_selection as fsel
+
     doc = {
         "_id": _id(name),
         "feature_id": name,

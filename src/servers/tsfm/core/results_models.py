@@ -1,11 +1,3 @@
-"""Pydantic result models for the redesigned tool surface.
-
-House style (matches the sibling AssetOpsBench servers): every tool returns a typed Pydantic
-model, with ``Union[XResult, ErrorResult]`` for tools that validate inputs. Bulk time-series
-data is never inlined — it crosses the boundary as a FILE POINTER (``dataset_path`` in,
-``results_file`` out), exactly like the legacy TSFM tools.
-"""
-
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -59,17 +51,19 @@ class FeatureSelectionResult(BaseModel):
     lookback: int
     reference: str
     scorers: List[str]
-    detail_file: str            # file pointer to the full per-scorer scores
+    detail_file: str  # file pointer to the full per-scorer scores
 
 
 class CharacterizeResult(BaseModel):
     """Pattern EVIDENCE for a series: per-group state+rate phases + bivariate relations + a
-    shape-only NL summary. Domain-agnostic; full structured evidence at evidence_file."""
+    shape-only NL summary. Domain-agnostic; full structured evidence at evidence_file.
+    """
+
     model_config = ConfigDict(extra="allow")
     status: str
-    summary: str                # shape-only NL description (never names a fault)
+    summary: str  # shape-only NL description (never names a fault)
     n_observations: int
-    evidence_file: str          # file pointer to the full pattern object
+    evidence_file: str  # file pointer to the full pattern object
     message: str
 
 
@@ -77,10 +71,13 @@ class CharacterizeResult(BaseModel):
 class RecipeResult(BaseModel):
     """A recipe run. Forecasting carries metric+backtest_score; anomaly carries n_anomalies+
     n_observations (extra-allowed) — run_recipe dispatches by recipe.task."""
+
     model_config = ConfigDict(extra="allow")
     status: str
     run_id: str
-    results_file: str           # file pointer to the run record (forecast/intervals OR anomaly labels)
+    results_file: (
+        str  # file pointer to the run record (forecast/intervals OR anomaly labels)
+    )
     training_regime: str
     message: str
     metric: Optional[str] = None
@@ -101,7 +98,7 @@ class TabularResult(BaseModel):
 class DataQualityResult(BaseModel):
     model_config = ConfigDict(extra="allow")
     status: str
-    cleaned_file: str           # file pointer to the cleaned series
+    cleaned_file: str  # file pointer to the cleaned series
     rows_in: int
     rows_out: int
     message: str
@@ -130,11 +127,13 @@ class RegisterResult(BaseModel):
 
 class CardResult(BaseModel):
     """A single catalog card returned by update / deprecate / new_version / register_finetuned."""
+
     model_config = ConfigDict(extra="allow", protected_namespaces=())
 
 
 class LineageResult(BaseModel):
     """A card's evolution chain (ancestors + descendants / supersedes links)."""
+
     model_config = ConfigDict(extra="allow")
 
 
@@ -144,11 +143,13 @@ class ResultsListResult(BaseModel):
 
 class ResultRecord(BaseModel):
     """A single stored result-table record (task-polymorphic; extra fields allowed)."""
+
     model_config = ConfigDict(extra="allow")
 
 
 class RunRecord(BaseModel):
     """A single stored run record (recipe run / plan; extra fields allowed)."""
+
     model_config = ConfigDict(extra="allow")
     run_id: str
 
