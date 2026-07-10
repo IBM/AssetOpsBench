@@ -21,6 +21,29 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
+def discover_lookback(series, max_lw: int = 128) -> int:
+    """Lookback window from the series' dominant period (autocorrelation peak), clamped to
+    [8, max_lw]; falls back to len/4 when there's no clear seasonality."""
+    import numpy as np
+    x = np.asarray(series, dtype=float).ravel()
+    x = x[np.isfinite(x)]
+    n = x.size
+    if n < 16:
+        return max(2, min(n, max_lw))
+    x = x - x.mean()
+    if not np.any(x):
+        return int(min(max(8, n // 4), max_lw))
+    f = np.fft.rfft(x, n=2 * n)                 # autocorrelation via FFT
+    ac = np.fft.irfft(f * np.conj(f))[:n]
+    ac = ac / ac[0]
+    best_lag, best_val = 0, 0.0
+    for k in range(2, min(n // 2, max_lw)):
+        if ac[k] > ac[k - 1] and ac[k] >= ac[k + 1] and ac[k] > best_val:
+            best_lag, best_val = k, ac[k]
+    if best_lag and best_val > 0.2:
+        return int(min(max(best_lag, 8), max_lw))
+    return int(min(max(8, n // 4), max_lw))
+
 # ---- a small slice of the FLOps 130+ extractor library (scalar extractors) ----
 EXTRACTORS: Dict[str, Callable[[np.ndarray], float]] = {
     # Data Profiling (value-based, order-independent)
@@ -451,127 +474,6 @@ EXTRACTORS.update(
         ),
     }
 )
-
-
-# one-line descriptions per extractor — surfaced on the catalog card so the agent can select
-EXTRACTOR_DOC = {
-    "mean": "Average value of the window.",
-    "std": "Standard deviation (spread).",
-    "min": "Minimum value.",
-    "max": "Maximum value.",
-    "range": "Max minus min (peak-to-peak spread).",
-    "q25": "25th percentile (lower quartile).",
-    "q75": "75th percentile (upper quartile).",
-    "kurtosis": "Tailedness/peakedness of the distribution (excess kurtosis).",
-    "skew": "Asymmetry of the distribution.",
-    "slope": "Linear trend slope over the window.",
-    "autocorr1": "Lag-1 autocorrelation (short-term persistence).",
-    "energy": "Mean squared value (average power).",
-    "abs_diff_mean": "Mean absolute first difference (roughness).",
-    "spectral_centroid": "Center of mass of the frequency spectrum (brightness).",
-    "dominant_freq_power": "Power of the strongest non-DC frequency.",
-    "var": "Variance of the window.",
-    "median": "Median value (robust center).",
-    "q05": "5th percentile.",
-    "q10": "10th percentile.",
-    "q90": "90th percentile.",
-    "q95": "95th percentile.",
-    "iqr": "Inter-quartile range (robust spread).",
-    "mad": "Median absolute deviation (robust spread).",
-    "mean_abs": "Mean of absolute values.",
-    "sum_abs": "Sum of absolute values.",
-    "rms": "Root-mean-square amplitude.",
-    "abs_energy": "Sum of squared values (total energy).",
-    "cv": "Coefficient of variation (std/|mean|).",
-    "std_to_mean": "Std divided by mean (relative dispersion).",
-    "count_above_mean": "Number of points above the mean.",
-    "count_below_mean": "Number of points below the mean.",
-    "ratio_above_mean": "Fraction of points above the mean.",
-    "count_above_2std": "Number of points beyond 2 std (outliers).",
-    "abs_max": "Maximum absolute value.",
-    "abs_min": "Minimum absolute value.",
-    "intercept": "Mean level (regression intercept proxy).",
-    "autocorr2": "Lag-2 autocorrelation.",
-    "autocorr3": "Lag-3 autocorrelation.",
-    "autocorr5": "Lag-5 autocorrelation.",
-    "autocorr10": "Lag-10 autocorrelation (longer memory).",
-    "mean_diff": "Mean of first differences (average step).",
-    "mean_2nd_diff": "Mean of second differences (curvature).",
-    "abs_2nd_diff_mean": "Mean absolute second difference.",
-    "std_diff": "Std of first differences (volatility of change).",
-    "num_zero_crossings": "Count of sign changes around zero.",
-    "num_mean_crossings": "Count of crossings of the mean level.",
-    "longest_above_mean": "Longest run of points above the mean.",
-    "longest_below_mean": "Longest run of points below the mean.",
-    "first_loc_max": "Relative position (0-1) of the first maximum.",
-    "last_loc_max": "Relative position of the last maximum.",
-    "first_loc_min": "Relative position of the first minimum.",
-    "mean_change": "Average per-step change ((last-first)/n).",
-    "cid_ce": "Complexity-invariant distance estimate (curve complexity).",
-    "c3_lag1": "Non-linearity measure C3 at lag 1.",
-    "c3_lag2": "Non-linearity measure C3 at lag 2.",
-    "time_reversal_asym": "Time-reversal asymmetry statistic (lag 1).",
-    "distinct_ratio": "Ratio of distinct values to length.",
-    "binned_entropy": "Shannon entropy of a 10-bin value histogram.",
-    "perm_entropy": "Permutation entropy (ordinal complexity, order 3).",
-    "spectral_entropy": "Entropy of the normalized power spectrum.",
-    "hjorth_mobility": "Hjorth mobility (mean frequency).",
-    "hjorth_complexity": "Hjorth complexity (spectral bandwidth/shape change).",
-    "spectral_rolloff": "Frequency below which 85% of spectral energy lies.",
-    "spectral_flatness": "Geometric/arithmetic mean of spectrum (tonal vs noisy).",
-    "dc_power": "Magnitude of the DC component (|mean|).",
-    "total_spectral_energy": "Total power across the spectrum.",
-    "band_low": "Spectral-energy fraction in the low band (0-1/3).",
-    "band_mid": "Spectral-energy fraction in the mid band (1/3-2/3).",
-    "band_high": "Spectral-energy fraction in the high band (2/3-1).",
-    "dominant_freq": "Index of the dominant non-DC frequency.",
-    "peak_to_peak": "Max minus min amplitude.",
-    "crest_factor": "Peak/RMS — impulsiveness (vibration health).",
-    "shape_factor": "RMS/mean-absolute — waveform shape (vibration).",
-    "impulse_factor": "Peak/mean-absolute — impulsiveness (bearing faults).",
-    "clearance_factor": "Peak/(mean sqrt|x|)^2 — early bearing wear (vibration).",
-    "margin_factor": "Peak-to-peak / RMS.",
-    "form_factor": "RMS / |mean|.",
-    "linear_trend_r": "Pearson correlation of value vs time (trend strength).",
-    "half_mean_diff": "Mean of 2nd half minus 1st half (drift).",
-    "half_std_ratio": "Std of 2nd half / 1st half (variance shift).",
-    "energy_ratio_first_half": "Fraction of total energy in the first half.",
-    "trend_strength": "Normalized trend magnitude (|slope|*n/std).",
-    "cumsum_argmax_ratio": "Relative position of the cumulative-sum peak.",
-    "cumsum_max": "Maximum of the mean-centered cumulative sum.",
-    "q33": "33rd percentile.",
-    "q66": "66th percentile.",
-    "range_to_std": "Range divided by std.",
-    "mean_square": "Mean of squared values.",
-    "abs_sum_changes": "Sum of absolute first differences (total variation).",
-    "max_diff": "Largest single-step increase.",
-    "min_diff": "Largest single-step decrease.",
-    "var_diff": "Variance of first differences.",
-    "positive_diff_ratio": "Fraction of upward steps.",
-    "autocorr4": "Lag-4 autocorrelation.",
-    "autocorr7": "Lag-7 autocorrelation.",
-    "num_peaks": "Count of local maxima.",
-    "num_valleys": "Count of local minima.",
-    "longest_above_2std": "Longest run beyond 2 std (sustained anomaly).",
-    "zero_crossing_rate": "Mean-crossings per sample.",
-    "skew_abs": "Absolute skewness.",
-    "p2p_to_std": "Peak-to-peak / std.",
-    "band_q1": "Spectral-energy fraction, quartile band 0-25%.",
-    "band_q2": "Spectral-energy fraction, quartile band 25-50%.",
-    "band_q3": "Spectral-energy fraction, quartile band 50-75%.",
-    "band_q4": "Spectral-energy fraction, quartile band 75-100%.",
-    "mean_psd": "Mean power spectral density.",
-    "peak_psd_ratio": "Peak PSD / total PSD (spectral peakedness).",
-    "diff_entropy": "Binned entropy of first differences.",
-    "quarter_mean_diff": "Mean of last quarter minus first quarter (drift).",
-    "longest_constant_run": "Longest run of (near-)identical consecutive values (flatline length).",
-    "flatline_fraction": "Longest constant run as a fraction of length (cessation/quiet indicator).",
-}
-
-
-def describe(name: str) -> str:
-    return EXTRACTOR_DOC.get(name, f"FLOps extractor '{name}'.")
-
 
 def _tabulate(series: np.ndarray, lw: int):
     """Slide a window; X = windows[:-1], y = next value (forecasting target)."""
