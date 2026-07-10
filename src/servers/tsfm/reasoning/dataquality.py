@@ -3,7 +3,6 @@ segmentation, quality summary). Pure pandas/numpy, no ML deps — the layer-nati
 legacy/dataquality.py, used by the sktime forecasting/AD migration (Phase 2+).
 """
 
-
 from __future__ import annotations
 
 import logging
@@ -25,9 +24,9 @@ def _threshold_condition_function(threshold, condition_type="<"):
         ">=": lambda x: x >= threshold,
         "==": lambda x: x == threshold,
     }
-    assert condition_type in conditions, (
-        f"condition_type {condition_type!r} is not supported"
-    )
+    assert (
+        condition_type in conditions
+    ), f"condition_type {condition_type!r} is not supported"
     return conditions[condition_type]
 
 

@@ -1,10 +1,3 @@
-"""Validated schemas for the model & feature catalogs (pydantic v2).
-
-Validation runs on every register so the stores never accept malformed cards. Extra fields
-are allowed (the catalogs evolve), but the required/typed fields and a few cross-field
-invariants are enforced.
-"""
-
 from __future__ import annotations
 
 from datetime import datetime, timezone

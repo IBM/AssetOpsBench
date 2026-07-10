@@ -26,24 +26,30 @@ fully backward-compatible with existing cards.
 from __future__ import annotations
 
 import importlib
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 # task_id  ->  sktime scitype (the standardization rides on sktime's taxonomy)
 TASK_TO_SCITYPE = {
-    "tsfm_forecasting": "forecaster",          # incl. global_forecaster (foundation models)
+    "tsfm_forecasting": "forecaster",  # incl. global_forecaster (foundation models)
     "tsfm_regression": "regressor",
     "tsfm_classification": "classifier",
-    "tsfm_anomaly_detection": "detector",      # sktime detection scitype (anomaly/segmentation)
-    "tsfm_imputation": "transformer",          # sktime Imputer is a transformer
+    "tsfm_anomaly_detection": "detector",  # sktime detection scitype (anomaly/segmentation)
+    "tsfm_imputation": "transformer",  # sktime Imputer is a transformer
     "tsfm_clustering": "clusterer",
-    "tsfm_similarity_search": "transformer",   # feature/embedding transformer + distances
-    "tsfm_evaluation": "metric",               # metric + splitter (sktime.evaluate)
+    "tsfm_similarity_search": "transformer",  # feature/embedding transformer + distances
+    "tsfm_evaluation": "metric",  # metric + splitter (sktime.evaluate)
 }
 
 # scitype -> the verb to call after fit
-_VERB = {"forecaster": "predict", "regressor": "predict", "classifier": "predict",
-         "clusterer": "predict", "detector": "predict", "transformer": "transform",
-         "metric": None}
+_VERB = {
+    "forecaster": "predict",
+    "regressor": "predict",
+    "classifier": "predict",
+    "clusterer": "predict",
+    "detector": "predict",
+    "transformer": "transform",
+    "metric": None,
+}
 
 # Marker key: a param value that is a dict carrying this key is a nested estimator spec.
 _TARGET_KEY = "_target_"
@@ -91,16 +97,35 @@ def resolve(card: dict):
 def discover(scitype: str, filter_tags: Optional[dict] = None) -> List[str]:
     """sktime registry as live model discovery (installed estimators)."""
     from sktime.registry import all_estimators
+
     ests = all_estimators(estimator_types=scitype, filter_tags=filter_tags)
     return [n for n, _ in ests]
 
 
 # foundation-model module/name keywords → pretrained, zero-shot-capable
-_FM_KEYS = ("tinytime", "ttm", "chronos", "moirai", "timesfm", "moment", "timemoe",
-            "patchtst", "lagllama", "hftransformers", "tspulse")
+_FM_KEYS = (
+    "tinytime",
+    "ttm",
+    "chronos",
+    "moirai",
+    "timesfm",
+    "moment",
+    "timemoe",
+    "patchtst",
+    "lagllama",
+    "hftransformers",
+    "tspulse",
+)
 
 # params that signal an *opt-in* fine-tune on a foundation model
-_FT_KEYS = ("num_train_epochs", "fit_strategy", "trainer", "fine_tune", "finetune", "lr")
+_FT_KEYS = (
+    "num_train_epochs",
+    "fit_strategy",
+    "trainer",
+    "fine_tune",
+    "finetune",
+    "lr",
+)
 
 
 def foundation_forecasters() -> List[str]:
@@ -139,9 +164,11 @@ def run(card: dict, task_id: str, *, y=None, X=None, fh=None):
         est.fit(y, X=X, fh=fh) if X is not None else est.fit(y, fh=fh)
         return est.predict(fh=fh)
     if scitype in ("classifier", "regressor", "clusterer"):
-        est.fit(X, y); return getattr(est, verb)(X)
+        est.fit(X, y)
+        return getattr(est, verb)(X)
     if scitype == "detector":
-        est.fit(X if X is not None else y); return est.predict(X if X is not None else y)
+        est.fit(X if X is not None else y)
+        return est.predict(X if X is not None else y)
     if scitype == "transformer":
         est.fit(y if y is not None else X)
         return est.transform(y if y is not None else X)

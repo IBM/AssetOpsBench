@@ -13,7 +13,15 @@ from .stores import feature_store
 # at src/couchdb/scenarios_data/shared/tsfm/ (the package no longer ships its own seeds/ copy).
 # Override with TSFM_SEEDS_DIR when the package is relocated or for tests.
 _SEEDS = os.environ.get("TSFM_SEEDS_DIR") or os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "couchdb", "scenarios_data", "shared", "tsfm")
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "couchdb",
+        "scenarios_data",
+        "shared",
+        "tsfm",
+    )
 )
 
 
@@ -31,7 +39,10 @@ def load_seeds(store) -> dict:
     counts["model_catalog"] = len(mc)
     fc = json.load(open(os.path.join(_SEEDS, "feature_catalog.json")))
     for doc in fc:
-        doc.setdefault("_id", f"feature:{doc.get('feature_id') or doc.get('extractor_name') or doc.get('name')}")
+        doc.setdefault(
+            "_id",
+            f"feature:{doc.get('feature_id') or doc.get('extractor_name') or doc.get('name')}",
+        )
         doc.setdefault("kind", "transform")
         store.put(feature_store.COLLECTION, doc)
     counts["feature_catalog"] = len(fc)

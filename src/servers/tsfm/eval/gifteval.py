@@ -25,9 +25,14 @@ warnings.filterwarnings("ignore")
 
 # --------------------------------------------------------------------------- #
 def _mase(y_true, y_pred, y_train, sp: int) -> float:
-    y_true, y_pred, y_train = map(lambda a: np.asarray(a, float).ravel(), (y_true, y_pred, y_train))
-    denom = np.mean(np.abs(y_train[sp:] - y_train[:-sp])) if len(y_train) > sp else \
-        np.mean(np.abs(np.diff(y_train))) or 1e-8
+    y_true, y_pred, y_train = map(
+        lambda a: np.asarray(a, float).ravel(), (y_true, y_pred, y_train)
+    )
+    denom = (
+        np.mean(np.abs(y_train[sp:] - y_train[:-sp]))
+        if len(y_train) > sp
+        else np.mean(np.abs(np.diff(y_train))) or 1e-8
+    )
     return float(np.mean(np.abs(y_true - y_pred)) / (denom + 1e-12))
 
 
@@ -50,8 +55,15 @@ def _split(y: pd.Series, h: int):
 
 
 # --------------------------------------------------------------------------- #
-def evaluate_config(build_forecaster: Callable, recipe: dict, y: pd.Series, *,
-                    fh: List[int], sp: int, quantile_levels=(0.1, 0.25, 0.5, 0.75, 0.9)) -> dict:
+def evaluate_config(
+    build_forecaster: Callable,
+    recipe: dict,
+    y: pd.Series,
+    *,
+    fh: List[int],
+    sp: int,
+    quantile_levels=(0.1, 0.25, 0.5, 0.75, 0.9),
+) -> dict:
     """Fit on train, score on the held-out horizon: raw MASE (+ CRPS if probabilistic)."""
     h = len(fh)
     ytr, yte = _split(y, h)
@@ -66,14 +78,19 @@ def evaluate_config(build_forecaster: Callable, recipe: dict, y: pd.Series, *,
             crps = _crps_from_quantiles(yte, q, list(quantile_levels))
         except Exception:
             crps = None
-    return {"mase": round(mase, 4), "crps": (round(crps, 4) if crps is not None else None)}
+    return {
+        "mase": round(mase, 4),
+        "crps": (round(crps, 4) if crps is not None else None),
+    }
 
 
-def seasonal_naive_scores(y: pd.Series, *, fh: List[int], sp: int,
-                          quantile_levels=(0.1, 0.25, 0.5, 0.75, 0.9)) -> dict:
+def seasonal_naive_scores(
+    y: pd.Series, *, fh: List[int], sp: int, quantile_levels=(0.1, 0.25, 0.5, 0.75, 0.9)
+) -> dict:
     """The GIFT-Eval normalizer = our Zero Model (seasonal naive)."""
     from sktime.forecasting.naive import NaiveForecaster
     from sktime.forecasting.conformal import ConformalIntervals
+
     h = len(fh)
     ytr, yte = _split(y, h)
     base = NaiveForecaster(strategy="last", sp=sp if sp > 1 else 1)
@@ -81,11 +98,20 @@ def seasonal_naive_scores(y: pd.Series, *, fh: List[int], sp: int,
     pred = np.asarray(base.predict(), float).ravel()[:h]
     mase = _mase(yte, pred, ytr, sp)
     try:
-        cf = ConformalIntervals(NaiveForecaster(strategy="last", sp=sp if sp > 1 else 1)).fit(ytr, fh=fh)
-        crps = _crps_from_quantiles(yte, cf.predict_quantiles(alpha=list(quantile_levels)), list(quantile_levels))
+        cf = ConformalIntervals(
+            NaiveForecaster(strategy="last", sp=sp if sp > 1 else 1)
+        ).fit(ytr, fh=fh)
+        crps = _crps_from_quantiles(
+            yte,
+            cf.predict_quantiles(alpha=list(quantile_levels)),
+            list(quantile_levels),
+        )
     except Exception:
         crps = None
-    return {"mase": round(mase, 4), "crps": (round(crps, 4) if crps is not None else None)}
+    return {
+        "mase": round(mase, 4),
+        "crps": (round(crps, 4) if crps is not None else None),
+    }
 
 
 def _geomean(vals: List[float]) -> Optional[float]:
@@ -99,6 +125,7 @@ def evaluate_recipe(store, recipe: dict, configs: List[dict]) -> dict:
     config = {"name", "y", "fh", "sp"}. Normalized score = recipe_metric / seasonal_naive_metric
     (so <1 means 'beats seasonal naive', exactly GIFT-Eval's relative reporting)."""
     from ..engine import composition as C
+
     bf = lambda r: C.build_forecaster(r, store)
     rows, n_mase, n_crps = [], [], []
     for cfg in configs:
@@ -106,19 +133,33 @@ def evaluate_recipe(store, recipe: dict, configs: List[dict]) -> dict:
         sn = seasonal_naive_scores(y, fh=cfg["fh"], sp=cfg["sp"])
         sc = evaluate_config(bf, recipe, y, fh=cfg["fh"], sp=cfg["sp"])
         nm = round(sc["mase"] / sn["mase"], 4) if sn["mase"] else None
-        nc = (round(sc["crps"] / sn["crps"], 4) if (sc["crps"] and sn["crps"]) else None)
-        rows.append({"config": cfg["name"], "mase": sc["mase"], "crps": sc["crps"],
-                     "norm_mase": nm, "norm_crps": nc})
+        nc = round(sc["crps"] / sn["crps"], 4) if (sc["crps"] and sn["crps"]) else None
+        rows.append(
+            {
+                "config": cfg["name"],
+                "mase": sc["mase"],
+                "crps": sc["crps"],
+                "norm_mase": nm,
+                "norm_crps": nc,
+            }
+        )
         if nm:
             n_mase.append(nm)
         if nc:
             n_crps.append(nc)
-    return {"per_config": rows,
-            "agg": {"geomean_norm_mase": _geomean(n_mase), "geomean_norm_crps": _geomean(n_crps),
-                    "n_configs": len(configs)}}
+    return {
+        "per_config": rows,
+        "agg": {
+            "geomean_norm_mase": _geomean(n_mase),
+            "geomean_norm_crps": _geomean(n_crps),
+            "n_configs": len(configs),
+        },
+    }
 
 
-def leaderboard(store, recipes: Dict[str, dict], configs: List[dict], by: str = "norm_crps") -> dict:
+def leaderboard(
+    store, recipes: Dict[str, dict], configs: List[dict], by: str = "norm_crps"
+) -> dict:
     """Rank recipes per config (lower=better) and report the MEAN RANK (GIFT-Eval aggregation)."""
     evals = {name: evaluate_recipe(store, r, configs) for name, r in recipes.items()}
     fallback = "norm_mase" if by == "norm_crps" else "norm_crps"
@@ -132,8 +173,16 @@ def leaderboard(store, recipes: Dict[str, dict], configs: List[dict], by: str = 
         scored.sort(key=lambda t: t[1])
         for rank, (name, _) in enumerate(scored, 1):
             ranks[name].append(rank)
-    board = sorted(((name, round(float(np.mean(rk)), 3),
-                     evals[name]["agg"]) for name, rk in ranks.items()),
-                   key=lambda t: t[1])
-    return {"ranked_by": by, "leaderboard": [
-        {"recipe": n, "mean_rank": mr, "agg": agg} for n, mr, agg in board]}
+    board = sorted(
+        (
+            (name, round(float(np.mean(rk)), 3), evals[name]["agg"])
+            for name, rk in ranks.items()
+        ),
+        key=lambda t: t[1],
+    )
+    return {
+        "ranked_by": by,
+        "leaderboard": [
+            {"recipe": n, "mean_rank": mr, "agg": agg} for n, mr, agg in board
+        ],
+    }

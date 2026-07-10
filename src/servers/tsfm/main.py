@@ -84,7 +84,9 @@ mcp = FastMCP(
     ),
 )
 
-_STORE = fresh_store()  # CouchDB (CouchStore) — the catalog + result/run stores live in CouchDB
+_STORE = (
+    fresh_store()
+)  # CouchDB (CouchStore) — the catalog + result/run stores live in CouchDB
 
 
 def _load_target(
@@ -121,7 +123,8 @@ def _check_task(task_id: str) -> Optional[str]:
 def list_tasks() -> Union[TasksResult, ErrorResult]:
     """List the 8 standardized TS-AI TASKS (forecasting, regression, classification, anomaly,
     imputation, evaluation, similarity_search, clustering). Each entry has a plain `description`
-    plus its contract (required inputs, output, eval protocol). Start here, then profile_series."""
+    plus its contract (required inputs, output, eval protocol). Start here, then profile_series.
+    """
     try:
         return TasksResult(tasks=task_spec.list_tasks())
     except Exception as exc:
@@ -154,7 +157,8 @@ def describe_candidates(
     task_id: str, top_k: int = 5, domain: Optional[str] = None
 ) -> Union[CandidatesResult, ErrorResult]:
     """Ranked CANDIDATE models for a task (HuggingGPT-style, by description + popularity). A
-    candidate is a shortlisted MODEL — you still decide which to use. top_k caps the list."""
+    candidate is a shortlisted MODEL — you still decide which to use. top_k caps the list.
+    """
     bad = _check_task(task_id)
     if bad:
         return ErrorResult(error=bad)
@@ -180,7 +184,8 @@ def find_models(
     top_k: int = 5,
 ) -> Union[ModelsResult, ErrorResult]:
     """Filter the MODEL catalog for a task → ranked shortlist. A model is an estimator card; use
-    get_component(model_id) to read its full card + param_schema before composing a recipe."""
+    get_component(model_id) to read its full card + param_schema before composing a recipe.
+    """
     bad = _check_task(task_id)
     if bad:
         return ErrorResult(error=bad)
@@ -208,7 +213,8 @@ def find_features(
     target_model: Optional[str] = None,
 ) -> Union[FeaturesResult, ErrorResult]:
     """Browse FEATURE/transform cards (normalization, lag/rolling, catch22, FLOps sets) by
-    scenario category / task / model. A feature is applied before the estimator in a recipe."""
+    scenario category / task / model. A feature is applied before the estimator in a recipe.
+    """
     try:
         return FeaturesResult(
             features=feature_store.find_features(
@@ -226,7 +232,8 @@ def find_features(
 @mcp.tool(title="Get Component")
 def get_component(component_id: str) -> Union[ComponentResult, ErrorResult]:
     """Fetch one COMPONENT by id — a MODEL card or a FEATURE card (it resolves either). For a
-    model it also returns the `param_schema` (the parameters + hints + ranges you must reason)."""
+    model it also returns the `param_schema` (the parameters + hints + ranges you must reason).
+    """
     if not component_id.strip():
         return ErrorResult(error="component_id is required")
     card = model_store.get_model(_STORE, component_id)
@@ -251,7 +258,8 @@ def profile_series(
 ) -> Union[ProfileResult, ErrorResult]:
     """EVIDENCE about the data behind a file pointer (dataset_path) — seasonality, stationarity,
     channels, length. Facts only, no recommendations: you reason the recipe from these. This is
-    the data the param_schema hints depend on (e.g. context_length ≥ 2× dominant_period)."""
+    the data the param_schema hints depend on (e.g. context_length ≥ 2× dominant_period).
+    """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
@@ -309,19 +317,30 @@ def characterize_series(
     cessation / oscillation) + rate over changepoint phases, plus the bivariate relation
     (decoupled / co_move / lead_lag) between groups. Grouping is optional and yours to choose:
     pass groups={group:[channels]}, or group_rules (a preset name like 'vibration_temperature');
-    default is one group per channel. Reference-free (reads the series' own median/MAD scale)."""
+    default is one group per channel. Reference-free (reads the series' own median/MAD scale).
+    """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
-        obj = refs.load_series(dataset_path, time_col=timestamp_column, channels=channels)
-        frame = obj if isinstance(obj, pd.DataFrame) else obj.to_frame(
-            name=(channels[0] if channels else "value"))
+        obj = refs.load_series(
+            dataset_path, time_col=timestamp_column, channels=channels
+        )
+        frame = (
+            obj
+            if isinstance(obj, pd.DataFrame)
+            else obj.to_frame(name=(channels[0] if channels else "value"))
+        )
         ev = patterns.describe_series(frame, groups=groups, group_rules=group_rules)
         evidence_file = refs.write_json(ev, name="pattern_evidence")
         return CharacterizeResult(
-            status="success", summary=ev["summary"], n_observations=ev["n_observations"],
-            evidence_file=evidence_file, groups=ev["groups"], phases=ev["phases"],
-            message=f"Pattern evidence ({len(ev['phases'])} phase(s)). Full object at {evidence_file}.")
+            status="success",
+            summary=ev["summary"],
+            n_observations=ev["n_observations"],
+            evidence_file=evidence_file,
+            groups=ev["groups"],
+            phases=ev["phases"],
+            message=f"Pattern evidence ({len(ev['phases'])} phase(s)). Full object at {evidence_file}.",
+        )
     except Exception as exc:
         logger.error("characterize_series failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -353,22 +372,35 @@ def run_recipe(
         res = composition.run_recipe(
             _STORE, series, recipe, asset_id=asset_id, parent_run_id=parent_run_id
         )
-        if res.get("task") == "tsfm_anomaly_detection":          # detector path
+        if res.get("task") == "tsfm_anomaly_detection":  # detector path
             results_file = refs.write_json(
-                {"anomaly_label": res.pop("labels"), "n_anomalies": res["n_anomalies"],
-                 "anomaly_indices": res["anomaly_indices_head"]}, name="anomaly")
+                {
+                    "anomaly_label": res.pop("labels"),
+                    "n_anomalies": res["n_anomalies"],
+                    "anomaly_indices": res["anomaly_indices_head"],
+                },
+                name="anomaly",
+            )
             return RecipeResult(
-                status="success", run_id=res["run_id"], results_file=results_file,
+                status="success",
+                run_id=res["run_id"],
+                results_file=results_file,
                 training_regime=res["training_regime"],
-                n_anomalies=res["n_anomalies"], n_observations=res["n_observations"],
+                n_anomalies=res["n_anomalies"],
+                n_observations=res["n_observations"],
                 message=f"Anomaly run complete ({res['training_regime']}): "
-                        f"{res['n_anomalies']}/{res['n_observations']} flagged. Labels at {results_file}.")
-        results_file = refs.write_json(res, name="recipe_run")     # forecasting path
+                f"{res['n_anomalies']}/{res['n_observations']} flagged. Labels at {results_file}.",
+            )
+        results_file = refs.write_json(res, name="recipe_run")  # forecasting path
         return RecipeResult(
-            status="success", run_id=res["run_id"], results_file=results_file,
-            metric=res["metric"], backtest_score=res["backtest_score"],
+            status="success",
+            run_id=res["run_id"],
+            results_file=results_file,
+            metric=res["metric"],
+            backtest_score=res["backtest_score"],
             training_regime=res["training_regime"],
-            message=f"Recipe run complete ({res['training_regime']}). Record at {results_file}.")
+            message=f"Recipe run complete ({res['training_regime']}). Record at {results_file}.",
+        )
     except Exception as exc:
         logger.error("run_recipe failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -376,7 +408,8 @@ def run_recipe(
 
 @mcp.tool(title="Data Quality")
 def data_quality(
-    dataset_path: str, timestamp_column: str = "timestamp",
+    dataset_path: str,
+    timestamp_column: str = "timestamp",
 ) -> Union[DataQualityResult, ErrorResult]:
     """Clean a series from a file pointer (NaN removal) + report a data-quality summary; returns a
     cleaned file pointer to feed forecasting / anomaly. (The continuous-segment IoT filter lives
@@ -389,12 +422,18 @@ def data_quality(
         out = _dq._efficient_nan_removal(df)
         cleaned = out["df_filter"]
         cleaned_file = refs.write_series(cleaned, name="cleaned")
-        nan_per_col = {str(k): float(v) for k, v in (nan.get("%NaN_per_column") or {}).items()}
+        nan_per_col = {
+            str(k): float(v) for k, v in (nan.get("%NaN_per_column") or {}).items()
+        }
         return DataQualityResult(
-            status="success", cleaned_file=cleaned_file,
-            rows_in=int(len(df)), rows_out=int(len(cleaned)),
-            nan_per_column=nan_per_col, removed_cost=int(out.get("cost_total", 0)),
-            message=f"Cleaned {len(df)}→{len(cleaned)} rows. Cleaned series at {cleaned_file}.")
+            status="success",
+            cleaned_file=cleaned_file,
+            rows_in=int(len(df)),
+            rows_out=int(len(cleaned)),
+            nan_per_column=nan_per_col,
+            removed_cost=int(out.get("cost_total", 0)),
+            message=f"Cleaned {len(df)}→{len(cleaned)} rows. Cleaned series at {cleaned_file}.",
+        )
     except Exception as exc:
         logger.error("data_quality failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -507,7 +546,9 @@ def register_feature(feature: dict) -> Union[RegisterResult, ErrorResult]:
         return ErrorResult(error="feature card is required")
     try:
         rec = feature_store.register_feature(_STORE, feature, overwrite=True)
-        return RegisterResult(status="registered", id=rec.get("feature_id", ""), card=rec)
+        return RegisterResult(
+            status="registered", id=rec.get("feature_id", ""), card=rec
+        )
     except Exception as exc:
         logger.error("register_feature failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -517,30 +558,39 @@ def register_feature(feature: dict) -> Union[RegisterResult, ErrorResult]:
 # Pull + update + version + retire, for both stores. The agent curates the catalog: search it,
 # trace lineage, edit/retire a card, cut a new version, or register a fine-tuned checkpoint.
 
+
 # ---- model store ----
 @mcp.tool(title="List Models")
-def list_models(task_id: Optional[str] = None, domain: Optional[str] = None,
-                status: str = "active") -> Union[ModelsResult, ErrorResult]:
+def list_models(
+    task_id: Optional[str] = None, domain: Optional[str] = None, status: str = "active"
+) -> Union[ModelsResult, ErrorResult]:
     """List model cards in the catalog (optionally filtered by task / domain). Unranked — the
-    mirror of list_extractors; use find_models / describe_candidates to rank for a task."""
+    mirror of list_extractors; use find_models / describe_candidates to rank for a task.
+    """
     if task_id:
         bad = _check_task(task_id)
         if bad:
             return ErrorResult(error=bad)
     try:
-        return ModelsResult(models=model_store.list_models(
-            _STORE, task_id=task_id, domain=domain, status=status))
+        return ModelsResult(
+            models=model_store.list_models(
+                _STORE, task_id=task_id, domain=domain, status=status
+            )
+        )
     except Exception as exc:
         logger.error("list_models failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
 @mcp.tool(title="Search Models")
-def search_models(text: str = "", tags: Optional[List[str]] = None,
-                  status: str = "active") -> Union[ModelsResult, ErrorResult]:
+def search_models(
+    text: str = "", tags: Optional[List[str]] = None, status: str = "active"
+) -> Union[ModelsResult, ErrorResult]:
     """Free-text/tag search over the model catalog (id, description, family, tags)."""
     try:
-        return ModelsResult(models=model_store.search(_STORE, text, tags=tags, status=status))
+        return ModelsResult(
+            models=model_store.search(_STORE, text, tags=tags, status=status)
+        )
     except Exception as exc:
         logger.error("search_models failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -571,47 +621,73 @@ def update_model(model_id: str, fields: dict) -> Union[CardResult, ErrorResult]:
 
 
 @mcp.tool(title="Deprecate Model")
-def deprecate_model(model_id: str, reason: Optional[str] = None) -> Union[CardResult, ErrorResult]:
+def deprecate_model(
+    model_id: str, reason: Optional[str] = None
+) -> Union[CardResult, ErrorResult]:
     """Retire a model card (status=deprecated); it stops appearing in active listings."""
     if not model_id.strip():
         return ErrorResult(error="model_id is required")
     try:
-        return CardResult(**model_store.deprecate_model(_STORE, model_id, reason=reason))
+        return CardResult(
+            **model_store.deprecate_model(_STORE, model_id, reason=reason)
+        )
     except Exception as exc:
         logger.error("deprecate_model failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
 @mcp.tool(title="New Model Version")
-def new_model_version(model_id: str, fields: dict,
-                      new_model_id: Optional[str] = None) -> Union[CardResult, ErrorResult]:
+def new_model_version(
+    model_id: str, fields: dict, new_model_id: Optional[str] = None
+) -> Union[CardResult, ErrorResult]:
     """Create a successor version of a model; the predecessor is marked superseded + linked."""
     if not model_id.strip():
         return ErrorResult(error="model_id is required")
     try:
-        return CardResult(**model_store.new_version(_STORE, model_id, fields or {},
-                                                    new_model_id=new_model_id))
+        return CardResult(
+            **model_store.new_version(
+                _STORE, model_id, fields or {}, new_model_id=new_model_id
+            )
+        )
     except Exception as exc:
         logger.error("new_model_version failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
 @mcp.tool(title="Register Finetuned Model")
-def register_finetuned(model_id: str, checkpoint_path: str, base_model_id: str,
-                       context_length: int, prediction_length: int, description: str,
-                       domain: str = "general",
-                       metrics: Optional[list] = None) -> Union[CardResult, ErrorResult]:
+def register_finetuned(
+    model_id: str,
+    checkpoint_path: str,
+    base_model_id: str,
+    context_length: int,
+    prediction_length: int,
+    description: str,
+    domain: str = "general",
+    metrics: Optional[list] = None,
+) -> Union[CardResult, ErrorResult]:
     """Add a fine-tuned model: point the catalog at a checkpoint, with lineage to its base model."""
-    for k, v in (("model_id", model_id), ("checkpoint_path", checkpoint_path),
-                 ("base_model_id", base_model_id), ("description", description)):
+    for k, v in (
+        ("model_id", model_id),
+        ("checkpoint_path", checkpoint_path),
+        ("base_model_id", base_model_id),
+        ("description", description),
+    ):
         if not (v and str(v).strip()):
             return ErrorResult(error=f"{k} is required")
     try:
-        return CardResult(**model_store.register_finetuned(
-            _STORE, model_id=model_id, checkpoint_path=checkpoint_path,
-            base_model_id=base_model_id, context_length=context_length,
-            prediction_length=prediction_length, description=description, domain=domain,
-            metrics=metrics))
+        return CardResult(
+            **model_store.register_finetuned(
+                _STORE,
+                model_id=model_id,
+                checkpoint_path=checkpoint_path,
+                base_model_id=base_model_id,
+                context_length=context_length,
+                prediction_length=prediction_length,
+                description=description,
+                domain=domain,
+                metrics=metrics,
+            )
+        )
     except Exception as exc:
         logger.error("register_finetuned failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -619,21 +695,28 @@ def register_finetuned(model_id: str, checkpoint_path: str, base_model_id: str,
 
 # ---- feature store ----
 @mcp.tool(title="Search Features")
-def search_features(text: str = "", tags: Optional[List[str]] = None,
-                    status: str = "active") -> Union[FeaturesResult, ErrorResult]:
+def search_features(
+    text: str = "", tags: Optional[List[str]] = None, status: str = "active"
+) -> Union[FeaturesResult, ErrorResult]:
     """Free-text/tag search over the feature catalog (id, name, tags)."""
     try:
-        return FeaturesResult(features=feature_store.search(_STORE, text, tags=tags, status=status))
+        return FeaturesResult(
+            features=feature_store.search(_STORE, text, tags=tags, status=status)
+        )
     except Exception as exc:
         logger.error("search_features failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
 @mcp.tool(title="List Extractors")
-def list_extractors(category: Optional[str] = None) -> Union[FeaturesResult, ErrorResult]:
+def list_extractors(
+    category: Optional[str] = None,
+) -> Union[FeaturesResult, ErrorResult]:
     """Browse the FLOps extractor library (optionally by scenario category)."""
     try:
-        return FeaturesResult(features=feature_store.list_extractors(_STORE, category=category))
+        return FeaturesResult(
+            features=feature_store.list_extractors(_STORE, category=category)
+        )
     except Exception as exc:
         logger.error("list_extractors failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -664,27 +747,34 @@ def update_feature(feature_id: str, fields: dict) -> Union[CardResult, ErrorResu
 
 
 @mcp.tool(title="Deprecate Feature")
-def deprecate_feature(feature_id: str,
-                      reason: Optional[str] = None) -> Union[CardResult, ErrorResult]:
+def deprecate_feature(
+    feature_id: str, reason: Optional[str] = None
+) -> Union[CardResult, ErrorResult]:
     """Retire a feature card (status=deprecated)."""
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
     try:
-        return CardResult(**feature_store.deprecate_feature(_STORE, feature_id, reason=reason))
+        return CardResult(
+            **feature_store.deprecate_feature(_STORE, feature_id, reason=reason)
+        )
     except Exception as exc:
         logger.error("deprecate_feature failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
 @mcp.tool(title="New Feature Version")
-def new_feature_version(feature_id: str, fields: dict,
-                        new_feature_id: Optional[str] = None) -> Union[CardResult, ErrorResult]:
+def new_feature_version(
+    feature_id: str, fields: dict, new_feature_id: Optional[str] = None
+) -> Union[CardResult, ErrorResult]:
     """Create a successor version of a feature (EFE lineage); predecessor superseded + linked."""
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
     try:
-        return CardResult(**feature_store.new_version(_STORE, feature_id, fields or {},
-                                                      new_feature_id=new_feature_id))
+        return CardResult(
+            **feature_store.new_version(
+                _STORE, feature_id, fields or {}, new_feature_id=new_feature_id
+            )
+        )
     except Exception as exc:
         logger.error("new_feature_version failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -727,9 +817,13 @@ def list_runs(asset_id: Optional[str] = None) -> RunsResult:
 # the agent (LLM) is the proposer. A "program" is a recipe OR an EFE feature program.
 @mcp.tool(title="Evolve: Ask")
 def evolve_ask(
-    task: str, kind: str = "recipe", dataset_path: Optional[str] = None,
-    timestamp_column: Optional[str] = None, channels: Optional[List[str]] = None,
-    n_parents: int = 2, n_inspirations: int = 3,
+    task: str,
+    kind: str = "recipe",
+    dataset_path: Optional[str] = None,
+    timestamp_column: Optional[str] = None,
+    channels: Optional[List[str]] = None,
+    n_parents: int = 2,
+    n_inspirations: int = 3,
 ) -> Union[EvolveAskResult, ErrorResult]:
     """Sample parent(s) + diverse inspirations from the evolutionary archive + data evidence +
     the task contract, so YOU (the agent) can mutate/recombine them into one new candidate to
@@ -738,9 +832,18 @@ def evolve_ask(
     if bad:
         return ErrorResult(error=bad)
     try:
-        return EvolveAskResult(**evolve.evolve_ask(
-            _STORE, task, kind=kind, data_ref=dataset_path, timestamp_column=timestamp_column,
-            channels=channels, n_parents=n_parents, n_inspirations=n_inspirations))
+        return EvolveAskResult(
+            **evolve.evolve_ask(
+                _STORE,
+                task,
+                kind=kind,
+                data_ref=dataset_path,
+                timestamp_column=timestamp_column,
+                channels=channels,
+                n_parents=n_parents,
+                n_inspirations=n_inspirations,
+            )
+        )
     except Exception as exc:
         logger.error("evolve_ask failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -748,13 +851,19 @@ def evolve_ask(
 
 @mcp.tool(title="Evolve: Tell")
 def evolve_tell(
-    task: str, kind: str, program: dict, parent_id: Optional[str] = None,
-    dataset_path: Optional[str] = None, timestamp_column: Optional[str] = None,
-    target_columns: Optional[List[str]] = None, label_column: Optional[str] = None,
+    task: str,
+    kind: str,
+    program: dict,
+    parent_id: Optional[str] = None,
+    dataset_path: Optional[str] = None,
+    timestamp_column: Optional[str] = None,
+    target_columns: Optional[List[str]] = None,
+    label_column: Optional[str] = None,
 ) -> Union[EvolveTellResult, ErrorResult]:
     """Submit a candidate PROGRAM (a recipe or a feature program). The server validates it,
     evaluates it to a scalar fitness (run_recipe / run_tabular_recipe / EFE gate), and places it
-    in the MAP-Elites archive with lineage. Returns the fitness + whether it's a new elite."""
+    in the MAP-Elites archive with lineage. Returns the fitness + whether it's a new elite.
+    """
     bad = _check_task(task)
     if bad:
         return ErrorResult(error=bad)
@@ -763,10 +872,19 @@ def evolve_tell(
     if not program:
         return ErrorResult(error="program is required")
     try:
-        return EvolveTellResult(**evolve.evolve_tell(
-            _STORE, task, kind, program, parent_id=parent_id, data_ref=dataset_path,
-            timestamp_column=timestamp_column, target_columns=target_columns,
-            label_column=label_column))
+        return EvolveTellResult(
+            **evolve.evolve_tell(
+                _STORE,
+                task,
+                kind,
+                program,
+                parent_id=parent_id,
+                data_ref=dataset_path,
+                timestamp_column=timestamp_column,
+                target_columns=target_columns,
+                label_column=label_column,
+            )
+        )
     except Exception as exc:
         logger.error("evolve_tell failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -781,8 +899,11 @@ def evolve_best(
     if bad:
         return ErrorResult(error=bad)
     try:
-        return EvolveBestResult(**evolve.evolve_best(
-            _STORE, task, kind=kind, top_k=max(1, min(int(top_k), 50))))
+        return EvolveBestResult(
+            **evolve.evolve_best(
+                _STORE, task, kind=kind, top_k=max(1, min(int(top_k), 50))
+            )
+        )
     except Exception as exc:
         logger.error("evolve_best failed: %s", exc)
         return ErrorResult(error=str(exc))

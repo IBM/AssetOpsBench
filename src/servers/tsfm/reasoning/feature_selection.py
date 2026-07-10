@@ -103,7 +103,7 @@ def _longest_strike(mask):
 
 def _rms(w):
     w = np.asarray(w, float)
-    return float(np.sqrt(np.mean(w ** 2))) if len(w) else 0.0
+    return float(np.sqrt(np.mean(w**2))) if len(w) else 0.0
 
 
 def _binned_entropy(w, bins=10):
@@ -156,7 +156,11 @@ def _hjorth(w):
     w = np.asarray(w, float)
     d1 = np.diff(w)
     d2 = np.diff(d1)
-    v0, v1, v2 = np.var(w), np.var(d1) if len(d1) else 0.0, np.var(d2) if len(d2) else 0.0
+    v0, v1, v2 = (
+        np.var(w),
+        np.var(d1) if len(d1) else 0.0,
+        np.var(d2) if len(d2) else 0.0,
+    )
     mob = np.sqrt(v1 / v0) if v0 > 1e-12 else 0.0
     comp = (np.sqrt(v2 / v1) / mob) if (v1 > 1e-12 and mob > 1e-12) else 0.0
     return float(mob), float(comp)
@@ -179,7 +183,7 @@ def _c3(w, lag=1):
     return float(np.mean(w[: n - 2 * lag] * w[lag : n - lag] * w[2 * lag :]))
 
 
-def _tra(w, lag=1):                       # time-reversal asymmetry
+def _tra(w, lag=1):  # time-reversal asymmetry
     w = np.asarray(w, float)
     n = len(w)
     if n <= 2 * lag:
@@ -194,6 +198,7 @@ def _perm_entropy(w, order=3):
     if n < order + 1:
         return 0.0
     from itertools import permutations
+
     perms = list(permutations(range(order)))
     counts = {p: 0 for p in perms}
     for i in range(n - order + 1):
@@ -227,134 +232,236 @@ def _add(name, fn):
 
 
 # distribution / profiling
-EXTRACTORS.update({
-    "var": lambda w: _safe(np.var(w)),
-    "median": lambda w: _safe(np.median(w)),
-    "q05": lambda w: _quantile(w, 5), "q10": lambda w: _quantile(w, 10),
-    "q90": lambda w: _quantile(w, 90), "q95": lambda w: _quantile(w, 95),
-    "iqr": lambda w: _quantile(w, 75) - _quantile(w, 25),
-    "mad": lambda w: _safe(np.median(np.abs(np.asarray(w, float) - np.median(w)))),
-    "mean_abs": lambda w: _safe(np.mean(np.abs(w))),
-    "sum_abs": lambda w: _safe(np.sum(np.abs(w))),
-    "rms": lambda w: _rms(w),
-    "abs_energy": lambda w: _safe(np.sum(np.asarray(w, float) ** 2)),
-    "cv": lambda w: _safe(np.std(w) / (abs(np.mean(w)) + 1e-12)),
-    "std_to_mean": lambda w: _safe(np.std(w) / (np.mean(w) + 1e-12)),
-    "count_above_mean": lambda w: float(np.sum(np.asarray(w, float) > np.mean(w))),
-    "count_below_mean": lambda w: float(np.sum(np.asarray(w, float) < np.mean(w))),
-    "ratio_above_mean": lambda w: _safe(np.mean(np.asarray(w, float) > np.mean(w))),
-    "count_above_2std": lambda w: float(np.sum(np.abs(np.asarray(w, float) - np.mean(w)) > 2 * np.std(w))),
-    "abs_max": lambda w: _safe(np.max(np.abs(w))),
-    "abs_min": lambda w: _safe(np.min(np.abs(w))),
-})
+EXTRACTORS.update(
+    {
+        "var": lambda w: _safe(np.var(w)),
+        "median": lambda w: _safe(np.median(w)),
+        "q05": lambda w: _quantile(w, 5),
+        "q10": lambda w: _quantile(w, 10),
+        "q90": lambda w: _quantile(w, 90),
+        "q95": lambda w: _quantile(w, 95),
+        "iqr": lambda w: _quantile(w, 75) - _quantile(w, 25),
+        "mad": lambda w: _safe(np.median(np.abs(np.asarray(w, float) - np.median(w)))),
+        "mean_abs": lambda w: _safe(np.mean(np.abs(w))),
+        "sum_abs": lambda w: _safe(np.sum(np.abs(w))),
+        "rms": lambda w: _rms(w),
+        "abs_energy": lambda w: _safe(np.sum(np.asarray(w, float) ** 2)),
+        "cv": lambda w: _safe(np.std(w) / (abs(np.mean(w)) + 1e-12)),
+        "std_to_mean": lambda w: _safe(np.std(w) / (np.mean(w) + 1e-12)),
+        "count_above_mean": lambda w: float(np.sum(np.asarray(w, float) > np.mean(w))),
+        "count_below_mean": lambda w: float(np.sum(np.asarray(w, float) < np.mean(w))),
+        "ratio_above_mean": lambda w: _safe(np.mean(np.asarray(w, float) > np.mean(w))),
+        "count_above_2std": lambda w: float(
+            np.sum(np.abs(np.asarray(w, float) - np.mean(w)) > 2 * np.std(w))
+        ),
+        "abs_max": lambda w: _safe(np.max(np.abs(w))),
+        "abs_min": lambda w: _safe(np.min(np.abs(w))),
+    }
+)
 
 # temporal / order-dependent
-EXTRACTORS.update({
-    "intercept": lambda w: _safe(np.mean(w)),
-    "autocorr2": lambda w: _autocorr(w, 2), "autocorr3": lambda w: _autocorr(w, 3),
-    "autocorr5": lambda w: _autocorr(w, 5), "autocorr10": lambda w: _autocorr(w, 10),
-    "mean_diff": lambda w: _safe(np.mean(np.diff(w))) if len(w) > 1 else 0.0,
-    "mean_2nd_diff": lambda w: _safe(np.mean(np.diff(w, 2))) if len(w) > 2 else 0.0,
-    "abs_2nd_diff_mean": lambda w: _safe(np.mean(np.abs(np.diff(w, 2)))) if len(w) > 2 else 0.0,
-    "std_diff": lambda w: _safe(np.std(np.diff(w))) if len(w) > 1 else 0.0,
-    "num_zero_crossings": lambda w: float(_crossings(w, 0.0)),
-    "num_mean_crossings": lambda w: float(_crossings(w, float(np.mean(w)))),
-    "longest_above_mean": lambda w: float(_longest_strike(np.asarray(w, float) > np.mean(w))),
-    "longest_below_mean": lambda w: float(_longest_strike(np.asarray(w, float) < np.mean(w))),
-    "first_loc_max": lambda w: _safe(int(np.argmax(w)) / len(w)),
-    "last_loc_max": lambda w: _safe((len(w) - int(np.argmax(w[::-1])) - 1) / len(w)),
-    "first_loc_min": lambda w: _safe(int(np.argmin(w)) / len(w)),
-    "mean_change": lambda w: _safe((w[-1] - w[0]) / len(w)) if len(w) > 1 else 0.0,
-    "cid_ce": lambda w: _cid_ce(w),
-    "c3_lag1": lambda w: _c3(w, 1), "c3_lag2": lambda w: _c3(w, 2),
-    "time_reversal_asym": lambda w: _tra(w, 1),
-    "distinct_ratio": lambda w: _safe(len(np.unique(np.round(np.asarray(w, float), 6))) / len(w)),
-})
+EXTRACTORS.update(
+    {
+        "intercept": lambda w: _safe(np.mean(w)),
+        "autocorr2": lambda w: _autocorr(w, 2),
+        "autocorr3": lambda w: _autocorr(w, 3),
+        "autocorr5": lambda w: _autocorr(w, 5),
+        "autocorr10": lambda w: _autocorr(w, 10),
+        "mean_diff": lambda w: _safe(np.mean(np.diff(w))) if len(w) > 1 else 0.0,
+        "mean_2nd_diff": lambda w: _safe(np.mean(np.diff(w, 2))) if len(w) > 2 else 0.0,
+        "abs_2nd_diff_mean": lambda w: (
+            _safe(np.mean(np.abs(np.diff(w, 2)))) if len(w) > 2 else 0.0
+        ),
+        "std_diff": lambda w: _safe(np.std(np.diff(w))) if len(w) > 1 else 0.0,
+        "num_zero_crossings": lambda w: float(_crossings(w, 0.0)),
+        "num_mean_crossings": lambda w: float(_crossings(w, float(np.mean(w)))),
+        "longest_above_mean": lambda w: float(
+            _longest_strike(np.asarray(w, float) > np.mean(w))
+        ),
+        "longest_below_mean": lambda w: float(
+            _longest_strike(np.asarray(w, float) < np.mean(w))
+        ),
+        "first_loc_max": lambda w: _safe(int(np.argmax(w)) / len(w)),
+        "last_loc_max": lambda w: _safe(
+            (len(w) - int(np.argmax(w[::-1])) - 1) / len(w)
+        ),
+        "first_loc_min": lambda w: _safe(int(np.argmin(w)) / len(w)),
+        "mean_change": lambda w: _safe((w[-1] - w[0]) / len(w)) if len(w) > 1 else 0.0,
+        "cid_ce": lambda w: _cid_ce(w),
+        "c3_lag1": lambda w: _c3(w, 1),
+        "c3_lag2": lambda w: _c3(w, 2),
+        "time_reversal_asym": lambda w: _tra(w, 1),
+        "distinct_ratio": lambda w: _safe(
+            len(np.unique(np.round(np.asarray(w, float), 6))) / len(w)
+        ),
+    }
+)
 
 # complexity / entropy
-EXTRACTORS.update({
-    "binned_entropy": lambda w: _binned_entropy(w, 10),
-    "perm_entropy": lambda w: _perm_entropy(w, 3),
-    "spectral_entropy": lambda w: _spectral_entropy(w),
-    "hjorth_mobility": lambda w: _hjorth(w)[0],
-    "hjorth_complexity": lambda w: _hjorth(w)[1],
-})
+EXTRACTORS.update(
+    {
+        "binned_entropy": lambda w: _binned_entropy(w, 10),
+        "perm_entropy": lambda w: _perm_entropy(w, 3),
+        "spectral_entropy": lambda w: _spectral_entropy(w),
+        "hjorth_mobility": lambda w: _hjorth(w)[0],
+        "hjorth_complexity": lambda w: _hjorth(w)[1],
+    }
+)
 
 # frequency
-EXTRACTORS.update({
-    "spectral_rolloff": lambda w: _spectral_rolloff(w),
-    "spectral_flatness": lambda w: _spectral_flatness(w),
-    "dc_power": lambda w: _safe(abs(np.mean(w))),
-    "total_spectral_energy": lambda w: _safe(_spectrum(w).sum()),
-    "band_low": lambda w: _band_energy(w, 0.0, 0.33),
-    "band_mid": lambda w: _band_energy(w, 0.33, 0.66),
-    "band_high": lambda w: _band_energy(w, 0.66, 1.0),
-    "dominant_freq": lambda w: _safe(int(np.argmax(_spectrum(w)[1:]) + 1) if len(_spectrum(w)) > 1 else 0),
-})
+EXTRACTORS.update(
+    {
+        "spectral_rolloff": lambda w: _spectral_rolloff(w),
+        "spectral_flatness": lambda w: _spectral_flatness(w),
+        "dc_power": lambda w: _safe(abs(np.mean(w))),
+        "total_spectral_energy": lambda w: _safe(_spectrum(w).sum()),
+        "band_low": lambda w: _band_energy(w, 0.0, 0.33),
+        "band_mid": lambda w: _band_energy(w, 0.33, 0.66),
+        "band_high": lambda w: _band_energy(w, 0.66, 1.0),
+        "dominant_freq": lambda w: _safe(
+            int(np.argmax(_spectrum(w)[1:]) + 1) if len(_spectrum(w)) > 1 else 0
+        ),
+    }
+)
 
 # shape / vibration diagnostics
-EXTRACTORS.update({
-    "peak_to_peak": lambda w: _safe(np.max(w) - np.min(w)),
-    "crest_factor": lambda w: _safe(np.max(np.abs(w)) / (_rms(w) + 1e-12)),
-    "shape_factor": lambda w: _safe(_rms(w) / (np.mean(np.abs(w)) + 1e-12)),
-    "impulse_factor": lambda w: _safe(np.max(np.abs(w)) / (np.mean(np.abs(w)) + 1e-12)),
-    "clearance_factor": lambda w: _safe(np.max(np.abs(w)) / ((np.mean(np.sqrt(np.abs(w)))) ** 2 + 1e-12)),
-    "margin_factor": lambda w: _safe((np.max(w) - np.min(w)) / (_rms(w) + 1e-12)),
-    "form_factor": lambda w: _safe(_rms(w) / (abs(np.mean(w)) + 1e-12)),
-})
+EXTRACTORS.update(
+    {
+        "peak_to_peak": lambda w: _safe(np.max(w) - np.min(w)),
+        "crest_factor": lambda w: _safe(np.max(np.abs(w)) / (_rms(w) + 1e-12)),
+        "shape_factor": lambda w: _safe(_rms(w) / (np.mean(np.abs(w)) + 1e-12)),
+        "impulse_factor": lambda w: _safe(
+            np.max(np.abs(w)) / (np.mean(np.abs(w)) + 1e-12)
+        ),
+        "clearance_factor": lambda w: _safe(
+            np.max(np.abs(w)) / ((np.mean(np.sqrt(np.abs(w)))) ** 2 + 1e-12)
+        ),
+        "margin_factor": lambda w: _safe((np.max(w) - np.min(w)) / (_rms(w) + 1e-12)),
+        "form_factor": lambda w: _safe(_rms(w) / (abs(np.mean(w)) + 1e-12)),
+    }
+)
 
 # trend / stationarity
-EXTRACTORS.update({
-    "linear_trend_r": lambda w: _linregress_r(w),
-    "half_mean_diff": lambda w: _half_mean_diff(w),
-    "half_std_ratio": lambda w: _safe(np.std(np.asarray(w, float)[len(w)//2:]) / (np.std(np.asarray(w, float)[:len(w)//2]) + 1e-12)),
-    "energy_ratio_first_half": lambda w: _safe(np.sum(np.asarray(w, float)[:len(w)//2] ** 2) / (np.sum(np.asarray(w, float) ** 2) + 1e-12)),
-    "trend_strength": lambda w: _safe(abs(_slope(w)) * len(w) / (np.std(w) + 1e-9)),
-    "cumsum_argmax_ratio": lambda w: _safe(int(np.argmax(np.cumsum(np.asarray(w, float) - np.mean(w)))) / len(w)),
-    "cumsum_max": lambda w: _safe(np.max(np.cumsum(np.asarray(w, float) - np.mean(w)))),
-})
+EXTRACTORS.update(
+    {
+        "linear_trend_r": lambda w: _linregress_r(w),
+        "half_mean_diff": lambda w: _half_mean_diff(w),
+        "half_std_ratio": lambda w: _safe(
+            np.std(np.asarray(w, float)[len(w) // 2 :])
+            / (np.std(np.asarray(w, float)[: len(w) // 2]) + 1e-12)
+        ),
+        "energy_ratio_first_half": lambda w: _safe(
+            np.sum(np.asarray(w, float)[: len(w) // 2] ** 2)
+            / (np.sum(np.asarray(w, float) ** 2) + 1e-12)
+        ),
+        "trend_strength": lambda w: _safe(abs(_slope(w)) * len(w) / (np.std(w) + 1e-9)),
+        "cumsum_argmax_ratio": lambda w: _safe(
+            int(np.argmax(np.cumsum(np.asarray(w, float) - np.mean(w)))) / len(w)
+        ),
+        "cumsum_max": lambda w: _safe(
+            np.max(np.cumsum(np.asarray(w, float) - np.mean(w)))
+        ),
+    }
+)
 
 # additional profiling / temporal / frequency / shape to complete the FLOps-style library
-EXTRACTORS.update({
-    "q33": lambda w: _quantile(w, 33), "q66": lambda w: _quantile(w, 66),
-    "range_to_std": lambda w: _safe((np.max(w) - np.min(w)) / (np.std(w) + 1e-12)),
-    "mean_square": lambda w: _safe(np.mean(np.asarray(w, float) ** 2)),
-    "abs_sum_changes": lambda w: _safe(np.sum(np.abs(np.diff(w)))) if len(w) > 1 else 0.0,
-    "max_diff": lambda w: _safe(np.max(np.diff(w))) if len(w) > 1 else 0.0,
-    "min_diff": lambda w: _safe(np.min(np.diff(w))) if len(w) > 1 else 0.0,
-    "var_diff": lambda w: _safe(np.var(np.diff(w))) if len(w) > 1 else 0.0,
-    "positive_diff_ratio": lambda w: _safe(np.mean(np.diff(w) > 0)) if len(w) > 1 else 0.0,
-    "autocorr4": lambda w: _autocorr(w, 4), "autocorr7": lambda w: _autocorr(w, 7),
-    "num_peaks": lambda w: float(np.sum((np.asarray(w, float)[1:-1] > np.asarray(w, float)[:-2]) &
-                                        (np.asarray(w, float)[1:-1] > np.asarray(w, float)[2:]))) if len(w) > 2 else 0.0,
-    "num_valleys": lambda w: float(np.sum((np.asarray(w, float)[1:-1] < np.asarray(w, float)[:-2]) &
-                                          (np.asarray(w, float)[1:-1] < np.asarray(w, float)[2:]))) if len(w) > 2 else 0.0,
-    "longest_above_2std": lambda w: float(_longest_strike(np.abs(np.asarray(w, float) - np.mean(w)) > 2 * np.std(w))),
-    "zero_crossing_rate": lambda w: _safe(_crossings(w, float(np.mean(w))) / len(w)),
-    "skew_abs": lambda w: _safe(abs(_skew(w))),
-    "p2p_to_std": lambda w: _safe((np.max(w) - np.min(w)) / (np.std(w) + 1e-12)),
-    "band_q1": lambda w: _band_energy(w, 0.0, 0.25), "band_q2": lambda w: _band_energy(w, 0.25, 0.5),
-    "band_q3": lambda w: _band_energy(w, 0.5, 0.75), "band_q4": lambda w: _band_energy(w, 0.75, 1.0),
-    "mean_psd": lambda w: _safe(np.mean(_spectrum(w))),
-    "peak_psd_ratio": lambda w: _safe(_spectrum(w)[1:].max() / (_spectrum(w)[1:].sum() + 1e-12)) if len(_spectrum(w)) > 1 else 0.0,
-    "diff_entropy": lambda w: _binned_entropy(np.diff(w), 10) if len(w) > 1 else 0.0,
-    "quarter_mean_diff": lambda w: _safe(np.mean(np.asarray(w, float)[3 * (len(w)//4):]) - np.mean(np.asarray(w, float)[:len(w)//4])) if len(w) >= 4 else 0.0,
-})
+EXTRACTORS.update(
+    {
+        "q33": lambda w: _quantile(w, 33),
+        "q66": lambda w: _quantile(w, 66),
+        "range_to_std": lambda w: _safe((np.max(w) - np.min(w)) / (np.std(w) + 1e-12)),
+        "mean_square": lambda w: _safe(np.mean(np.asarray(w, float) ** 2)),
+        "abs_sum_changes": lambda w: (
+            _safe(np.sum(np.abs(np.diff(w)))) if len(w) > 1 else 0.0
+        ),
+        "max_diff": lambda w: _safe(np.max(np.diff(w))) if len(w) > 1 else 0.0,
+        "min_diff": lambda w: _safe(np.min(np.diff(w))) if len(w) > 1 else 0.0,
+        "var_diff": lambda w: _safe(np.var(np.diff(w))) if len(w) > 1 else 0.0,
+        "positive_diff_ratio": lambda w: (
+            _safe(np.mean(np.diff(w) > 0)) if len(w) > 1 else 0.0
+        ),
+        "autocorr4": lambda w: _autocorr(w, 4),
+        "autocorr7": lambda w: _autocorr(w, 7),
+        "num_peaks": lambda w: (
+            float(
+                np.sum(
+                    (np.asarray(w, float)[1:-1] > np.asarray(w, float)[:-2])
+                    & (np.asarray(w, float)[1:-1] > np.asarray(w, float)[2:])
+                )
+            )
+            if len(w) > 2
+            else 0.0
+        ),
+        "num_valleys": lambda w: (
+            float(
+                np.sum(
+                    (np.asarray(w, float)[1:-1] < np.asarray(w, float)[:-2])
+                    & (np.asarray(w, float)[1:-1] < np.asarray(w, float)[2:])
+                )
+            )
+            if len(w) > 2
+            else 0.0
+        ),
+        "longest_above_2std": lambda w: float(
+            _longest_strike(np.abs(np.asarray(w, float) - np.mean(w)) > 2 * np.std(w))
+        ),
+        "zero_crossing_rate": lambda w: _safe(
+            _crossings(w, float(np.mean(w))) / len(w)
+        ),
+        "skew_abs": lambda w: _safe(abs(_skew(w))),
+        "p2p_to_std": lambda w: _safe((np.max(w) - np.min(w)) / (np.std(w) + 1e-12)),
+        "band_q1": lambda w: _band_energy(w, 0.0, 0.25),
+        "band_q2": lambda w: _band_energy(w, 0.25, 0.5),
+        "band_q3": lambda w: _band_energy(w, 0.5, 0.75),
+        "band_q4": lambda w: _band_energy(w, 0.75, 1.0),
+        "mean_psd": lambda w: _safe(np.mean(_spectrum(w))),
+        "peak_psd_ratio": lambda w: (
+            _safe(_spectrum(w)[1:].max() / (_spectrum(w)[1:].sum() + 1e-12))
+            if len(_spectrum(w)) > 1
+            else 0.0
+        ),
+        "diff_entropy": lambda w: (
+            _binned_entropy(np.diff(w), 10) if len(w) > 1 else 0.0
+        ),
+        "quarter_mean_diff": lambda w: (
+            _safe(
+                np.mean(np.asarray(w, float)[3 * (len(w) // 4) :])
+                - np.mean(np.asarray(w, float)[: len(w) // 4])
+            )
+            if len(w) >= 4
+            else 0.0
+        ),
+    }
+)
 
 # flatline / cessation family — a machine going quiet shows up as a long constant run
-EXTRACTORS.update({
-    "longest_constant_run": lambda w: float(_longest_strike(np.abs(np.diff(np.asarray(w, float))) <= 1e-9)) if len(w) > 1 else float(len(w)),
-    "flatline_fraction": lambda w: _safe(_longest_strike(np.abs(np.diff(np.asarray(w, float))) <= 1e-9) / len(w)) if len(w) > 1 else 0.0,
-})
+EXTRACTORS.update(
+    {
+        "longest_constant_run": lambda w: (
+            float(_longest_strike(np.abs(np.diff(np.asarray(w, float))) <= 1e-9))
+            if len(w) > 1
+            else float(len(w))
+        ),
+        "flatline_fraction": lambda w: (
+            _safe(
+                _longest_strike(np.abs(np.diff(np.asarray(w, float))) <= 1e-9) / len(w)
+            )
+            if len(w) > 1
+            else 0.0
+        ),
+    }
+)
 
 
 # one-line descriptions per extractor — surfaced on the catalog card so the agent can select
 EXTRACTOR_DOC = {
     "mean": "Average value of the window.",
     "std": "Standard deviation (spread).",
-    "min": "Minimum value.", "max": "Maximum value.",
+    "min": "Minimum value.",
+    "max": "Maximum value.",
     "range": "Max minus min (peak-to-peak spread).",
-    "q25": "25th percentile (lower quartile).", "q75": "75th percentile (upper quartile).",
+    "q25": "25th percentile (lower quartile).",
+    "q75": "75th percentile (upper quartile).",
     "kurtosis": "Tailedness/peakedness of the distribution (excess kurtosis).",
     "skew": "Asymmetry of the distribution.",
     "slope": "Linear trend slope over the window.",
@@ -363,22 +470,31 @@ EXTRACTOR_DOC = {
     "abs_diff_mean": "Mean absolute first difference (roughness).",
     "spectral_centroid": "Center of mass of the frequency spectrum (brightness).",
     "dominant_freq_power": "Power of the strongest non-DC frequency.",
-    "var": "Variance of the window.", "median": "Median value (robust center).",
-    "q05": "5th percentile.", "q10": "10th percentile.", "q90": "90th percentile.",
-    "q95": "95th percentile.", "iqr": "Inter-quartile range (robust spread).",
+    "var": "Variance of the window.",
+    "median": "Median value (robust center).",
+    "q05": "5th percentile.",
+    "q10": "10th percentile.",
+    "q90": "90th percentile.",
+    "q95": "95th percentile.",
+    "iqr": "Inter-quartile range (robust spread).",
     "mad": "Median absolute deviation (robust spread).",
-    "mean_abs": "Mean of absolute values.", "sum_abs": "Sum of absolute values.",
-    "rms": "Root-mean-square amplitude.", "abs_energy": "Sum of squared values (total energy).",
+    "mean_abs": "Mean of absolute values.",
+    "sum_abs": "Sum of absolute values.",
+    "rms": "Root-mean-square amplitude.",
+    "abs_energy": "Sum of squared values (total energy).",
     "cv": "Coefficient of variation (std/|mean|).",
     "std_to_mean": "Std divided by mean (relative dispersion).",
     "count_above_mean": "Number of points above the mean.",
     "count_below_mean": "Number of points below the mean.",
     "ratio_above_mean": "Fraction of points above the mean.",
     "count_above_2std": "Number of points beyond 2 std (outliers).",
-    "abs_max": "Maximum absolute value.", "abs_min": "Minimum absolute value.",
+    "abs_max": "Maximum absolute value.",
+    "abs_min": "Minimum absolute value.",
     "intercept": "Mean level (regression intercept proxy).",
-    "autocorr2": "Lag-2 autocorrelation.", "autocorr3": "Lag-3 autocorrelation.",
-    "autocorr5": "Lag-5 autocorrelation.", "autocorr10": "Lag-10 autocorrelation (longer memory).",
+    "autocorr2": "Lag-2 autocorrelation.",
+    "autocorr3": "Lag-3 autocorrelation.",
+    "autocorr5": "Lag-5 autocorrelation.",
+    "autocorr10": "Lag-10 autocorrelation (longer memory).",
     "mean_diff": "Mean of first differences (average step).",
     "mean_2nd_diff": "Mean of second differences (curvature).",
     "abs_2nd_diff_mean": "Mean absolute second difference.",
@@ -414,7 +530,8 @@ EXTRACTOR_DOC = {
     "shape_factor": "RMS/mean-absolute — waveform shape (vibration).",
     "impulse_factor": "Peak/mean-absolute — impulsiveness (bearing faults).",
     "clearance_factor": "Peak/(mean sqrt|x|)^2 — early bearing wear (vibration).",
-    "margin_factor": "Peak-to-peak / RMS.", "form_factor": "RMS / |mean|.",
+    "margin_factor": "Peak-to-peak / RMS.",
+    "form_factor": "RMS / |mean|.",
     "linear_trend_r": "Pearson correlation of value vs time (trend strength).",
     "half_mean_diff": "Mean of 2nd half minus 1st half (drift).",
     "half_std_ratio": "Std of 2nd half / 1st half (variance shift).",
@@ -422,17 +539,23 @@ EXTRACTOR_DOC = {
     "trend_strength": "Normalized trend magnitude (|slope|*n/std).",
     "cumsum_argmax_ratio": "Relative position of the cumulative-sum peak.",
     "cumsum_max": "Maximum of the mean-centered cumulative sum.",
-    "q33": "33rd percentile.", "q66": "66th percentile.",
-    "range_to_std": "Range divided by std.", "mean_square": "Mean of squared values.",
+    "q33": "33rd percentile.",
+    "q66": "66th percentile.",
+    "range_to_std": "Range divided by std.",
+    "mean_square": "Mean of squared values.",
     "abs_sum_changes": "Sum of absolute first differences (total variation).",
-    "max_diff": "Largest single-step increase.", "min_diff": "Largest single-step decrease.",
+    "max_diff": "Largest single-step increase.",
+    "min_diff": "Largest single-step decrease.",
     "var_diff": "Variance of first differences.",
     "positive_diff_ratio": "Fraction of upward steps.",
-    "autocorr4": "Lag-4 autocorrelation.", "autocorr7": "Lag-7 autocorrelation.",
-    "num_peaks": "Count of local maxima.", "num_valleys": "Count of local minima.",
+    "autocorr4": "Lag-4 autocorrelation.",
+    "autocorr7": "Lag-7 autocorrelation.",
+    "num_peaks": "Count of local maxima.",
+    "num_valleys": "Count of local minima.",
     "longest_above_2std": "Longest run beyond 2 std (sustained anomaly).",
     "zero_crossing_rate": "Mean-crossings per sample.",
-    "skew_abs": "Absolute skewness.", "p2p_to_std": "Peak-to-peak / std.",
+    "skew_abs": "Absolute skewness.",
+    "p2p_to_std": "Peak-to-peak / std.",
     "band_q1": "Spectral-energy fraction, quartile band 0-25%.",
     "band_q2": "Spectral-energy fraction, quartile band 25-50%.",
     "band_q3": "Spectral-energy fraction, quartile band 50-75%.",
