@@ -9,7 +9,6 @@ Two entry kinds in one catalog:
 Capabilities:
   read    : get / find_features / list_extractors / search / get_lineage
   write   : register_feature (validated+gated) / update / deprecate / new_version
-            register_extractor / register_extractor_library
   learn   : select_features (FLOps, full library) / select_features_from_catalog (writes importance back) / discover_lookback
 """
 
@@ -166,28 +165,6 @@ def new_version(
     return out
 
 
-# --------------------------------------------------------------------------- #
-# write (extractors — the FLOps library index)
-# --------------------------------------------------------------------------- #
-_EXTRACTOR_CATEGORIES = {
-    "mean": ["Future State Prediction", "Analysis & Inference"],
-    "std": ["Future State Prediction", "Anomaly & Exception Detection"],
-    "min": ["Analysis & Inference"],
-    "max": ["Analysis & Inference"],
-    "range": ["Analysis & Inference"],
-    "q25": ["Future State Prediction"],
-    "q75": ["Future State Prediction"],
-    "kurtosis": ["Anomaly & Exception Detection"],
-    "skew": ["Anomaly & Exception Detection"],
-    "slope": ["Analysis & Inference", "Future State Prediction"],
-    "autocorr1": ["Future State Prediction"],
-    "energy": ["Anomaly & Exception Detection"],
-    "abs_diff_mean": ["Anomaly & Exception Detection"],
-    "spectral_centroid": ["Anomaly & Exception Detection"],
-    "dominant_freq_power": ["Anomaly & Exception Detection"],
-}
-
-
 def register_extractor(store, name: str, scenario_categories: List[str]) -> dict:
     from ..reasoning import feature_selection as fsel
 
@@ -212,19 +189,6 @@ def register_extractor(store, name: str, scenario_categories: List[str]) -> dict
         "created_at": _now(),
     }
     return store.put(COLLECTION, doc)
-
-
-def register_extractor_library(store) -> int:
-    from ..reasoning import feature_selection as fsel
-
-    n = 0
-    for name in fsel.EXTRACTORS:
-        register_extractor(
-            store, name, _EXTRACTOR_CATEGORIES.get(name, ["Analysis & Inference"])
-        )
-        n += 1
-    return n
-
 
 # --------------------------------------------------------------------------- #
 # learn (FLOps selection)

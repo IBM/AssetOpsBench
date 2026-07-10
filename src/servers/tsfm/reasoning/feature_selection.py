@@ -573,22 +573,6 @@ def describe(name: str) -> str:
     return EXTRACTOR_DOC.get(name, f"FLOps extractor '{name}'.")
 
 
-# --------------------------------------------------------------------------- #
-def discover_lookback(series: np.ndarray, max_lw: int = 128) -> int:
-    """Dataset-specific look-back window via dominant spectral period (FLOps: lw from
-    spectral/frequency analysis). Falls back to a sane default."""
-    x = np.asarray(series, float).ravel()
-    x = x - x.mean()
-    if len(x) < 8:
-        return min(8, len(x))
-    sp = np.abs(np.fft.rfft(x))
-    if len(sp) <= 2 or sp[1:].max() < 1e-9:
-        return min(32, len(x) // 2 or 8)
-    k = 1 + int(np.argmax(sp[1:]))  # dominant non-DC bin
-    period = int(round(len(x) / k))
-    return int(max(8, min(max_lw, period)))
-
-
 def _tabulate(series: np.ndarray, lw: int):
     """Slide a window; X = windows[:-1], y = next value (forecasting target)."""
     x = np.asarray(series, float).ravel()
