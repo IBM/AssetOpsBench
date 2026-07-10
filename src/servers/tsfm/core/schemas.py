@@ -119,8 +119,6 @@ class FeatureCard(BaseModel):
     modality: Modality = Modality.timeseries
     invertible: bool = False
 
-    scenario_categories: List[str] = Field(default_factory=list)
-    scenario_types: List[str] = Field(default_factory=list)
     provenance: str = "handwritten"          # handwritten | evolved | library
     method: Optional[str] = None
     parent_feature_id: Optional[str] = None
