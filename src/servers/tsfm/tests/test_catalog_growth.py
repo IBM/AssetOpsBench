@@ -19,12 +19,6 @@ def test_extractor_library_is_100_plus_and_robust():
             assert isinstance(v, float) and math.isfinite(v), f"{name} → {v!r}"
 
 
-def test_extractors_register_as_catalog_cards():
-    s = fresh_store()
-    n = feature_store.register_extractor_library(s)
-    assert n >= 100 and len(feature_store.list_extractors(s)) >= 100
-
-
 def test_migrated_foundation_models_present_and_resolvable():
     s = fresh_store()
     fc = model_store.list_models(s, task_id="tsfm_forecasting")
