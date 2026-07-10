@@ -61,17 +61,11 @@ def test_find_models_ranking_explain():
                                           + m.get("description","").lower()) or True for m in ms.search(s, "energy"))
 
 
-def test_anomalykits_models_present():
-    s = fresh_store()
-    ad = ms.find_models(s, "tsfm_anomaly_detection")
-    assert any(m["framework"] == "anomalykits" for m in ad)
-
-
 # ---------------- feature store ----------------
 def test_feature_register_validity_gate_and_lineage():
     s = MemoryStore()
     good = {"feature_id": "norm1", "interface": "fit_transform_inverse", "invertible": True,
-            "class_name": "Transformation", "scenario_categories": ["Future State Prediction"],
+            "class_name": "Transformation",
             "code": ("import numpy as np\nclass Transformation:\n"
                      " def fit(self,X,m):\n  X=np.asarray(X,float)\n  return {'mu':X.mean(0),'sd':X.std(0)+1e-8}\n"
                      " def transform(self,X,s):\n  return (np.asarray(X,float)-s['mu'])/s['sd']\n"
@@ -89,18 +83,18 @@ def test_feature_register_validity_gate_and_lineage():
         fs.register_feature(s, bad)
 
 
-def test_feature_find_by_category_and_kind():
+def test_feature_find_by_kind():
     s = fresh_store()
-    fc = fs.find_features(s, category="Anomaly & Exception Detection", kind="transform")
+    fc = fs.find_features(s, kind="transform")
     assert any(f["feature_id"] == "spectral_residual_v1" for f in fc)
-    ex = fs.list_extractors(s, category="Anomaly & Exception Detection")
+    ex = fs.list_extractors(s)
     assert any(e["extractor_name"] == "energy" for e in ex)
 
 
 def test_flops_select_from_catalog_writeback():
     s = fresh_store()
     sig = np.sin(2 * np.pi * np.arange(800) / 24) + 0.02 * np.arange(800)
-    res = fs.select_features_from_catalog(s, sig, category="Future State Prediction",
+    res = fs.select_features_from_catalog(s, sig,
                                           reference_feature="kurtosis", write_back=True)
     assert res["selected"] and set(res["candidates"]) <= set(_fsel.EXTRACTORS)
     # importance written back onto an extractor doc

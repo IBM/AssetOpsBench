@@ -1,21 +1,3 @@
-"""TSFM MCP Server — redesigned recipe/catalog surface on the sktime substrate.
-
-House contract (matches the sibling AssetOpsBench servers): a module-level ``mcp`` object and a
-``main()`` entry, spawned over stdio (``tsfm-mcp-server``). Every tool is decorated with
-``@mcp.tool(title=...)``, returns a typed Pydantic result (``Union[XResult, ErrorResult]``), and
-validates its inputs. Bulk time-series data is **never inlined** — it is passed as a FILE POINTER
-(``dataset_path`` in, ``results_file`` out), exactly like the legacy TSFM tools and the IoT data
-model.
-
-One surface — discover components, read evidence, compose & run recipes (forecasting OR anomaly
-via recipe.task; single / ensemble / conformal / tabular / DAG), evaluate with GIFT-Eval, manage
-the catalog. Models & features are DATA in the catalog, not tools (HuggingGPT principle); the
-substrate is sktime end-to-end (no legacy tsfm_public-specific code).
-
-Heavy ML deps (tsfm_public/torch via sktime's foundation adapters) are imported lazily at run
-time; the server starts and exposes the catalog + discovery tools even when they are absent.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -86,8 +68,7 @@ mcp = FastMCP(
 
 _STORE = (
     fresh_store()
-)  # CouchDB (CouchStore) — the catalog + result/run stores live in CouchDB
-
+)  
 
 def _load_target(
     dataset_path: str, timestamp_column: Optional[str], target_columns: List[str]
@@ -208,18 +189,16 @@ def find_models(
 
 @mcp.tool(title="Find Features")
 def find_features(
-    scenario_category: Optional[str] = None,
     target_task: Optional[str] = None,
     target_model: Optional[str] = None,
 ) -> Union[FeaturesResult, ErrorResult]:
     """Browse FEATURE/transform cards (normalization, lag/rolling, catch22, FLOps sets) by
-    scenario category / task / model. A feature is applied before the estimator in a recipe.
+    task / model. A feature is applied before the estimator in a recipe.
     """
     try:
         return FeaturesResult(
             features=feature_store.find_features(
                 _STORE,
-                category=scenario_category,
                 target_task=target_task,
                 target_model=target_model,
             )
@@ -709,13 +688,11 @@ def search_features(
 
 
 @mcp.tool(title="List Extractors")
-def list_extractors(
-    category: Optional[str] = None,
-) -> Union[FeaturesResult, ErrorResult]:
-    """Browse the FLOps extractor library (optionally by scenario category)."""
+def list_extractors() -> Union[FeaturesResult, ErrorResult]:
+    """Browse the FLOps extractor library."""
     try:
         return FeaturesResult(
-            features=feature_store.list_extractors(_STORE, category=category)
+            features=feature_store.list_extractors(_STORE)
         )
     except Exception as exc:
         logger.error("list_extractors failed: %s", exc)

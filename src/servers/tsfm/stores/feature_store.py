@@ -10,8 +10,7 @@ Capabilities:
   read    : get / find_features / list_extractors / search / get_lineage
   write   : register_feature (validated+gated) / update / deprecate / new_version
             register_extractor / register_extractor_library
-  learn   : select_features (FLOps, full library) / select_features_from_catalog (by category,
-            writes importance back) / discover_lookback
+  learn   : select_features (FLOps, full library) / select_features_from_catalog (writes importance back) / discover_lookback
 """
 
 from __future__ import annotations
@@ -41,7 +40,6 @@ def get_feature(store, feature_id: str) -> Optional[dict]:
 
 def find_features(
     store,
-    category: Optional[str] = None,
     target_task: Optional[str] = None,
     target_model: Optional[str] = None,
     kind: str = "transform",
@@ -50,8 +48,6 @@ def find_features(
     sel: Dict = {}
     if status:
         sel["status"] = status
-    if category:
-        sel["scenario_categories"] = {"$elemMatch": category}
     if target_task:
         sel["target_task"] = target_task
     if target_model:
@@ -62,10 +58,8 @@ def find_features(
     return docs
 
 
-def list_extractors(
-    store, category: Optional[str] = None, status: str = "active"
-) -> List[dict]:
-    return find_features(store, category=category, kind="extractor", status=status)
+def list_extractors(store, status: str = "active") -> List[dict]:
+    return find_features(store, kind="extractor", status=status)
 
 
 def search(
@@ -253,16 +247,15 @@ def select_features_from_catalog(
     store,
     series,
     *,
-    category: Optional[str] = None,
     reference_feature: str = "mean",
     cd_margin: float = 0.05,
     write_back: bool = False,
 ) -> dict:
-    """FLOps restricted to the catalog's extractors for `category`; optionally write the
-    importance score back onto each extractor doc's metrics (the catalog 'learns')."""
+    """FLOps over the catalog's extractor library; optionally write the importance score back
+    onto each extractor doc's metrics (the catalog 'learns')."""
     from ..reasoning import feature_selection as fsel
 
-    cands = list_extractors(store, category=category)
+    cands = list_extractors(store)
     names = [
         c["extractor_name"] for c in cands if c.get("extractor_name") in fsel.EXTRACTORS
     ]
