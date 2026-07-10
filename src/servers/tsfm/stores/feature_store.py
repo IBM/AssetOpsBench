@@ -9,7 +9,7 @@ Two entry kinds in one catalog:
 Capabilities:
   read    : get / find_features / list_extractors / search / get_lineage
   write   : register_feature (validated+gated) / update / deprecate / new_version
-  learn   : select_features (FLOps, full library) / select_features_from_catalog (writes importance back) / discover_lookback
+  learn   : select_features (FLOps, full library) / select_features_from_catalog (writes importance back)
 """
 
 from __future__ import annotations
@@ -165,31 +165,6 @@ def new_version(
     return out
 
 
-def register_extractor(store, name: str, scenario_categories: List[str]) -> dict:
-    from ..reasoning import feature_selection as fsel
-
-    doc = {
-        "_id": _id(name),
-        "feature_id": name,
-        "name": f"FLOps extractor: {name}",
-        "description": fsel.describe(name),
-        "kind": "extractor",
-        "extractor_name": name,
-        "modality": "timeseries",
-        "interface": "extract",
-        "output_type": "scalar",
-        "provenance": "library",
-        "method": "FLOps",
-        "scenario_categories": scenario_categories,
-        "metrics": [],
-        "tags": ["flops", "extractor", name],
-        "status": "active",
-        "version": "1",
-        "created_by": "seed",
-        "created_at": _now(),
-    }
-    return store.put(COLLECTION, doc)
-
 # --------------------------------------------------------------------------- #
 # learn (FLOps selection)
 # --------------------------------------------------------------------------- #
@@ -249,8 +224,3 @@ def select_features_from_catalog(
                 )
     return res
 
-
-def discover_lookback(series, max_lw: int = 128) -> int:
-    from ..reasoning import feature_selection as fsel
-
-    return fsel.discover_lookback(series, max_lw=max_lw)
