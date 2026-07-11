@@ -46,6 +46,7 @@ class Metric(BaseModel):
 class ModelCard(BaseModel):
     """A model-store entry. Pointer index: weights live at one of artifact_path / hf_repo /
     remote_endpoint / model_checkpoint (toolkit)."""
+
     model_config = ConfigDict(extra="allow", protected_namespaces=())
 
     model_id: str
@@ -88,8 +89,13 @@ class ModelCard(BaseModel):
 
     @model_validator(mode="after")
     def _resolvable(self):
-        # must be loadable somewhere (else it's a catalog-only stub — allowed but flagged)
-        refs = [self.artifact_path, self.hf_repo, self.remote_endpoint, self.model_checkpoint]
+        # must be loadable somewhere (else it's a catalog-only stub, allowed but flagged)
+        refs = [
+            self.artifact_path,
+            self.hf_repo,
+            self.remote_endpoint,
+            self.model_checkpoint,
+        ]
         object.__setattr__(self, "resolvable", any(refs) or self.source == "toolkit")
         if self.provenance == Provenance.finetuned and not self.base_model_id:
             raise ValueError("finetuned model requires base_model_id (lineage)")
@@ -108,7 +114,8 @@ class Interface(str, Enum):
 
 
 class FeatureCard(BaseModel):
-    """A feature-store entry — an EFE-style fit/transform program stored as code."""
+    """A feature-store entry: an EFE-style fit/transform program stored as code."""
+
     model_config = ConfigDict(extra="allow")
 
     feature_id: str
@@ -116,10 +123,11 @@ class FeatureCard(BaseModel):
     code: str = Field(min_length=10)
     class_name: str = "Transformation"
     name: Optional[str] = None
+    description: Optional[str] = None
     modality: Modality = Modality.timeseries
     invertible: bool = False
 
-    provenance: str = "handwritten"          # handwritten | evolved | library
+    provenance: str = "handwritten"  # handwritten | evolved | library
     method: Optional[str] = None
     parent_feature_id: Optional[str] = None
     generation: int = 0

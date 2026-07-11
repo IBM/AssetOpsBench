@@ -1,6 +1,6 @@
-"""Evidence tools — give the AGENT the facts to reason from. No decisions here.
+"""Evidence tools: give the AGENT the facts to reason from. No decisions here.
 
-These tools answer "what does the data look like?" and "what can the catalog offer?" — the
+These tools answer "what does the data look like?" and "what can the catalog offer?", the
 raw signals an agent needs to choose lookback / context / horizon / channels / pipeline /
 thresholding itself. Deliberately NO recommended values: the reasoning is the agent's job
 (the server must not pre-decide, or the benchmark stops testing the agent).
@@ -14,11 +14,10 @@ import numpy as np
 
 from ..io import window as io
 from ..stores import model_store
-from ..stores import feature_store
 
 
 def profile_series(store, asset_id: str, channels: Optional[List[str]] = None) -> dict:
-    """Factual characterization of a store-backed asset's signal — evidence, not advice."""
+    """Factual characterization of a store-backed asset's signal: evidence, not advice."""
     X, names = io.read_window(asset_id, store=store)
     return _profile_array(np.asarray(X, float), names, ident=asset_id)
 
@@ -44,12 +43,12 @@ def profile_ref(
 
 
 def _profile_array(X: np.ndarray, names: List[str], *, ident: str) -> dict:
-    """Core profiling on a loaded (n, c) array — shared by the store and file-pointer paths."""
+    """Core profiling on a loaded (n, c) array, shared by the store and file-pointer paths."""
     if X.ndim == 1:
         X = X.reshape(-1, 1)
     n, c = X.shape
 
-    # seasonality (dominant spectral period) per channel — DETREND first so a strong
+    # seasonality (dominant spectral period) per channel: DETREND first so a strong
     # linear trend doesn't masquerade as a giant low-frequency "period".
     def _detrend(x):
         t = np.arange(len(x))
@@ -98,7 +97,7 @@ def _profile_array(X: np.ndarray, names: List[str], *, ident: str) -> dict:
 
 
 def available_contexts(store, task_id: str = "tsfm_forecasting") -> dict:
-    """What the model store offers for this task — so the agent can match context to lookback."""
+    """What the model store offers for this task, so the agent can match context to lookback."""
     ms = model_store.list_models(store, task_id=task_id)
     return {
         "task_id": task_id,
@@ -113,23 +112,5 @@ def available_contexts(store, task_id: str = "tsfm_forecasting") -> dict:
                 "usage_modes": m.get("usage_modes"),
             }
             for m in ms
-        ],
-    }
-
-
-def available_features(store, category: Optional[str] = None) -> dict:
-    """Transforms + extractors the agent can choose to apply."""
-    return {
-        "transforms": [
-            {
-                "feature_id": f["feature_id"],
-                "scenario_categories": f.get("scenario_categories"),
-                "invertible": f.get("invertible"),
-            }
-            for f in feature_store.find_features(store, category=category)
-        ],
-        "extractors": [
-            e["extractor_name"]
-            for e in feature_store.list_extractors(store, category=category)
         ],
     }
