@@ -181,3 +181,18 @@ class ExtractResult(BaseModel):
     columns: List[str]                 # feature columns: '<channel>.<extractor>' (or '<extractor>')
     features: List[List[float]]        # n_windows rows x columns (whole-series => 1 row)
     message: str
+
+class ExtractorNamesResult(BaseModel):
+    count: int
+    extractors: List[str]
+
+
+class ExtractorDescription(BaseModel):
+    extractor_name: str
+    description: Optional[str]
+
+
+class DescribeExtractorsResult(BaseModel):
+    extractors: List[ExtractorDescription]
+    unknown: List[str]
+    message: str
