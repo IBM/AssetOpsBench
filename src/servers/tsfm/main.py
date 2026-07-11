@@ -31,6 +31,7 @@ from .core.results_models import (
     ResultRecord,
     RunRecord,
     RunsResult,
+    ExtractResult,
 )
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
 from .core.results_models import CardResult, LineageResult, DataQualityResult
@@ -885,6 +886,50 @@ def evolve_best(
         logger.error("evolve_best failed: %s", exc)
         return ErrorResult(error=str(exc))
 
+@mcp.tool(title="Extract Features")
+def extract_features(
+    dataset_path: str,
+    extractors: List[str],
+    timestamp_column: Optional[str] = None,
+    target_columns: Optional[List[str]] = None,
+    window: Optional[int] = None,
+) -> Union[ExtractResult, ErrorResult]:
+    """Apply the chosen FLOps extractors to a series and RETURN the extracted feature values —
+    raw feature extraction, no model. Pick `extractors` by name from list_extractors.
+    window=None -> one feature vector for the whole series; window=W -> non-overlapping W-length
+    tiles -> a (windows x features) matrix. Multivariate: each target column yields its own
+    '<column>.<extractor>' feature columns."""
+    from ..reasoning import feature_selection as FS
+    import numpy as np
+    import pandas as pd
+
+    if not extractors:
+        return ErrorResult(error="provide at least one extractor name (see list_extractors)")
+    unknown = [e for e in extractors if e not in FS.EXTRACTORS]
+    if unknown:
+        return ErrorResult(error=f"unknown extractor(s): {unknown}. See list_extractors.")
+
+    try:
+        obj = refs.load_series(dataset_path, time_col=timestamp_column, channels=target_columns)
+    except Exception as exc:
+        logger.error("extract_features load failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+    if isinstance(obj, pd.Series):
+        name = obj.name or (target_columns[0] if target_columns else "value")
+        channels = {str(name): np.asarray(obj, dtype=float)}
+    else:
+        channels = {str(c): np.asarray(obj[c], dtype=float) for c in obj.columns}
+
+    cols, F = composition.extract_features(channels, extractors, window=window)
+    return ExtractResult(
+        n_windows=int(F.shape[0]),
+        window=window,
+        columns=cols,
+        features=[[round(float(v), 6) for v in row] for row in F.tolist()],
+        message=(f"extracted {len(cols)} feature column(s) over {F.shape[0]} window(s) "
+                 f"from {len(channels)} channel(s)."),
+    )
 
 def main():
     mcp.run(transport="stdio")

@@ -249,11 +249,6 @@ def _quantile(w, q):
     return float(np.percentile(np.asarray(w, float), q))
 
 
-# ---- the full library: extend the curated 15 toward the FLOps 100+ ----
-def _add(name, fn):
-    EXTRACTORS[name] = fn
-
-
 # distribution / profiling
 EXTRACTORS.update(
     {

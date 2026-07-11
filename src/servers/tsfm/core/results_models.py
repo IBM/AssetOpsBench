@@ -174,3 +174,10 @@ class EvolveTellResult(BaseModel):
 class EvolveBestResult(BaseModel):
     model_config = ConfigDict(extra="allow")
     task: str
+
+class ExtractResult(BaseModel):
+    n_windows: int
+    window: Optional[int]
+    columns: List[str]                 # feature columns: '<channel>.<extractor>' (or '<extractor>')
+    features: List[List[float]]        # n_windows rows x columns (whole-series => 1 row)
+    message: str

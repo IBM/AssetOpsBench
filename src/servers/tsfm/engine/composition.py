@@ -315,6 +315,36 @@ def _as_panel(X):
     return X[:, None, :] if X.ndim == 2 else X
 
 
+def _tile(x, window: Optional[int]) -> np.ndarray:
+    """1D series -> (n_windows, window_len). window None/<=0/>=len => a single whole-series window;
+    otherwise NON-OVERLAPPING tiles of length `window` (trailing remainder dropped)."""
+    x = np.asarray(x, dtype=float)
+    if window is None or window <= 0 or window >= len(x):
+        return x[None, :]
+    n = len(x) // window
+    return x[: n * window].reshape(n, window) if n else x[None, :]
+
+
+def extract_features(channels: Dict[str, Any], extractor_names, window: Optional[int] = None):
+    """Apply named FLOps extractors to each channel's windows.
+    channels: {column_name -> 1D array}. Returns (columns, matrix) where matrix is
+    n_windows x (n_channels * n_extractors); column names are '<channel>.<extractor>' when
+    multivariate, else just '<extractor>'. Whole-series => one row."""
+    from ..reasoning import feature_selection as FS
+
+    multi = len(channels) > 1
+    per = {ch: _tile(x, window) for ch, x in channels.items()}
+    nw = min((W.shape[0] for W in per.values()), default=0)
+    cols, data = [], []
+    for ch, W in per.items():
+        W = W[:nw]
+        for name in extractor_names:
+            fn = FS.EXTRACTORS[name]
+            data.append([float(fn(W[i])) for i in range(nw)])
+            cols.append(f"{ch}.{name}" if multi else name)
+    F = np.nan_to_num(np.column_stack(data)) if data else np.zeros((nw, 0))
+    return cols, F
+
 def _lib_features(X, subset=None):
     """Dependency-free 'FeatureUnion': apply the FLOps extractor library per instance/channel."""
     from ..reasoning import feature_selection as FS
