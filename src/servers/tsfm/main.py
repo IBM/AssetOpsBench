@@ -32,6 +32,9 @@ from .core.results_models import (
     RunRecord,
     RunsResult,
     ExtractResult,
+    ExtractorNamesResult,
+    ExtractorDescription,
+    DescribeExtractorsResult,
 )
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
 from .core.results_models import CardResult, LineageResult, DataQualityResult
@@ -687,18 +690,44 @@ def search_features(
         logger.error("search_features failed: %s", exc)
         return ErrorResult(error=str(exc))
 
-
 @mcp.tool(title="List Extractors")
-def list_extractors() -> Union[FeaturesResult, ErrorResult]:
-    """Browse the FLOps extractor library."""
+def list_extractors() -> Union[ExtractorNamesResult, ErrorResult]:
+    """List the NAMES of every FLOps extractor (compact — no descriptions). The names are
+    mnemonic; shortlist the ones you want, call describe_extractors([...]) to read descriptions
+    for just those, then extract_features(extractors=[...]) to compute them."""
     try:
-        return FeaturesResult(
-            features=feature_store.list_extractors(_STORE)
-        )
+        cards = feature_store.list_extractors(_STORE)
+        names = sorted(c["extractor_name"] for c in cards if c.get("extractor_name"))
+        return ExtractorNamesResult(count=len(names), extractors=names)
     except Exception as exc:
         logger.error("list_extractors failed: %s", exc)
         return ErrorResult(error=str(exc))
 
+@mcp.tool(title="Describe Extractors")
+def describe_extractors(names: List[str]) -> Union[DescribeExtractorsResult, ErrorResult]:
+    """Return name + description for ONLY the given extractor names — use after list_extractors
+    to read descriptions for the handful you're weighing, instead of loading all of them."""
+    if not names:
+        return ErrorResult(error="provide at least one extractor name (see list_extractors)")
+    try:
+        found, unknown = [], []
+        for n in names:
+            card = feature_store.get_feature(_STORE, n)
+            if card and card.get("kind") == "extractor":
+                found.append(
+                    ExtractorDescription(extractor_name=n, description=card.get("description"))
+                )
+            else:
+                unknown.append(n)
+        return DescribeExtractorsResult(
+            extractors=found,
+            unknown=unknown,
+            message=(f"described {len(found)} extractor(s)"
+                     + (f"; unknown: {unknown}" if unknown else "") + "."),
+        )
+    except Exception as exc:
+        logger.error("describe_extractors failed: %s", exc)
+        return ErrorResult(error=str(exc))
 
 @mcp.tool(title="Get Feature Lineage")
 def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:

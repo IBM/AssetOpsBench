@@ -771,8 +771,9 @@ def discover_components(store=None, task: str = "tsfm_forecasting") -> dict:
              "description": f.get("description")}
             for f in feature_store.find_features(store)
         ]
-        out["extractors"] = [
-            {"extractor_name": e["extractor_name"], "description": e.get("description")}
-            for e in feature_store.list_extractors(store)
-        ]
+        _ex = feature_store.list_extractors(store)
+        out["extractors"] = sorted(e["extractor_name"] for e in _ex if e.get("extractor_name"))
+        out["n_extractors"] = len(out["extractors"])
+        # descriptions are intentionally omitted here (222+ features would bloat context) —
+        # the agent shortlists by name, then calls describe_extractors([...]) for the subset.
     return out
