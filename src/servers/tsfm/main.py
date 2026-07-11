@@ -32,10 +32,11 @@ from .core.results_models import (
     RunRecord,
     RunsResult,
     ExtractResult,
-    ExtractorNamesResult,
-    ExtractorDescription,
-    DescribeExtractorsResult,
+    FeatureNamesResult, 
+    FeatureDescription, 
+    DescribeFeaturesResult
 )
+
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
 from .core.results_models import CardResult, LineageResult, DataQualityResult
 from .core.results_models import CharacterizeResult
@@ -668,54 +669,52 @@ def search_features(
         return ErrorResult(error=str(exc))
 
 
-@mcp.tool(title="List Extractors")
-def list_extractors() -> Union[ExtractorNamesResult, ErrorResult]:
-    """List the NAMES of every FLOps extractor (compact — no descriptions). The names are
-    mnemonic; shortlist the ones you want, call describe_extractors([...]) to read descriptions
-    for just those, then extract_features(extractors=[...]) to compute them."""
+@mcp.tool(title="List Features")
+def list_features(kind: Optional[str] = None) -> Union[FeatureNamesResult, ErrorResult]:
+    """List feature NAMES from the catalog (compact — no descriptions). `kind` filters:
+    'extractor' (the FLOps scalar library), 'transform' (EFE preprocessing programs), or omit for
+    all. Shortlist by name, call describe_features([...]) for descriptions, then extract_features(...)
+    (extractors) or use transforms in a recipe."""
+    if kind is not None and kind not in ("extractor", "transform"):
+        return ErrorResult(error="kind must be 'extractor', 'transform', or omitted")
     try:
-        cards = feature_store.list_extractors(_STORE)
-        names = sorted(c["extractor_name"] for c in cards if c.get("extractor_name"))
-        return ExtractorNamesResult(count=len(names), extractors=names)
+        cards = feature_store.find_features(_STORE, kind=kind)   # kind=None -> all feature cards
+        names = sorted(c["feature_id"] for c in cards if c.get("feature_id"))
+        return FeatureNamesResult(count=len(names), kind=kind, features=names)
     except Exception as exc:
-        logger.error("list_extractors failed: %s", exc)
+        logger.error("list_features failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
-@mcp.tool(title="Describe Extractors")
-def describe_extractors(
-    names: List[str],
-) -> Union[DescribeExtractorsResult, ErrorResult]:
-    """Return name + description for ONLY the given extractor names — use after list_extractors
-    to read descriptions for the handful you're weighing, instead of loading all of them.
-    """
+@mcp.tool(title="Describe Features")
+def describe_features(names: List[str]) -> Union[DescribeFeaturesResult, ErrorResult]:
+    """Return kind + name + description for ONLY the given feature names (extractors OR transforms)
+    — use after list_features to read descriptions for the handful you're weighing."""
     if not names:
-        return ErrorResult(
-            error="provide at least one extractor name (see list_extractors)"
-        )
+        return ErrorResult(error="provide at least one feature name (see list_features)")
     try:
         found, unknown = [], []
         for n in names:
             card = feature_store.get_feature(_STORE, n)
-            if card and card.get("kind") == "extractor":
+            if card and card.get("kind") in ("extractor", "transform"):
                 found.append(
-                    ExtractorDescription(
-                        extractor_name=n, description=card.get("description")
+                    FeatureDescription(
+                        feature_id=n,
+                        kind=card.get("kind"),
+                        name=card.get("name"),
+                        description=card.get("description"),
                     )
                 )
             else:
                 unknown.append(n)
-        return DescribeExtractorsResult(
-            extractors=found,
+        return DescribeFeaturesResult(
+            features=found,
             unknown=unknown,
-            message=(
-                f"described {len(found)} extractor(s)"
-                + (f"; unknown: {unknown}" if unknown else "")
-                + "."
-            ),
+            message=(f"described {len(found)} feature(s)"
+                     + (f"; unknown: {unknown}" if unknown else "") + "."),
         )
     except Exception as exc:
-        logger.error("describe_extractors failed: %s", exc)
+        logger.error("describe_features failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 

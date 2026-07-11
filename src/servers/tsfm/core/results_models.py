@@ -182,39 +182,22 @@ class ExtractResult(BaseModel):
     features: List[List[float]]        # n_windows rows x columns (whole-series => 1 row)
     message: str
 
-class ExtractorNamesResult(BaseModel):
+class FeatureNamesResult(BaseModel):
     count: int
-    extractors: List[str]
+    kind: Optional[str]                 # filter applied: "extractor" | "transform" | None (all)
+    features: List[str]
 
 
-class ExtractorDescription(BaseModel):
-    extractor_name: str
-    description: Optional[str]
-
-
-class DescribeExtractorsResult(BaseModel):
-    extractors: List[ExtractorDescription]
-    unknown: List[str]
-    message: str
-
-
-class SearchFeatureHit(BaseModel):
+class FeatureDescription(BaseModel):
     feature_id: str
-    kind: str                       # "extractor" | "transform"
+    kind: str                           # "extractor" | "transform"
     name: Optional[str]
     description: Optional[str]
 
 
-class SearchModelHit(BaseModel):
-    model_id: str
-    description: Optional[str]
-    task_ids: List[str] = []
-
-
-class SearchResult(BaseModel):
-    query: str
-    n_features: int
-    n_models: int
-    features: List[SearchFeatureHit]
-    models: List[SearchModelHit]
+class DescribeFeaturesResult(BaseModel):
+    features: List[FeatureDescription]
+    unknown: List[str]
     message: str
+
+
