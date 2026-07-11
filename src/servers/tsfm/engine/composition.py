@@ -761,13 +761,18 @@ def discover_components(store=None, task: str = "tsfm_forecasting") -> dict:
     if store is not None:
         from ..stores import model_store
         from ..stores import feature_store
-
         models = model_store.list_models(store, task_id=task)
         out["catalog_models"] = [
             {"model_id": m["model_id"], "training_regime": R.training_regime(m)}
             for m in models
         ]
         out["transforms"] = [
-            f["feature_id"] for f in feature_store.find_features(store)
+            {"feature_id": f["feature_id"], "name": f.get("name"),
+             "description": f.get("description")}
+            for f in feature_store.find_features(store)
+        ]
+        out["extractors"] = [
+            {"extractor_name": e["extractor_name"], "description": e.get("description")}
+            for e in feature_store.list_extractors(store)
         ]
     return out
