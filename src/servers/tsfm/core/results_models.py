@@ -196,3 +196,25 @@ class DescribeExtractorsResult(BaseModel):
     extractors: List[ExtractorDescription]
     unknown: List[str]
     message: str
+
+
+class SearchFeatureHit(BaseModel):
+    feature_id: str
+    kind: str                       # "extractor" | "transform"
+    name: Optional[str]
+    description: Optional[str]
+
+
+class SearchModelHit(BaseModel):
+    model_id: str
+    description: Optional[str]
+    task_ids: List[str] = []
+
+
+class SearchResult(BaseModel):
+    query: str
+    n_features: int
+    n_models: int
+    features: List[SearchFeatureHit]
+    models: List[SearchModelHit]
+    message: str

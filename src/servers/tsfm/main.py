@@ -70,9 +70,8 @@ mcp = FastMCP(
     ),
 )
 
-_STORE = (
-    fresh_store()
-)  
+_STORE = fresh_store()
+
 
 def _load_target(
     dataset_path: str, timestamp_column: Optional[str], target_columns: List[str]
@@ -188,27 +187,6 @@ def find_models(
         )
     except Exception as exc:
         logger.error("find_models failed: %s", exc)
-        return ErrorResult(error=str(exc))
-
-
-@mcp.tool(title="Find Features")
-def find_features(
-    target_task: Optional[str] = None,
-    target_model: Optional[str] = None,
-) -> Union[FeaturesResult, ErrorResult]:
-    """Browse FEATURE/transform cards (normalization, lag/rolling, catch22, FLOps sets) by
-    task / model. A feature is applied before the estimator in a recipe.
-    """
-    try:
-        return FeaturesResult(
-            features=feature_store.find_features(
-                _STORE,
-                target_task=target_task,
-                target_model=target_model,
-            )
-        )
-    except Exception as exc:
-        logger.error("find_features failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
@@ -675,13 +653,12 @@ def register_finetuned(
         logger.error("register_finetuned failed: %s", exc)
         return ErrorResult(error=str(exc))
 
-
 # ---- feature store ----
 @mcp.tool(title="Search Features")
 def search_features(
     text: str = "", tags: Optional[List[str]] = None, status: str = "active"
 ) -> Union[FeaturesResult, ErrorResult]:
-    """Free-text/tag search over the feature catalog (id, name, tags)."""
+    """Case-insensitive SUBSTRING search over the feature catalog (id, name, description, tags)."""
     try:
         return FeaturesResult(
             features=feature_store.search(_STORE, text, tags=tags, status=status)
@@ -689,6 +666,7 @@ def search_features(
     except Exception as exc:
         logger.error("search_features failed: %s", exc)
         return ErrorResult(error=str(exc))
+
 
 @mcp.tool(title="List Extractors")
 def list_extractors() -> Union[ExtractorNamesResult, ErrorResult]:
@@ -703,31 +681,43 @@ def list_extractors() -> Union[ExtractorNamesResult, ErrorResult]:
         logger.error("list_extractors failed: %s", exc)
         return ErrorResult(error=str(exc))
 
+
 @mcp.tool(title="Describe Extractors")
-def describe_extractors(names: List[str]) -> Union[DescribeExtractorsResult, ErrorResult]:
+def describe_extractors(
+    names: List[str],
+) -> Union[DescribeExtractorsResult, ErrorResult]:
     """Return name + description for ONLY the given extractor names — use after list_extractors
-    to read descriptions for the handful you're weighing, instead of loading all of them."""
+    to read descriptions for the handful you're weighing, instead of loading all of them.
+    """
     if not names:
-        return ErrorResult(error="provide at least one extractor name (see list_extractors)")
+        return ErrorResult(
+            error="provide at least one extractor name (see list_extractors)"
+        )
     try:
         found, unknown = [], []
         for n in names:
             card = feature_store.get_feature(_STORE, n)
             if card and card.get("kind") == "extractor":
                 found.append(
-                    ExtractorDescription(extractor_name=n, description=card.get("description"))
+                    ExtractorDescription(
+                        extractor_name=n, description=card.get("description")
+                    )
                 )
             else:
                 unknown.append(n)
         return DescribeExtractorsResult(
             extractors=found,
             unknown=unknown,
-            message=(f"described {len(found)} extractor(s)"
-                     + (f"; unknown: {unknown}" if unknown else "") + "."),
+            message=(
+                f"described {len(found)} extractor(s)"
+                + (f"; unknown: {unknown}" if unknown else "")
+                + "."
+            ),
         )
     except Exception as exc:
         logger.error("describe_extractors failed: %s", exc)
         return ErrorResult(error=str(exc))
+
 
 @mcp.tool(title="Get Feature Lineage")
 def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
@@ -915,6 +905,7 @@ def evolve_best(
         logger.error("evolve_best failed: %s", exc)
         return ErrorResult(error=str(exc))
 
+
 @mcp.tool(title="Extract Features")
 def extract_features(
     dataset_path: str,
@@ -933,13 +924,19 @@ def extract_features(
     import pandas as pd
 
     if not extractors:
-        return ErrorResult(error="provide at least one extractor name (see list_extractors)")
+        return ErrorResult(
+            error="provide at least one extractor name (see list_extractors)"
+        )
     unknown = [e for e in extractors if e not in FS.EXTRACTORS]
     if unknown:
-        return ErrorResult(error=f"unknown extractor(s): {unknown}. See list_extractors.")
+        return ErrorResult(
+            error=f"unknown extractor(s): {unknown}. See list_extractors."
+        )
 
     try:
-        obj = refs.load_series(dataset_path, time_col=timestamp_column, channels=target_columns)
+        obj = refs.load_series(
+            dataset_path, time_col=timestamp_column, channels=target_columns
+        )
     except Exception as exc:
         logger.error("extract_features load failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -956,9 +953,12 @@ def extract_features(
         window=window,
         columns=cols,
         features=[[round(float(v), 6) for v in row] for row in F.tolist()],
-        message=(f"extracted {len(cols)} feature column(s) over {F.shape[0]} window(s) "
-                 f"from {len(channels)} channel(s)."),
+        message=(
+            f"extracted {len(cols)} feature column(s) over {F.shape[0]} window(s) "
+            f"from {len(channels)} channel(s)."
+        ),
     )
+
 
 def main():
     mcp.run(transport="stdio")
