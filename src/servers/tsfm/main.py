@@ -242,7 +242,10 @@ def select_features(
     reference_feature: str = "mean",
     cd_margin: float = 0.05,
 ) -> Union[FeatureSelectionResult, ErrorResult]:
-    """FLOps multi-config dynamic feature selection on a series passed as a file pointer."""
+    """FLOps multi-config feature SELECTION: scores the extractor library against the target and
+    returns the SHORTLIST of most-informative extractor names (+ the auto-discovered lookback,
+    reference, and per-scorer detail file). This RANKS/PICKS names — it does not compute values;
+    feed the selected names to extract_features to get the actual feature matrix."""
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
@@ -504,6 +507,10 @@ def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
 
 @mcp.tool(title="Register Feature")
 def register_feature(feature: dict) -> Union[RegisterResult, ErrorResult]:
+    """Register a NEW transform (EFE) feature card — an executable fit/transform program.
+    Requires `feature_id`, `interface` ('fit_transform' | 'fit_transform_inverse'), and `code`
+    (validated + gated by the EFE runner). Extractors are NOT registered here: they are the fixed
+    FLOps scalar library (see list_features(kind='extractor'))."""
     if not feature:
         return ErrorResult(error="feature card is required")
     try:
@@ -527,7 +534,7 @@ def list_models(
     task_id: Optional[str] = None, domain: Optional[str] = None, status: str = "active"
 ) -> Union[ModelsResult, ErrorResult]:
     """List model cards in the catalog (optionally filtered by task / domain). Unranked — the
-    mirror of list_extractors; use find_models / describe_candidates to rank for a task.
+    mirror of list_features; use find_models / describe_candidates to rank for a task.
     """
     if task_id:
         bad = _check_task(task_id)
@@ -659,7 +666,10 @@ def register_finetuned(
 def search_features(
     text: str = "", tags: Optional[List[str]] = None, status: str = "active"
 ) -> Union[FeaturesResult, ErrorResult]:
-    """Case-insensitive SUBSTRING search over the feature catalog (id, name, description, tags)."""
+    """Substring (case-insensitive) search over the FEATURE catalog only — both extractors and
+    transforms — matching id / name / description / tags. Literal substring, NOT semantic: 'spectral'
+    or 'entropy' hit; a concept only implied by wording may not. Use list_features for the full
+    name list; use search_models for the model catalog."""
     try:
         return FeaturesResult(
             features=feature_store.search(_STORE, text, tags=tags, status=status)
@@ -720,7 +730,8 @@ def describe_features(names: List[str]) -> Union[DescribeFeaturesResult, ErrorRe
 
 @mcp.tool(title="Get Feature Lineage")
 def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
-    """A feature's evolution chain (parent / generation / descendants)."""
+    """A feature's evolution chain (parent / generation / descendants). Extractors are a fixed
+    library and return an empty chain; lineage is meaningful only for transforms."""
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
     try:
@@ -732,7 +743,7 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
 
 @mcp.tool(title="Update Feature")
 def update_feature(feature_id: str, fields: dict) -> Union[CardResult, ErrorResult]:
-    """Patch fields on a feature card (status, metrics, tags, …)."""
+    """Patch fields on a feature card (status, description, metrics, …)."""
     if not feature_id.strip() or not fields:
         return ErrorResult(error="feature_id and fields are required")
     try:
@@ -762,7 +773,8 @@ def deprecate_feature(
 def new_feature_version(
     feature_id: str, fields: dict, new_feature_id: Optional[str] = None
 ) -> Union[CardResult, ErrorResult]:
-    """Create a successor version of a feature (EFE lineage); predecessor superseded + linked."""
+    """Create a successor version of a TRANSFORM (EFE) feature; predecessor superseded + linked.
+    Extractors are a fixed library and cannot be versioned."""
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
     try:
@@ -914,7 +926,7 @@ def extract_features(
     window: Optional[int] = None,
 ) -> Union[ExtractResult, ErrorResult]:
     """Apply the chosen FLOps extractors to a series and RETURN the extracted feature values —
-    raw feature extraction, no model. Pick `extractors` by name from list_extractors.
+    raw feature extraction, no model. Pick `extractors` by name from list_features(kind="extractor").
     window=None -> one feature vector for the whole series; window=W -> non-overlapping W-length
     tiles -> a (windows x features) matrix. Multivariate: each target column yields its own
     '<column>.<extractor>' feature columns."""
@@ -924,12 +936,12 @@ def extract_features(
 
     if not extractors:
         return ErrorResult(
-            error="provide at least one extractor name (see list_extractors)"
+            error="provide at least one extractor name (see list_features(kind='extractor'))"
         )
     unknown = [e for e in extractors if e not in FS.EXTRACTORS]
     if unknown:
         return ErrorResult(
-            error=f"unknown extractor(s): {unknown}. See list_extractors."
+            error=f"unknown extractor(s): {unknown}. See list_features(kind='extractor')."
         )
 
     try:
