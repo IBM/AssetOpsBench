@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-# term → (definition, how it relates to the others / which tool exposes it)
+# term -> (definition, how it relates to the others / which tool exposes it)
 TERMS: Dict[str, Dict[str, str]] = {
     "task": {
-        "definition": "a standardized TS-AI problem type (8 total: forecasting, regression, "
-        "classification, anomaly_detection, imputation, evaluation, "
-        "similarity_search, clustering). Defines required inputs, output, eval.",
+        "definition": "a standardized Time Series AI problem type such as forecasting, regression, "
+        "classification, anomaly detection, imputation, evaluation, "
+        "similarity search and clustering. Defines required inputs, output, eval.",
         "tool": "list_tasks",
     },
     "component": {
-        "definition": "any catalog entry you can place in a recipe — a MODEL or a FEATURE. "
+        "definition": "any catalog entry you can place in a recipe: a MODEL or a FEATURE. "
         "Components are DATA (cards), not tools.",
         "tool": "get_component",
     },
@@ -21,19 +21,17 @@ TERMS: Dict[str, Dict[str, str]] = {
         "tool": "find_models",
     },
     "candidate": {
-        "definition": "a model proposed AND ranked for a task (HuggingGPT-style, by description + "
-        "popularity). A shortlist — you still choose.",
+        "definition": "a model proposed and ranked for a task. A shortlist, so you still choose.",
         "tool": "describe_candidates",
     },
     "feature": {
-        "definition": "a transform/extractor card (normalization, lag/rolling, catch22, a "
-        "FLOps-selected set). Applied before the estimator.",
-        "tool": "find_features",
+        "definition": "a transform or extractor card applied before the estimator.",
+        "tool": "list_features / describe_features",
     },
     "transform": {
         "definition": "a feature used as a preprocessing/extraction step inside a recipe; some "
         "are invertible (round-trip back to input space).",
-        "tool": "find_features",
+        "tool": "list_features / describe_features",
     },
     "ensemble": {
         "definition": "a recipe that combines several models (mean / median / weighted / stack).",
@@ -45,7 +43,7 @@ TERMS: Dict[str, Dict[str, str]] = {
         "tool": "run_recipe / run_tabular_recipe / run_plan",
     },
     "training_regime": {
-        "definition": "how much training a model needs: zero_shot (pretrained, no training — the "
+        "definition": "how much training a model needs: zero_shot (pretrained, no training, the "
         "default) | fit_on_series | fine_tune.",
         "tool": "discover_components",
     },
@@ -55,7 +53,7 @@ TERMS: Dict[str, Dict[str, str]] = {
         "tool": "get_component",
     },
     "data_ref": {
-        "definition": "data is passed BY REFERENCE — a file pointer (dataset_path: a CSV/parquet "
+        "definition": "data is passed BY REFERENCE as a file pointer (dataset_path: a CSV/parquet "
         "path or file:// URI), never inlined. Results return as a results_file pointer.",
         "tool": "profile_series / run_recipe",
     },
@@ -80,18 +78,18 @@ TERMS: Dict[str, Dict[str, str]] = {
     },
 }
 
-# the canonical sequence — what to call, in order
+# the canonical sequence: what to call, in order
 WORKFLOW: List[str] = [
-    "1. list_tasks — pick the task (defines inputs/output/eval).",
-    "2. profile_series(dataset_path) — read the data evidence.",
-    "3. discover_components(task) / describe_candidates / find_models / find_features — see the menu.",
-    "4. get_component(id) — read a card + its param_schema; reason the parameters.",
-    "5. author a recipe → run_recipe / run_tabular_recipe / run_plan (zero-shot first).",
-    "6. evaluate (GIFT-Eval) → inspect get_run → revise the recipe and iterate.",
+    "1. list_tasks: pick the task (defines inputs/output/eval).",
+    "2. profile_series(dataset_path): read the data evidence.",
+    "3. discover_components(task) / describe_candidates / find_models / list_features: see the menu.",
+    "4. get_component(id): read a card + its param_schema; reason the parameters.",
+    "5. author a recipe, then run_recipe / run_tabular_recipe / run_plan (zero-shot first).",
+    "6. evaluate (GIFT-Eval), inspect get_run, then revise the recipe and iterate.",
 ]
 
 PRINCIPLES: List[str] = [
-    "Models & features are DATA (catalog cards), not tools — composed via recipes.",
+    "Models & features are DATA (catalog cards), not tools; they are composed via recipes.",
     "Data crosses the boundary as file pointers; results come back as file pointers.",
     "The agent reasons every choice; the server gives evidence + grades, it does not decide.",
     "Zero-shot is the default; fine-tune is an explicit, optional escalation.",
@@ -99,7 +97,7 @@ PRINCIPLES: List[str] = [
 
 
 def glossary() -> dict:
-    """The full vocabulary + workflow + principles — safe to embed anywhere the agent reads."""
+    """The full vocabulary + workflow + principles, safe to embed anywhere the agent reads."""
     return {"terms": TERMS, "workflow": WORKFLOW, "principles": PRINCIPLES}
 
 
