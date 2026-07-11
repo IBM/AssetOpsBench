@@ -714,7 +714,7 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
 
 @mcp.tool(title="Update Feature")
 def update_feature(feature_id: str, fields: dict) -> Union[CardResult, ErrorResult]:
-    """Patch fields on a feature card (status, metrics, tags, scenario_categories, …)."""
+    """Patch fields on a feature card (status, metrics, tags, …)."""
     if not feature_id.strip() or not fields:
         return ErrorResult(error="feature_id and fields are required")
     try:

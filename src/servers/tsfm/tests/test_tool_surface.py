@@ -124,3 +124,44 @@ def test_results_and_runs():
     assert "error" in call("get_run", {"run_id": "nope"})
     runs = call("list_runs", {})
     assert "runs" in runs and "plans" in runs
+
+def _mv_path(n=120):
+    """A 2-channel CSV (timestamp + a + b) for multivariate extraction."""
+    refs._ensure_workdir()
+    t = pd.date_range("2020-01-01", periods=n, freq="h").strftime("%Y-%m-%d %H:%M:%S")
+    df = pd.DataFrame(
+        {"timestamp": t, "a": np.sin(np.arange(n) / 4.0), "b": np.cos(np.arange(n) / 6.0)}
+    )
+    p = os.path.join(refs.WORKDIR, "surf_mv.csv")
+    df.to_csv(p, index=False)
+    return p
+
+
+# ---- extract_features ----
+def test_extract_features_whole_series():
+    r = call("extract_features", {"dataset_path": _iot_ref(120), "timestamp_column": "timestamp",
+                                  "target_columns": ["value"], "extractors": ["mean", "std"]})
+    assert r["n_windows"] == 1                       # whole series -> one row
+    assert r["columns"] == ["mean", "std"]           # single channel -> bare names
+    assert len(r["features"]) == 1 and len(r["features"][0]) == 2
+
+
+def test_extract_features_windowed():
+    r = call("extract_features", {"dataset_path": _iot_ref(120), "timestamp_column": "timestamp",
+                                  "target_columns": ["value"], "extractors": ["mean"], "window": 30})
+    assert r["n_windows"] == 4                        # 120 / 30 non-overlapping tiles
+    assert len(r["features"]) == 4
+
+
+def test_extract_features_multivariate():
+    r = call("extract_features", {"dataset_path": _mv_path(120), "timestamp_column": "timestamp",
+                                  "target_columns": ["a", "b"], "extractors": ["mean"]})
+    assert set(r["columns"]) == {"a.mean", "b.mean"}  # per-channel prefixed columns
+    assert r["n_windows"] == 1
+
+
+def test_extract_features_validation():
+    assert "error" in call("extract_features",
+                           {"dataset_path": _iot_ref(), "extractors": []})            # none picked
+    assert "error" in call("extract_features",
+                           {"dataset_path": _iot_ref(), "extractors": ["not_a_real_extractor"]})
