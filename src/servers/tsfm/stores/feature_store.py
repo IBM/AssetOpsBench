@@ -71,6 +71,7 @@ def search(
             [
                 f.get("feature_id") or "",
                 f.get("name") or "",
+                f.get("description") or "",          # search what the feature MEANS, not just its name
                 " ".join(f.get("tags") or []),
             ]
         ).lower()
