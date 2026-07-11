@@ -470,6 +470,10 @@ EXTRACTORS.update(
     }
 )
 
+from . import feature_extraction as _fe
+for _name, _fn in _fe.REGISTRY.items():
+    EXTRACTORS.setdefault(_name, _fn)
+
 def _tabulate(series: np.ndarray, lw: int):
     """Slide a window; X = windows[:-1], y = next value (forecasting target)."""
     x = np.asarray(series, float).ravel()

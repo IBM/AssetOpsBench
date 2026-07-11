@@ -122,24 +122,6 @@ def length(x, ignore_nan=True):
     return len(x)
 
 
-def mean(x, ignore_nan=True):
-    """
-    Computes mean of an array.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored and aggregates
-        are calculated.
-    Return:
-        float.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    return np.mean(x)
-
-
 def sum_values(x, ignore_nan=True):
     """
     Computes sum of an array.
@@ -192,42 +174,6 @@ def maximum(x, ignore_nan=True):
     return np.max(x)
 
 
-def median(x, ignore_nan=True):
-    """
-    Computes median of an array.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored and aggregates
-        are calculated.
-    Return:
-        float.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    return np.median(x)
-
-
-def std(x, ignore_nan=True):
-    """
-    Computes std of an array.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored and aggregates
-        are calculated.
-    Return:
-        float.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    return np.std(x)
-
-
 def variance(x, ignore_nan=True):
     """
     Computes variance of an array.
@@ -259,40 +205,6 @@ def count(x, ignore_nan=True):
     if ignore_nan:
         x = remove_nan_single_dimensional_array(x)
     return len(x)
-
-
-def skew(x, ignore_nan=True):
-    """
-    Computes skewness of distribution in an array.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored.
-    Return:
-        float.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    return scipy.stats.skew(x)
-
-
-def kurtosis(x, ignore_nan=True):
-    """
-    Computes kurtosis of distribution in an array.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored.
-    Return:
-        float.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    return scipy.stats.kurtosis(x)
 
 
 def quantile(x, q=0.5, ignore_nan=True):
@@ -437,23 +349,6 @@ def trend_slop(x, ignore_nan=True):
     return slope
 
 
-def abs_energy(x, ignore_nan=True):
-    """
-    Computes absolute energy.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored.
-    Return:
-        number.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    return sum(x * x)
-
-
 def mean_abs_change(x, ignore_nan=True):
     """
     Computes mean absolute change.
@@ -469,23 +364,6 @@ def mean_abs_change(x, ignore_nan=True):
     if len(x) < 1:
         return float(np.nan)
     return np.mean(abs(np.diff(x)))
-
-
-def mean_change(x, ignore_nan=True):
-    """
-    Computes mean change.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored.
-    Return:
-        number.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    return np.mean(np.diff(x))
 
 
 def mean_second_derivative_central(x, ignore_nan=True):
@@ -504,43 +382,6 @@ def mean_second_derivative_central(x, ignore_nan=True):
         return float(np.nan)
     diff = (np.roll(x, 1) - 2 * x + np.roll(x, -1)) / 2.0
     return np.mean(diff[1:-1])
-
-
-def count_above_mean(x, ignore_nan=True):
-    """
-    Computes count above mean.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored.
-    Return:
-        integer.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    m = np.mean(x)
-    return np.where(x > m)[0].shape[0]
-
-
-def count_below_mean(x, ignore_nan=True):
-    """
-    Computes count below mean.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        ignore_nan (boolean, optional): if True, then NaN are ignored.
-    Return:
-        integer.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-
-    m = np.mean(x)
-    return np.where(x < m)[0].shape[0]
 
 
 def last_location_of_maximum(x, ignore_nan=True):
@@ -2289,32 +2130,6 @@ def c3(x, lag=None, ignore_nan=True):
     else:
         return np.mean((_roll(x, 2 * -lag) * _roll(x, -lag) * x)[0 : (n - 2 * lag)])
 
-
-def cid_ce(x, normalize=False, ignore_nan=True):
-    """
-    Computes cid ce.
-    Parameters:
-        x (numpy array, required): array of numbers.
-        normalize (boolean): boolean. Default False.
-        ignore_nan (boolean, optional): if True, then NaN are ignored.
-    Return:
-        float.
-    """
-    x = check_single_dimensional_array(x)
-    if ignore_nan:
-        x = remove_nan_single_dimensional_array(x)
-    if len(x) < 1:
-        return float(np.nan)
-    if normalize:
-        s = np.std(x)
-        if s != 0:
-            x = (x - np.mean(x)) / s
-        else:
-            return 0.0
-    x = np.diff(x)
-    return np.sqrt(np.dot(x, x))
-
-
 def ar_coefficient(x, coeff=1, k=None, ignore_nan=True):
     """
     Computes ar coefficient.
@@ -3440,3 +3255,108 @@ def get_symbolicaggregation(
             return list(itertools.chain(*tmpMdl.fit(x).transform(x).tolist()))
     else:
         raise Exception("Not Implemented Error")
+    
+
+import inspect as _inspect
+import math as _math
+import sys as _sys
+ 
+# known stubs / non-scalar-features to exclude even though they probe as scalar
+_REGISTRY_BLACKLIST = {"ar_coefficient"}
+ 
+# fixed-arg variants of param'd features -> (function_name, kwargs). Names avoid the core-111.
+_VARIANTS = {
+    "fe_quantile_10": ("quantile", {"q": 0.10}),
+    "fe_quantile_90": ("quantile", {"q": 0.90}),
+    "fe_c3_lag1": ("c3", {"lag": 1}),
+    "fe_c3_lag2": ("c3", {"lag": 2}),
+    "fe_ratio_beyond_2sigma": ("ratio_beyond_r_sigma", {"r": 2.0}),
+    "fe_ratio_beyond_3sigma": ("ratio_beyond_r_sigma", {"r": 3.0}),
+    "fe_approx_entropy": ("approximate_entropy", {"m": 2, "r": 0.2}),
+    "fe_energy_ratio_chunk1": ("energy_ratio_by_chunks", {"num_segments": 10, "segment_focus": 1}),
+}
+ 
+ 
+def _probe_signal():
+    rng = np.random.default_rng(0)
+    n = 256
+    return (
+        np.sin(2 * np.pi * np.arange(n) / 24) + 0.01 * np.arange(n)
+        + 0.05 * rng.standard_normal(n)
+    ).astype(float)
+ 
+ 
+def _finite_scalar(v):
+    try:
+        a = np.asarray(v)
+        if a.ndim == 0 or a.size == 1:
+            return _math.isfinite(float(a.reshape(-1)[0]))
+    except Exception:
+        pass
+    return False
+ 
+ 
+def _wrap_scalar(fn, kwargs=None):
+    """1D window -> float; nan/exception-safe (returns 0.0 on failure)."""
+    kwargs = kwargs or {}
+ 
+    def _g(w):
+        try:
+            v = fn(np.asarray(w, dtype=float), **kwargs)
+            v = float(np.asarray(v).reshape(-1)[0])
+            return v if _math.isfinite(v) else 0.0
+        except Exception:
+            return 0.0
+ 
+    return _g
+ 
+ 
+def _first_sentence(fn):
+    doc = (fn.__doc__ or "").strip()
+    if not doc:
+        return f"Feature '{fn.__name__}'."
+    line = doc.splitlines()[0].strip()
+    return line.split(". ")[0].rstrip(".") + "."
+ 
+ 
+def build_extractors():
+    """Discover scalar features in this module -> (REGISTRY, DESCRIPTIONS)."""
+    mod = _sys.modules[__name__]
+    x = _probe_signal()
+    reg, desc = {}, {}
+    for name, fn in _inspect.getmembers(mod, _inspect.isfunction):
+        if name.startswith("_") or name in _REGISTRY_BLACKLIST:
+            continue
+        if getattr(fn, "__module__", None) != __name__:
+            continue
+        params = list(_inspect.signature(fn).parameters.values())
+        if not params:
+            continue
+        extra_required = [
+            p for p in params[1:]
+            if p.default is _inspect._empty
+            and p.kind in (p.POSITIONAL_OR_KEYWORD, p.POSITIONAL_ONLY)
+        ]
+        if extra_required:
+            continue                                   # needs params -> use _VARIANTS instead
+        try:
+            v = fn(x)
+        except Exception:
+            continue
+        if _finite_scalar(v):
+            reg[name] = _wrap_scalar(fn)
+            desc[name] = _first_sentence(fn)
+    for vname, (fnname, kwargs) in _VARIANTS.items():
+        fn = getattr(mod, fnname, None)
+        if fn is None:
+            continue
+        reg[vname] = _wrap_scalar(fn, kwargs)
+        desc[vname] = (
+            _first_sentence(fn)
+            + " (" + ", ".join(f"{k}={v}" for k, v in kwargs.items()) + ")"
+        )
+    return reg, desc
+ 
+ 
+# built once at import — the consolidated registry other modules extend EXTRACTORS with.
+REGISTRY, DESCRIPTIONS = build_extractors()
