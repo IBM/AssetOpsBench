@@ -71,7 +71,8 @@ def search(
             [
                 f.get("feature_id") or "",
                 f.get("name") or "",
-                f.get("description") or "",          # search what the feature MEANS, not just its name
+                f.get("description")
+                or "",  # search what the feature MEANS, not just its name
                 " ".join(f.get("tags") or []),
             ]
         ).lower()
@@ -152,6 +153,11 @@ def new_version(
     old = get_feature(store, feature_id)
     if not old:
         raise ValueError(f"no feature {feature_id}")
+    if old.get("kind") != "transform":  # <-- add this guard
+        raise ValueError(
+            f"only transform features are versionable; '{feature_id}' is a "
+            f"{old.get('kind', 'unknown')} — the FLOps extractor library is fixed."
+        )
     nv = dict(old, **fields)
     nv["version"] = str(int(str(old.get("version", "1")).split(".")[0]) + 1)
     nv["feature_id"] = new_feature_id or f"{feature_id}_v{nv['version']}"
@@ -224,4 +230,3 @@ def select_features_from_catalog(
                     },
                 )
     return res
-
