@@ -702,6 +702,10 @@ def search_features(
     transforms, matching id / name / description / tags. Literal substring, NOT semantic: 'spectral'
     or 'entropy' hit; a concept only implied by wording may not. Use list_features for the full
     name list; use search_models for the model catalog."""
+    if not text.strip():
+        return ErrorResult(
+            error="text is required: a substring to search for (use list_features to browse all)"
+        )
     try:
         return FeaturesResult(
             features=feature_store.search(_STORE, text, tags=tags, status=status)
