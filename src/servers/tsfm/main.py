@@ -238,7 +238,7 @@ def profile_series(
 def select_features(
     dataset_path: str,
     channel: str,
-    candidates: List[str],
+    extractors: List[str],
     timestamp_column: Optional[str] = None,
     reference_feature: str = "mean",
     cd_margin: float = 0.05,
@@ -249,7 +249,7 @@ def select_features(
     combining several criteria (correlation, F-test, mutual information, model importance) by mean
     rank, then keep those that beat `reference_feature` by at least `cd_margin`.
 
-    `channel` (required) names the column to analyze - no default column is assumed. `candidates`
+    `channel` (required) names the column to analyze - no default column is assumed. `extractors`
     (required) is the list of extractor names to score: shortlist them first with list_features /
     describe_features, since scoring the whole 220+ library at once is expensive. Returns names
     only - feed the shortlist to extract_features to compute the matrix."""
@@ -257,13 +257,13 @@ def select_features(
         return ErrorResult(error="dataset_path is required")
     if not channel:
         return ErrorResult(error="channel is required (name the column to analyze)")
-    if not candidates:
+    if not extractors:
         return ErrorResult(
-            error="candidates is required: a list of extractor names to score (see list_features)"
+            error="extractors is required: a list of extractor names to score (see list_features)"
         )
     from .reasoning import feature_selection as FS
 
-    unknown = [c for c in candidates if c not in FS.EXTRACTORS]
+    unknown = [c for c in extractors if c not in FS.EXTRACTORS]
     if unknown:
         return ErrorResult(
             error=f"unknown extractor(s): {unknown}. See list_features(kind='extractor')."
@@ -276,7 +276,7 @@ def select_features(
         # score the candidates + the reference feature (so the cd_margin cutoff is meaningful)
         names = list(
             dict.fromkeys(
-                list(candidates)
+                list(extractors)
                 + ([reference_feature] if reference_feature in FS.EXTRACTORS else [])
             )
         )
@@ -541,7 +541,7 @@ def register_feature(feature: dict) -> Union[RegisterResult, ErrorResult]:
     """Register a NEW transform (EFE) feature card: an executable fit/transform program.
     Requires `feature_id`, `interface` ('fit_transform' | 'fit_transform_inverse'), and `code`
     (validated + gated by the EFE runner). Extractors are NOT registered here: they are the fixed
-    FLOps scalar library (see list_features(kind='extractor'))."""
+     scalar library (see list_features(kind='extractor'))."""
     if not feature:
         return ErrorResult(error="feature card is required")
     try:
@@ -714,7 +714,7 @@ def search_features(
 @mcp.tool(title="List Features")
 def list_features(kind: Optional[str] = None) -> Union[FeatureNamesResult, ErrorResult]:
     """List feature NAMES from the catalog (compact, no descriptions). `kind` filters:
-    'extractor' (the FLOps scalar library), 'transform' (EFE preprocessing programs), or omit for
+    'extractor' (the  scalar library), 'transform' (EFE preprocessing programs), or omit for
     all. Shortlist by name, call describe_features([...]) for descriptions, then extract_features(...)
     (extractors) or use transforms in a recipe."""
     if kind is not None and kind not in ("extractor", "transform"):
@@ -807,10 +807,9 @@ def deprecate_feature(
         logger.error("deprecate_feature failed: %s", exc)
         return ErrorResult(error=str(exc))
 
-
 @mcp.tool(title="New Feature Version")
 def new_feature_version(
-    feature_id: str, fields: dict, new_feature_id: Optional[str] = None
+    feature_id: str, fields: Optional[dict] = None, new_feature_id: Optional[str] = None
 ) -> Union[CardResult, ErrorResult]:
     """Create a successor version of a TRANSFORM (EFE) feature; predecessor superseded + linked.
     Extractors are a fixed library and cannot be versioned."""
@@ -960,18 +959,23 @@ def evolve_best(
 def extract_features(
     dataset_path: str,
     extractors: List[str],
+    target_columns: List[str],
     timestamp_column: Optional[str] = None,
-    target_columns: Optional[List[str]] = None,
     window: Optional[int] = None,
 ) -> Union[ExtractResult, ErrorResult]:
-    """Apply the chosen FLOps extractors to a series and RETURN the extracted feature values,
+    """Apply the chosen  extractors to a series and RETURN the extracted feature values,
     raw feature extraction, no model. Pick `extractors` by name from list_features(kind="extractor").
     window=None -> one feature vector for the whole series; window=W -> non-overlapping W-length
     tiles -> a (windows x features) matrix. Multivariate: each target column yields its own
-    '<column>.<extractor>' feature columns."""
+    '<column>.<extractor>' feature columns. target_columns` (required) names the column(s) to extract from - no default is assumed"""
     from .reasoning import feature_selection as FS
     import numpy as np
     import pandas as pd
+
+    if not target_columns:
+        return ErrorResult(
+            error="target_columns is required: name the column(s) to extract from"
+        )
 
     if not extractors:
         return ErrorResult(
