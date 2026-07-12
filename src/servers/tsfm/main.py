@@ -32,9 +32,9 @@ from .core.results_models import (
     RunRecord,
     RunsResult,
     ExtractResult,
-    FeatureNamesResult, 
-    FeatureDescription, 
-    DescribeFeaturesResult
+    FeatureNamesResult,
+    FeatureDescription,
+    DescribeFeaturesResult,
 )
 
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
@@ -64,9 +64,9 @@ mcp = FastMCP(
         "GIFT-Eval). Data is passed as FILE POINTERS (dataset_path); results come back as a "
         "results_file pointer. You reason every parameter; the server gives evidence + grades. "
         "Zero-shot is the default; fine-tune is optional. Forecasting and anomaly both run through "
-        "run_recipe (anomaly via recipe.task). Results hand off downstream — no alerts here.\n\n"
-        "VOCABULARY — " + _glossary.short_glossary() + "\n\n"
-        "WORKFLOW — " + " ".join(_glossary.WORKFLOW) + "\n"
+        "run_recipe (anomaly via recipe.task). Results hand off downstream; no alerts here.\n\n"
+        "VOCABULARY: " + _glossary.short_glossary() + "\n\n"
+        "WORKFLOW: " + " ".join(_glossary.WORKFLOW) + "\n"
         "Call discover_components for the full glossary, the menu, and the recipe blocks."
     ),
 )
@@ -142,7 +142,7 @@ def describe_candidates(
     task_id: str, top_k: int = 5, domain: Optional[str] = None
 ) -> Union[CandidatesResult, ErrorResult]:
     """Ranked CANDIDATE models for a task (HuggingGPT-style, by description + popularity). A
-    candidate is a shortlisted MODEL — you still decide which to use. top_k caps the list.
+    candidate is a shortlisted MODEL; you still decide which to use. top_k caps the list.
     """
     bad = _check_task(task_id)
     if bad:
@@ -193,7 +193,7 @@ def find_models(
 
 @mcp.tool(title="Get Component")
 def get_component(component_id: str) -> Union[ComponentResult, ErrorResult]:
-    """Fetch one COMPONENT by id — a MODEL card or a FEATURE card (it resolves either). For a
+    """Fetch one COMPONENT by id: a MODEL card or a FEATURE card (it resolves either). For a
     model it also returns the `param_schema` (the parameters + hints + ranges you must reason).
     """
     if not component_id.strip():
@@ -218,7 +218,7 @@ def profile_series(
     timestamp_column: Optional[str] = None,
     channels: Optional[List[str]] = None,
 ) -> Union[ProfileResult, ErrorResult]:
-    """EVIDENCE about the data behind a file pointer (dataset_path) — seasonality, stationarity,
+    """EVIDENCE about the data behind a file pointer (dataset_path): seasonality, stationarity,
     channels, length. Facts only, no recommendations: you reason the recipe from these. This is
     the data the param_schema hints depend on (e.g. context_length ≥ 2× dominant_period).
     """
@@ -244,7 +244,7 @@ def select_features(
 ) -> Union[FeatureSelectionResult, ErrorResult]:
     """FLOps multi-config feature SELECTION: scores the extractor library against the target and
     returns the SHORTLIST of most-informative extractor names (+ the auto-discovered lookback,
-    reference, and per-scorer detail file). This RANKS/PICKS names — it does not compute values;
+    reference, and per-scorer detail file). This RANKS/PICKS names; it does not compute values;
     feed the selected names to extract_features to get the actual feature matrix."""
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
@@ -277,7 +277,7 @@ def characterize_series(
     group_rules: Optional[str] = None,
 ) -> Union[CharacterizeResult, ErrorResult]:
     """Describe the SHAPE of a series as structured EVIDENCE for an LLM to reason over (fault,
-    cause, RUL, work-order, …) — it never names a fault. Generic: any signals, any count, any
+    cause, RUL, work-order, …): it never names a fault. Generic: any signals, any count, any
     names. Per channel-group it labels a state (stable / rise / decline / spike / level_shift /
     cessation / oscillation) + rate over changepoint phases, plus the bivariate relation
     (decoupled / co_move / lead_lag) between groups. Grouping is optional and yours to choose:
@@ -507,7 +507,7 @@ def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
 
 @mcp.tool(title="Register Feature")
 def register_feature(feature: dict) -> Union[RegisterResult, ErrorResult]:
-    """Register a NEW transform (EFE) feature card — an executable fit/transform program.
+    """Register a NEW transform (EFE) feature card: an executable fit/transform program.
     Requires `feature_id`, `interface` ('fit_transform' | 'fit_transform_inverse'), and `code`
     (validated + gated by the EFE runner). Extractors are NOT registered here: they are the fixed
     FLOps scalar library (see list_features(kind='extractor'))."""
@@ -533,7 +533,7 @@ def register_feature(feature: dict) -> Union[RegisterResult, ErrorResult]:
 def list_models(
     task_id: Optional[str] = None, domain: Optional[str] = None, status: str = "active"
 ) -> Union[ModelsResult, ErrorResult]:
-    """List model cards in the catalog (optionally filtered by task / domain). Unranked — the
+    """List model cards in the catalog (optionally filtered by task / domain). Unranked; the
     mirror of list_features; use find_models / describe_candidates to rank for a task.
     """
     if task_id:
@@ -567,7 +567,7 @@ def search_models(
 
 @mcp.tool(title="Get Model Lineage")
 def get_model_lineage(model_id: str) -> Union[LineageResult, ErrorResult]:
-    """A model's version chain — what it supersedes / is superseded by (the evolution trail)."""
+    """A model's version chain: what it supersedes / is superseded by (the evolution trail)."""
     if not model_id.strip():
         return ErrorResult(error="model_id is required")
     try:
@@ -661,13 +661,14 @@ def register_finetuned(
         logger.error("register_finetuned failed: %s", exc)
         return ErrorResult(error=str(exc))
 
+
 # ---- feature store ----
 @mcp.tool(title="Search Features")
 def search_features(
     text: str = "", tags: Optional[List[str]] = None, status: str = "active"
 ) -> Union[FeaturesResult, ErrorResult]:
-    """Substring (case-insensitive) search over the FEATURE catalog only — both extractors and
-    transforms — matching id / name / description / tags. Literal substring, NOT semantic: 'spectral'
+    """Substring (case-insensitive) search over the FEATURE catalog only, both extractors and
+    transforms, matching id / name / description / tags. Literal substring, NOT semantic: 'spectral'
     or 'entropy' hit; a concept only implied by wording may not. Use list_features for the full
     name list; use search_models for the model catalog."""
     try:
@@ -681,14 +682,16 @@ def search_features(
 
 @mcp.tool(title="List Features")
 def list_features(kind: Optional[str] = None) -> Union[FeatureNamesResult, ErrorResult]:
-    """List feature NAMES from the catalog (compact — no descriptions). `kind` filters:
+    """List feature NAMES from the catalog (compact, no descriptions). `kind` filters:
     'extractor' (the FLOps scalar library), 'transform' (EFE preprocessing programs), or omit for
     all. Shortlist by name, call describe_features([...]) for descriptions, then extract_features(...)
     (extractors) or use transforms in a recipe."""
     if kind is not None and kind not in ("extractor", "transform"):
         return ErrorResult(error="kind must be 'extractor', 'transform', or omitted")
     try:
-        cards = feature_store.find_features(_STORE, kind=kind)   # kind=None -> all feature cards
+        cards = feature_store.find_features(
+            _STORE, kind=kind
+        )  # kind=None -> all feature cards
         names = sorted(c["feature_id"] for c in cards if c.get("feature_id"))
         return FeatureNamesResult(count=len(names), kind=kind, features=names)
     except Exception as exc:
@@ -699,9 +702,11 @@ def list_features(kind: Optional[str] = None) -> Union[FeatureNamesResult, Error
 @mcp.tool(title="Describe Features")
 def describe_features(names: List[str]) -> Union[DescribeFeaturesResult, ErrorResult]:
     """Return kind + name + description for ONLY the given feature names (extractors OR transforms)
-    — use after list_features to read descriptions for the handful you're weighing."""
+    Use after list_features to read descriptions for the handful you're weighing."""
     if not names:
-        return ErrorResult(error="provide at least one feature name (see list_features)")
+        return ErrorResult(
+            error="provide at least one feature name (see list_features)"
+        )
     try:
         found, unknown = [], []
         for n in names:
@@ -720,8 +725,11 @@ def describe_features(names: List[str]) -> Union[DescribeFeaturesResult, ErrorRe
         return DescribeFeaturesResult(
             features=found,
             unknown=unknown,
-            message=(f"described {len(found)} feature(s)"
-                     + (f"; unknown: {unknown}" if unknown else "") + "."),
+            message=(
+                f"described {len(found)} feature(s)"
+                + (f"; unknown: {unknown}" if unknown else "")
+                + "."
+            ),
         )
     except Exception as exc:
         logger.error("describe_features failed: %s", exc)
@@ -902,7 +910,7 @@ def evolve_tell(
 def evolve_best(
     task: str, kind: Optional[str] = None, top_k: int = 5
 ) -> Union[EvolveBestResult, ErrorResult]:
-    """The current elites (best program per behaviour cell) for a task — the evolved frontier."""
+    """The current elites (best program per behaviour cell) for a task: the evolved frontier."""
     bad = _check_task(task)
     if bad:
         return ErrorResult(error=bad)
@@ -925,7 +933,7 @@ def extract_features(
     target_columns: Optional[List[str]] = None,
     window: Optional[int] = None,
 ) -> Union[ExtractResult, ErrorResult]:
-    """Apply the chosen FLOps extractors to a series and RETURN the extracted feature values —
+    """Apply the chosen FLOps extractors to a series and RETURN the extracted feature values,
     raw feature extraction, no model. Pick `extractors` by name from list_features(kind="extractor").
     window=None -> one feature vector for the whole series; window=W -> non-overlapping W-length
     tiles -> a (windows x features) matrix. Multivariate: each target column yields its own
