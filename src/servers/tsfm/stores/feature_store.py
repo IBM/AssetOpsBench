@@ -14,6 +14,7 @@ Capabilities:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -28,6 +29,13 @@ def _now():
 
 def _id(fid):
     return f"feature:{fid}"
+
+
+def _next_version(v) -> str:
+    """Bump a version string robustly: take its leading integer (else 1) and add 1. Handles
+    non-numeric ('r2') and null versions without crashing on int()."""
+    head = re.match(r"\d+", str(v or "1"))
+    return str((int(head.group()) if head else 1) + 1)
 
 
 # --------------------------------------------------------------------------- #
@@ -159,7 +167,7 @@ def new_version(
             f"{old.get('kind', 'unknown')}; the FLOps extractor library is fixed."
         )
     nv = dict(old, **fields)
-    nv["version"] = str(int(str(old.get("version", "1")).split(".")[0]) + 1)
+    nv["version"] = _next_version(old.get("version"))
     nv["feature_id"] = new_feature_id or f"{feature_id}_v{nv['version']}"
     nv["parent_feature_id"] = feature_id
     nv["generation"] = int(old.get("generation", 0)) + 1
