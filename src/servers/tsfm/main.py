@@ -39,6 +39,7 @@ from .core.results_models import (
     FeatureCountResult,
     ModelCountResult,
     ResolveResult,
+    DomainsResult
 )
 
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
@@ -140,15 +141,32 @@ def discover_components(
         logger.error("discover_components failed: %s", exc)
         return ErrorResult(error=str(exc))
 
+@mcp.tool(title="List Domains")
+def list_domains(task_id: Optional[str] = None) -> Union[DomainsResult, ErrorResult]:
+    """The distinct domains present in the model catalog (the valid values for the `domain` filter
+    of list_models / find_models / describe_candidates), each with its model count. Optionally
+    scoped to a task."""
+    if task_id:
+        bad = _check_task(task_id)
+        if bad:
+            return ErrorResult(error=bad)
+    try:
+        counts: dict = {}
+        for mdl in model_store.list_models(_STORE, task_id=task_id):
+            d = mdl.get("domain") or "unspecified"
+            counts[d] = counts.get(d, 0) + 1
+        return DomainsResult(domains=dict(sorted(counts.items())))
+    except Exception as exc:
+        logger.error("list_domains failed: %s", exc)
+        return ErrorResult(error=str(exc))
 
 @mcp.tool(title="Describe Candidates")
 def describe_candidates(
     task_id: str, top_k: int = 5, domain: Optional[str] = None
 ) -> Union[CandidatesResult, ErrorResult]:
     """Ranked CANDIDATE models for a task (HuggingGPT-style shortlist, ranked by eval quality,
-             lower MAE first). A
-    candidate is a shortlisted MODEL; you still decide which to use. top_k caps the list.
-    """
+    lower MAE first). A candidate is a shortlisted MODEL; you still decide which to use; top_k
+    caps the list."""
     bad = _check_task(task_id)
     if bad:
         return ErrorResult(error=bad)
@@ -173,9 +191,9 @@ def find_models(
     domain: Optional[str] = None,
     top_k: int = 5,
 ) -> Union[ModelsResult, ErrorResult]:
-    """Filter the MODEL catalog for a task → ranked shortlist. A model is an estimator card; use
-    get_component(model_id) to read its full card + param_schema before composing a recipe.
-    """
+    """Filter the MODEL catalog for a task, ranked shortlist. Filters: `domain` (exact),
+    `min_context_length` / `prediction_length` (models lacking that field are excluded, e.g.
+    classical models have no context_length). A model is an estimator card."""
     bad = _check_task(task_id)
     if bad:
         return ErrorResult(error=bad)

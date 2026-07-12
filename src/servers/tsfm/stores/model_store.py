@@ -91,7 +91,7 @@ def find_models(
     context → fewer-params proxy (shorter id). With explain=True, attaches a `_rank` reason.
     """
     cands = list_models(
-        store, task_id=task_id, domain=None, modality=modality, usage_mode=usage_mode
+        store, task_id=task_id, domain=domain, modality=modality, usage_mode=usage_mode
     )
 
     def ok(m):
