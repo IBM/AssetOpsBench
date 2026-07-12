@@ -184,9 +184,10 @@ def new_version(
 # learn (FLOps selection)
 # --------------------------------------------------------------------------- #
 def select_features(
-    series, *, reference_feature: str = "mean", lookback=None, cd_margin=0.05
+    series, *, reference_feature: str = "mean", lookback=None, cd_margin=0.05, extractors=None
 ):
-    """FLOps over the full library (no store needed); backward-compatible."""
+    """Multi-config feature selection on a series (self-supervised, one-step-ahead). `extractors`
+    optionally restricts scoring to a candidate subset; None scores the full library."""
     from ..reasoning import feature_selection as fsel
 
     return fsel.select_features(
@@ -194,6 +195,7 @@ def select_features(
         reference_feature=reference_feature,
         lookback=lookback,
         cd_margin=cd_margin,
+        extractors=extractors,
     )
 
 

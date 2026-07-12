@@ -234,28 +234,60 @@ def profile_series(
         return ErrorResult(error=str(exc))
 
 
-@mcp.tool(title="Select Features (FLOps)")
+@mcp.tool(title="Select Features")
 def select_features(
     dataset_path: str,
+    channel: str,
+    candidates: List[str],
     timestamp_column: Optional[str] = None,
-    target_column: Optional[str] = None,
     reference_feature: str = "mean",
     cd_margin: float = 0.05,
 ) -> Union[FeatureSelectionResult, ErrorResult]:
-    """FLOps multi-config feature SELECTION: scores the extractor library against the target and
-    returns the SHORTLIST of most-informative extractor names (+ the auto-discovered lookback,
-    reference, and per-scorer detail file). This RANKS/PICKS names; it does not compute values;
-    feed the selected names to extract_features to get the actual feature matrix."""
+    """Rank a CANDIDATE set of extractors on one series and return the shortlist worth keeping.
+    Method: self-supervised one-step-ahead forecasting - slide a window over the series and score
+    each candidate by how well the window's features predict the NEXT value (no labels needed),
+    combining several criteria (correlation, F-test, mutual information, model importance) by mean
+    rank, then keep those that beat `reference_feature` by at least `cd_margin`.
+
+    `channel` (required) names the column to analyze - no default column is assumed. `candidates`
+    (required) is the list of extractor names to score: shortlist them first with list_features /
+    describe_features, since scoring the whole 220+ library at once is expensive. Returns names
+    only - feed the shortlist to extract_features to compute the matrix."""
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
-    try:
-        chans = [target_column] if target_column else None
-        obj = refs.load_series(dataset_path, time_col=timestamp_column, channels=chans)
-        series = (obj.iloc[:, 0] if isinstance(obj, pd.DataFrame) else obj).to_numpy()
-        res = feature_store.select_features(
-            series, reference_feature=reference_feature, cd_margin=cd_margin
+    if not channel:
+        return ErrorResult(error="channel is required (name the column to analyze)")
+    if not candidates:
+        return ErrorResult(
+            error="candidates is required: a list of extractor names to score (see list_features)"
         )
-        detail = refs.write_json(res, name="flops_select")
+    from .reasoning import feature_selection as FS
+
+    unknown = [c for c in candidates if c not in FS.EXTRACTORS]
+    if unknown:
+        return ErrorResult(
+            error=f"unknown extractor(s): {unknown}. See list_features(kind='extractor')."
+        )
+    try:
+        obj = refs.load_series(
+            dataset_path, time_col=timestamp_column, channels=[channel]
+        )
+        series = (obj.iloc[:, 0] if isinstance(obj, pd.DataFrame) else obj).to_numpy()
+        # score the candidates + the reference feature (so the cd_margin cutoff is meaningful)
+        names = list(
+            dict.fromkeys(
+                list(candidates)
+                + ([reference_feature] if reference_feature in FS.EXTRACTORS else [])
+            )
+        )
+        subset = {n: FS.EXTRACTORS[n] for n in names}
+        res = feature_store.select_features(
+            series,
+            reference_feature=reference_feature,
+            cd_margin=cd_margin,
+            extractors=subset,
+        )
+        detail = refs.write_json(res, name="feature_select")
         return FeatureSelectionResult(
             selected=res["selected"],
             lookback=res["lookback"],
@@ -266,7 +298,6 @@ def select_features(
     except Exception as exc:
         logger.error("select_features failed: %s", exc)
         return ErrorResult(error=str(exc))
-
 
 @mcp.tool(title="Characterize Series (pattern evidence)")
 def characterize_series(
