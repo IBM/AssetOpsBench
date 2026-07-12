@@ -696,7 +696,7 @@ def register_finetuned(
 # ---- feature store ----
 @mcp.tool(title="Search Features")
 def search_features(
-    text: str = "", tags: Optional[List[str]] = None, status: str = "active"
+    text: str, tags: Optional[List[str]] = None, status: str = "active"
 ) -> Union[FeaturesResult, ErrorResult]:
     """Substring (case-insensitive) search over the FEATURE catalog only, both extractors and
     transforms, matching id / name / description / tags. Literal substring, NOT semantic: 'spectral'
