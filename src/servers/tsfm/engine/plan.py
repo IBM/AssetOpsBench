@@ -23,7 +23,7 @@ import pandas as pd
 
 from ..io import refs as io_refs
 from ..engine import composition as C
-from ..eval import gifteval as G
+from ..eval import forecast_eval as G
 
 
 def _now():

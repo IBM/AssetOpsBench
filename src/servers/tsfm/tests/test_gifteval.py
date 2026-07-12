@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 import numpy as np
 from ..core.store import MemoryStore
-from ..eval import gifteval as G
+from ..eval import forecast_eval as G
 
 NF = "sktime.forecasting.naive.NaiveForecaster"
 TR = "sktime.forecasting.trend.TrendForecaster"

@@ -44,7 +44,7 @@ from .reasoning import dataquality as _dq
 from .io import refs
 from .stores import model_store, feature_store, results
 from .engine import composition, plan, evolve
-from .eval import gifteval
+from .eval import forecast_eval
 from .reasoning import param_space, profile, patterns
 
 load_dotenv()
@@ -479,7 +479,7 @@ def evaluate(recipe: dict, configs: List[dict]) -> Union[EvaluateResult, ErrorRe
     if not configs:
         return ErrorResult(error="configs must not be empty")
     try:
-        res = gifteval.evaluate_recipe(_STORE, recipe, configs)
+        res = forecast_eval.evaluate_recipe(_STORE, recipe, configs)
         results_file = refs.write_json(res, name="gifteval")
         return EvaluateResult(
             status="success",

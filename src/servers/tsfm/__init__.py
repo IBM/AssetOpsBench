@@ -9,7 +9,7 @@ Layered package:
               feature_selection (FLOps)
   engine/     composition, plan,             — the recipe engine (the pipeline is composed)
               feature_runner, evolve
-  eval/       gifteval                       — GIFT-Eval scoring + leaderboard
+  eval/       forecast_eval                  - GIFT-Eval-style scoring + leaderboard
   io/         refs (file pointers), window   — data I/O
   main.py     the MCP tool surface           — config.py  the env knobs
 

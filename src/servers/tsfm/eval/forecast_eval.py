@@ -1,15 +1,17 @@
-"""gifteval.py — GIFT-Eval-native evaluation for the composition loop.
+"""forecast_eval.py: multi-config forecasting evaluation for the composition loop.
 
-Adopts the Salesforce GIFT-Eval protocol (arXiv:2410.10393) as the server's scoring backbone:
-  * many CONFIGS = (dataset × frequency × horizon × {uni|multi}), not one test;
-  * point metric **MASE** + probabilistic metric **CRPS**;
-  * each config NORMALIZED by a **seasonal-naïve** baseline — which is exactly our Zero Model;
-  * aggregate across configs by the **geometric mean** of the normalized scores;
-  * a **leaderboard** that ranks recipes per config (by CRPS) and reports the **mean rank**
-    (so no single dataset dominates).
+A generic, seasonal-naive-normalized forecasting scorer. Its scoring conventions follow the
+Salesforce GIFT-Eval protocol (arXiv:2410.10393); it uses none of the GIFT-Eval datasets or
+package, only the methodology:
+  * many CONFIGS = (dataset x frequency x horizon x {uni|multi}), not one test;
+  * point metric MASE + probabilistic metric CRPS;
+  * each config NORMALIZED by a seasonal-naive baseline (our Zero Model);
+  * aggregate across configs by the geometric mean of the normalized scores;
+  * a leaderboard that ranks recipes per config and reports the mean rank
+    (so no single config dominates).
 
 So the agent's mix-and-match / ensemble search (composition.py) is judged GIFT-Eval style:
-better aggregate-normalized CRPS/MASE and better mean rank — robust, scale-free, multi-config.
+better aggregate-normalized CRPS/MASE and better mean rank; robust, scale-free, multi-config.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ def _mase(y_true, y_pred, y_train, sp: int) -> float:
 
 
 def _crps_from_quantiles(y_true, qdf: pd.DataFrame, levels: List[float]) -> float:
-    """Empirical CRPS via the quantile (pinball) decomposition: CRPS ≈ 2·mean_k pinball_k."""
+    """Empirical CRPS via the quantile (pinball) decomposition: CRPS ~= 2 * mean_k pinball_k."""
     y = np.asarray(y_true, float).ravel()
     tot = 0.0
     for a in levels:
@@ -119,18 +121,27 @@ def _geomean(vals: List[float]) -> Optional[float]:
     return round(float(np.exp(np.mean(np.log(vals)))), 4) if vals else None
 
 
-def evaluate_recipe(store, recipe: dict, configs: List[dict]) -> dict:
-    """GIFT-Eval a recipe across configs: per-config normalized MASE/CRPS + geo-mean aggregate.
+def evaluate_recipe(
+    store, recipe: dict, configs: List[dict], *, baselines: Optional[List[dict]] = None
+) -> dict:
+    """Score a recipe across configs: per-config normalized MASE/CRPS + geo-mean aggregate.
 
     config = {"name", "y", "fh", "sp"}. Normalized score = recipe_metric / seasonal_naive_metric
-    (so <1 means 'beats seasonal naive', exactly GIFT-Eval's relative reporting)."""
+    (so <1 means 'beats seasonal naive', exactly the relative reporting GIFT-Eval uses).
+    `baselines` optionally supplies the precomputed seasonal-naive scores per config (they are
+    recipe-independent), so a leaderboard sweep computes each baseline once instead of per recipe.
+    """
     from ..engine import composition as C
 
     bf = lambda r: C.build_forecaster(r, store)
     rows, n_mase, n_crps = [], [], []
-    for cfg in configs:
+    for i, cfg in enumerate(configs):
         y = pd.Series(np.asarray(cfg["y"], float))
-        sn = seasonal_naive_scores(y, fh=cfg["fh"], sp=cfg["sp"])
+        sn = (
+            baselines[i]
+            if baselines is not None
+            else seasonal_naive_scores(y, fh=cfg["fh"], sp=cfg["sp"])
+        )
         sc = evaluate_config(bf, recipe, y, fh=cfg["fh"], sp=cfg["sp"])
         nm = round(sc["mase"] / sn["mase"], 4) if sn["mase"] else None
         nc = round(sc["crps"] / sn["crps"], 4) if (sc["crps"] and sn["crps"]) else None
@@ -161,7 +172,18 @@ def leaderboard(
     store, recipes: Dict[str, dict], configs: List[dict], by: str = "norm_crps"
 ) -> dict:
     """Rank recipes per config (lower=better) and report the MEAN RANK (GIFT-Eval aggregation)."""
-    evals = {name: evaluate_recipe(store, r, configs) for name, r in recipes.items()}
+    # the seasonal-naive baseline is recipe-independent: compute it once per config and reuse it
+    # across every recipe (avoids an O(recipes x configs) recompute).
+    baselines = [
+        seasonal_naive_scores(
+            pd.Series(np.asarray(cfg["y"], float)), fh=cfg["fh"], sp=cfg["sp"]
+        )
+        for cfg in configs
+    ]
+    evals = {
+        name: evaluate_recipe(store, r, configs, baselines=baselines)
+        for name, r in recipes.items()
+    }
     fallback = "norm_mase" if by == "norm_crps" else "norm_crps"
     ranks = {name: [] for name in recipes}
     for i, cfg in enumerate(configs):
