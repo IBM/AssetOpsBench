@@ -225,3 +225,6 @@ class ResolveResult(BaseModel):
     sktime_class: Optional[str] = None
     training_regime: Optional[str] = None
     weights_from: Optional[str] = None
+
+class DomainsResult(BaseModel):
+    domains: dict
