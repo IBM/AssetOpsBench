@@ -53,7 +53,7 @@ def test_new_model_version_and_finetuned():
 # ---- feature store ----
 def test_search_and_list_extractors():
     assert call("search_features", {"text": "normalization"})["features"]
-    assert len(call("list_extractors", {})["features"]) >= 100
+    assert len(call("list_features", {"kind": "extractor"})["features"]) >= 100
 
 
 def test_feature_lineage_update_version_deprecate():

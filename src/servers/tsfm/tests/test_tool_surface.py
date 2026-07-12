@@ -53,8 +53,8 @@ def test_describe_candidates_error():
     assert "error" in call("describe_candidates", {"task_id": ""})
 
 
-def test_find_features_ok():
-    assert "features" in call("find_features", {})
+def test_list_features_ok():
+    assert "features" in call("list_features", {"kind": "extractor"})
 
 
 def test_get_component_ok_and_error():
