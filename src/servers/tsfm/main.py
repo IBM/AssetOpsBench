@@ -969,7 +969,7 @@ def extract_features(
     window=None -> one feature vector for the whole series; window=W -> non-overlapping W-length
     tiles -> a (windows x features) matrix. Multivariate: each target column yields its own
     '<column>.<extractor>' feature columns."""
-    from ..reasoning import feature_selection as FS
+    from .reasoning import feature_selection as FS
     import numpy as np
     import pandas as pd
 
