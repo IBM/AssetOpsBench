@@ -72,6 +72,12 @@ class ModelCard(BaseModel):
     remote_endpoint: Optional[str] = None
     pipeline_type: Optional[str] = None
 
+    # sktime resolution + agent-reasoned config (read by resolver / param_space / composition)
+    sktime_class: Optional[str] = None
+    params: Dict[str, Any] = Field(default_factory=dict)
+    param_hints: Dict[str, Any] = Field(default_factory=dict)
+    training_regime: Optional[str] = None
+
     metrics: List[Metric] = Field(default_factory=list)
     trained_on: Optional[Any] = None
     tags: List[str] = Field(default_factory=list)
