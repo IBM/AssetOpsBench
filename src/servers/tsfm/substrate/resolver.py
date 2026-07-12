@@ -1,4 +1,4 @@
-"""sktime_resolver.py — the model/feature store on top of sktime (the substrate).
+"""resolver.py: the model/feature store on top of sktime (the substrate).
 
 Key decision: do NOT hand-roll an estimator/transform contract. Adopt sktime's scitype +
 tag + registry system. A catalog card is just a *pointer* to an sktime estimator class + its
@@ -8,7 +8,7 @@ clusterer.predict). Heterogeneous foundation-model code paths disappear: every T
 Chronos, MOIRAI, TimesFM, MOMENT, TimeMoE, PatchTST, …) is a `BaseForecaster` in sktime.
 
 Our catalog (CouchDB) is a *superset* of sktime's in-memory registry: it also holds
-not-installed / remote / fine-tuned models with provenance, lineage, metrics — and is
+not-installed / remote / fine-tuned models with provenance, lineage, metrics, and is
 agent-queryable and state-exportable (#394). sktime supplies fit/predict/pipeline/splitter/
 metric; we supply catalog + selection (T-Daub) + reasoning + persistence + MCP.
 
@@ -38,17 +38,6 @@ TASK_TO_SCITYPE = {
     "tsfm_clustering": "clusterer",
     "tsfm_similarity_search": "transformer",  # feature/embedding transformer + distances
     "tsfm_evaluation": "metric",  # metric + splitter (sktime.evaluate)
-}
-
-# scitype -> the verb to call after fit
-_VERB = {
-    "forecaster": "predict",
-    "regressor": "predict",
-    "classifier": "predict",
-    "clusterer": "predict",
-    "detector": "predict",
-    "transformer": "transform",
-    "metric": None,
 }
 
 # Marker key: a param value that is a dict carrying this key is a nested estimator spec.
@@ -142,7 +131,7 @@ def training_regime(card: dict) -> str:
 
     The agent reads this to pick the cheapest viable option. A pretrained foundation model is
     zero_shot by default (fit() only loads weights + sets context; it does NOT train on the
-    target) — unless the recipe passes fine-tune params, which makes it fine_tune. Everything
+    target) unless the recipe passes fine-tune params, which makes it fine_tune. Everything
     else (AutoARIMA/ETS/Theta/reduction) is fit_on_series: cheap parameter estimation on the
     series' own history, no separate training set. An explicit card `training_regime` wins.
     """
@@ -153,23 +142,3 @@ def training_regime(card: dict) -> str:
         params = card.get("params") or {}
         return "fine_tune" if any(k in params for k in _FT_KEYS) else "zero_shot"
     return "fit_on_series"
-
-
-def run(card: dict, task_id: str, *, y=None, X=None, fh=None):
-    """Fit + run an sktime estimator via its scitype verb. Returns the native sktime output."""
-    scitype = TASK_TO_SCITYPE.get(task_id)
-    est = resolve(card)
-    verb = _VERB.get(scitype)
-    if scitype == "forecaster":
-        est.fit(y, X=X, fh=fh) if X is not None else est.fit(y, fh=fh)
-        return est.predict(fh=fh)
-    if scitype in ("classifier", "regressor", "clusterer"):
-        est.fit(X, y)
-        return getattr(est, verb)(X)
-    if scitype == "detector":
-        est.fit(X if X is not None else y)
-        return est.predict(X if X is not None else y)
-    if scitype == "transformer":
-        est.fit(y if y is not None else X)
-        return est.transform(y if y is not None else X)
-    raise ValueError(f"no runner for scitype '{scitype}'")
