@@ -264,15 +264,22 @@ def register_finetuned(
     metrics: Optional[list] = None,
     overwrite: bool = True,
 ) -> dict:
-    """Agent-decided write-back: point the catalog at a fine-tune checkpoint location."""
+    """Register a fine-tuned model that points the catalog at a checkpoint. Inherits the sktime
+    wrapper class from the base model and sets params.model_path to the checkpoint, so the
+    fine-tuned weights are resolvable (loaded from checkpoint_path at fit), with lineage to base."""
+    base = get_model(store, base_model_id) or {}
+    sktime_class = base.get("sktime_class") or "sktime.forecasting.ttm.TinyTimeMixerForecaster"
+    params = {**(base.get("params") or {}), "model_path": checkpoint_path}
     return register_model(
         store,
         {
             "model_id": model_id,
+            "sktime_class": sktime_class,
+            "params": params,
             "model_checkpoint": checkpoint_path,
             "artifact_path": checkpoint_path,
             "source": "local_artifact",
-            "framework": "tinytimemixer",
+            "framework": base.get("framework", "tinytimemixer"),
             "modality": "timeseries",
             "provenance": "finetuned",
             "base_model_id": base_model_id,
