@@ -1,5 +1,5 @@
-"""dataquality.py — time-series data-quality helpers (NaN removal, continuous-segment
-segmentation, quality summary). Pure pandas/numpy, no ML deps — the layer-native port of
+"""dataquality.py: time-series data-quality helpers (NaN removal, continuous-segment
+segmentation, quality summary). Pure pandas/numpy, no ML deps; the layer-native port of
 legacy/dataquality.py, used by the sktime forecasting/AD migration (Phase 2+).
 """
 
@@ -42,12 +42,14 @@ def _df_nan_stats(df, perc_rows_less_than=None, perc_rows_more_than=None):
     nan_per_column = df.isna().mean() * 100
     output["%NaN_per_column"] = nan_per_column.to_dict()
     output["%rows_0_NaNs"] = (df.isna().sum(axis=1) == 0).mean() * 100
-    if perc_rows_less_than and output["%rows_0_NaNs"] > 0:
+    # always emit the NaN-fraction distributions so downstream consumers can subscript them
+    # unconditionally (an all-dirty segment previously omitted these keys -> KeyError).
+    if perc_rows_less_than:
         output["%rows_less_than"] = {
             f"{p}% NaNs": np.mean(df.isna().mean(axis=1) <= float(p / 100)) * 100
             for p in perc_rows_less_than
         }
-    if perc_rows_more_than and output["%rows_0_NaNs"] > 0:
+    if perc_rows_more_than:
         output["%rows_more_than"] = {
             f"{p}% NaNs": np.mean(df.isna().mean(axis=1) > float(p / 100)) * 100
             for p in perc_rows_more_than
@@ -64,37 +66,6 @@ def _df_percentage_samples_minutes_interval(
     interval_count = ((time_diffs >= lower_bound) & (time_diffs <= upper_bound)).sum()
     total_intervals = len(time_diffs) - 1
     return (interval_count / total_intervals) * 100 if total_intervals > 0 else 0
-
-
-def _df_dt_stats(pd_dataset, date_col="Timestamp", intervals_dic=None):
-    if intervals_dic is None:
-        intervals_dic = {"14min_to_16min": (14, 16)}
-    pd_dataset = pd_dataset.sort_values(by=date_col)
-    earliest_date = pd_dataset[date_col].min()
-    latest_date = pd_dataset[date_col].max()
-    date_interval = latest_date - earliest_date
-    time_intervals = pd_dataset[date_col].diff()
-    time_intervals_dic = time_intervals.value_counts().to_dict()
-    time_intervals_dic_json = {str(k): int(v) for k, v in time_intervals_dic.items()}
-    perc_in_interval_dic = None
-    if isinstance(intervals_dic, dict):
-        perc_in_interval_dic = {
-            key: _df_percentage_samples_minutes_interval(
-                pd_dataset, date_col, lower_bound=bounds[0], upper_bound=bounds[1]
-            )
-            for key, bounds in intervals_dic.items()
-        }
-    data_specs: dict = {
-        "initial_time": earliest_date.isoformat(),
-        "final_time": latest_date.isoformat(),
-        "interval": str(date_interval),
-        "columns": pd_dataset.columns.values.tolist(),
-        "number_samples": len(pd_dataset),
-        "time_interval_between_samples": time_intervals_dic_json,
-    }
-    if perc_in_interval_dic is not None:
-        data_specs["percentage_in_dt"] = perc_in_interval_dic
-    return data_specs
 
 
 def _df_single_columns_condition(df, condition_dic=None):
@@ -226,23 +197,6 @@ def _validate_time_series_segments(
         if not all(qc.values()):
             bad_quality_segments[seg_id] = qc
     return bad_quality_segments
-
-
-def _time_series_segment_quality_summary(df, timestamp_column, segments_column):
-    ts_cont_segments: dict = {}
-    for ix_s in df[segments_column].unique():
-        df_filter = df.loc[df[segments_column] == ix_s]
-        ts_cont_segments[ix_s] = {
-            "start": pd.to_datetime(df_filter[timestamp_column].values[0]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-            "end": pd.to_datetime(df_filter[timestamp_column].values[-1]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-            "samples": len(df_filter),
-            "%nans": df_filter.isna().mean().mean() * 100,
-        }
-    return ts_cont_segments
 
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
