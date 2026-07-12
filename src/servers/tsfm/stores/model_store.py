@@ -8,6 +8,7 @@ Pointer index: weights live at artifact_path / hf_repo / remote_endpoint / model
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -22,6 +23,13 @@ def _now():
 
 def _id(model_id: str) -> str:
     return f"model:{model_id}"
+
+
+def _next_version(v) -> str:
+    """Bump a version string robustly: take its leading integer (else 1) and add 1. Handles
+    non-numeric ('r2') and null versions without crashing on int()."""
+    head = re.match(r"\d+", str(v or "1"))
+    return str((int(head.group()) if head else 1) + 1)
 
 
 # --------------------------------------------------------------------------- #
@@ -227,7 +235,7 @@ def new_version(
     if not old:
         raise ValueError(f"no model {model_id}")
     nv = dict(old, **fields)
-    nv["version"] = str(int(str(old.get("version", "1")).split(".")[0]) + 1)
+    nv["version"] = _next_version(old.get("version"))
     nv["model_id"] = new_model_id or f"{model_id}_v{nv['version']}"
     nv["supersedes"] = model_id
     nv.pop("_id", None)
