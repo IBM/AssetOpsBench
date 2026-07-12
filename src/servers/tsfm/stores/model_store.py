@@ -272,7 +272,7 @@ def register_finetuned(
             "modality": "timeseries",
             "provenance": "finetuned",
             "base_model_id": base_model_id,
-            "task_ids": ["tsfm_forecasting", "tsfm_forecasting_evaluation"],
+            "task_ids": ["tsfm_forecasting"],
             "context_length": context_length,
             "prediction_length": prediction_length,
             "domain": domain,
