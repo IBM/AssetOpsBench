@@ -212,3 +212,8 @@ class FeatureCountResult(BaseModel):
     extractors: int
     transforms: int
     total: int
+
+
+class ModelCountResult(BaseModel):
+    total: int
+    by_task: dict
