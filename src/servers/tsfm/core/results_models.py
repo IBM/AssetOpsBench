@@ -200,4 +200,15 @@ class DescribeFeaturesResult(BaseModel):
     unknown: List[str]
     message: str
 
+class FeatureTemplateResult(BaseModel):
+    required_fields: List[str]
+    optional_fields: List[str]
+    interface_choices: List[str]
+    code_skeleton: str
+    validity_rules: List[str]
+    example: dict
 
+class FeatureCountResult(BaseModel):
+    extractors: int
+    transforms: int
+    total: int

@@ -35,6 +35,8 @@ from .core.results_models import (
     FeatureNamesResult,
     FeatureDescription,
     DescribeFeaturesResult,
+    FeatureTemplateResult,
+    FeatureCountResult,
 )
 
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
@@ -250,9 +252,7 @@ def select_features(
     rank, then keep those that beat `reference_feature` by at least `cd_margin`.
 
     `channel` (required) names the column to analyze - no default column is assumed. `extractors`
-    (required) is the list of extractor names to score: shortlist them first with list_features /
-    describe_features, since scoring the whole 220+ library at once is expensive. Returns names
-    only - feed the shortlist to extract_features to compute the matrix."""
+    (required) is the list of extractor names to score. Returns names only."""
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not channel:
@@ -536,11 +536,62 @@ def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
         return ErrorResult(error=str(exc))
 
 
+@mcp.tool(title="Feature Template")
+def feature_template() -> FeatureTemplateResult:
+    """The template for authoring a NEW Evolutionary Feature Engineering transform feature card. Returns the card fields
+    (required + optional) and a fillable `Transformation` code skeleton matching the exact interface
+    the EFE runner enforces. Fill it in, then submit via register_feature. (Extractors are a fixed
+    library and are NOT authored here.)"""
+    skeleton = (
+        "class Transformation:\n"
+        "    def fit(self, X, metadata):\n"
+        "        # learn state from X (training data); return the state\n"
+        "        # (or store it on self as self.state_ and return None)\n"
+        "        return state\n"
+        "    def transform(self, X, state):\n"
+        "        # return a NEW array - never mutate X in place\n"
+        "        return X_new\n"
+        "    def inverse_transform(self, X_new, state):\n"
+        "        # ONLY when interface == 'fit_transform_inverse'; must round-trip\n"
+        "        return X\n"
+    )
+    example_code = (
+        "class Transformation:\n"
+        "    def fit(self, X, metadata):\n"
+        "        import numpy as np\n"
+        "        self.med_ = np.median(X, axis=0)\n"
+        "        self.mad_ = np.median(np.abs(X - self.med_), axis=0) + 1e-9\n"
+        "        return None\n"
+        "    def transform(self, X, state):\n"
+        "        return (X - self.med_) / self.mad_\n"
+        "    def inverse_transform(self, X_new, state):\n"
+        "        return X_new * self.mad_ + self.med_\n"
+    )
+    return FeatureTemplateResult(
+        required_fields=["feature_id", "interface", "code"],
+        optional_fields=["name", "description", "invertible", "target_task", "target_model", "tags"],
+        interface_choices=["fit_transform", "fit_transform_inverse"],
+        code_skeleton=skeleton,
+        validity_rules=[
+            "entry points: fit + transform must exist (+ inverse_transform if invertible)",
+            "transform must return a NEW object - no in-place mutation of X",
+            "invertible transforms must round-trip: inverse_transform(transform(X)) ~= X",
+        ],
+        example={
+            "feature_id": "robust_norm_v1",
+            "interface": "fit_transform_inverse",
+            "name": "robust per-channel normalization",
+            "description": "center by median, scale by MAD; invertible",
+            "invertible": True,
+            "code": example_code,
+        },
+    )
+
 @mcp.tool(title="Register Feature")
 def register_feature(feature: dict) -> Union[RegisterResult, ErrorResult]:
-    """Register a NEW transform (EFE) feature card: an executable fit/transform program.
+    """Register a NEW transform (Evolutionary Feature Engineering) feature card: an executable fit/transform program.
     Requires `feature_id`, `interface` ('fit_transform' | 'fit_transform_inverse'), and `code`
-    (validated + gated by the EFE runner). Extractors are NOT registered here: they are the fixed
+    (validated + gated by the Evolutionary Feature Engineering runner). Extractors are NOT registered here: they are the fixed
      scalar library (see list_features(kind='extractor'))."""
     if not feature:
         return ErrorResult(error="feature card is required")
@@ -553,6 +604,16 @@ def register_feature(feature: dict) -> Union[RegisterResult, ErrorResult]:
         logger.error("register_feature failed: %s", exc)
         return ErrorResult(error=str(exc))
 
+@mcp.tool(title="Count Features")
+def count_features() -> Union[FeatureCountResult, ErrorResult]:
+    """How many features are in the catalog. Returns extractor / transform / total counts."""
+    try:
+        ex = len(feature_store.find_features(_STORE, kind="extractor"))
+        tr = len(feature_store.find_features(_STORE, kind="transform"))
+        return FeatureCountResult(extractors=ex, transforms=tr, total=ex + tr)
+    except Exception as exc:
+        logger.error("count_features failed: %s", exc)
+        return ErrorResult(error=str(exc))
 
 # ════════════════════════ catalog management (lifecycle) ═════════════════════
 # Pull + update + version + retire, for both stores. The agent curates the catalog: search it,
@@ -700,8 +761,7 @@ def search_features(
 ) -> Union[FeaturesResult, ErrorResult]:
     """Substring (case-insensitive) search over the FEATURE catalog only, both extractors and
     transforms, matching id / name / description / tags. Literal substring, NOT semantic: 'spectral'
-    or 'entropy' hit; a concept only implied by wording may not. Use list_features for the full
-    name list; use search_models for the model catalog."""
+    or 'entropy' hit; a concept only implied by wording may not."""
     if not text.strip():
         return ErrorResult(
             error="text is required: a substring to search for (use list_features to browse all)"
@@ -718,9 +778,8 @@ def search_features(
 @mcp.tool(title="List Features")
 def list_features(kind: Optional[str] = None) -> Union[FeatureNamesResult, ErrorResult]:
     """List feature NAMES from the catalog (compact, no descriptions). `kind` filters:
-    'extractor' (the  scalar library), 'transform' (EFE preprocessing programs), or omit for
-    all. Shortlist by name, call describe_features([...]) for descriptions, then extract_features(...)
-    (extractors) or use transforms in a recipe."""
+    'extractor' (the  scalar library), 'transform' (Evolutionary Feature Engineering preprocessing programs), or omit for
+    all."""
     if kind is not None and kind not in ("extractor", "transform"):
         return ErrorResult(error="kind must be 'extractor', 'transform', or omitted")
     try:
@@ -736,8 +795,7 @@ def list_features(kind: Optional[str] = None) -> Union[FeatureNamesResult, Error
 
 @mcp.tool(title="Describe Features")
 def describe_features(names: List[str]) -> Union[DescribeFeaturesResult, ErrorResult]:
-    """Return kind + name + description for ONLY the given feature names (extractors OR transforms)
-    Use after list_features to read descriptions for the handful you're weighing."""
+    """Return kind + name + description for ONLY the given feature names (extractors OR transforms)."""
     if not names:
         return ErrorResult(
             error="provide at least one feature name (see list_features)"
@@ -815,7 +873,7 @@ def deprecate_feature(
 def new_feature_version(
     feature_id: str, fields: Optional[dict] = None, new_feature_id: Optional[str] = None
 ) -> Union[CardResult, ErrorResult]:
-    """Create a successor version of a TRANSFORM (EFE) feature; predecessor superseded + linked.
+    """Create a successor version of a TRANSFORM feature; predecessor superseded + linked.
     Extractors are a fixed library and cannot be versioned."""
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
