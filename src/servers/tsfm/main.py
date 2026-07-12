@@ -967,7 +967,7 @@ def extract_features(
     raw feature extraction, no model. Pick `extractors` by name from list_features(kind="extractor").
     window=None -> one feature vector for the whole series; window=W -> non-overlapping W-length
     tiles -> a (windows x features) matrix. Multivariate: each target column yields its own
-    '<column>.<extractor>' feature columns. target_columns` (required) names the column(s) to extract from - no default is assumed"""
+    '<column>.<extractor>' feature columns. `target_columns` (required) names the column(s) to extract from - no default is assumed."""
     from .reasoning import feature_selection as FS
     import numpy as np
     import pandas as pd
