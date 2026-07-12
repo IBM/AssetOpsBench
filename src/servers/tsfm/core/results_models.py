@@ -217,3 +217,11 @@ class FeatureCountResult(BaseModel):
 class ModelCountResult(BaseModel):
     total: int
     by_task: dict
+
+class ResolveResult(BaseModel):
+    model_id: str
+    resolvable: bool
+    reason: str
+    sktime_class: Optional[str] = None
+    training_regime: Optional[str] = None
+    weights_from: Optional[str] = None
