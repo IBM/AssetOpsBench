@@ -1,10 +1,9 @@
-"""Model store — registry of TS models on the core Store.
+"""Model store: registry of TS models on the core Store.
 
 Pointer index: weights live at artifact_path / hf_repo / remote_endpoint / model_checkpoint
 (toolkit); the catalog points at them. Capabilities:
   read    : get / list / find_models (explainable ranking) / search / get_lineage
   write   : register (schema-validated) / update / deprecate / new_version / register_finetuned
-  resolve : resolve_checkpoint (for compute tools)
 """
 
 from __future__ import annotations
@@ -143,16 +142,15 @@ def describe_candidates(
     store, task_id: str, *, top_k: int = 5, domain: str = None
 ) -> list:
     """HuggingGPT-style model selection surface: return the top_k candidate cards for a task as
-    compact {model_id, description, downloads, family, context_length} records, ranked by a
-    popularity/quality prior (downloads, then eval metric) — the '{{Candidate Models}}' the
-    agent reasons over to pick/ensemble. Trims tokens like HuggingGPT's top-K-by-downloads.
+    compact {model_id, description, family, context_length} records, ranked by an eval-quality
+    prior (lower MAE first), the '{{Candidate Models}}' the agent reasons over to pick/ensemble.
+    Trims tokens like HuggingGPT's top-K shortlist.
     """
     cands = list_models(store, task_id=task_id, domain=domain)
 
     def prior(m):
-        dl = m.get("downloads") or 0
         mae = _best_metric(m, "mae")
-        return (-(dl), mae if mae is not None else float("inf"))  # more downloads first
+        return (mae if mae is not None else float("inf"),)  # better eval first
 
     out = []
     for m in sorted(cands, key=prior)[:top_k]:
@@ -160,7 +158,6 @@ def describe_candidates(
             {
                 "model_id": m["model_id"],
                 "description": m.get("description", ""),
-                "downloads": m.get("downloads"),
                 "family": m.get("family") or m.get("model_family"),
                 "sktime_class": m.get("sktime_class"),
                 "context_length": m.get("context_length"),
@@ -277,28 +274,3 @@ def register_finetuned(
         },
         overwrite=overwrite,
     )
-
-
-# --------------------------------------------------------------------------- #
-# resolve (for compute tools)
-# --------------------------------------------------------------------------- #
-def resolve_checkpoint(store, model_id_or_path: str) -> dict:
-    m = get_model(store, model_id_or_path)
-    if m is None:
-        return {
-            "model_checkpoint": model_id_or_path,
-            "context_length": None,
-            "prediction_length": None,
-            "resolved_from": "raw_path",
-        }
-    return {
-        "model_id": m["model_id"],
-        "model_checkpoint": m.get("model_checkpoint"),
-        "framework": m.get("framework"),
-        "artifact_path": m.get("artifact_path"),
-        "hf_repo": m.get("hf_repo"),
-        "remote_endpoint": m.get("remote_endpoint"),
-        "context_length": m.get("context_length"),
-        "prediction_length": m.get("prediction_length"),
-        "resolved_from": "catalog",
-    }

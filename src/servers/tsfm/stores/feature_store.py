@@ -1,9 +1,9 @@
-"""Feature store — transforms (EFE) + extractors (FLOps) on the core Store.
+"""Feature store: transforms (EFE) + extractors (FLOps) on the core Store.
 
 Two entry kinds in one catalog:
   - kind="transform": EFE-style fit/transform/inverse programs stored as code (validated +
     EFE validity-gated on register).
-  - kind="extractor": FLOps scalar extractors (the 130+ library); the executable lives in
+  - kind="extractor": FLOps scalar extractors (the 220+ library); the executable lives in
     feature_selection.EXTRACTORS, the catalog indexes them so select_features can pick.
 
 Capabilities:
@@ -156,7 +156,7 @@ def new_version(
     if old.get("kind") != "transform":  # <-- add this guard
         raise ValueError(
             f"only transform features are versionable; '{feature_id}' is a "
-            f"{old.get('kind', 'unknown')} — the FLOps extractor library is fixed."
+            f"{old.get('kind', 'unknown')}; the FLOps extractor library is fixed."
         )
     nv = dict(old, **fields)
     nv["version"] = str(int(str(old.get("version", "1")).split(".")[0]) + 1)
@@ -178,7 +178,7 @@ def new_version(
 def select_features(
     series, *, reference_feature: str = "mean", lookback=None, cd_margin=0.05
 ):
-    """FLOps over the full library (no store needed) — backward-compatible."""
+    """FLOps over the full library (no store needed); backward-compatible."""
     from ..reasoning import feature_selection as fsel
 
     return fsel.select_features(
