@@ -9,7 +9,7 @@ pytest.importorskip("mcp")          # skip cleanly if mcp isn't installed
 from ..main import mcp
 
 SURFACE = {
-    "list_tasks", "discover_components", "describe_candidates", "find_models", "find_features",
+    "list_tasks", "discover_components", "describe_candidates", "find_models",
     "get_component", "profile_series", "select_features", "characterize_series",
     "run_recipe", "run_tabular_recipe",
     "run_plan", "evaluate", "data_quality", "register_model", "register_feature",
