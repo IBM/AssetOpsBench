@@ -38,6 +38,7 @@ from .core.results_models import (
     FeatureTemplateResult,
     FeatureCountResult,
     ModelCountResult,
+    ResolveResult,
 )
 
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
@@ -736,6 +737,47 @@ def new_model_version(
         logger.error("new_model_version failed: %s", exc)
         return ErrorResult(error=str(exc))
 
+@mcp.tool(title="Resolve Model")
+def resolve_model(model_id: str) -> Union[ResolveResult, ErrorResult]:
+    """Read-only PREFLIGHT: check whether a model card can be resolved (loaded) before you compose a
+    recipe. Confirms the card exists, has an importable sktime_class, and reports where its weights
+    come from (params.model_path / hf_repo / checkpoint, or none for classical models). Does NOT
+    download weights or fit."""
+    if not model_id.strip():
+        return ErrorResult(error="model_id is required")
+    card = model_store.get_model(_STORE, model_id)
+    if not card:
+        return ErrorResult(error=f"model '{model_id}' not found")
+    from .substrate import resolver as R
+
+    regime = R.training_regime(card)
+    params = card.get("params") or {}
+    weights_from = (
+        params.get("model_path")
+        or card.get("hf_repo")
+        or card.get("model_checkpoint")
+        or card.get("artifact_path")
+    )
+    sk = card.get("sktime_class")
+    if not sk:
+        return ResolveResult(
+            model_id=model_id, resolvable=False, sktime_class=None,
+            training_regime=regime, weights_from=weights_from,
+            reason="no sktime_class (toolkit/checkpoint model; not sktime-resolvable)",
+        )
+    try:
+        R._import_target(sk)  # import only; no instantiation / no weight download
+    except Exception as e:
+        return ResolveResult(
+            model_id=model_id, resolvable=False, sktime_class=sk,
+            training_regime=regime, weights_from=weights_from,
+            reason=f"sktime_class not importable: {type(e).__name__}: {e}"[:140],
+        )
+    return ResolveResult(
+        model_id=model_id, resolvable=True, sktime_class=sk,
+        training_regime=regime, weights_from=weights_from or "none (classical; fit from series)",
+        reason="importable sktime_class + params; weights load lazily at fit",
+    )
 
 @mcp.tool(title="Register Finetuned Model")
 def register_finetuned(
