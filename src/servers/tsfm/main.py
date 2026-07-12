@@ -37,6 +37,7 @@ from .core.results_models import (
     DescribeFeaturesResult,
     FeatureTemplateResult,
     FeatureCountResult,
+    ModelCountResult,
 )
 
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
@@ -143,7 +144,8 @@ def discover_components(
 def describe_candidates(
     task_id: str, top_k: int = 5, domain: Optional[str] = None
 ) -> Union[CandidatesResult, ErrorResult]:
-    """Ranked CANDIDATE models for a task (HuggingGPT-style, by description + popularity). A
+    """Ranked CANDIDATE models for a task (HuggingGPT-style shortlist, ranked by eval quality,
+             lower MAE first). A
     candidate is a shortlisted MODEL; you still decide which to use. top_k caps the list.
     """
     bad = _check_task(task_id)
@@ -526,6 +528,9 @@ def evaluate(recipe: dict, configs: List[dict]) -> Union[EvaluateResult, ErrorRe
 # ---- write-back ----
 @mcp.tool(title="Register Model")
 def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
+    """Register a model card in the catalog (schema-validated). Requires `model_id`, `description`,
+    and `task_ids`; point it at weights via one of `sktime_class` / `artifact_path` / `hf_repo` /
+    `remote_endpoint` / `model_checkpoint`. Use register_finetuned for fine-tune checkpoints."""
     if not model:
         return ErrorResult(error="model card is required")
     try:
@@ -619,15 +624,26 @@ def count_features() -> Union[FeatureCountResult, ErrorResult]:
 # Pull + update + version + retire, for both stores. The agent curates the catalog: search it,
 # trace lineage, edit/retire a card, cut a new version, or register a fine-tuned checkpoint.
 
+@mcp.tool(title="Count Models")
+def count_models() -> Union[ModelCountResult, ErrorResult]:
+    """How many models are in the catalog. Returns the total active models and a per-task breakdown."""
+    try:
+        models = model_store.list_models(_STORE)
+        by_task: dict = {}
+        for mdl in models:
+            for tid in mdl.get("task_ids", []):
+                by_task[tid] = by_task.get(tid, 0) + 1
+        return ModelCountResult(total=len(models), by_task=dict(sorted(by_task.items())))
+    except Exception as exc:
+        logger.error("count_models failed: %s", exc)
+        return ErrorResult(error=str(exc))
 
 # ---- model store ----
 @mcp.tool(title="List Models")
 def list_models(
     task_id: Optional[str] = None, domain: Optional[str] = None, status: str = "active"
 ) -> Union[ModelsResult, ErrorResult]:
-    """List model cards in the catalog (optionally filtered by task / domain). Unranked; the
-    mirror of list_features; use find_models / describe_candidates to rank for a task.
-    """
+    """List model cards in the catalog (optionally filtered by task / domain)."""
     if task_id:
         bad = _check_task(task_id)
         if bad:
@@ -645,9 +661,14 @@ def list_models(
 
 @mcp.tool(title="Search Models")
 def search_models(
-    text: str = "", tags: Optional[List[str]] = None, status: str = "active"
+    text: str, tags: Optional[List[str]] = None, status: str = "active"
 ) -> Union[ModelsResult, ErrorResult]:
-    """Free-text/tag search over the model catalog (id, description, family, tags)."""
+    """Substring (case-insensitive) search over the model catalog (id / description / model_family
+    / tags). `text` (required) is the substring to match; use list_models to browse all."""
+    if not text.strip():
+        return ErrorResult(
+            error="text is required: a substring to search for (use list_models to browse all)"
+        )
     try:
         return ModelsResult(
             models=model_store.search(_STORE, text, tags=tags, status=status)
@@ -659,7 +680,8 @@ def search_models(
 
 @mcp.tool(title="Get Model Lineage")
 def get_model_lineage(model_id: str) -> Union[LineageResult, ErrorResult]:
-    """A model's version chain: what it supersedes / is superseded by (the evolution trail)."""
+    """A model's lineage: the fine-tune chain (base-model ancestors + fine-tune descendants) plus
+    its version links (supersedes / superseded_by)."""
     if not model_id.strip():
         return ErrorResult(error="model_id is required")
     try:

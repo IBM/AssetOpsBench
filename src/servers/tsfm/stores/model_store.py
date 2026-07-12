@@ -176,7 +176,9 @@ def describe_candidates(
 
 
 def get_lineage(store, model_id: str) -> dict:
-    """Ancestors (base chain) + descendants (fine-tunes of this)."""
+    """Fine-tune lineage: base-model ancestors + fine-tune descendants, plus the version links
+    (supersedes / superseded_by) set by new_version."""
+    card = get_model(store, model_id) or {}
     ancestors, cur = [], get_model(store, model_id)
     seen = set()
     while cur and cur.get("base_model_id") and cur["base_model_id"] not in seen:
@@ -194,6 +196,8 @@ def get_lineage(store, model_id: str) -> dict:
         "ancestors": ancestors,
         "root": ancestors[-1] if ancestors else model_id,
         "descendants": descendants,
+        "supersedes": card.get("supersedes"),
+        "superseded_by": card.get("superseded_by"),
     }
 
 
