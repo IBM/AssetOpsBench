@@ -76,12 +76,17 @@ def _resolve_estimator(spec: dict, store=None):
     )
     if spec.get("model_id") and store is not None:
         from ..stores import model_store
+
         card = model_store.get_model(store, spec["model_id"])
         if not card:
             raise ValueError(f"model '{spec['model_id']}' not in catalog")
-        merged = {**card, "params": {**(card.get("params") or {}), **(spec.get("params") or {})}}
+        merged = {
+            **card,
+            "params": {**(card.get("params") or {}), **(spec.get("params") or {})},
+        }
         return name, R.resolve(merged)
     return name, R.resolve(spec)
+
 
 def build_forecaster(recipe: dict, store=None):
     """Compile a recipe into a single sktime forecaster (ensemble/transform-aware)."""
@@ -325,7 +330,9 @@ def _tile(x, window: Optional[int]) -> np.ndarray:
     return x[: n * window].reshape(n, window) if n else x[None, :]
 
 
-def extract_features(channels: Dict[str, Any], extractor_names, window: Optional[int] = None):
+def extract_features(
+    channels: Dict[str, Any], extractor_names, window: Optional[int] = None
+):
     """Apply named FLOps extractors to each channel's windows.
     channels: {column_name -> 1D array}. Returns (columns, matrix) where matrix is
     n_windows x (n_channels * n_extractors); column names are '<channel>.<extractor>' when
@@ -344,6 +351,7 @@ def extract_features(channels: Dict[str, Any], extractor_names, window: Optional
             cols.append(f"{ch}.{name}" if multi else name)
     F = np.nan_to_num(np.column_stack(data)) if data else np.zeros((nw, 0))
     return cols, F
+
 
 def _lib_features(X, subset=None):
     """Dependency-free 'FeatureUnion': apply the FLOps extractor library per instance/channel."""
@@ -761,18 +769,24 @@ def discover_components(store=None, task: str = "tsfm_forecasting") -> dict:
     if store is not None:
         from ..stores import model_store
         from ..stores import feature_store
+
         models = model_store.list_models(store, task_id=task)
         out["catalog_models"] = [
             {"model_id": m["model_id"], "training_regime": R.training_regime(m)}
             for m in models
         ]
         out["transforms"] = [
-            {"feature_id": f["feature_id"], "name": f.get("name"),
-             "description": f.get("description")}
+            {
+                "feature_id": f["feature_id"],
+                "name": f.get("name"),
+                "description": f.get("description"),
+            }
             for f in feature_store.find_features(store)
         ]
         _ex = feature_store.list_extractors(store)
-        out["extractors"] = sorted(e["extractor_name"] for e in _ex if e.get("extractor_name"))
+        out["extractors"] = sorted(
+            e["extractor_name"] for e in _ex if e.get("extractor_name")
+        )
         out["n_extractors"] = len(out["extractors"])
         # descriptions are intentionally omitted here (222+ features would bloat context) —
         # the agent shortlists by name, then calls describe_extractors([...]) for the subset.

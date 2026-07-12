@@ -12,14 +12,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from ..io import window as io
 from ..stores import model_store
-
-
-def profile_series(store, asset_id: str, channels: Optional[List[str]] = None) -> dict:
-    """Factual characterization of a store-backed asset's signal: evidence, not advice."""
-    X, names = io.read_window(asset_id, store=store)
-    return _profile_array(np.asarray(X, float), names, ident=asset_id)
 
 
 def profile_ref(
@@ -29,7 +22,7 @@ def profile_ref(
     channels: Optional[List[str]] = None,
 ) -> dict:
     """Profile a time series passed as a FILE POINTER (the IoT data model). Loads the ref into
-    an sktime container and returns the same evidence as profile_series."""
+    an sktime container and returns structured evidence for the agent to reason from."""
     from ..io import refs
 
     obj = refs.load_series(data_ref, time_col=timestamp_column, channels=channels)
@@ -43,7 +36,7 @@ def profile_ref(
 
 
 def _profile_array(X: np.ndarray, names: List[str], *, ident: str) -> dict:
-    """Core profiling on a loaded (n, c) array, shared by the store and file-pointer paths."""
+    """Core profiling on a loaded (n, c) array behind the file-pointer path."""
     if X.ndim == 1:
         X = X.reshape(-1, 1)
     n, c = X.shape
