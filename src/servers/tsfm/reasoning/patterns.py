@@ -1,14 +1,14 @@
-"""patterns.py — the pattern-evidence engine (P1: univariate state + rate, grouped).
+"""patterns.py - the pattern-evidence engine (P1: univariate state + rate, grouped).
 
 Given a (standardized) multivariate series, DESCRIBE its shape as structured evidence the LLM can
-reason over — never name a fault. This is the server's half of the SenTSR-style split: the server
+reason over - never name a fault. This is the server's half of the SenTSR-style split: the server
 says "vibration shows a sharp rise; temperature stable"; the LLM says "alignment drift".
 
 Design notes
 ------------
 * Reference-free. SenTSR standardizes each channel by median/MAD, so the baseline is the series
   itself. We robust-standardize internally too (median/MAD) so the same logic works on any input
-  and reads in robust-z units — no external "normal" window is needed.
+  and reads in robust-z units - no external "normal" window is needed.
 * Channel grouping. The benchmark reasons about "vibration" (= Acceleration + Velocity) vs
   "temperature", so we aggregate member channels into a group before describing (configurable).
 * P1 is single-phase (whole-series) state labeling. Phases (changepoints) + bivariate relations
@@ -26,20 +26,13 @@ from typing import Dict, List, Optional
 import numpy as np
 
 # --- thresholds (robust-z units); tunable -----------------------------------
-_FLAT_EPS = 1e-9  # |Δ| below this == constant
+_FLAT_EPS = 1e-9  # |diff| below this == constant
 _CESSATION_FRAC = 0.25  # a quarter of the series held at one value
 _TREND_R = 0.55  # |corr(value, time)| (oscillation/level-shift guards)
-_TREND_HALF = 1.0  # |mean(2nd half) - mean(1st half)| in z (guards)
-_TREND_STRENGTH = (
-    1.5  # Theil–Sen total change (slope×n) in robust-spread units ⇒ rise/decline
-)
+_TREND_STRENGTH = 1.5  # Theil-Sen total change (slope*n) in robust-spread units => rise/decline
 _SPIKE_Z = 5.0  # an extreme point this far out (robust-z)
-_SHARP_STEP = 0.5  # biggest single step ≥ this × robust spread == "sharp"
 _OSC_CROSS = 0.20  # mean-crossings per sample for oscillation
-_FLAT_RANGE = 0.5  # below this total z-range == essentially flat
-_LEVEL_HALF = (
-    1.0  # half-to-half jump for a level shift (paired with a dominant single step)
-)
+_LEVEL_HALF = 1.0  # half-to-half jump for a level shift (with a dominant single step)
 
 
 def _robust_z(x: np.ndarray) -> np.ndarray:
@@ -83,8 +76,8 @@ def _rolling_median(x: np.ndarray, w: int) -> np.ndarray:
 
 
 def _theil_sen(y: np.ndarray) -> float:
-    """Theil–Sen slope: median of all pairwise slopes. Robust to outliers (duty-cycle dips), and
-    it does NOT fabricate a trend on a flat/noisy signal — the general, principled trend estimator.
+    """Theil-Sen slope: median of all pairwise slopes. Robust to outliers (duty-cycle dips), and
+    it does NOT fabricate a trend on a flat/noisy signal - the general, principled trend estimator.
     """
     n = len(y)
     idx = np.arange(n, dtype=float)
@@ -122,7 +115,7 @@ def classify_state(x: np.ndarray) -> dict:
     ext_idx = np.where(devs >= _SPIKE_Z)[0]
     max_abs = float(devs.max())
 
-    # DE-SPIKED: low-frequency shape (trend / stable / oscillation) — removes impulsive duty-cycle
+    # DE-SPIKED: low-frequency shape (trend / stable / oscillation) - removes impulsive duty-cycle
     # dips & lone spikes so a rise buried under a recurring floor still reads as a rise.
     xs = _rolling_median(
         x, 5
@@ -134,19 +127,15 @@ def classify_state(x: np.ndarray) -> dict:
     r = _pearson_t(xs)
     half = float((np.mean(xs[n // 2 :]) - np.mean(xs[: n // 2])) / spread_s)
     sdiffs = np.abs(np.diff(xs))
+    # concentration = one step's share of total variation (rate cue: a single dominant jump)
     concentration = float(sdiffs.max() / (sdiffs.sum() + 1e-12)) if len(sdiffs) else 0.0
-    step_norm = float(sdiffs.max() / spread_s) if len(sdiffs) else 0.0
     cross_rate = float(np.sum(np.diff(np.sign(xs - med_s)) != 0) / n)
     ac1 = _autocorr1(xs)
-    diffs = sdiffs
-    # robust trend on the de-spiked signal (Theil–Sen): outlier-resistant, no fabricated trends
+    # robust trend on the de-spiked signal (Theil-Sen): outlier-resistant, no fabricated trends
     ts_slope = _theil_sen(xs)
     ts_strength = float(
         ts_slope * n / spread_s
     )  # total rise/fall in robust-spread units
-    trend_conc = (
-        float(diffs.max() / (diffs.sum() + 1e-12)) if len(diffs) else 0.0
-    )  # rate: 1 jump?
 
     ev = {
         "trend_r": round(r, 3),
@@ -177,7 +166,7 @@ def classify_state(x: np.ndarray) -> dict:
     if rng_norm < 1e-6:
         return out("STABLE")
 
-    # CESSATION — a long constant run at/below baseline while the rest is active
+    # CESSATION - a long constant run at/below baseline while the rest is active
     if flat_frac >= _CESSATION_FRAC and rng_norm >= 2.0:
         cur = best = best_end = 0
         for k, v in enumerate(same):
@@ -188,7 +177,7 @@ def classify_state(x: np.ndarray) -> dict:
         if run_level <= med:
             return out("CESSATION", onset=(best_end - best) / n)
 
-    # SPIKE — a few extreme points, not a sustained trend
+    # SPIKE - a few extreme points, not a sustained trend
     if (
         1 <= len(ext_idx) <= max(3, int(0.03 * n))
         and max_abs >= _SPIKE_Z
@@ -200,17 +189,17 @@ def classify_state(x: np.ndarray) -> dict:
         persistence = "sustained" if (after - before) / spread > 2.0 else "transient"
         return out("SPIKE", persistence=persistence, onset=first / n)
 
-    # RISE / DECLINE — robust Theil–Sen trend over a meaningful magnitude
+    # RISE / DECLINE: robust Theil-Sen trend over a meaningful magnitude
     if abs(ts_strength) >= _TREND_STRENGTH:
         state = "RISE" if ts_slope > 0 else "DECLINE"
-        rate = "sharp" if trend_conc >= 0.30 else "gradual"  # one dominant jump ⇒ sharp
+        rate = "sharp" if concentration >= 0.30 else "gradual"  # one dominant jump => sharp
         return out(state, rate=rate)
 
-    # LEVEL_SHIFT — a step between two regimes: big half-to-half change dominated by one jump
+    # LEVEL_SHIFT: a step between two regimes, big half-to-half change dominated by one jump
     if abs(half) >= _LEVEL_HALF and concentration >= 0.30:
-        return out("LEVEL_SHIFT", onset=int(np.argmax(diffs)) / n)
+        return out("LEVEL_SHIFT", onset=int(np.argmax(sdiffs)) / n)
 
-    # OSCILLATION — periodic swings (frequent crossings + smooth, i.e. autocorrelated), no trend
+    # OSCILLATION - periodic swings (frequent crossings + smooth, i.e. autocorrelated), no trend
     if cross_rate >= _OSC_CROSS and ac1 >= 0.5 and abs(r) < 0.4 and rng_norm >= 1.5:
         return out("OSCILLATION")
 
@@ -219,7 +208,7 @@ def classify_state(x: np.ndarray) -> dict:
 
 # --- channel grouping (generic; domain grouping is opt-in) -------------------
 # The engine is channel-agnostic: any names, any count. By DEFAULT every channel is its own group
-# (no domain assumptions). Grouping is optional and supplied by the caller/agent — either an
+# (no domain assumptions). Grouping is optional and supplied by the caller/agent - either an
 # explicit {group: [channels]} map, or by applying a name-rule preset via auto_group(). This keeps
 # the SenTSR "vibration = accel+velocity" choice out of the engine and in the hands of whoever
 # knows the domain.
@@ -273,7 +262,7 @@ def group_signal(channels: Dict[str, np.ndarray], members: List[str]) -> np.ndar
 
 
 # --- the descriptive phrase + series description -----------------------------
-_PHRASE = {  # (state, rate?) → shape words — strictly descriptive, no fault terms
+_PHRASE = {  # (state, rate?) → shape words - strictly descriptive, no fault terms
     ("STABLE", None): "stable, near baseline",
     ("RISE", "gradual"): "a gradual rise",
     ("RISE", "sharp"): "a sharp rise",
@@ -363,7 +352,7 @@ def relate_pair(
 # --- P3: changepoint segmentation (conservative CUSUM) ------------------------
 def _cusum_cps(x: np.ndarray, min_seg: int, shift: float, depth: int = 0) -> List[int]:
     """Recursive single-CUSUM changepoints: split where the mean shifts by >= `shift` robust
-    units and both sides are >= min_seg. Conservative — gradual drifts yield no split.
+    units and both sides are >= min_seg. Conservative - gradual drifts yield no split.
     """
     n = len(x)
     if n < 2 * min_seg or depth > 3:
@@ -454,7 +443,7 @@ def describe_series(
             {"span": [int(s), int(e)], "per_group": per_group, "relations": relations}
         )
 
-    summary = _summarize(phases, pairs)
+    summary = _summarize(phases)
     return {
         "groups": {g: members for g, members in groups.items()},
         "phases": phases,
@@ -475,7 +464,7 @@ _REL_PHRASE = {
 }
 
 
-def _summarize(phases: List[dict], pairs) -> str:
+def _summarize(phases: List[dict]) -> str:
     """Shape-only NL rendering. Single phase → one clause; multi-phase → numbered phases."""
 
     def phase_text(ph):

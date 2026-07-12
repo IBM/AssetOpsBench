@@ -1,4 +1,4 @@
-"""param_space.py — per-model parameter schema + reasoning + validation.
+"""param_space.py: per-model parameter schema + reasoning + validation.
 
 Every model has its own parameters whose VALUES must be reasoned (context_length, sp,
 n_neighbors, n_clusters, strategy, …). A card therefore exposes a parameter schema:
@@ -7,15 +7,16 @@ n_neighbors, n_clusters, strategy, …). A card therefore exposes a parameter sc
     `depends_on`, a `suggest` rule, and an allowed `range`/`choices`.
 
 The agent reads the schema + `profile_series` evidence, REASONS a value for each parameter,
-fills the recipe's `params`, and the server VALIDATES them (and the scorer grades them). This
-is the "tools are complex" principle applied to the full per-model parameter space.
+and fills the recipe's `params`. Recipe-block params (finetune / anomaly) are validated against
+these hints via validate_block; invalid estimator constructor params are rejected by sktime at
+build time; the scorer grades the rest.
 """
 
 from __future__ import annotations
 
 import importlib
 import inspect
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 
 def introspect(sktime_class: str) -> dict:
@@ -23,16 +24,15 @@ def introspect(sktime_class: str) -> dict:
     module, cls = sktime_class.rsplit(".", 1)
     Est = getattr(importlib.import_module(module), cls)
     sig = inspect.signature(Est.__init__)
+    _empty = inspect.Parameter.empty
     params: Dict[str, dict] = {}
     for name, p in sig.parameters.items():
         if name in ("self", "args", "kwargs"):
             continue
         params[name] = {
-            "default": (None if p.default is inspect._empty else _jsonable(p.default)),
-            "required": p.default is inspect._empty,
-            "type": (
-                None if p.annotation is inspect._empty else _typename(p.annotation)
-            ),
+            "default": (None if p.default is _empty else _jsonable(p.default)),
+            "required": p.default is _empty,
+            "type": (None if p.annotation is _empty else _typename(p.annotation)),
         }
     examples = None
     try:
@@ -52,7 +52,7 @@ def _jsonable(v):
     )
 
 
-# curated reasoning hints for common TS params — what evidence drives the value
+# curated reasoning hints for common TS params: what evidence drives the value
 DEFAULT_HINTS = {
     "context_length": {
         "description": "input/look-back window the model sees",
@@ -110,7 +110,7 @@ DEFAULT_HINTS = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Recipe-block hints — for the run-time algorithm choices that aren't constructor
+# Recipe-block hints: for the run-time algorithm choices that aren't constructor
 # params of a single estimator: finetune (training_config) and anomaly (conformal AD).
 # These mirror the legacy TTM `_ttm_main_config` and the conformal-AD wrapper knobs, made
 # explicit + agent-reasoned. The recipe carries only overrides; defaults fill the rest.
@@ -240,11 +240,6 @@ ANOMALY_HINTS = {
 BLOCK_HINTS = {"finetune": FINETUNE_HINTS, "anomaly": ANOMALY_HINTS}
 
 
-def block_schema(block: str) -> dict:
-    """The reasoning hints for a recipe block (finetune / anomaly) — what the agent fills."""
-    return {"block": block, "params": BLOCK_HINTS.get(block, {})}
-
-
 def validate_block(block: str, params: Optional[dict]) -> dict:
     """Validate a recipe-block param dict (finetune/anomaly) against its hints; produce an audit.
     Free-form dict (no sktime constructor): the hint set defines the known params."""
@@ -276,41 +271,18 @@ def validate_block(block: str, params: Optional[dict]) -> dict:
 
 
 def param_schema(card: dict) -> dict:
-    """Schema the agent reasons over: introspected params + merged hints (card hints override)."""
-    info = introspect(card["sktime_class"])
+    """Schema the agent reasons over: introspected params + merged hints (card hints override).
+    Estimator params themselves are validated by sktime at construction time."""
+    sk = card.get("sktime_class")
+    if not sk:
+        raise ValueError(
+            f"card '{card.get('model_id')}' has no sktime_class "
+            "(toolkit/checkpoint model); no constructor param schema"
+        )
+    info = introspect(sk)
     hints = {**DEFAULT_HINTS, **(card.get("param_hints") or {})}
     for name, meta in info["params"].items():
         if name in hints:
             meta["hint"] = hints[name]
     info["model_id"] = card.get("model_id")
     return info
-
-
-def validate_params(card: dict, params: Optional[dict]) -> dict:
-    """Check agent-chosen params against the schema before resolve; produce a param_audit."""
-    info = introspect(card["sktime_class"])
-    known = set(info["params"])
-    hints = {**DEFAULT_HINTS, **(card.get("param_hints") or {})}
-    issues, audit = [], {}
-    for k, v in (params or {}).items():
-        if k not in known:
-            issues.append(f"unknown param '{k}' (valid: {sorted(known)[:8]}…)")
-            continue
-        h = hints.get(k, {})
-        if "choices" in h and v not in h["choices"]:
-            issues.append(f"{k}={v!r} not in choices {h['choices']}")
-        if "range" in h and isinstance(v, (int, float)):
-            lo, hi = h["range"]
-            audit[k] = {
-                "value": v,
-                "in_range": bool(lo <= v <= hi),
-                "range": h["range"],
-            }
-            if not (lo <= v <= hi):
-                issues.append(f"{k}={v} out of range {h['range']}")
-    return {
-        "ok": not issues,
-        "issues": issues,
-        "param_audit": audit,
-        "known_params": sorted(known),
-    }
