@@ -146,19 +146,3 @@ def get_task(task_id: str) -> TSTask:
 
 def list_tasks() -> List[dict]:
     return [t.__dict__ for t in TASKS.values()]
-
-
-def validate_request(task_id: str, request: dict) -> dict:
-    """Check a request supplies the task's required inputs; report leakage/inverse expectations."""
-    t = get_task(task_id)
-    missing = [k for k in t.required_inputs if request.get(k) is None]
-    return {
-        "task_id": task_id,
-        "ok": not missing,
-        "missing_inputs": missing,
-        "supervised": t.supervised,
-        "leakage_split": t.leakage_split,
-        "requires_inverse_transforms": t.requires_inverse,
-        "selection_signal": t.selection_signal,
-        "result_collection": t.result_collection,
-    }
