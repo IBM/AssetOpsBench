@@ -13,6 +13,8 @@ from agent.opencode_agent.runner import (
     _build_permissions,
     _build_trajectory_from_events,
     _json_events,
+    _needs_reasoning_effort_none,
+    _opencode_error_message,
     _resolve_run_dir,
     _resolve_opencode_model_and_provider,
 )
@@ -108,19 +110,66 @@ def test_resolve_litellm_model(monkeypatch):
     assert model == "litellm-proxy/azure/gpt-5.4"
     assert provider["litellm-proxy"]["npm"] == "@ai-sdk/openai-compatible"
     assert provider["litellm-proxy"]["options"]["baseURL"] == "http://localhost:4000"
-    assert provider["litellm-proxy"]["models"]["azure/gpt-5.4"]["name"] == "azure/gpt-5.4"
-    assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "sk-test" # pragma: allowlist secret
+    assert (
+        provider["litellm-proxy"]["models"]["azure/gpt-5.4"]["name"] == "azure/gpt-5.4"
+    )
+    assert (
+        env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "sk-test"
+    )  # pragma: allowlist secret
 
 
 def test_resolve_tokenrouter_model(monkeypatch):
     monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://router.example/v1")
     monkeypatch.setenv("TOKENROUTER_API_KEY", "tr-test")
-    model, provider, env = _resolve_opencode_model_and_provider("tokenrouter/MiniMax-M3")
+    model, provider, env = _resolve_opencode_model_and_provider(
+        "tokenrouter/MiniMax-M3"
+    )
     assert model == "tokenrouter/MiniMax-M3"
     assert provider["tokenrouter"]["npm"] == "@ai-sdk/openai-compatible"
     assert provider["tokenrouter"]["options"]["baseURL"] == "https://router.example/v1"
     assert provider["tokenrouter"]["models"]["MiniMax-M3"]["name"] == "MiniMax-M3"
-    assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test" # pragma: allowlist secret
+    assert (
+        env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test"
+    )  # pragma: allowlist secret
+
+
+def test_resolve_tokenrouter_anthropic_model(monkeypatch):
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://router.example/v1")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "tr-test")
+    model, provider, env = _resolve_opencode_model_and_provider(
+        "tokenrouter/anthropic/claude-opus-4.8"
+    )
+    assert model == "tokenrouter/anthropic/claude-opus-4.8"
+    assert provider["tokenrouter"]["npm"] == "@ai-sdk/anthropic"
+    assert provider["tokenrouter"]["options"]["baseURL"] == "https://router.example/v1"
+    assert (
+        provider["tokenrouter"]["models"]["anthropic/claude-opus-4.8"]["name"]
+        == "anthropic/claude-opus-4.8"
+    )
+    assert (
+        env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test"
+    )  # pragma: allowlist secret
+
+
+def test_tokenrouter_gpt5_models_need_reasoning_effort_none():
+    assert _needs_reasoning_effort_none("tokenrouter", "openai/gpt-5.5")
+    assert _needs_reasoning_effort_none("tokenrouter", "openai/gpt-5.6-sol")
+    assert not _needs_reasoning_effort_none("tokenrouter", "MiniMax-M3")
+    assert not _needs_reasoning_effort_none("litellm-proxy", "openai/gpt-5.6-sol")
+
+
+def test_resolve_tokenrouter_gpt5_disables_reasoning_effort(monkeypatch):
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://router.example/v1")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "tr-test")
+    for model_id in ("tokenrouter/openai/gpt-5.5", "tokenrouter/openai/gpt-5.6-sol"):
+        model, provider, env = _resolve_opencode_model_and_provider(model_id)
+        model_name = model_id.removeprefix("tokenrouter/")
+        assert model == model_id
+        model_config = provider["tokenrouter"]["models"][model_name]
+        assert model_config["options"] == {"reasoningEffort": "none"}
+        assert (
+            env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test"
+        )  # pragma: allowlist secret
 
 
 def test_build_opencode_config_includes_agent_and_mcp():
@@ -142,6 +191,29 @@ def test_json_events_parses_ndjson_and_plain_lines():
     events, plain = _json_events('{"type":"a"}\nnot-json\n{"type":"b"}\n')
     assert [event["type"] for event in events] == ["a", "b"]
     assert plain == ["not-json"]
+
+
+def test_opencode_error_message_extracts_api_error():
+    message = _opencode_error_message(
+        [
+            {
+                "type": "error",
+                "error": {
+                    "name": "APIError",
+                    "data": {
+                        "statusCode": 400,
+                        "message": "Function tools are not supported.",
+                    },
+                },
+            }
+        ]
+    )
+
+    assert message == "OpenCode error APIError (400): Function tools are not supported."
+
+
+def test_opencode_error_message_ignores_null_error_field():
+    assert _opencode_error_message([{"type": "step_finish", "error": None}]) is None
 
 
 def test_build_trajectory_from_text_and_tool_parts():
@@ -239,13 +311,14 @@ def test_runner_workspace_mode(tmp_path):
     assert runner._run_dir == workspace.resolve()
     assert runner._config["agent"]["assetops"]["permission"]["read"] == "allow"
 
+
 def _text_part(part_id, text, *, message_id=None, part_type="text"):
     part = {"id": part_id, "type": part_type, "text": text}
     if message_id is not None:
         part["messageID"] = message_id
     return {"type": "message.part.updated", "properties": {"part": part}}
- 
- 
+
+
 def _tool_part(part_id, tool, *, input=None, output=None):
     return {
         "type": "message.part.updated",
@@ -259,8 +332,8 @@ def _tool_part(part_id, tool, *, input=None, output=None):
             }
         },
     }
- 
- 
+
+
 def _step_finish(input_tokens, output_tokens):
     return {
         "type": "step_finish",
@@ -269,8 +342,8 @@ def _step_finish(input_tokens, output_tokens):
             "tokens": {"input": input_tokens, "output": output_tokens},
         },
     }
- 
- 
+
+
 def test_answer_excludes_intermediate_narration():
     """Only the final assistant message is the answer, not scratch talk."""
     events = [
@@ -286,8 +359,8 @@ def test_answer_excludes_intermediate_narration():
     assert len(trajectory.all_tool_calls) == 1
     assert trajectory.total_input_tokens == 110
     assert trajectory.total_output_tokens == 13
- 
- 
+
+
 def test_answer_excludes_reasoning_parts():
     events = [
         _text_part("r1", "(internal) suspect bearing wear", part_type="reasoning"),
@@ -295,8 +368,8 @@ def test_answer_excludes_reasoning_parts():
     ]
     answer, _ = _build_trajectory_from_events(events, [])
     assert answer == "The pump is healthy."
- 
- 
+
+
 def test_parallel_tool_calls_keep_their_own_outputs():
     """Two tool calls emitted before their outputs must not be mismatched."""
     events = [
@@ -308,8 +381,8 @@ def test_parallel_tool_calls_keep_their_own_outputs():
     by_name = {tc.name: tc.output for tc in trajectory.all_tool_calls}
     assert by_name["get_temp"] == "temp=42"
     assert by_name["get_vibration"] == "vib=0.3"
- 
- 
+
+
 def test_text_deltas_are_reconstructed():
     snapshot = [
         _text_part("t1", "Chiller 6 "),
@@ -321,4 +394,3 @@ def test_text_deltas_are_reconstructed():
     ]
     assert _build_trajectory_from_events(snapshot, [])[0] == "Chiller 6 has 5 sensors."
     assert _build_trajectory_from_events(delta, [])[0] == "Chiller 6 has 5 sensors."
- 
