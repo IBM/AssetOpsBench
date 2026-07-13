@@ -60,6 +60,11 @@ class OpenCodeTrajectory(Trajectory):
     stderr: str = ""
 
 
+def _needs_reasoning_effort_none(provider_id: str, model_name: str) -> bool:
+    """Whether OpenCode should disable reasoning_effort for this router model."""
+    return provider_id == "tokenrouter" and model_name.startswith("openai/gpt-5")
+
+
 def _build_mcp_config(
     server_paths: dict[str, Path | str],
     *,
@@ -132,6 +137,11 @@ def _resolve_opencode_model_and_provider(
         if provider_id == "tokenrouter" and model_name.startswith("anthropic/")
         else "@ai-sdk/openai-compatible"
     )
+    model_config: dict[str, Any] = {"name": model_name}
+    if _needs_reasoning_effort_none(provider_id, model_name):
+        # TokenRouter rejects function tools for OpenAI GPT-5 models on
+        # chat/completions unless reasoning_effort is explicitly disabled.
+        model_config["options"] = {"reasoningEffort": "none"}
     provider = {
         provider_id: {
             "npm": provider_npm,
@@ -141,9 +151,7 @@ def _resolve_opencode_model_and_provider(
                 "apiKey": "{env:ASSETOPSBENCH_OPENCODE_API_KEY}",
             },
             "models": {
-                model_name: {
-                    "name": model_name,
-                }
+                model_name: model_config,
             },
         }
     }
@@ -253,6 +261,35 @@ def _json_events(stdout: str) -> tuple[list[dict[str, Any]], list[str]]:
         else:
             plain_lines.append(line)
     return events, plain_lines
+
+
+def _opencode_error_message(events: list[dict[str, Any]]) -> str | None:
+    """Return a concise message for fatal OpenCode error events, if present."""
+    for event in events:
+        if event.get("type") != "error" and not event.get("error"):
+            continue
+
+        error = event.get("error")
+        if isinstance(error, dict):
+            data = error.get("data") if isinstance(error.get("data"), dict) else {}
+            message = (
+                data.get("message")
+                or error.get("message")
+                or data.get("responseBody")
+                or json.dumps(error, default=str)
+            )
+            name = error.get("name")
+            status = data.get("statusCode")
+            prefix = "OpenCode error"
+            if name:
+                prefix += f" {name}"
+            if status:
+                prefix += f" ({status})"
+            return f"{prefix}: {message}"
+
+        return f"OpenCode error event: {json.dumps(event, default=str)}"
+
+    return None
 
 
 def _candidate_part(event: dict[str, Any]) -> dict[str, Any] | None:
@@ -699,6 +736,9 @@ class OpenCodeAgentRunner(AgentRunner):
 
             duration_ms = (time.perf_counter() - run_started) * 1000
             events, plain_lines = _json_events(stdout)
+            error_message = _opencode_error_message(events)
+            if error_message:
+                raise RuntimeError(error_message)
             answer, trajectory = _build_trajectory_from_events(
                 events,
                 plain_lines,
