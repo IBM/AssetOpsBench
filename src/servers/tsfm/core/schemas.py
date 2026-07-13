@@ -36,12 +36,6 @@ class Modality(str, Enum):
     audio = "audio"
 
 
-class Metric(BaseModel):
-    model_config = ConfigDict(extra="allow")
-    metric: str
-    value: Optional[float] = None
-
-
 # --------------------------------------------------------------------------- #
 class ModelCard(BaseModel):
     """A model-store entry. Pointer index: weights live at one of artifact_path / hf_repo /
@@ -78,7 +72,6 @@ class ModelCard(BaseModel):
     param_hints: Dict[str, Any] = Field(default_factory=dict)
     training_regime: Optional[str] = None
 
-    metrics: List[Metric] = Field(default_factory=list)
     trained_on: Optional[Any] = None
     tags: List[str] = Field(default_factory=list)
     status: Status = Status.active
@@ -141,7 +134,6 @@ class FeatureCard(BaseModel):
     target_model: Optional[str] = None
     dataset: Optional[str] = None
     output_type: Optional[str] = None
-    metrics: List[Metric] = Field(default_factory=list)
     columns_added: List[str] = Field(default_factory=list)
     columns_dropped: List[str] = Field(default_factory=list)
     validity: Dict[str, Any] = Field(default_factory=dict)

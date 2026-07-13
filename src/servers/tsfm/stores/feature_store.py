@@ -9,7 +9,7 @@ Two entry kinds in one catalog:
 Capabilities:
   read    : get / find_features / list_extractors / search / get_lineage
   write   : register_feature (validated+gated) / update / deprecate / new_version
-  learn   : select_features (FLOps, full library) / select_features_from_catalog (writes importance back)
+  learn   : select_features (FLOps, full library) / select_features_from_catalog
 """
 
 from __future__ import annotations
@@ -142,8 +142,6 @@ def update_feature(store, feature_id: str, fields: dict) -> dict:
     doc = get_feature(store, feature_id)
     if not doc:
         raise ValueError(f"no feature {feature_id}")
-    if "metrics" in fields:
-        doc["metrics"] = doc.get("metrics", []) + list(fields.pop("metrics"))
     doc.update(fields)
     doc["updated_at"] = _now()
     return store.put(COLLECTION, doc)
@@ -200,15 +198,9 @@ def select_features(
 
 
 def select_features_from_catalog(
-    store,
-    series,
-    *,
-    reference_feature: str = "mean",
-    cd_margin: float = 0.05,
-    write_back: bool = False,
+    store, series, *, reference_feature: str = "mean", cd_margin: float = 0.05
 ) -> dict:
-    """FLOps over the catalog's extractor library; optionally write the importance score back
-    onto each extractor doc's metrics (the catalog 'learns')."""
+    """FLOps over the catalog's extractor library; returns the selection (scores + candidates)."""
     from ..reasoning import feature_selection as fsel
 
     cands = list_extractors(store)
@@ -223,20 +215,4 @@ def select_features_from_catalog(
         extractors=subset,
     )
     res["candidates"] = names
-    if write_back:
-        for name, sc in res["scores"].items():
-            if store.get(COLLECTION, _id(name)):
-                update_feature(
-                    store,
-                    name,
-                    {
-                        "metrics": [
-                            {
-                                "metric": "flops_importance",
-                                "value": sc,
-                                "dataset": "last_run",
-                            }
-                        ]
-                    },
-                )
     return res

@@ -39,7 +39,9 @@ from .core.results_models import (
     FeatureCountResult,
     ModelCountResult,
     ResolveResult,
-    DomainsResult
+    DomainsResult,
+    HfStatsResult,
+    GiftStatusResult,
 )
 
 from .core.results_models import EvolveAskResult, EvolveTellResult, EvolveBestResult
@@ -712,7 +714,7 @@ def get_model_lineage(model_id: str) -> Union[LineageResult, ErrorResult]:
 
 @mcp.tool(title="Update Model")
 def update_model(model_id: str, fields: dict) -> Union[CardResult, ErrorResult]:
-    """Patch fields on a model card (status, metrics, tags, domain, …)."""
+    """Patch fields on a model card (status, tags, domain, …)."""
     if not model_id.strip() or not fields:
         return ErrorResult(error="model_id and fields are required")
     try:
@@ -797,6 +799,63 @@ def resolve_model(model_id: str) -> Union[ResolveResult, ErrorResult]:
         reason="importable sktime_class + params; weights load lazily at fit",
     )
 
+@mcp.tool(title="HF Model Stats")
+def hf_stats(
+    model_id: Optional[str] = None, hf_repo: Optional[str] = None
+) -> Union[HfStatsResult, ErrorResult]:
+    """Look up a model's HuggingFace popularity: downloads + likes (READ-ONLY, does not change the
+    catalog). Give a catalog `model_id` (its hf_repo is resolved) OR an `hf_repo` directly. Use it
+    to weigh how widely adopted a model is before choosing it. Needs network to huggingface.co."""
+    repo = hf_repo
+    if model_id and not repo:
+        card = model_store.get_model(_STORE, model_id)
+        if not card:
+            return ErrorResult(error=f"model '{model_id}' not found")
+        repo = card.get("hf_repo")
+    if not repo:
+        return ErrorResult(error="give a model_id that has an hf_repo, or an hf_repo directly")
+    try:
+        st = model_store._hf_model_stats(repo)
+        return HfStatsResult(
+            model_id=model_id, hf_repo=repo,
+            downloads=st.get("downloads"), likes=st.get("likes"),
+        )
+    except Exception as exc:
+        logger.error("hf_stats failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="GIFT-Eval Status")
+def gift_status(
+    model_id: Optional[str] = None, name: Optional[str] = None, url: Optional[str] = None
+) -> Union[GiftStatusResult, ErrorResult]:
+    """Look up a model's GIFT-Eval leaderboard standing: rank + score (READ-ONLY). Give a catalog
+    `model_id` (matched by leaderboard_id / hf_repo / model_id) OR a leaderboard `name`. `url` (or
+    env GIFTEVAL_URL) points at the GIFT-Eval results JSON. Pair with hf_stats to decide."""
+    import os
+
+    key = name
+    if model_id and not key:
+        card = model_store.get_model(_STORE, model_id)
+        if not card:
+            return ErrorResult(error=f"model '{model_id}' not found")
+        key = card.get("leaderboard_id") or card.get("hf_repo") or model_id
+    if not key:
+        return ErrorResult(error="give a model_id or a leaderboard name")
+    src = url or os.environ.get("GIFTEVAL_URL") or os.environ.get("TSFM_LEADERBOARD_URL")
+    if not src:
+        return ErrorResult(error="no GIFT-Eval source (pass url= or set GIFTEVAL_URL)")
+    try:
+        entry = model_store._leaderboard_stats(src).get(key) or {}
+        return GiftStatusResult(
+            model_id=model_id, key=key, found=bool(entry),
+            rank=entry.get("rank"), score=entry.get("score"),
+        )
+    except Exception as exc:
+        logger.error("gift_status failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
 @mcp.tool(title="Register Finetuned Model")
 def register_finetuned(
     model_id: str,
@@ -806,7 +865,6 @@ def register_finetuned(
     prediction_length: int,
     description: str,
     domain: str = "general",
-    metrics: Optional[list] = None,
 ) -> Union[CardResult, ErrorResult]:
     """Add a fine-tuned model: point the catalog at a checkpoint, with lineage to its base model."""
     for k, v in (
@@ -828,7 +886,6 @@ def register_finetuned(
                 prediction_length=prediction_length,
                 description=description,
                 domain=domain,
-                metrics=metrics,
             )
         )
     except Exception as exc:
@@ -926,7 +983,7 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
 
 @mcp.tool(title="Update Feature")
 def update_feature(feature_id: str, fields: dict) -> Union[CardResult, ErrorResult]:
-    """Patch fields on a feature card (status, description, metrics, …)."""
+    """Patch fields on a feature card (status, description, …)."""
     if not feature_id.strip() or not fields:
         return ErrorResult(error="feature_id and fields are required")
     try:

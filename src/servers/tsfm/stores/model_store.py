@@ -64,15 +64,6 @@ def list_models(
     return store.find(COLLECTION, sel)
 
 
-def _best_metric(m: dict, name: str):
-    vals = [
-        x["value"]
-        for x in m.get("metrics", [])
-        if x.get("metric") == name and x.get("value") is not None
-    ]
-    return min(vals) if vals else None
-
-
 def find_models(
     store,
     task_id: str,
@@ -85,11 +76,10 @@ def find_models(
     top_k: int = 5,
     explain: bool = False,
 ):
-    """Filter by task + structured constraints, rank, return top_k.
-
-    Ranking (lexicographic, lower=better): domain match → has eval MAE (lower) → longer
-    context → fewer-params proxy (shorter id). With explain=True, attaches a `_rank` reason.
-    """
+    """Filter by task + structured constraints and return the first top_k in CATALOG ORDER (no
+    ranking). Filters: domain (exact), min_context_length / prediction_length (models lacking that
+    field are excluded). explain=True attaches a `_filter` note. Use hf_stats / gift_status to
+    judge quality/popularity yourself."""
     cands = list_models(
         store, task_id=task_id, domain=domain, modality=modality, usage_mode=usage_mode
     )
@@ -101,23 +91,11 @@ def find_models(
             return False
         return True
 
-    cands = [m for m in cands if ok(m)]
-
-    def score(m):
-        domain_match = 0 if (domain and m.get("domain") == domain) else 1
-        mae = _best_metric(m, "mae")
-        return (
-            domain_match,
-            mae if mae is not None else float("inf"),
-            -(m.get("context_length") or 0),
-        )
-
-    ranked = sorted(cands, key=score)[:top_k]
+    ranked = [m for m in cands if ok(m)][:top_k]   # catalog order, no ranking
     if explain:
         for r in ranked:
-            r["_rank"] = {
+            r["_filter"] = {
                 "domain_match": bool(domain and r.get("domain") == domain),
-                "mae": _best_metric(r, "mae"),
                 "context_length": r.get("context_length"),
             }
     return ranked
@@ -149,19 +127,13 @@ def search(
 def describe_candidates(
     store, task_id: str, *, top_k: int = 5, domain: str = None
 ) -> list:
-    """HuggingGPT-style model selection surface: return the top_k candidate cards for a task as
-    compact {model_id, description, family, context_length} records, ranked by an eval-quality
-    prior (lower MAE first), the '{{Candidate Models}}' the agent reasons over to pick/ensemble.
-    Trims tokens like HuggingGPT's top-K shortlist.
+    """HuggingGPT-style model selection surface: return the first top_k candidate cards for a task
+    (catalog order, no ranking) as compact records, the '{{Candidate Models}}' the agent reasons
+    over. Use hf_stats / gift_status to judge popularity/quality. Trims tokens for the shortlist.
     """
     cands = list_models(store, task_id=task_id, domain=domain)
-
-    def prior(m):
-        mae = _best_metric(m, "mae")
-        return (mae if mae is not None else float("inf"),)  # better eval first
-
     out = []
-    for m in sorted(cands, key=prior)[:top_k]:
+    for m in cands[:top_k]:   # catalog order, no ranking
         out.append(
             {
                 "model_id": m["model_id"],
@@ -201,6 +173,40 @@ def get_lineage(store, model_id: str) -> dict:
     }
 
 
+def _hf_model_stats(repo: str) -> dict:
+    """Fetch HuggingFace popularity for a repo: {downloads, likes}. Network I/O; a small seam so it
+    can be monkeypatched/cached. Requires access to huggingface.co."""
+    import requests
+
+    r = requests.get(
+        f"https://huggingface.co/api/models/{repo}",
+        headers={"Accept": "application/json"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    j = r.json()
+    return {"downloads": j.get("downloads"), "likes": j.get("likes")}
+
+
+def _leaderboard_stats(url: str) -> dict:
+    """Fetch leaderboard standings as {key: {rank, score}} (key matches leaderboard_id / hf_repo /
+    model_id). Network I/O; monkeypatchable. Accepts a list of {key|model|id, rank, score} or a
+    mapping key -> {rank, score}."""
+    import requests
+
+    r = requests.get(url, headers={"Accept": "application/json"}, timeout=20)
+    r.raise_for_status()
+    j = r.json()
+    if isinstance(j, list):
+        return {
+            str(e.get("key") or e.get("model") or e.get("id")): {
+                "rank": e.get("rank"), "score": e.get("score")
+            }
+            for e in j
+        }
+    return j
+
+
 # --------------------------------------------------------------------------- #
 # write
 # --------------------------------------------------------------------------- #
@@ -218,8 +224,6 @@ def update_model(store, model_id: str, fields: dict) -> dict:
     doc = get_model(store, model_id)
     if not doc:
         raise ValueError(f"no model {model_id}")
-    if "metrics" in fields:  # append, don't replace
-        doc["metrics"] = doc.get("metrics", []) + list(fields.pop("metrics"))
     doc.update(fields)
     doc["updated_at"] = _now()
     return store.put(COLLECTION, schemas.validate_model(doc))
@@ -261,7 +265,6 @@ def register_finetuned(
     prediction_length: int,
     description: str,
     domain: str = "general",
-    metrics: Optional[list] = None,
     overwrite: bool = True,
 ) -> dict:
     """Register a fine-tuned model that points the catalog at a checkpoint. Inherits the sktime
@@ -288,7 +291,6 @@ def register_finetuned(
             "prediction_length": prediction_length,
             "domain": domain,
             "description": description,
-            "metrics": metrics or [],
             "created_by": "agent.tsfm.finetune",
         },
         overwrite=overwrite,
