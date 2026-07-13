@@ -228,3 +228,20 @@ class ResolveResult(BaseModel):
 
 class DomainsResult(BaseModel):
     domains: dict
+
+
+class HfStatsResult(BaseModel):
+    """HuggingFace popularity lookup for one model (read-only)."""
+    model_id: Optional[str] = None
+    hf_repo: str
+    downloads: Optional[int] = None
+    likes: Optional[int] = None
+
+
+class GiftStatusResult(BaseModel):
+    """GIFT-Eval leaderboard standing lookup for one model (read-only)."""
+    model_id: Optional[str] = None
+    key: str
+    found: bool
+    rank: Optional[int] = None
+    score: Optional[float] = None
