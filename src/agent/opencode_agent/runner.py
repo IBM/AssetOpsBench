@@ -60,6 +60,11 @@ class OpenCodeTrajectory(Trajectory):
     stderr: str = ""
 
 
+def _needs_reasoning_effort_none(provider_id: str, model_name: str) -> bool:
+    """Whether OpenCode should disable reasoning_effort for this router model."""
+    return provider_id == "tokenrouter" and model_name.startswith("openai/gpt-5")
+
+
 def _build_mcp_config(
     server_paths: dict[str, Path | str],
     *,
@@ -115,8 +120,9 @@ def _resolve_opencode_model_and_provider(
     """Translate AssetOpsBench router model IDs into OpenCode config.
 
     OpenCode wants ``provider/model``.  For AssetOpsBench router prefixes such
-    as ``litellm_proxy/`` and ``tokenrouter/``, declare a custom
-    OpenAI-compatible provider and register the requested model explicitly.
+    as ``litellm_proxy/`` and ``tokenrouter/``, declare a custom provider and
+    register the requested model explicitly. TokenRouter Claude models need the
+    Anthropic protocol so OpenCode preserves native Anthropic message handling.
     """
     creds = resolve_router_creds(model_id, strict=True)
     if creds is None:
@@ -126,18 +132,26 @@ def _resolve_opencode_model_and_provider(
     provider_name = "TokenRouter" if provider_id == "tokenrouter" else "LiteLLM Proxy"
     model_name = resolve_model(model_id)
     opencode_model = f"{provider_id}/{model_name}"
+    provider_npm = (
+        "@ai-sdk/anthropic"
+        if provider_id == "tokenrouter" and model_name.startswith("anthropic/")
+        else "@ai-sdk/openai-compatible"
+    )
+    model_config: dict[str, Any] = {"name": model_name}
+    if _needs_reasoning_effort_none(provider_id, model_name):
+        # TokenRouter rejects function tools for OpenAI GPT-5 models on
+        # chat/completions unless reasoning_effort is explicitly disabled.
+        model_config["options"] = {"reasoningEffort": "none"}
     provider = {
         provider_id: {
-            "npm": "@ai-sdk/openai-compatible",
+            "npm": provider_npm,
             "name": provider_name,
             "options": {
                 "baseURL": creds.base_url,
                 "apiKey": "{env:ASSETOPSBENCH_OPENCODE_API_KEY}",
             },
             "models": {
-                model_name: {
-                    "name": model_name,
-                }
+                model_name: model_config,
             },
         }
     }
@@ -247,6 +261,35 @@ def _json_events(stdout: str) -> tuple[list[dict[str, Any]], list[str]]:
         else:
             plain_lines.append(line)
     return events, plain_lines
+
+
+def _opencode_error_message(events: list[dict[str, Any]]) -> str | None:
+    """Return a concise message for fatal OpenCode error events, if present."""
+    for event in events:
+        if event.get("type") != "error" and not event.get("error"):
+            continue
+
+        error = event.get("error")
+        if isinstance(error, dict):
+            data = error.get("data") if isinstance(error.get("data"), dict) else {}
+            message = (
+                data.get("message")
+                or error.get("message")
+                or data.get("responseBody")
+                or json.dumps(error, default=str)
+            )
+            name = error.get("name")
+            status = data.get("statusCode")
+            prefix = "OpenCode error"
+            if name:
+                prefix += f" {name}"
+            if status:
+                prefix += f" ({status})"
+            return f"{prefix}: {message}"
+
+        return f"OpenCode error event: {json.dumps(event, default=str)}"
+
+    return None
 
 
 def _candidate_part(event: dict[str, Any]) -> dict[str, Any] | None:
@@ -395,7 +438,9 @@ def _merge_text(existing: str, new: str) -> str:
     return existing + new
 
 
-def _is_step_finish(event: dict[str, Any], part: dict[str, Any], part_type: str) -> bool:
+def _is_step_finish(
+    event: dict[str, Any], part: dict[str, Any], part_type: str
+) -> bool:
     """True for OpenCode step-finish boundaries."""
     event_type = str(event.get("type") or "").lower()
     return ("step" in part_type and "finish" in part_type) or (
@@ -543,10 +588,9 @@ def _build_trajectory_from_events(
                     output_tokens=step["output_tokens"],
                 )
             )
-        if (
-            sum(step["input_tokens"] + step["output_tokens"] for step in steps) == 0
-            and (total_input or total_output)
-        ):
+        if sum(
+            step["input_tokens"] + step["output_tokens"] for step in steps
+        ) == 0 and (total_input or total_output):
             trajectory.turns[-1].input_tokens = total_input
             trajectory.turns[-1].output_tokens = total_output
         trajectory.turns[-1].duration_ms = duration_ms
@@ -692,6 +736,9 @@ class OpenCodeAgentRunner(AgentRunner):
 
             duration_ms = (time.perf_counter() - run_started) * 1000
             events, plain_lines = _json_events(stdout)
+            error_message = _opencode_error_message(events)
+            if error_message:
+                raise RuntimeError(error_message)
             answer, trajectory = _build_trajectory_from_events(
                 events,
                 plain_lines,
