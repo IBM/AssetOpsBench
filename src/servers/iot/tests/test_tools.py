@@ -11,9 +11,10 @@ class TestToolRegistration:
     async def test_registry_tools_are_registered(self):
         tools = await mcp.list_tools()
         assert sorted(tool.name for tool in tools) == [
+            "asset_detail",
             "asset_ids",
             "assets",
-            "get_asset_detail",
+            "find_assets_by_sensors",
             "installed_sensors",
             "measured_sensors",
             "sites",
@@ -74,11 +75,11 @@ class TestAssetIds:
         assert data["total_assets"] > 0
 
 
-class TestGetAssetDetail:
+class TestAssetDetail:
     @pytest.mark.anyio
     async def test_invalid_site(self):
         data = await call_tool(
-            mcp, "get_asset_detail", {"site_name": "INVALID", "asset_id": "Pump-1"}
+            mcp, "asset_detail", {"site_name": "INVALID", "asset_id": "Pump-1"}
         )
         assert "error" in data
         assert "unknown site" in data["error"]
@@ -104,7 +105,7 @@ class TestGetAssetDetail:
         ]
 
         data = await call_tool(
-            mcp, "get_asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
+            mcp, "asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
         )
 
         assert data == {
@@ -150,7 +151,7 @@ class TestGetAssetDetail:
         }
 
         data = await call_tool(
-            mcp, "get_asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
+            mcp, "asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
         )
 
         assert data["description"] == "Registry pump"
@@ -160,7 +161,7 @@ class TestGetAssetDetail:
     @pytest.mark.anyio
     async def test_db_disconnected(self, no_asset_db):
         data = await call_tool(
-            mcp, "get_asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
+            mcp, "asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
         )
         assert "error" in data
         assert "not connected" in data["error"].lower()
@@ -169,7 +170,7 @@ class TestGetAssetDetail:
     @pytest.mark.anyio
     async def test_discovery_integration(self):
         data = await call_tool(
-            mcp, "get_asset_detail", {"site_name": "MAIN", "asset_id": "Chiller 6"}
+            mcp, "asset_detail", {"site_name": "MAIN", "asset_id": "Chiller 6"}
         )
         assert data["asset_id"] == "Chiller 6"
         assert data["assettype"] == "CHILLER"
@@ -356,6 +357,120 @@ class TestInstalledSensors:
         assert "sensors" in data
         assert "Chiller 6 Oil Pressure" in data["sensors"]
         assert data["total_sensors"] > 0
+
+
+class TestFindAssetsBySensors:
+    @pytest.mark.anyio
+    async def test_invalid_site(self):
+        data = await call_tool(
+            mcp,
+            "find_assets_by_sensors",
+            {"site_name": "INVALID", "sensors": ["Pressure"]},
+        )
+        assert "error" in data
+        assert "unknown site" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_installed_source_exact_match(self, mock_asset_db):
+        mock_asset_db.find.side_effect = [
+            {"docs": [{"siteid": "MAIN"}]},
+            {"docs": [{"assetnum": "Fan-2"}, {"assetnum": "Pump-1"}]},
+            {"docs": [{"sensors": ["Temperature"]}]},
+            {"docs": [{"sensors": ["Pressure", "Temperature"]}]},
+        ]
+
+        data = await call_tool(
+            mcp,
+            "find_assets_by_sensors",
+            {
+                "site_name": "MAIN",
+                "sensors": ["Pressure"],
+                "source": "installed",
+            },
+        )
+
+        assert data["site_name"] == "MAIN"
+        assert data["query_sensors"] == ["Pressure"]
+        assert data["match"] == "all"
+        assert data["source"] == "installed"
+        assert data["total_assets"] == 1
+        assert data["assets"] == [
+            {"asset_id": "Pump-1", "matched_sensors": ["Pressure"]}
+        ]
+
+    @pytest.mark.anyio
+    async def test_deduplicates_query_sensors_for_all_match(self, mock_asset_db):
+        mock_asset_db.find.side_effect = [
+            {"docs": [{"siteid": "MAIN"}]},
+            {"docs": [{"assetnum": "Pump-1"}]},
+            {"docs": [{"sensors": ["Pressure", "Temperature"]}]},
+        ]
+
+        data = await call_tool(
+            mcp,
+            "find_assets_by_sensors",
+            {
+                "site_name": "MAIN",
+                "sensors": ["Pressure", "Pressure"],
+                "source": "installed",
+            },
+        )
+
+        assert data["query_sensors"] == ["Pressure"]
+        assert data["total_assets"] == 1
+        assert data["assets"] == [
+            {"asset_id": "Pump-1", "matched_sensors": ["Pressure"]}
+        ]
+
+    @pytest.mark.anyio
+    async def test_measured_source_substring_match(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.side_effect = [
+            {"docs": [{"siteid": "MAIN"}]},
+            {"docs": [{"assetnum": "Compressor-1"}, {"assetnum": "Pump-1"}]},
+        ]
+
+        def find_records(selector, **kwargs):
+            asset_id = selector["asset_id"]
+            if asset_id == "Compressor-1":
+                return {
+                    "docs": [
+                        {
+                            "asset_id": "Compressor-1",
+                            "timestamp": "2024-01-01T00:00:00",
+                            "Oil Pressure": 12,
+                        }
+                    ]
+                }
+            if asset_id == "Pump-1":
+                return {
+                    "docs": [
+                        {
+                            "asset_id": "Pump-1",
+                            "timestamp": "2024-01-01T00:00:00",
+                            "Discharge Pressure": 42,
+                            "Flow": 4,
+                        }
+                    ]
+                }
+            return {"docs": []}
+
+        mock_iot_db.find.side_effect = find_records
+
+        data = await call_tool(
+            mcp,
+            "find_assets_by_sensors",
+            {
+                "site_name": "MAIN",
+                "sensors": ["pressure"],
+                "substring": True,
+            },
+        )
+
+        assert data["total_assets"] == 2
+        assert data["assets"] == [
+            {"asset_id": "Compressor-1", "matched_sensors": ["Oil Pressure"]},
+            {"asset_id": "Pump-1", "matched_sensors": ["Discharge Pressure"]},
+        ]
 
 
 class TestAssets:
