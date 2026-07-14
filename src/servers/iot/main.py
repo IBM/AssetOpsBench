@@ -1,8 +1,11 @@
+import base64
+import binascii
+import json
 import logging
 import math
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import couchdb3
@@ -17,6 +20,8 @@ from servers.iot.models import (
     AssetsWithMetadataResult,
     ErrorResult,
     FindAssetsResult,
+    HistoryResult,
+    LatestReadingResult,
     SensorCoverage,
     SensorCoverageResult,
     SensorStat,
@@ -74,9 +79,10 @@ mcp = FastMCP(
         "find_assets_by_sensors() to find assets by installed or measured sensors, "
         "installed_sensors() for registry sensor inventory, and measured_sensors() for "
         "observed telemetry fields. Use stream_extent() to inspect telemetry time bounds "
-        "and record counts before planning larger telemetry reads. Use sensor_coverage() "
-        "for per-field non-null counts and time coverage, and sensor_stats() for numeric "
-        "summaries without returning raw telemetry rows."
+        "and record counts before planning larger telemetry reads. Use history() for paged "
+        "observations and latest_reading() for the newest values. Use sensor_coverage() for "
+        "per-field non-null counts and time coverage, and sensor_stats() for numeric summaries "
+        "without returning raw telemetry rows."
     ),
 )
 
@@ -372,6 +378,84 @@ def _coerce_finite_number(value: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _history_cursor_context(
+    site_name: str,
+    asset_id: str,
+    start: Optional[str],
+    end: Optional[str],
+    sensors: Optional[List[str]],
+) -> Dict[str, Any]:
+    return {
+        "site_name": site_name,
+        "asset_id": asset_id,
+        "start": start,
+        "end": end,
+        "sensors": sensors,
+    }
+
+
+def _encode_history_cursor(offset: int, context: Dict[str, Any]) -> str:
+    payload = json.dumps(
+        {"version": 1, "offset": offset, "context": context},
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_history_cursor(
+    cursor: str, expected_context: Dict[str, Any]
+) -> Tuple[Optional[int], Optional[str]]:
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        payload = json.loads(
+            base64.urlsafe_b64decode(cursor + padding).decode("utf-8")
+        )
+    except (binascii.Error, UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return None, "invalid cursor"
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        return None, "invalid cursor"
+    offset = payload.get("offset")
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        return None, "invalid cursor"
+    if payload.get("context") != expected_context:
+        return None, "cursor does not match history query"
+    return offset, None
+
+
+def _history_observation(
+    doc: Dict[str, Any],
+    asset_id: str,
+    timestamp: str,
+    sensors: Optional[List[str]],
+) -> Dict[str, Any]:
+    observation: Dict[str, Any] = {
+        "asset_id": asset_id,
+        "timestamp": timestamp,
+    }
+    if sensors is None:
+        observation.update(
+            {
+                field: value
+                for field, value in doc.items()
+                if field not in RESERVED_FIELDS
+            }
+        )
+    else:
+        observation.update(
+            {field: doc[field] for field in sensors if field in doc}
+        )
+    return observation
+
+
+def _timestamp_age_seconds(timestamp_dt: datetime) -> float:
+    if not _is_timezone_aware(timestamp_dt):
+        timestamp_dt = timestamp_dt.replace(tzinfo=timezone.utc)
+    return (
+        datetime.now(timezone.utc) - timestamp_dt.astimezone(timezone.utc)
+    ).total_seconds()
 
 
 @mcp.tool(title="List Sites")
@@ -746,31 +830,30 @@ def stream_extent(
     start: Optional[str] = None,
     end: Optional[str] = None,
 ) -> Union[StreamExtentResult, ErrorResult]:
-    """Return count and observed time bounds for one asset's telemetry stream.
+    """Inspect the size and timestamp span of an asset's telemetry stream.
 
-    The tool scans all matching telemetry records. `start` is inclusive and
-    `end` is exclusive. When `sensor` is provided, only records where that
-    telemetry field exists and is not null are counted.
-
-    Timestamp bounds are validated as ISO 8601 and compared chronologically
-    after parsing. Different explicit UTC offsets are supported. Bounds and
-    telemetry timestamps must either all include timezone offsets or all omit
-    them; ambiguous mixtures return an error.
+    Optionally restrict the stream to one measured sensor and/or an ISO 8601
+    window. Sensor-filtered records count only when the field is present and
+    non-null. The window is half-open: `start` is inclusive and `end` is
+    exclusive. Bounds and telemetry timestamps must consistently include or
+    omit timezone offsets; explicit offsets may differ and compare by instant.
 
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
             discover valid site ids.
         asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
-        sensor: Optional telemetry field name from `measured_sensors()`.
+        sensor: Optional exact field name from `measured_sensors()`.
             Reserved metadata fields such as `asset_id` and `timestamp` are not
             valid sensor names.
-        start: Optional inclusive ISO 8601 timestamp lower bound.
-        end: Optional exclusive ISO 8601 timestamp upper bound.
+        start: Optional inclusive ISO 8601 date or datetime lower bound.
+        end: Optional exclusive ISO 8601 date or datetime upper bound.
 
     Returns:
-        StreamExtentResult: Contains first and last matching timestamps,
-        `total_records`, whether the result exceeds the server page size, and
-        the approximate interval between matching records.
+        StreamExtentResult: `start_time` and `end_time` are the earliest and
+        latest matching timestamps. `total_records` is the matching count,
+        `exceeds_page_limit` indicates more than one server page, and
+        `approx_interval_seconds` is the average spacing implied by the span and
+        count.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -848,22 +931,263 @@ def stream_extent(
         return ErrorResult(error="unable to inspect telemetry stream extent")
 
 
+@mcp.tool(title="Get Sensor History")
+def history(
+    site_name: str,
+    asset_id: str,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    sensors: Optional[List[str]] = None,
+    limit: int = PAGE_SIZE,
+    cursor: Optional[str] = None,
+) -> Union[HistoryResult, ErrorResult]:
+    """Return one chronological page of telemetry observations for an asset.
+
+    Optional bounds form a half-open ISO 8601 window: `start` is inclusive and
+    `end` is exclusive. Use `sensors` to project exact fields from
+    `measured_sensors()`. Every row includes `asset_id` and `timestamp`; other
+    metadata and internal record identifiers are excluded. Omit `sensors` to
+    return every measured field present in each row.
+
+    `limit` must be between 1 and 1000. Leave `cursor` unset for the first page.
+    When `has_more` is true, repeat the same query arguments with `next_cursor`.
+    Cursors are opaque and bound to the site, asset, window, and sensor list.
+    Timestamp offset rules match `stream_extent()`; history returns an error if
+    timestamp representations cannot be emitted in chronological order.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
+        start: Optional inclusive ISO 8601 date or datetime lower bound.
+        end: Optional exclusive ISO 8601 date or datetime upper bound.
+        sensors: Optional non-empty list of exact measured field names. Duplicate
+            names are removed while preserving order.
+        limit: Maximum observations in this page, from 1 through 1000.
+        cursor: Opaque `next_cursor` from the previous page of the same query.
+
+    Returns:
+        HistoryResult: `observations` contains the projected chronological rows,
+        `returned` is the page size, and `has_more`/`next_cursor` control paging.
+        `start` and `end` echo the requested window.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    validation_error = _validate_dates(start, end)
+    if validation_error:
+        return ErrorResult(error=validation_error)
+    if not iot_db:
+        return ErrorResult(error="IoT records database not connected")
+    if isinstance(limit, bool) or not 1 <= limit <= PAGE_SIZE:
+        return ErrorResult(error=f"limit must be between 1 and {PAGE_SIZE}")
+
+    selected_sensors: Optional[List[str]] = None
+    if sensors is not None:
+        if not sensors:
+            return ErrorResult(error="sensors must not be empty when provided")
+        if any(not sensor.strip() for sensor in sensors):
+            return ErrorResult(error="sensor names must not be empty")
+        selected_sensors = list(dict.fromkeys(sensors))
+        reserved = [sensor for sensor in selected_sensors if sensor in RESERVED_FIELDS]
+        if reserved:
+            return ErrorResult(
+                error=(
+                    "sensors must be telemetry fields, not reserved metadata "
+                    f"fields {reserved}"
+                )
+            )
+        available_sensors = get_sensor_list(asset_id)
+        if not available_sensors:
+            return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
+        unknown = [
+            sensor for sensor in selected_sensors if sensor not in available_sensors
+        ]
+        if unknown:
+            return ErrorResult(
+                error=f"unknown sensors {unknown} for asset_id {asset_id}"
+            )
+
+    cursor_context = _history_cursor_context(
+        site_name, asset_id, start, end, selected_sensors
+    )
+    offset = 0
+    if cursor is not None:
+        offset, cursor_error = _decode_history_cursor(cursor, cursor_context)
+        if cursor_error:
+            return ErrorResult(error=cursor_error)
+        assert offset is not None
+
+    start_dt = _parse_iso_timestamp(start) if start is not None else None
+    end_dt = _parse_iso_timestamp(end) if end is not None else None
+    selector: Dict[str, Any] = {
+        "asset_id": asset_id,
+        "timestamp": {"$exists": True, "$ne": None},
+    }
+    fields = ["timestamp", *selected_sensors] if selected_sensors else None
+    observations: List[Dict[str, Any]] = []
+    matched_records = 0
+    has_more = False
+    previous_datetime: Optional[datetime] = None
+    try:
+        for doc, timestamp, timestamp_dt in _iter_records_in_window(
+            selector, start_dt, end_dt, fields=fields
+        ):
+            if previous_datetime is not None and timestamp_dt < previous_datetime:
+                raise _TimestampHandlingError(
+                    "telemetry timestamps cannot be returned in chronological order"
+                )
+            previous_datetime = timestamp_dt
+            if matched_records < offset:
+                matched_records += 1
+                continue
+            if len(observations) >= limit:
+                has_more = True
+                break
+            observations.append(
+                _history_observation(
+                    doc, asset_id, timestamp, selected_sensors
+                )
+            )
+            matched_records += 1
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
+    except Exception as e:
+        logger.error(f"history failed: {e}")
+        return ErrorResult(error="unable to retrieve telemetry history")
+
+    next_cursor = None
+    if has_more:
+        next_cursor = _encode_history_cursor(
+            offset + len(observations), cursor_context
+        )
+    return HistoryResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        observations=observations,
+        returned=len(observations),
+        next_cursor=next_cursor,
+        has_more=has_more,
+        start=start,
+        end=end,
+        message=(
+            f"returned {len(observations)} observation(s) for asset_id {asset_id}; "
+            f"has_more={has_more}."
+        ),
+    )
+
+
+@mcp.tool(title="Latest Reading")
+def latest_reading(
+    site_name: str,
+    asset_id: str,
+    sensor: Optional[str] = None,
+) -> Union[LatestReadingResult, ErrorResult]:
+    """Return the newest telemetry observation for an asset.
+
+    Omit `sensor` to return every measured field present in the newest record.
+    Provide an exact field name from `measured_sensors()` to return the newest
+    record where that field is present and non-null. The newest record is chosen
+    by parsed timestamp rather than string order, using the same timestamp rules
+    as `stream_extent()`.
+
+    `age_seconds` is the difference between the current UTC time and the reading
+    timestamp. Offset-free timestamps are interpreted as UTC; a negative value
+    indicates a timestamp in the future.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
+        sensor: Optional exact field name from `measured_sensors()`. Reserved
+            metadata fields are not valid sensor names.
+
+    Returns:
+        LatestReadingResult: Contains the selected observation timestamp,
+        requested sensor values, age in seconds, and a compact message.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    if not iot_db:
+        return ErrorResult(error="IoT records database not connected")
+    if sensor is not None and not sensor.strip():
+        return ErrorResult(error="sensor must not be empty")
+    if sensor in RESERVED_FIELDS:
+        return ErrorResult(
+            error=(
+                "sensor must be a telemetry field, not reserved metadata "
+                f"field {sensor}"
+            )
+        )
+    if sensor is not None:
+        available_sensors = get_sensor_list(asset_id)
+        if not available_sensors:
+            return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
+        if sensor not in available_sensors:
+            return ErrorResult(error=f"unknown sensor {sensor} for asset_id {asset_id}")
+
+    selector: Dict[str, Any] = {
+        "asset_id": asset_id,
+        "timestamp": {"$exists": True, "$ne": None},
+    }
+    fields = None
+    if sensor is not None:
+        selector[sensor] = {"$exists": True, "$ne": None}
+        fields = ["timestamp", sensor]
+
+    latest_doc: Optional[Dict[str, Any]] = None
+    latest_timestamp: Optional[str] = None
+    latest_datetime: Optional[datetime] = None
+    try:
+        for doc, timestamp, timestamp_dt in _iter_records_in_window(
+            selector, None, None, fields=fields
+        ):
+            if latest_datetime is None or timestamp_dt > latest_datetime:
+                latest_doc = doc
+                latest_timestamp = timestamp
+                latest_datetime = timestamp_dt
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
+    except Exception as e:
+        logger.error(f"latest_reading failed: {e}")
+        return ErrorResult(error="unable to retrieve latest telemetry reading")
+
+    if latest_doc is None or latest_timestamp is None or latest_datetime is None:
+        return ErrorResult(
+            error=f"no records for asset_id {asset_id}"
+            + (f", sensor {sensor}" if sensor else "")
+        )
+
+    if sensor is None:
+        values = {
+            field: value
+            for field, value in latest_doc.items()
+            if field not in RESERVED_FIELDS
+        }
+    else:
+        values = {sensor: latest_doc[sensor]}
+    return LatestReadingResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        timestamp=latest_timestamp,
+        values=values,
+        age_seconds=_timestamp_age_seconds(latest_datetime),
+        message=f"latest reading for asset_id {asset_id} at {latest_timestamp}.",
+    )
+
+
 @mcp.tool(title="Sensor Coverage")
 def sensor_coverage(
     site_name: str,
     asset_id: str,
 ) -> Union[SensorCoverageResult, ErrorResult]:
-    """Return per-sensor non-null counts and observed time coverage.
+    """Summarize non-null observation coverage for every measured sensor.
 
-    Coverage is calculated from timestamped telemetry records in chronological
-    terms, using the same timestamp parsing and timezone-consistency rules as
-    `stream_extent()` and `sensor_stats()`. Every observed telemetry field is
-    returned, including fields seen only with null values.
-
-    The tool scans the full paged stream with constant memory so returned counts
-    and time bounds are complete. Non-null values of any type contribute to
-    `non_null_count`; first and last timestamps identify the earliest and latest
-    non-null samples.
+    Scans the asset's full timestamped stream; use `stream_extent()` first when
+    you need to estimate its size. `non_null_count` includes present non-null
+    values of any type. Fields observed only with null values are returned with
+    zero count and null time bounds. First and last timestamps are selected
+    chronologically. Mixed offset-aware and offset-free timestamps return an
+    error.
 
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
@@ -871,8 +1195,9 @@ def sensor_coverage(
         asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
 
     Returns:
-        SensorCoverageResult: Contains `docs_scanned` and sorted per-sensor
-        non-null counts with chronological first/last non-null timestamps.
+        SensorCoverageResult: `docs_scanned` is the number of timestamped records
+        examined. `sensors` is sorted by field name and contains each field's
+        non-null count and earliest/latest non-null timestamps.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -929,32 +1254,32 @@ def sensor_stats(
     start: Optional[str] = None,
     end: Optional[str] = None,
 ) -> Union[SensorStatsResult, ErrorResult]:
-    """Return numeric sensor statistics over an optional time window.
+    """Compute numeric statistics for one or all measured sensors.
 
-    The window is half-open: `start` is inclusive and `end` is exclusive.
-    Timestamps are parsed and compared chronologically with the same timezone
-    handling as `stream_extent()`. Omit `sensor` to summarize every measured
-    telemetry field for the asset.
+    Omit `sensor` to summarize every field returned by `measured_sensors()`.
+    Optional bounds form a half-open ISO 8601 window: `start` is inclusive and
+    `end` is exclusive. Timestamp offset rules match `stream_extent()`.
 
-    Numeric values and numeric strings contribute to `count`, `min`, `max`,
-    `mean`, and population `stddev`. Present values that are null, boolean,
-    non-numeric, or non-finite contribute to `null_count`. Missing fields do not
-    contribute to either count. First and last timestamps identify the earliest
-    and latest numeric samples included in the statistics.
+    Finite numbers and numeric strings contribute to the numeric statistics.
+    Present null, boolean, non-numeric, and non-finite values contribute to
+    `null_count`; missing fields contribute to neither count. `stddev` is the
+    population standard deviation: `0.0` for one numeric value and null for none.
+    First and last timestamps identify the earliest and latest numeric samples.
 
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
             discover valid site ids.
         asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
         sensor: Optional exact field name from `measured_sensors()`. Omit it to
-            summarize every measured field.
-        start: Optional inclusive ISO 8601 timestamp lower bound.
-        end: Optional exclusive ISO 8601 timestamp upper bound.
+            summarize all measured fields.
+        start: Optional inclusive ISO 8601 date or datetime lower bound.
+        end: Optional exclusive ISO 8601 date or datetime upper bound.
 
     Returns:
-        SensorStatsResult: Contains one `SensorStat` per requested field with
-        finite numeric counts, null counts, range, mean, population standard
-        deviation, and first/last numeric sample timestamps.
+        SensorStatsResult: `stats` contains one entry per requested field, sorted
+        by field name when `sensor` is omitted. Each entry includes numeric and
+        null counts, range, mean, population standard deviation, and
+        earliest/latest numeric sample timestamps.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
