@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 import couchdb3
@@ -54,7 +55,8 @@ mcp = FastMCP(
         "registry details, assets() for registry metadata with optional assettype filtering, "
         "find_assets_by_sensors() to find assets by installed or measured sensors, "
         "installed_sensors() for registry sensor inventory, and measured_sensors() for "
-        "observed telemetry fields."
+        "observed telemetry fields. Use stream_extent() to inspect telemetry time bounds "
+        "and record counts before planning larger telemetry reads."
     ),
 )
 
@@ -126,6 +128,18 @@ class FindAssetsResult(BaseModel):
     source: str
     total_assets: int
     assets: List[AssetSensorMatch]
+    message: str
+
+
+class StreamExtentResult(BaseModel):
+    site_name: str
+    asset_id: str
+    sensor: Optional[str]
+    start_time: Optional[str]
+    end_time: Optional[str]
+    total_records: int
+    exceeds_page_limit: bool
+    approx_interval_seconds: Optional[float]
     message: str
 
 
@@ -245,6 +259,45 @@ def _installed_sensors(asset_id: str, site_name: Optional[str] = None) -> List[s
     except Exception as e:
         logger.error(f"_installed_sensors failed for asset_id {asset_id}: {e}")
         return []
+
+
+def _validate_dates(start: Optional[str], end: Optional[str]) -> Optional[str]:
+    """Return None when the optional ISO 8601 bounds are valid."""
+    try:
+        start_dt = datetime.fromisoformat(start) if start is not None else None
+        end_dt = datetime.fromisoformat(end) if end is not None else None
+    except ValueError as e:
+        return f"Invalid date format (expected ISO 8601, e.g. 2024-01-15T00:00:00): {e}"
+    if start_dt is not None and end_dt is not None:
+        try:
+            if start_dt >= end_dt:
+                return "start >= end"
+        except TypeError:
+            return "start and end must use matching timezone awareness"
+    return None
+
+
+def _time_selector(
+    asset_id: str, start: Optional[str], end: Optional[str]
+) -> Dict[str, Any]:
+    selector: Dict[str, Any] = {"asset_id": asset_id}
+    timestamp: Dict[str, Any] = {}
+    if start is not None:
+        timestamp["$gte"] = start
+    if end is not None:
+        timestamp["$lt"] = end
+    if timestamp:
+        selector["timestamp"] = timestamp
+    return selector
+
+
+def _span_seconds(start_iso: str, end_iso: str) -> Optional[float]:
+    try:
+        return (
+            datetime.fromisoformat(end_iso) - datetime.fromisoformat(start_iso)
+        ).total_seconds()
+    except ValueError:
+        return None
 
 
 @mcp.tool(title="List Sites")
@@ -608,6 +661,100 @@ def find_assets_by_sensors(
         assets=matches,
         message=f"{len(matches)} asset(s) at {site_name} match {query_sensors} "
         f"(match={match}, substring={substring}, source={source}).",
+    )
+
+
+@mcp.tool(title="Stream Extent")
+def stream_extent(
+    site_name: str,
+    asset_id: str,
+    sensor: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+) -> Union[StreamExtentResult, ErrorResult]:
+    """Return count and observed time bounds for one asset's telemetry stream.
+
+    The tool scans all matching telemetry records across CouchDB pages. `start`
+    is inclusive and `end` is exclusive. When `sensor` is provided, only records
+    where that telemetry field exists and is not null are counted.
+
+    Timestamp bounds are validated as ISO 8601 and sent to CouchDB as the same
+    strings provided by the caller. Use the timestamp granularity and timezone
+    style stored in the telemetry records, such as `2024-01-15T00:00:00` for
+    datetime streams or `2024-01-15` for date-only streams.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
+        sensor: Optional telemetry field name from `measured_sensors()`.
+            Reserved metadata fields such as `asset_id` and `timestamp` are not
+            valid sensor names.
+        start: Optional inclusive ISO 8601 timestamp lower bound.
+        end: Optional exclusive ISO 8601 timestamp upper bound.
+
+    Returns:
+        StreamExtentResult: Contains first and last matching timestamps,
+        `total_records`, whether the result exceeds the server page size, and
+        the approximate interval between matching records.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    validation_error = _validate_dates(start, end)
+    if validation_error:
+        return ErrorResult(error=validation_error)
+    if not iot_db:
+        return ErrorResult(error="IoT records database not connected")
+    if sensor is not None and not sensor.strip():
+        return ErrorResult(error="sensor must not be empty")
+    if sensor in RESERVED_FIELDS:
+        return ErrorResult(
+            error=f"sensor must be a telemetry field, not reserved metadata field {sensor}"
+        )
+
+    selector = _time_selector(asset_id, start, end)
+    if sensor:
+        selector[sensor] = {"$exists": True, "$ne": None}
+
+    first_timestamp: Optional[str] = None
+    last_timestamp: Optional[str] = None
+    total_records = 0
+    try:
+        for doc in _iter_records(selector, fields=["timestamp"]):
+            timestamp = doc.get("timestamp")
+            if timestamp is not None:
+                if first_timestamp is None:
+                    first_timestamp = timestamp
+                last_timestamp = timestamp
+            total_records += 1
+    except Exception as e:
+        logger.error(f"stream_extent failed: {e}")
+        return ErrorResult(error=str(e))
+
+    if total_records == 0:
+        return ErrorResult(
+            error=f"no records for asset_id {asset_id}"
+            + (f", sensor {sensor}" if sensor else "")
+        )
+
+    approx_interval: Optional[float] = None
+    if first_timestamp and last_timestamp and total_records > 1:
+        span_seconds = _span_seconds(first_timestamp, last_timestamp)
+        if span_seconds is not None:
+            approx_interval = span_seconds / (total_records - 1)
+
+    return StreamExtentResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        sensor=sensor,
+        start_time=first_timestamp,
+        end_time=last_timestamp,
+        total_records=total_records,
+        exceeds_page_limit=total_records > PAGE_SIZE,
+        approx_interval_seconds=approx_interval,
+        message=f"{total_records} record(s) for asset_id {asset_id}"
+        + (f" (sensor {sensor})" if sensor else "")
+        + f" from {first_timestamp} to {last_timestamp}.",
     )
 
 
