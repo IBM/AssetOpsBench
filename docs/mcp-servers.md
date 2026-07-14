@@ -4,47 +4,37 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 
 ## Contents
 
-- [iot — IoT Sensor Data](#iot--iot-sensor-data)
+- [iot — IoT Asset Registry](#iot--iot-asset-registry)
 - [utilities — Utilities](#utilities--utilities)
 - [fmsr — Failure Mode and Sensor Relations](#fmsr--failure-mode-and-sensor-relations)
 - [wo — Work Order](#wo--work-order)
 - [tsfm — Time Series Foundation Model](#tsfm--time-series-foundation-model)
 - [vibration — Vibration Diagnostics](#vibration--vibration-diagnostics)
 
-## iot — IoT Sensor Data
+## iot — IoT Asset Registry
 
-The IoT server reads from **two** databases: telemetry readings (`IOT_DBNAME`, default `iot`) and an
-asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from `asset_profile_sample.json`). The
-two answer different questions: `asset_ids()` lists bare ids to pass to telemetry tools; `sensors()`
-reflects TELEMETRY — what actually streams (the **measured** set); `assets()`/`get_asset()`/
-`asset_sensors()`/`registry_assets()` reflect the REGISTRY — the asset nameplate and the **installed**
-sensor inventory (by name). Comparing `asset_sensors()` against `sensors()` surfaces sensors that are
-installed but not streaming. The registry also reconciles ids across systems (Maximo `assetnum`,
-telemetry `iot_asset_id`, work-order `wo_assetnum`), so an asset can be looked up by any of its ids.
+The IoT server reads from the asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from
+`asset_profile_sample.json`). It exposes only two tools while the IoT tool surface is being rebuilt:
+`asset_ids()` for bare `assetnum` values, and `assets()` for registry metadata with optional
+`assettype` filtering.
 
 **Path:** `src/servers/iot/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `IOT_DBNAME`, `ASSET_DBNAME`)
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `ASSET_DBNAME`)
 
-**Sample assets shipped in the `iot` database** (loaded by `src/couchdb/couchdb_setup.sh`):
+**Sample asset profiles shipped in the `asset` database** (loaded by `src/couchdb/init_data.py`):
 
-| `asset_id`  | Asset class      | Source file                                       |
-| ----------- | ---------------- | ------------------------------------------------- |
-| `Chiller 6` | Chiller          | `src/couchdb/sample_data/iot/chiller_6.json`         |
-| `mp_1`      | Metro pump       | `src/couchdb/sample_data/iot/metro_pump_1.json`      |
-| `hyd_1`     | Hydraulic pump   | `src/couchdb/sample_data/iot/hydraulic_pump_1.json`  |
+| `assetnum`  | Asset class      |
+| ----------- | ---------------- |
+| `Chiller 6` | Chiller          |
+| `mp_1`      | Compressor       |
+| `hyd_1`     | Hydraulic pump   |
 
-Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ships in a separate `vibration` database for the vibration MCP server.
+Source file: `src/couchdb/scenarios_data/shared/iot/asset_profile_sample.json`.
 
 | Tool              | Arguments                                  | Description                                                                                                  |
 | ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `sites`           | —                                          | List all sites, discovered dynamically from the asset registry (`siteid`)                                    |
-| `asset_ids`       | `site_name`                                | List bare asset ids registered at a site (telemetry id where present, else `assetnum`)                       |
+| `asset_ids`       | `site_name`                                | List bare `assetnum` values registered at a site                                                            |
 | `assets`          | `site_name`, `assettype?`                  | List assets with metadata (assettype, description, vintage, installed sensor count), optionally filtered by assettype |
-| `sensors`         | `site_name`, `asset_id`                    | List **measured** sensor names for an asset (union of keys across its telemetry docs)                        |
-| `history`         | `site_name`, `asset_id`, `start`, `final?` | Fetch historical sensor readings for a time range (ISO 8601 timestamps)                                      |
-| `get_asset`       | `site_name`, `asset_id`                    | Registry/nameplate detail for one asset (description, assettype, status, location, vintage, installed count) |
-| `asset_sensors`   | `site_name`, `asset_id`                    | List the **installed** sensors for an asset, by name (registry inventory)                                    |
-| `registry_assets` | `site_name`, `assettype?`                  | List registry assets with metadata (assettype, vintage, sensor count), optionally filtered by assettype     |
 
 ## utilities — Utilities
 
