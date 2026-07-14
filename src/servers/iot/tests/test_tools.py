@@ -21,6 +21,13 @@ class TestToolRegistration:
             "stream_extent",
         ]
 
+    @pytest.mark.anyio
+    async def test_stream_extent_description_is_storage_neutral(self):
+        tools = await mcp.list_tools()
+        stream_extent_tool = next(tool for tool in tools if tool.name == "stream_extent")
+
+        assert "couchdb" not in stream_extent_tool.description.lower()
+
 
 class TestSites:
     @pytest.mark.anyio
@@ -662,6 +669,22 @@ class TestStreamExtent:
 
         assert "error" in data
         assert data["error"] == "no records for asset_id Pump-1, sensor Pressure"
+
+    @pytest.mark.anyio
+    async def test_query_error_does_not_expose_storage_backend(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.side_effect = RuntimeError("CouchDB unavailable")
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "MAIN", "asset_id": "Pump-1"},
+        )
+
+        assert data == {"error": "unable to inspect telemetry stream extent"}
+        assert "couchdb" not in data["error"].lower()
 
     @requires_iot_db
     @pytest.mark.anyio

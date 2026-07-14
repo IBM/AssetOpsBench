@@ -674,14 +674,14 @@ def stream_extent(
 ) -> Union[StreamExtentResult, ErrorResult]:
     """Return count and observed time bounds for one asset's telemetry stream.
 
-    The tool scans all matching telemetry records across CouchDB pages. `start`
-    is inclusive and `end` is exclusive. When `sensor` is provided, only records
-    where that telemetry field exists and is not null are counted.
+    The tool scans all matching telemetry records. `start` is inclusive and
+    `end` is exclusive. When `sensor` is provided, only records where that
+    telemetry field exists and is not null are counted.
 
-    Timestamp bounds are validated as ISO 8601 and sent to CouchDB as the same
-    strings provided by the caller. Use the timestamp granularity and timezone
-    style stored in the telemetry records, such as `2024-01-15T00:00:00` for
-    datetime streams or `2024-01-15` for date-only streams.
+    Timestamp bounds are validated as ISO 8601 and applied as the same strings
+    provided by the caller. Use the timestamp granularity and timezone style
+    stored in the telemetry records, such as `2024-01-15T00:00:00` for datetime
+    streams or `2024-01-15` for date-only streams.
 
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
@@ -729,7 +729,7 @@ def stream_extent(
             total_records += 1
     except Exception as e:
         logger.error(f"stream_extent failed: {e}")
-        return ErrorResult(error=str(e))
+        return ErrorResult(error="unable to inspect telemetry stream extent")
 
     if total_records == 0:
         return ErrorResult(
