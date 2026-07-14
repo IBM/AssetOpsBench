@@ -13,27 +13,11 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 
 ## iot — IoT Asset Registry and Telemetry Records
 
-The IoT server reads from the asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from
-`asset_profile_sample.json`) and IoT telemetry records (`IOT_DBNAME`, default `iot`). All tools are
-read-only. Use the registry and discovery tools to resolve valid sites, assets, and sensor names,
-then use the telemetry tools for raw observations or summaries.
+Read-only tools for browsing the asset registry and querying IoT telemetry.
 
 **Path:** `src/servers/iot/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `ASSET_DBNAME`, `IOT_DBNAME`)
-
-The server keeps tool registration and tool functions in `main.py`. Pydantic response models live
-in `models.py`; shared timestamp, paging, projection, and telemetry aggregation logic lives in
-`telemetry_helper.py`.
-
-**Sample asset profiles shipped in the `asset` database** (loaded by `src/couchdb/init_data.py`):
-
-| `assetnum`  | Asset class      |
-| ----------- | ---------------- |
-| `Chiller 6` | Chiller          |
-| `mp_1`      | Compressor       |
-| `hyd_1`     | Hydraulic pump   |
-
-Source file: `src/couchdb/scenarios_data/shared/iot/asset_profile_sample.json`.
+**Sample assets:** `Chiller 6`, `mp_1`, and `hyd_1` from `asset_profile_sample.json`
 
 ### Registry and discovery tools
 
@@ -47,10 +31,6 @@ Source file: `src/couchdb/scenarios_data/shared/iot/asset_profile_sample.json`.
 | `measured_sensors` | `site_name`, `asset_id` | List measurement fields observed across the telemetry stream |
 | `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?` | Find site assets by installed or measured sensor names |
 
-`find_assets_by_sensors` defaults to `match="all"` and `source="measured"`. Exact matching is
-case-sensitive; `substring=true` enables case-insensitive fragment matching. Duplicate query
-sensors are removed while preserving first occurrence order.
-
 ### Telemetry tools
 
 | Tool | Arguments | Description |
@@ -61,15 +41,8 @@ sensors are removed while preserving first occurrence order.
 | `sensor_coverage` | `site_name`, `asset_id` | Scan the full stream for per-sensor non-null counts and time coverage |
 | `sensor_stats` | `site_name`, `asset_id`, `sensor?`, `start?`, `end?` | Compute per-sensor numeric counts, range, mean, and population standard deviation |
 
-Telemetry windows use ISO 8601 bounds with `start` inclusive and `end` exclusive. Bounds and
-record timestamps must consistently include or omit timezone offsets; aware timestamps with
-different offsets are compared by instant. `history` returns 1 to 1000 observations per page and
-uses opaque cursors bound to the original query.
-
-`stream_extent` counts sensor-filtered records only when that field is present and non-null.
-`sensor_coverage` counts non-null values of any type and always scans the complete timestamped
-stream. `sensor_stats` accepts finite numbers and numeric strings; present null, boolean,
-non-numeric, and non-finite values increment `null_count`, while missing fields do not.
+Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based paging with up to
+1000 observations per page.
 
 ## utilities — Utilities
 
