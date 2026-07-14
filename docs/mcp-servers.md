@@ -13,43 +13,36 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 
 ## iot — IoT Asset Registry and Telemetry Records
 
-The IoT server reads from the asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from
-`asset_profile_sample.json`) and IoT telemetry records (`IOT_DBNAME`, default `iot`). It exposes
-registry discovery tools while the broader IoT tool surface is being rebuilt: `sites()` for site
-names, `asset_ids()` for bare `assetnum` values, `asset_detail()` for one asset's registry
-details, `assets()` for registry metadata with optional `assettype` filtering,
-`find_assets_by_sensors()` to find assets by installed or measured sensors, `installed_sensors()`
-for registry sensor inventory, and `measured_sensors()` for telemetry fields observed in records.
+Read-only tools for browsing the asset registry and querying IoT telemetry.
 
 **Path:** `src/servers/iot/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `ASSET_DBNAME`, `IOT_DBNAME`)
+**Sample assets:** `Chiller 6`, `mp_1`, and `hyd_1` from `asset_profile_sample.json`
 
-**Sample asset profiles shipped in the `asset` database** (loaded by `src/couchdb/init_data.py`):
+### Registry and discovery tools
 
-| `assetnum`  | Asset class      |
-| ----------- | ---------------- |
-| `Chiller 6` | Chiller          |
-| `mp_1`      | Compressor       |
-| `hyd_1`     | Hydraulic pump   |
+| Tool | Arguments | Description |
+| ---- | --------- | ----------- |
+| `sites` | - | List sorted site identifiers, with `MAIN` as the fallback |
+| `asset_ids` | `site_name` | List asset identifiers registered at a site |
+| `assets` | `site_name`, `assettype?` | List assets with compact metadata and optional exact type filtering |
+| `asset_detail` | `site_name`, `asset_id` | Return registry details and installed-sensor count for one asset |
+| `installed_sensors` | `site_name`, `asset_id` | List sensor names assigned in the registry |
+| `measured_sensors` | `site_name`, `asset_id` | List measurement fields observed across the telemetry stream |
+| `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?` | Find site assets by installed or measured sensor names |
 
-Source file: `src/couchdb/scenarios_data/shared/iot/asset_profile_sample.json`.
+### Telemetry tools
 
-| Tool              | Arguments                                  | Description                                                                                                  |
-| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `sites`           | -                                          | List known site names from the asset registry, with a default fallback                                       |
-| `asset_ids`       | `site_name`                                | List bare `assetnum` values registered at a site                                                            |
-| `asset_detail`    | `site_name`, `asset_id`                  | Return one asset's registry details, including `n_installed_sensors`                                         |
-| `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?` | Find assets at a site by installed or measured sensor names                                                  |
-| `installed_sensors` | `site_name`, `asset_id`                  | List sensor names installed on an asset according to the asset registry                                      |
-| `measured_sensors` | `site_name`, `asset_id`                   | List measured telemetry fields observed for an asset                                                         |
-| `assets`          | `site_name`, `assettype?`                  | List assets with metadata (assettype, description, vintage, installed sensor count), optionally filtered by assettype |
+| Tool | Arguments | Description |
+| ---- | --------- | ----------- |
+| `stream_extent` | `site_name`, `asset_id`, `sensor?`, `start?`, `end?` | Count matching records and return their earliest and latest timestamps |
+| `latest_reading` | `site_name`, `asset_id`, `sensor?` | Return the newest record, or the newest non-null value for one sensor |
+| `history` | `site_name`, `asset_id`, `start?`, `end?`, `sensors?`, `limit?`, `cursor?` | Return chronological, projected observations with cursor paging |
+| `sensor_coverage` | `site_name`, `asset_id` | Scan the full stream for per-sensor non-null counts and time coverage |
+| `sensor_stats` | `site_name`, `asset_id`, `sensor?`, `start?`, `end?` | Compute per-sensor numeric counts, range, mean, and population standard deviation |
 
-`find_assets_by_sensors()` searches only assets registered at the requested site. `match="all"`
-requires every query sensor to match, while `match="any"` requires at least one. Set
-`substring=true` to perform case-insensitive substring matching instead of exact sensor-name
-matching. `source="installed"` searches the asset registry sensor inventory; `source="measured"`
-searches telemetry fields observed in IoT records. Duplicate query sensors are deduplicated in
-the response while preserving their first occurrence order.
+Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based paging with up to
+1000 observations per page.
 
 ## utilities — Utilities
 
