@@ -51,7 +51,8 @@ mcp = FastMCP(
     instructions=(
         "IoT asset registry and telemetry record tools. Use sites() to discover site names, "
         "asset_ids() for bare assetnum values at a site, assets() for registry metadata with "
-        "optional assettype filtering, and measured_sensors() for observed telemetry fields."
+        "optional assettype filtering, installed_sensors() for registry sensor inventory, "
+        "and measured_sensors() for observed telemetry fields."
     ),
 )
 
@@ -267,6 +268,50 @@ def measured_sensors(
             f"and site_name {site_name}: {', '.join(sensor_list)}."
         ),
     )
+
+
+@mcp.tool(title="List Installed Sensors")
+def installed_sensors(
+    site_name: str, asset_id: str
+) -> Union[SensorsResult, ErrorResult]:
+    """List installed sensor names for one asset from the asset registry.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
+
+    Returns:
+        SensorsResult: Contains `site_name`, `asset_id`, `total_sensors`,
+        `sensors`, and `message`. The `sensors` field is the registry
+        inventory for the asset, distinct from `measured_sensors()`, which
+        lists fields observed in IoT telemetry records.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    if not asset_db:
+        return ErrorResult(error="asset registry database not connected")
+
+    try:
+        res = asset_db.find(
+            {"siteid": site_name, "assetnum": asset_id},
+            fields=["assetnum", "sensors"],
+            limit=1,
+        )
+        docs = res.get("docs", [])
+        if not docs:
+            return ErrorResult(error=f"unknown asset_id {asset_id} at site {site_name}")
+        names = list(docs[0].get("sensors", []))
+        return SensorsResult(
+            site_name=site_name,
+            asset_id=asset_id,
+            total_sensors=len(names),
+            sensors=names,
+            message=f"{len(names)} sensors installed on {asset_id}: {', '.join(names)}.",
+        )
+    except Exception as e:
+        logger.error(f"installed_sensors failed: {e}")
+        return ErrorResult(error=str(e))
 
 
 @mcp.tool(title="List Assets")
