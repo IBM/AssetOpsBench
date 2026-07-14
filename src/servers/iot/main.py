@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 import couchdb3
 from dotenv import load_dotenv
@@ -19,7 +19,20 @@ logger = logging.getLogger("iot-mcp-server")
 COUCHDB_URL = os.environ.get("COUCHDB_URL")
 COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD")
+IOT_DBNAME = os.environ.get("IOT_DBNAME", "iot")
 ASSET_DBNAME = os.environ.get("ASSET_DBNAME", "asset")
+
+try:
+    db = couchdb3.Database(
+        IOT_DBNAME,
+        url=COUCHDB_URL,
+        user=COUCHDB_USERNAME,
+        password=COUCHDB_PASSWORD,
+    )
+    logger.info(f"Connected to IoT records database: {IOT_DBNAME}")
+except Exception as e:
+    logger.error(f"Failed to connect to IoT records database: {e}")
+    db = None
 
 try:
     asset_db = couchdb3.Database(
@@ -36,13 +49,15 @@ except Exception as e:
 mcp = FastMCP(
     "iot",
     instructions=(
-        "IoT asset registry tools. Use sites() to discover site names, asset_ids() for bare "
-        "assetnum values at a site, and assets() for registry metadata with optional "
-        "assettype filtering."
+        "IoT asset registry and telemetry record tools. Use sites() to discover site names, "
+        "asset_ids() for bare assetnum values at a site, assets() for registry metadata with "
+        "optional assettype filtering, and measured_sensors() for observed telemetry fields."
     ),
 )
 
 DEFAULT_SITES = ["MAIN"]
+PAGE_SIZE = 1000
+RESERVED_FIELDS = {"_id", "_rev", "asset_id", "timestamp"}
 
 
 class ErrorResult(BaseModel):
@@ -57,6 +72,14 @@ class AssetsResult(BaseModel):
     site_name: str
     total_assets: int
     assets: List[str]
+    message: str
+
+
+class SensorsResult(BaseModel):
+    site_name: str
+    asset_id: str
+    total_sensors: int
+    sensors: List[str]
     message: str
 
 
@@ -76,6 +99,58 @@ class AssetsWithMetadataResult(BaseModel):
 
 
 _registry_sites_cache: Optional[List[str]] = None
+_sensor_list_cache: Dict[str, List[str]] = {}
+
+
+def _iter_records(
+    selector: Dict[str, Any],
+    fields: Optional[List[str]] = None,
+    sort: Optional[List[Dict[str, str]]] = None,
+    page_size: int = PAGE_SIZE,
+) -> Iterator[Dict[str, Any]]:
+    """Yield telemetry records matching a selector across paged database results."""
+    if not db:
+        return
+    if sort is None:
+        sort = [{"asset_id": "asc"}, {"timestamp": "asc"}]
+    bookmark: Optional[str] = None
+    while True:
+        kwargs: Dict[str, Any] = {"limit": page_size, "sort": sort}
+        if fields is not None:
+            kwargs["fields"] = fields
+        if bookmark is not None:
+            kwargs["bookmark"] = bookmark
+        res = db.find(selector, **kwargs)
+        docs = res.get("docs", [])
+        if not docs:
+            break
+        for doc in docs:
+            yield doc
+        bookmark = res.get("bookmark")
+        if bookmark is None or len(docs) < page_size:
+            break
+
+
+def get_sensor_list(asset_id: str) -> List[str]:
+    """Return sorted telemetry field names observed across all records for an asset."""
+    if asset_id in _sensor_list_cache:
+        return _sensor_list_cache[asset_id]
+    if not db:
+        return []
+    try:
+        found = set()
+        seen = False
+        for doc in _iter_records({"asset_id": asset_id}):
+            seen = True
+            found.update(key for key in doc.keys() if key not in RESERVED_FIELDS)
+        if not seen:
+            return []
+        sensors = sorted(found)
+        _sensor_list_cache[asset_id] = sensors
+        return sensors
+    except Exception as e:
+        logger.error(f"get_sensor_list failed for asset_id {asset_id}: {e}")
+        return []
 
 
 def get_registry_sites() -> List[str]:
@@ -154,6 +229,44 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
     except Exception as e:
         logger.error(f"asset_ids failed: {e}")
         return ErrorResult(error=str(e))
+
+
+@mcp.tool(title="List Measured Sensors")
+def measured_sensors(
+    site_name: str, asset_id: str
+) -> Union[SensorsResult, ErrorResult]:
+    """List measured sensor fields for one asset at one site.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
+
+    Returns:
+        SensorsResult: Contains `site_name`, `asset_id`, `total_sensors`,
+        `sensors`, and `message`. The `sensors` field is a sorted list of
+        telemetry record fields observed for the asset, excluding structural
+        fields such as `asset_id` and `timestamp`.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    if not db:
+        return ErrorResult(error="IoT records database not connected")
+
+    sensor_list = get_sensor_list(asset_id)
+    if not sensor_list:
+        return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
+
+    return SensorsResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        total_sensors=len(sensor_list),
+        sensors=sensor_list,
+        message=(
+            f"found {len(sensor_list)} sensors for asset_id {asset_id} "
+            f"and site_name {site_name}: {', '.join(sensor_list)}."
+        ),
+    )
 
 
 @mcp.tool(title="List Assets")
