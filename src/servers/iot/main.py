@@ -50,9 +50,10 @@ mcp = FastMCP(
     "iot",
     instructions=(
         "IoT asset registry and telemetry record tools. Use sites() to discover site names, "
-        "asset_ids() for bare assetnum values at a site, assets() for registry metadata with "
-        "optional assettype filtering, installed_sensors() for registry sensor inventory, "
-        "and measured_sensors() for observed telemetry fields."
+        "asset_ids() for bare assetnum values at a site, get_asset_detail() for one asset's "
+        "registry details, assets() for registry metadata with optional assettype filtering, "
+        "installed_sensors() for registry sensor inventory, and measured_sensors() for "
+        "observed telemetry fields."
     ),
 )
 
@@ -81,6 +82,19 @@ class SensorsResult(BaseModel):
     asset_id: str
     total_sensors: int
     sensors: List[str]
+    message: str
+
+
+class AssetDetail(BaseModel):
+    site_name: str
+    asset_id: str
+    description: Optional[str]
+    assettype: Optional[str]
+    status: Optional[str]
+    location: Optional[str]
+    installdate: Optional[str]
+    vintage: Optional[str]
+    n_installed_sensors: int
     message: str
 
 
@@ -232,6 +246,79 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
         return ErrorResult(error=str(e))
 
 
+@mcp.tool(title="Get Asset Detail")
+def get_asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
+    """Return registry details for one asset.
+
+    This tool reads the asset registry from `asset_db` (`ASSET_DBNAME`, default
+    `asset`) and returns nameplate fields for one asset record. Use
+    `installed_sensors()` when you only need the registry sensor inventory.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
+
+    Returns:
+        AssetDetail: Contains `site_name`, `asset_id`, `description`,
+        `assettype`, `status`, `location`, `installdate`, `vintage`,
+        `n_installed_sensors`, and `message`.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    if not asset_db:
+        return ErrorResult(error="asset registry database not connected")
+
+    try:
+        res = asset_db.find(
+            {"siteid": site_name, "assetnum": asset_id},
+            fields=[
+                "assetnum",
+                "description",
+                "assettype",
+                "status",
+                "location",
+                "installdate",
+                "vintage",
+                "sensors",
+            ],
+            limit=1,
+        )
+        docs = res.get("docs", [])
+        if not docs:
+            return ErrorResult(error=f"unknown asset_id {asset_id} at site {site_name}")
+
+        doc = docs[0]
+        sensors = list(doc.get("sensors") or [])
+        n_installed_sensors = len(sensors)
+        assettype = doc.get("assettype")
+        vintage = doc.get("vintage")
+        location = doc.get("location")
+
+        parts = [f"asset {asset_id} is a {assettype or 'asset'}"]
+        if vintage:
+            parts.append(f" ({vintage} vintage)")
+        if location:
+            parts.append(f" at {location}")
+        parts.append(f" with {n_installed_sensors} installed sensors.")
+
+        return AssetDetail(
+            site_name=site_name,
+            asset_id=doc.get("assetnum", asset_id),
+            description=doc.get("description"),
+            assettype=assettype,
+            status=doc.get("status"),
+            location=location,
+            installdate=doc.get("installdate"),
+            vintage=vintage,
+            n_installed_sensors=n_installed_sensors,
+            message="".join(parts),
+        )
+    except Exception as e:
+        logger.error(f"get_asset_detail failed: {e}")
+        return ErrorResult(error=str(e))
+
+
 @mcp.tool(title="List Measured Sensors")
 def measured_sensors(
     site_name: str, asset_id: str
@@ -310,7 +397,7 @@ def installed_sensors(
         docs = res.get("docs", [])
         if not docs:
             return ErrorResult(error=f"unknown asset_id {asset_id} at site {site_name}")
-        names = list(docs[0].get("sensors", []))
+        names = list(docs[0].get("sensors") or [])
         return SensorsResult(
             site_name=site_name,
             asset_id=asset_id,
@@ -361,7 +448,7 @@ def assets(
                     assettype=doc.get("assettype"),
                     description=doc.get("description"),
                     vintage=doc.get("vintage"),
-                    n_sensors=len(doc.get("sensors", [])),
+                    n_sensors=len(doc.get("sensors") or []),
                 )
                 for doc in res["docs"]
             ),

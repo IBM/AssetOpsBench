@@ -13,6 +13,7 @@ class TestToolRegistration:
         assert sorted(tool.name for tool in tools) == [
             "asset_ids",
             "assets",
+            "get_asset_detail",
             "installed_sensors",
             "measured_sensors",
             "sites",
@@ -71,6 +72,109 @@ class TestAssetIds:
         assert "assets" in data
         assert "Chiller 6" in data["assets"]
         assert data["total_assets"] > 0
+
+
+class TestGetAssetDetail:
+    @pytest.mark.anyio
+    async def test_invalid_site(self):
+        data = await call_tool(
+            mcp, "get_asset_detail", {"site_name": "INVALID", "asset_id": "Pump-1"}
+        )
+        assert "error" in data
+        assert "unknown site" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_with_mock_asset_db(self, mock_asset_db):
+        mock_asset_db.find.side_effect = [
+            {"docs": [{"siteid": "MAIN"}]},
+            {
+                "docs": [
+                    {
+                        "assetnum": "Pump-1",
+                        "description": "Main pump",
+                        "assettype": "PUMP",
+                        "status": "OPERATING",
+                        "location": "PUMP-HOUSE",
+                        "installdate": "2024-01-01",
+                        "vintage": "new",
+                        "sensors": ["Pressure", "Temperature"],
+                    }
+                ]
+            },
+        ]
+
+        data = await call_tool(
+            mcp, "get_asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
+        )
+
+        assert data == {
+            "site_name": "MAIN",
+            "asset_id": "Pump-1",
+            "description": "Main pump",
+            "assettype": "PUMP",
+            "status": "OPERATING",
+            "location": "PUMP-HOUSE",
+            "installdate": "2024-01-01",
+            "vintage": "new",
+            "n_installed_sensors": 2,
+            "message": "asset Pump-1 is a PUMP (new vintage) at PUMP-HOUSE with 2 installed sensors.",
+        }
+
+    @pytest.mark.anyio
+    async def test_reads_asset_registry_not_iot_db(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.side_effect = [
+            {"docs": [{"siteid": "MAIN"}]},
+            {
+                "docs": [
+                    {
+                        "assetnum": "Pump-1",
+                        "description": "Registry pump",
+                        "assettype": "PUMP",
+                        "status": "OPERATING",
+                        "location": None,
+                        "installdate": None,
+                        "vintage": None,
+                        "sensors": [],
+                    }
+                ]
+            },
+        ]
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {
+                    "asset_id": "Pump-1",
+                    "timestamp": "2024-01-01T00:00:00",
+                    "Telemetry Sensor": 42,
+                }
+            ]
+        }
+
+        data = await call_tool(
+            mcp, "get_asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
+        )
+
+        assert data["description"] == "Registry pump"
+        assert data["n_installed_sensors"] == 0
+        mock_iot_db.find.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_db_disconnected(self, no_asset_db):
+        data = await call_tool(
+            mcp, "get_asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
+        )
+        assert "error" in data
+        assert "not connected" in data["error"].lower()
+
+    @requires_couchdb
+    @pytest.mark.anyio
+    async def test_discovery_integration(self):
+        data = await call_tool(
+            mcp, "get_asset_detail", {"site_name": "MAIN", "asset_id": "Chiller 6"}
+        )
+        assert data["asset_id"] == "Chiller 6"
+        assert data["assettype"] == "CHILLER"
+        assert data["status"] == "OPERATING"
+        assert data["n_installed_sensors"] > 0
 
 
 class TestMeasuredSensors:
