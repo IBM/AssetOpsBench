@@ -1,46 +1,26 @@
-import os
 import logging
-from datetime import datetime
-from functools import lru_cache
+import os
 from typing import Any, Dict, List, Optional, Union
-from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel
+
 import couchdb3
 from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel
 
 load_dotenv()
 
-# Setup logging — default WARNING so stderr stays quiet when used as MCP server;
-# set LOG_LEVEL=INFO (or DEBUG) in the environment to see verbose output.
+# Setup logging; default WARNING keeps stderr quiet when used as an MCP server.
 _log_level = getattr(
     logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING
 )
 logging.basicConfig(level=_log_level)
 logger = logging.getLogger("iot-mcp-server")
 
-# Configuration from environment
 COUCHDB_URL = os.environ.get("COUCHDB_URL")
-COUCHDB_DBNAME = os.environ.get("IOT_DBNAME")
 COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD")
-
-# Initialize CouchDB
-try:
-    db = couchdb3.Database(
-        COUCHDB_DBNAME,
-        url=COUCHDB_URL,
-        user=COUCHDB_USERNAME,
-        password=COUCHDB_PASSWORD,
-    )
-    logger.info(f"Connected to CouchDB: {COUCHDB_DBNAME}")
-except Exception as e:
-    logger.error(f"Failed to connect to CouchDB: {e}")
-    db = None
-
-# The asset registry is loaded as its own collection (manifest key "asset"), and the loader makes
-# database name == collection key — so it lives in the "asset" database, NOT in IOT_DBNAME. Open a
-# second handle for it. Telemetry (assets/sensors/history) keeps using `db` (the iot readings DB).
 ASSET_DBNAME = os.environ.get("ASSET_DBNAME", "asset")
+
 try:
     asset_db = couchdb3.Database(
         ASSET_DBNAME,
@@ -48,19 +28,17 @@ try:
         user=COUCHDB_USERNAME,
         password=COUCHDB_PASSWORD,
     )
-    logger.info(f"Connected to CouchDB: {ASSET_DBNAME}")
+    logger.info(f"Connected to asset registry database: {ASSET_DBNAME}")
 except Exception as e:
-    logger.error(f"Failed to connect to asset registry DB: {e}")
+    logger.error(f"Failed to connect to asset registry database: {e}")
     asset_db = None
 
 mcp = FastMCP(
     "iot",
     instructions=(
-        "IoT sensor data + asset registry. Browse sites, assets, and sensors, read the asset "
-        "nameplate (registry), see which installed sensors are actually measured (streaming), and "
-        "query historical readings from CouchDB. NOTE: assets()/sensors() reflect TELEMETRY (what "
-        "streams = measured); get_asset()/asset_sensors()/registry_assets() reflect the REGISTRY "
-        "(what is installed, by name). Compare the two to find installed-but-not-streaming sensors."
+        "IoT asset registry tools. Use sites() to discover site names, asset_ids() for bare "
+        "assetnum values at a site, and assets() for registry metadata with optional "
+        "assettype filtering."
     ),
 )
 
@@ -82,163 +60,48 @@ class AssetsResult(BaseModel):
     message: str
 
 
-class SensorsResult(BaseModel):
-    site_name: str
-    asset_id: str
-    total_sensors: int
-    sensors: List[str]
-    message: str
-
-
-class HistoryResult(BaseModel):
-    site_name: str
-    asset_id: str
-    total_observations: int
-    start: str
-    final: Optional[str]
-    observations: List[Dict[str, Any]]
-    message: str
-
-
-# ── Asset-registry result models (identity / nameplate + installed sensor names) ──
-class AssetDetail(BaseModel):
-    site_name: str
+class AssetSummary(BaseModel):
     asset_id: str
     description: Optional[str]
     assettype: Optional[str]
-    status: Optional[str]
-    location: Optional[str]
-    installdate: Optional[str]
     vintage: Optional[str]
     n_sensors: int
-    message: str
 
 
-class AssetSensorsResult(BaseModel):
-    site_name: str
-    asset_id: str
-    total_sensors: int
-    sensors: List[str]
-    message: str
-
-
-class RegistryAssetsResult(BaseModel):
+class AssetsWithMetadataResult(BaseModel):
     site_name: str
     total_assets: int
-    assets: List[Dict[str, Any]]
+    assets: List[AssetSummary]
     message: str
-
-
-_asset_list_cache: Optional[List[str]] = None
-
-
-def get_asset_list() -> List[str]:
-    """Helper to fetch unique asset IDs from CouchDB.  Result is cached after
-    the first successful call to avoid repeated full-table scans."""
-    global _asset_list_cache
-    if _asset_list_cache is not None:
-        return _asset_list_cache
-
-    if not db:
-        return []
-
-    try:
-        # We limit the fields to just asset_id to minimize data transfer
-        res = db.find(
-            {"asset_id": {"$exists": True}}, fields=["asset_id"], limit=100000
-        )
-        assets = {doc["asset_id"] for doc in res["docs"] if "asset_id" in doc}
-        _asset_list_cache = sorted(list(assets))
-        return _asset_list_cache
-    except Exception as e:
-        logger.error(f"Error fetching assets: {e}")
-        return []
-
-
-_sensor_list_cache: Dict[str, List[str]] = {}
-
-
-def get_sensor_list(asset_id: str) -> List[str]:
-    """The sensors an asset actually measures = the UNION of measurement keys across ALL of the
-    asset's reading documents.
-
-    IoT data may be sparse / non-uniform: different sensors are recorded at different timestamps
-    (a timestamp may carry one sensor, several, or all), so a single document does NOT reveal the
-    full measured set. We therefore scan every reading doc for the asset and union the non-metadata
-    keys. Result is cached per asset_id after the first successful call."""
-    if asset_id in _sensor_list_cache:
-        return _sensor_list_cache[asset_id]
-
-    if not db:
-        return []
-
-    try:
-        res = db.find({"asset_id": asset_id}, limit=100000)
-        docs = res["docs"]
-        if not docs:
-            return []
-
-        # Exclude metadata; union the measurement keys across every reading document.
-        exclude = {"_id", "_rev", "asset_id", "timestamp"}
-        sensors = sorted(
-            {key for doc in docs for key in doc.keys() if key not in exclude}
-        )
-        _sensor_list_cache[asset_id] = sensors
-        return sensors
-    except Exception as e:
-        logger.error(f"Error fetching sensors for {asset_id}: {e}")
-        return []
-
-
-_asset_doc_cache: Dict[str, Dict[str, Any]] = {}
-
-
-def get_asset_doc(asset_id: str) -> Optional[Dict[str, Any]]:
-    """Fetch one asset-registry document, resolving ANY of the asset's id spaces — the registry
-    `assetnum` (Maximo id), the telemetry `iot_asset_id`, or the work-order `wo_assetnum`. This lets
-    the same profile be found whether the caller holds the IoT id (e.g. 'Chiller 6') or the WO id
-    ('CHILLER6'). Cached per asset_id."""
-    if asset_id in _asset_doc_cache:
-        return _asset_doc_cache[asset_id]
-    if not asset_db:
-        return None
-    try:
-        for field in ("assetnum", "iot_asset_id", "wo_assetnum"):
-            res = asset_db.find({"doctype": "asset", field: asset_id}, limit=1)
-            docs = res["docs"]
-            if docs:
-                _asset_doc_cache[asset_id] = docs[0]
-                return docs[0]
-        return None
-    except Exception as e:
-        logger.error(f"Error fetching asset doc {asset_id}: {e}")
-        return None
 
 
 _registry_sites_cache: Optional[List[str]] = None
 
 
 def get_registry_sites() -> List[str]:
-    """Distinct site ids present in the asset registry (from each asset profile's `siteid`). Cached."""
+    """Return distinct site ids present in the asset registry."""
     global _registry_sites_cache
     if _registry_sites_cache is not None:
         return _registry_sites_cache
     if not asset_db:
         return []
     try:
-        res = asset_db.find({"doctype": "asset"}, fields=["siteid"], limit=100000)
-        found = sorted({d.get("siteid") for d in res["docs"] if d.get("siteid")})
-        _registry_sites_cache = found
-        return found
+        res = asset_db.find(
+            {"siteid": {"$exists": True}},
+            fields=["siteid"],
+            limit=100000,
+        )
+        _registry_sites_cache = sorted(
+            {doc.get("siteid") for doc in res["docs"] if doc.get("siteid")}
+        )
+        return _registry_sites_cache
     except Exception as e:
         logger.error(f"get_registry_sites failed: {e}")
         return []
 
 
 def known_sites() -> List[str]:
-    """The server's site list — discovered DYNAMICALLY from the asset registry (each asset profile's
-    `siteid`). Falls back to DEFAULT_SITES only if the registry is empty / unavailable.
-    """
+    """Return known registry sites, falling back to MAIN when the registry is unavailable."""
     return get_registry_sites() or DEFAULT_SITES
 
 
@@ -248,29 +111,40 @@ def _is_known_site(site_name: str) -> bool:
 
 @mcp.tool(title="List Sites")
 def sites() -> SitesResult:
-    """Retrieves the list of sites, discovered dynamically from the asset registry (the distinct
-    `siteid` across asset profiles). Falls back to the default only if the registry has no assets.
+    """List known site names from the asset registry.
+
+    Returns:
+        SitesResult: `sites` contains sorted distinct `siteid` values from
+        asset profiles. If the registry database is unavailable or has no sites,
+        `sites` falls back to `["MAIN"]`.
     """
     return SitesResult(sites=known_sites())
 
 
-@mcp.tool(title="List Assets")
-def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
-    """Returns the assets registered at a given site, from the asset registry filtered by `siteid`.
-    Each returned id is the asset's telemetry id (`iot_asset_id`) where it has one, otherwise its
-    registry `assetnum` — so the id works with sensors()/history() when telemetry exists.
+@mcp.tool(title="List Asset IDs")
+def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
+    """List only asset identifiers for one site.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+
+    Returns:
+        AssetsResult: Contains `site_name`, `total_assets`, `assets`, and
+        `message`. The `assets` field is a sorted list of asset registry
+        `assetnum` values.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
-        return ErrorResult(error="CouchDB not connected")
+        return ErrorResult(error="asset registry database not connected")
     try:
         res = asset_db.find(
-            {"doctype": "asset", "siteid": site_name},
-            fields=["assetnum", "iot_asset_id"],
+            {"siteid": site_name},
+            fields=["assetnum"],
             limit=100000,
         )
-        ids = sorted((d.get("iot_asset_id") or d["assetnum"]) for d in res["docs"])
+        ids = sorted(doc["assetnum"] for doc in res["docs"])
         return AssetsResult(
             site_name=site_name,
             total_assets=len(ids),
@@ -278,150 +152,34 @@ def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
             message=f"found {len(ids)} assets at site {site_name}: {', '.join(ids)}.",
         )
     except Exception as e:
-        logger.error(f"assets failed: {e}")
+        logger.error(f"asset_ids failed: {e}")
         return ErrorResult(error=str(e))
 
 
-@mcp.tool(title="List Sensors")
-def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
-    """Lists the sensors available for a specified asset at a given site.
-    These are the MEASURED sensors — names discovered from the asset's telemetry documents,
-    i.e. points that actually stream to the historian. For the full INSTALLED inventory
-    (including sensors fitted but not streaming), use asset_sensors()."""
-    if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-
-    sensor_list = get_sensor_list(asset_id)
-    if not sensor_list:
-        return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
-
-    return SensorsResult(
-        site_name=site_name,
-        asset_id=asset_id,
-        total_sensors=len(sensor_list),
-        sensors=sensor_list,
-        message=f"found {len(sensor_list)} sensors for asset_id {asset_id} and site_name {site_name}: {', '.join(sensor_list)}.",
-    )
-
-
-@mcp.tool(title="Get Sensor History")
-def history(
-    site_name: str, asset_id: str, start: str, final: Optional[str] = None
-) -> Union[HistoryResult, ErrorResult]:
-    """Returns a list of historical sensor values for the specified asset(s) at a site within a given time range (start to final)."""
-    try:
-        start_iso = datetime.fromisoformat(start).isoformat()
-        if final:
-            datetime.fromisoformat(final)
-            if start >= final:
-                return ErrorResult(error="start >= final")
-    except ValueError as e:
-        return ErrorResult(error=f"Invalid date format: {e}")
-
-    if not db:
-        return ErrorResult(error="CouchDB not connected")
-
-    selector = {
-        "asset_id": asset_id,
-        "timestamp": {"$gte": start_iso},
-    }
-    if final:
-        selector["timestamp"]["$lt"] = datetime.fromisoformat(final).isoformat()
-
-    logger.info(f"Querying CouchDB with selector: {selector}")
-    try:
-        res = db.find(
-            selector, limit=1000, sort=[{"asset_id": "asc"}, {"timestamp": "asc"}]
-        )
-        docs = res["docs"]
-        return HistoryResult(
-            site_name=site_name,
-            asset_id=asset_id,
-            total_observations=len(docs),
-            start=start,
-            final=final,
-            observations=docs,
-            message=f"found {len(docs)} observations for asset_id {asset_id} from {start} to {final or 'now'}.",
-        )
-    except Exception as e:
-        logger.error(f"CouchDB query failed: {e}")
-        return ErrorResult(error=str(e))
-
-
-@mcp.tool(title="Get Asset")
-def get_asset(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
-    """Return registry/nameplate details for one asset (Maximo MXASSET-aligned: description,
-    assettype, status, location, installdate, vintage) plus installed sensor count.
-    This is asset IDENTITY — distinct from the telemetry-derived assets() list."""
-    if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    doc = get_asset_doc(asset_id)
-    if not doc:
-        return ErrorResult(error=f"unknown asset_id {asset_id} in registry")
-    n = len(doc.get("sensors", []))
-    assettype = doc.get("assettype")
-    vintage = doc.get("vintage")
-    location = doc.get("location")
-
-    # Build a human message that omits clauses whose fields are null.
-    parts = [f"asset {asset_id} is a {assettype or 'asset'}"]
-    if vintage:
-        parts.append(f" ({vintage} vintage)")
-    if location:
-        parts.append(f" at {location}")
-    parts.append(f" with {n} installed sensors.")
-    message = "".join(parts)
-
-    return AssetDetail(
-        site_name=site_name,
-        asset_id=doc.get("assetnum", asset_id),
-        description=doc.get("description"),
-        assettype=assettype,
-        status=doc.get("status"),
-        location=location,
-        installdate=doc.get("installdate"),
-        vintage=vintage,
-        n_sensors=n,
-        message=message,
-    )
-
-
-@mcp.tool(title="List Asset Sensors")
-def asset_sensors(
-    site_name: str, asset_id: str
-) -> Union[AssetSensorsResult, ErrorResult]:
-    """List the INSTALLED sensors for an asset, by name (installed is assumed). This is the registry
-    inventory — distinct from sensors(), which lists only what actually streams (the MEASURED set).
-    Compare the two to find installed-but-not-streaming sensors."""
-    if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    doc = get_asset_doc(asset_id)
-    if not doc:
-        return ErrorResult(error=f"unknown asset_id {asset_id} in registry")
-    names = list(doc.get("sensors", []))
-    return AssetSensorsResult(
-        site_name=site_name,
-        asset_id=asset_id,
-        total_sensors=len(names),
-        sensors=names,
-        message=f"{len(names)} sensors installed on {asset_id}: {', '.join(names)}.",
-    )
-
-
-@mcp.tool(title="List Registry Assets")
-def registry_assets(
+@mcp.tool(title="List Assets")
+def assets(
     site_name: str, assettype: Optional[str] = None
-) -> Union[RegistryAssetsResult, ErrorResult]:
-    """List assets from the registry with metadata (assettype, vintage, sensor count), optionally
-    filtered by assettype (e.g. 'PUMP', 'COMPRESSOR'). Complements assets(), which returns bare ids derived from
-    telemetry."""
+) -> Union[AssetsWithMetadataResult, ErrorResult]:
+    """List asset registry records for one site with compact metadata.
 
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        assettype: Optional exact asset type filter, such as `PUMP` or
+            `COMPRESSOR`.
+
+    Returns:
+        AssetsWithMetadataResult: Contains `site_name`, `total_assets`,
+        `assets`, and `message`. Each item in `assets` includes `asset_id`
+        (the registry `assetnum`), `description`, `assettype`, `vintage`, and
+        `n_sensors`.
+    """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
-        return ErrorResult(error="CouchDB not connected")
+        return ErrorResult(error="asset registry database not connected")
     try:
-        selector: Dict[str, Any] = {"doctype": "asset", "siteid": site_name}
+        selector: Dict[str, Any] = {"siteid": site_name}
         if assettype:
             selector["assettype"] = assettype
         res = asset_db.find(
@@ -431,32 +189,31 @@ def registry_assets(
         )
         rows = sorted(
             (
-                {
-                    "asset_id": d["assetnum"],
-                    "assettype": d.get("assettype"),
-                    "description": d.get("description"),
-                    "vintage": d.get("vintage"),
-                    "n_sensors": len(d.get("sensors", [])),
-                }
-                for d in res["docs"]
+                AssetSummary(
+                    asset_id=doc["assetnum"],
+                    assettype=doc.get("assettype"),
+                    description=doc.get("description"),
+                    vintage=doc.get("vintage"),
+                    n_sensors=len(doc.get("sensors", [])),
+                )
+                for doc in res["docs"]
             ),
-            key=lambda r: r["asset_id"],
+            key=lambda row: row.asset_id,
         )
-        return RegistryAssetsResult(
+        return AssetsWithMetadataResult(
             site_name=site_name,
             total_assets=len(rows),
             assets=rows,
-            message=f"found {len(rows)} registry assets"
+            message=f"found {len(rows)} assets"
             + (f" of type '{assettype}'" if assettype else "")
             + ".",
         )
     except Exception as e:
-        logger.error(f"registry_assets failed: {e}")
+        logger.error(f"assets failed: {e}")
         return ErrorResult(error=str(e))
 
 
 def main():
-    # Initialize and run the server
     mcp.run(transport="stdio")
 
 
