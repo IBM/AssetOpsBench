@@ -36,6 +36,9 @@ from .core.results_models import (
     FeatureDescription,
     DescribeFeaturesResult,
     FeatureTemplateResult,
+    ModelDescription,
+    DescribeModelsResult,
+    ModelTemplateResult,
     FeatureCountResult,
     ModelCountResult,
     ResolveResult,
@@ -166,9 +169,9 @@ def list_domains(task_id: Optional[str] = None) -> Union[DomainsResult, ErrorRes
 def describe_candidates(
     task_id: str, top_k: int = 5, domain: Optional[str] = None
 ) -> Union[CandidatesResult, ErrorResult]:
-    """Ranked CANDIDATE models for a task (HuggingGPT-style shortlist, ranked by eval quality,
-    lower MAE first). A candidate is a shortlisted MODEL; you still decide which to use; top_k
-    caps the list."""
+    """CANDIDATE models for a task (HuggingGPT-style shortlist, CATALOG ORDER — no ranking). A
+    candidate is a shortlisted MODEL; you decide which to use; top_k caps the list. Use hf_stats /
+    gift_status to judge popularity / quality yourself."""
     bad = _check_task(task_id)
     if bad:
         return ErrorResult(error=bad)
@@ -182,6 +185,45 @@ def describe_candidates(
         )
     except Exception as exc:
         logger.error("describe_candidates failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Describe Models")
+def describe_models(model_ids: List[str]) -> Union[DescribeModelsResult, ErrorResult]:
+    """Return a compact record (description + family + sktime_class + context_length + domain + tags)
+    for ONLY the given model_ids. The by-ids detail lookup that pairs with list_models / find_models
+    (mirrors describe_features on the feature side)."""
+    if not model_ids:
+        return ErrorResult(error="provide at least one model_id (see list_models / find_models)")
+    try:
+        found, unknown = [], []
+        for mid in model_ids:
+            card = model_store.get_model(_STORE, mid)
+            if card:
+                found.append(
+                    ModelDescription(
+                        model_id=mid,
+                        description=card.get("description"),
+                        family=card.get("model_family") or card.get("family"),
+                        sktime_class=card.get("sktime_class"),
+                        context_length=card.get("context_length"),
+                        domain=card.get("domain"),
+                        tags=card.get("tags", []),
+                    )
+                )
+            else:
+                unknown.append(mid)
+        return DescribeModelsResult(
+            models=found,
+            unknown=unknown,
+            message=(
+                f"described {len(found)} model(s)"
+                + (f"; unknown: {unknown}" if unknown else "")
+                + "."
+            ),
+        )
+    except Exception as exc:
+        logger.error("describe_models failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
@@ -547,6 +589,47 @@ def evaluate(recipe: dict, configs: List[dict]) -> Union[EvaluateResult, ErrorRe
 
 
 # ---- write-back ----
+@mcp.tool(title="Model Template")
+def model_template() -> ModelTemplateResult:
+    """The template for authoring a NEW model card for register_model. Returns the required and
+    optional fields, the weight-pointer choices (a card must resolve via at least one), the
+    resolution rules, and a filled example. Fill it in, then submit via register_model. (Use
+    register_finetuned for fine-tune checkpoints.) Mirrors feature_template on the feature side."""
+    return ModelTemplateResult(
+        required_fields=["model_id", "description", "task_ids"],
+        pointer_choices=[
+            "sktime_class (+ params)  - resolve & construct via sktime, e.g. Est(**params)",
+            "hf_repo                  - load weights lazily from HuggingFace",
+            "artifact_path            - local checkpoint directory",
+            "remote_endpoint          - hosted inference service",
+            "model_checkpoint         - toolkit checkpoint (e.g. anomalykits://...)",
+        ],
+        optional_fields=[
+            "model_family", "domain", "context_length", "prediction_length", "provenance",
+            "base_model_id", "usage_modes", "param_hints", "training_regime", "frequency", "tags",
+        ],
+        resolution_rules=[
+            "a card must be resolvable via at least one pointer_choice (else it is a catalog-only stub)",
+            "provenance='finetuned' requires base_model_id (lineage)",
+            "context_length / prediction_length must be >= 0",
+        ],
+        example={
+            "model_id": "chronos_t5_small",
+            "description": "Chronos T5 small zero-shot forecaster",
+            "task_ids": ["tsfm_forecasting"],
+            "sktime_class": "sktime.forecasting.chronos.ChronosForecaster",
+            "params": {"model_path": "amazon/chronos-t5-small"},
+            "hf_repo": "amazon/chronos-t5-small",
+            "model_family": "chronos",
+            "domain": "general",
+            "context_length": 512,
+            "prediction_length": 64,
+            "provenance": "pretrained",
+            "tags": ["foundation", "zero-shot"],
+        },
+    )
+
+
 @mcp.tool(title="Register Model")
 def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
     """Register a model card in the catalog (schema-validated). Requires `model_id`, `description`,
