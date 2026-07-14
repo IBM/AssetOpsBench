@@ -40,13 +40,13 @@ def _iot_data_reachable() -> bool:
 
         username = os.environ.get("COUCHDB_USERNAME")
         password = os.environ.get("COUCHDB_PASSWORD")
-        db = couchdb3.Database(
+        iot_db = couchdb3.Database(
             os.environ.get("IOT_DBNAME", "iot"),
             url=url,
             user=username,
             password=password,
         )
-        records = db.find({"asset_id": "Chiller 6"}, limit=1)["docs"]
+        records = iot_db.find({"asset_id": "Chiller 6"}, limit=1)["docs"]
         return bool(records)
     except Exception:
         return False
@@ -82,8 +82,8 @@ def mock_asset_db():
 
 @pytest.fixture
 def mock_iot_db():
-    """Patch the module-level telemetry records `db` object in main with a mock."""
-    with patch("servers.iot.main.db") as mock:
+    """Patch the module-level telemetry records `iot_db` object in main with a mock."""
+    with patch("servers.iot.main.iot_db") as mock:
         yield mock
 
 
@@ -96,8 +96,8 @@ def no_asset_db():
 
 @pytest.fixture
 def no_iot_db():
-    """Patch the module-level telemetry records `db` to None."""
-    with patch("servers.iot.main.db", None):
+    """Patch the module-level telemetry records `iot_db` to None."""
+    with patch("servers.iot.main.iot_db", None):
         yield
 
 

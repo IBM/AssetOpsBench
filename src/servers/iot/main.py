@@ -23,7 +23,7 @@ IOT_DBNAME = os.environ.get("IOT_DBNAME", "iot")
 ASSET_DBNAME = os.environ.get("ASSET_DBNAME", "asset")
 
 try:
-    db = couchdb3.Database(
+    iot_db = couchdb3.Database(
         IOT_DBNAME,
         url=COUCHDB_URL,
         user=COUCHDB_USERNAME,
@@ -32,7 +32,7 @@ try:
     logger.info(f"Connected to IoT records database: {IOT_DBNAME}")
 except Exception as e:
     logger.error(f"Failed to connect to IoT records database: {e}")
-    db = None
+    iot_db = None
 
 try:
     asset_db = couchdb3.Database(
@@ -110,7 +110,7 @@ def _iter_records(
     page_size: int = PAGE_SIZE,
 ) -> Iterator[Dict[str, Any]]:
     """Yield telemetry records matching a selector across paged database results."""
-    if not db:
+    if not iot_db:
         return
     if sort is None:
         sort = [{"asset_id": "asc"}, {"timestamp": "asc"}]
@@ -121,7 +121,7 @@ def _iter_records(
             kwargs["fields"] = fields
         if bookmark is not None:
             kwargs["bookmark"] = bookmark
-        res = db.find(selector, **kwargs)
+        res = iot_db.find(selector, **kwargs)
         docs = res.get("docs", [])
         if not docs:
             break
@@ -136,7 +136,7 @@ def get_sensor_list(asset_id: str) -> List[str]:
     """Return sorted telemetry field names observed across all records for an asset."""
     if asset_id in _sensor_list_cache:
         return _sensor_list_cache[asset_id]
-    if not db:
+    if not iot_db:
         return []
     try:
         found = set()
@@ -251,7 +251,7 @@ def measured_sensors(
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    if not db:
+    if not iot_db:
         return ErrorResult(error="IoT records database not connected")
 
     sensor_list = get_sensor_list(asset_id)
