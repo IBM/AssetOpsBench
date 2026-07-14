@@ -18,6 +18,7 @@ class TestToolRegistration:
             "installed_sensors",
             "measured_sensors",
             "sites",
+            "stream_extent",
         ]
 
 
@@ -471,6 +472,210 @@ class TestFindAssetsBySensors:
             {"asset_id": "Compressor-1", "matched_sensors": ["Oil Pressure"]},
             {"asset_id": "Pump-1", "matched_sensors": ["Discharge Pressure"]},
         ]
+
+
+class TestStreamExtent:
+    @pytest.mark.anyio
+    async def test_invalid_site(self):
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "INVALID", "asset_id": "Pump-1"},
+        )
+
+        assert "error" in data
+        assert "unknown site" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_invalid_date(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "start": "not-a-date",
+            },
+        )
+
+        assert "error" in data
+        assert "Invalid date format" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_start_must_precede_end(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "start": "2024-01-02T00:00:00",
+                "end": "2024-01-01T00:00:00",
+            },
+        )
+
+        assert data == {"error": "start >= end"}
+
+    @pytest.mark.anyio
+    async def test_db_disconnected(self, mock_asset_db, no_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "MAIN", "asset_id": "Pump-1"},
+        )
+
+        assert "error" in data
+        assert "not connected" in data["error"].lower()
+
+    @pytest.mark.anyio
+    async def test_rejects_reserved_sensor_field(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "sensor": "asset_id",
+            },
+        )
+
+        assert data == {
+            "error": (
+                "sensor must be a telemetry field, "
+                "not reserved metadata field asset_id"
+            )
+        }
+        mock_iot_db.find.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_with_mock_iot_db(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {"timestamp": "2024-01-01T00:00:00"},
+                {"timestamp": "2024-01-01T00:01:00"},
+                {"timestamp": "2024-01-01T00:02:00"},
+            ]
+        }
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "MAIN", "asset_id": "Pump-1"},
+        )
+
+        assert data == {
+            "site_name": "MAIN",
+            "asset_id": "Pump-1",
+            "sensor": None,
+            "start_time": "2024-01-01T00:00:00",
+            "end_time": "2024-01-01T00:02:00",
+            "total_records": 3,
+            "exceeds_page_limit": False,
+            "approx_interval_seconds": 60.0,
+            "message": (
+                "3 record(s) for asset_id Pump-1 from "
+                "2024-01-01T00:00:00 to 2024-01-01T00:02:00."
+            ),
+        }
+        mock_iot_db.find.assert_called_once_with(
+            {"asset_id": "Pump-1"},
+            limit=1000,
+            sort=[{"asset_id": "asc"}, {"timestamp": "asc"}],
+            fields=["timestamp"],
+        )
+
+    @pytest.mark.anyio
+    async def test_sensor_and_window_selector(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [{"timestamp": "2024-01-01T00:01:00"}]
+        }
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "sensor": "Pressure",
+                "start": "2024-01-01T00:00:00",
+                "end": "2024-01-01T00:05:00",
+            },
+        )
+
+        assert data["sensor"] == "Pressure"
+        assert data["total_records"] == 1
+        selector = mock_iot_db.find.call_args.args[0]
+        assert selector == {
+            "asset_id": "Pump-1",
+            "timestamp": {
+                "$gte": "2024-01-01T00:00:00",
+                "$lt": "2024-01-01T00:05:00",
+            },
+            "Pressure": {"$exists": True, "$ne": None},
+        }
+
+    @pytest.mark.anyio
+    async def test_date_only_window_selector_preserves_input(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {"docs": [{"timestamp": "2024-01-01"}]}
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "start": "2024-01-01",
+                "end": "2024-01-02",
+            },
+        )
+
+        assert data["total_records"] == 1
+        selector = mock_iot_db.find.call_args.args[0]
+        assert selector["timestamp"] == {
+            "$gte": "2024-01-01",
+            "$lt": "2024-01-02",
+        }
+
+    @pytest.mark.anyio
+    async def test_no_records(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {"docs": []}
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "MAIN", "asset_id": "Pump-1", "sensor": "Pressure"},
+        )
+
+        assert "error" in data
+        assert data["error"] == "no records for asset_id Pump-1, sensor Pressure"
+
+    @requires_iot_db
+    @pytest.mark.anyio
+    async def test_discovery_integration(self):
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "MAIN", "asset_id": "Chiller 6"},
+        )
+
+        assert data["asset_id"] == "Chiller 6"
+        assert data["total_records"] > 0
+        assert data["start_time"] is not None
+        assert data["end_time"] is not None
 
 
 class TestAssets:
