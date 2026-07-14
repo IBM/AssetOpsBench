@@ -133,8 +133,6 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
         AssetsResult: Contains `site_name`, `total_assets`, `assets`, and
         `message`. The `assets` field is a sorted list of asset registry
         `assetnum` values.
-        ErrorResult: Returned when the site is unknown or the registry database
-        is unavailable.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -175,8 +173,6 @@ def assets(
         `assets`, and `message`. Each item in `assets` includes `asset_id`
         (the registry `assetnum`), `description`, `assettype`, `vintage`, and
         `n_sensors`.
-        ErrorResult: Returned when the site is unknown or the registry database
-        is unavailable.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
