@@ -594,7 +594,10 @@ class TestStreamExtent:
             ),
         }
         mock_iot_db.find.assert_called_once_with(
-            {"asset_id": "Pump-1"},
+            {
+                "asset_id": "Pump-1",
+                "timestamp": {"$exists": True, "$ne": None},
+            },
             limit=1000,
             sort=[{"asset_id": "asc"}, {"timestamp": "asc"}],
             fields=["timestamp"],
@@ -604,7 +607,11 @@ class TestStreamExtent:
     async def test_sensor_and_window_selector(self, mock_asset_db, mock_iot_db):
         mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
         mock_iot_db.find.return_value = {
-            "docs": [{"timestamp": "2024-01-01T00:01:00"}]
+            "docs": [
+                {"timestamp": "2023-12-31T23:59:00"},
+                {"timestamp": "2024-01-01T00:01:00"},
+                {"timestamp": "2024-01-01T00:05:00"},
+            ]
         }
 
         data = await call_tool(
@@ -621,13 +628,12 @@ class TestStreamExtent:
 
         assert data["sensor"] == "Pressure"
         assert data["total_records"] == 1
+        assert data["start_time"] == "2024-01-01T00:01:00"
+        assert data["end_time"] == "2024-01-01T00:01:00"
         selector = mock_iot_db.find.call_args.args[0]
         assert selector == {
             "asset_id": "Pump-1",
-            "timestamp": {
-                "$gte": "2024-01-01T00:00:00",
-                "$lt": "2024-01-01T00:05:00",
-            },
+            "timestamp": {"$exists": True, "$ne": None},
             "Pressure": {"$exists": True, "$ne": None},
         }
 
@@ -636,7 +642,13 @@ class TestStreamExtent:
         self, mock_asset_db, mock_iot_db
     ):
         mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
-        mock_iot_db.find.return_value = {"docs": [{"timestamp": "2024-01-01"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {"timestamp": "2023-12-31T23:59:00"},
+                {"timestamp": "2024-01-01T12:00:00"},
+                {"timestamp": "2024-01-02T00:00:00"},
+            ]
+        }
 
         data = await call_tool(
             mcp,
@@ -650,11 +662,125 @@ class TestStreamExtent:
         )
 
         assert data["total_records"] == 1
+        assert data["start_time"] == "2024-01-01T12:00:00"
+        assert data["end_time"] == "2024-01-01T12:00:00"
         selector = mock_iot_db.find.call_args.args[0]
-        assert selector["timestamp"] == {
-            "$gte": "2024-01-01",
-            "$lt": "2024-01-02",
+        assert selector["timestamp"] == {"$exists": True, "$ne": None}
+
+    @pytest.mark.anyio
+    async def test_bounds_must_match_stream_timezone_awareness(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [{"timestamp": "2024-01-01T00:00:00"}]
         }
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "start": "2024-01-01T00:00:00+00:00",
+            },
+        )
+
+        assert data == {
+            "error": (
+                "timestamp bounds must use the same timezone awareness "
+                "as telemetry timestamps"
+            )
+        }
+
+    @pytest.mark.anyio
+    async def test_compares_explicit_offsets_chronologically(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {"timestamp": "2023-12-31T23:00:00+00:00"},
+                {"timestamp": "2024-01-01T00:30:00+02:00"},
+                {"timestamp": "2024-01-01T00:00:00+00:00"},
+            ]
+        }
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "start": "2023-12-31T22:15:00+00:00",
+                "end": "2023-12-31T23:30:00+00:00",
+            },
+        )
+
+        assert data["total_records"] == 2
+        assert data["start_time"] == "2024-01-01T00:30:00+02:00"
+        assert data["end_time"] == "2023-12-31T23:00:00+00:00"
+        assert data["approx_interval_seconds"] == 1800.0
+
+    @pytest.mark.anyio
+    async def test_mixed_stream_timezone_awareness_returns_error(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {"timestamp": "2024-01-01T00:00:00"},
+                {"timestamp": "2024-01-01T01:00:00+00:00"},
+            ]
+        }
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "MAIN", "asset_id": "Pump-1"},
+        )
+
+        assert data == {"error": "telemetry timestamps use mixed timezone awareness"}
+
+    @pytest.mark.anyio
+    async def test_invalid_stream_timestamp_returns_error(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {"docs": [{"timestamp": "not-a-date"}]}
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "MAIN", "asset_id": "Pump-1"},
+        )
+
+        assert data == {
+            "error": "telemetry record has an invalid ISO 8601 timestamp"
+        }
+
+    @pytest.mark.anyio
+    async def test_records_without_timestamps_are_not_counted(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {},
+                {"timestamp": "2024-01-01T00:00:00"},
+                {"timestamp": None},
+            ]
+        }
+
+        data = await call_tool(
+            mcp,
+            "stream_extent",
+            {"site_name": "MAIN", "asset_id": "Pump-1"},
+        )
+
+        assert data["total_records"] == 1
+        assert data["start_time"] == "2024-01-01T00:00:00"
+        assert data["end_time"] == "2024-01-01T00:00:00"
 
     @pytest.mark.anyio
     async def test_no_records(self, mock_asset_db, mock_iot_db):
