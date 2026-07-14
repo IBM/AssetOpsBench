@@ -114,6 +114,40 @@ class TestMeasuredSensors:
         assert data["sensors"] == ["Pressure", "Temperature"]
 
     @pytest.mark.anyio
+    async def test_reads_iot_db_not_asset_registry(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {
+            "docs": [
+                {
+                    "siteid": "MAIN",
+                    "assetnum": "Pump-1",
+                    "sensors": ["Registry Sensor"],
+                }
+            ]
+        }
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {
+                    "asset_id": "Pump-1",
+                    "timestamp": "2024-01-01T00:00:00",
+                    "Telemetry Sensor": 42,
+                }
+            ]
+        }
+
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "MAIN", "asset_id": "Pump-1"}
+        )
+
+        assert data["sensors"] == ["Telemetry Sensor"]
+        assert mock_asset_db.find.call_count == 1
+        mock_asset_db.find.assert_called_once_with(
+            {"siteid": {"$exists": True}},
+            fields=["siteid"],
+            limit=100000,
+        )
+        mock_iot_db.find.assert_called_once()
+
+    @pytest.mark.anyio
     async def test_db_disconnected(self, mock_asset_db, no_iot_db):
         mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
         data = await call_tool(
