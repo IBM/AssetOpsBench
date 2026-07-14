@@ -91,11 +91,13 @@ class TestMeasuredSensors:
                     "_rev": "1-abc",
                     "asset_id": "Pump-1",
                     "timestamp": "2024-01-01T00:00:00",
+                    "dataset": "iot",
                     "Pressure": 10,
                 },
                 {
                     "asset_id": "Pump-1",
                     "timestamp": "2024-01-01T00:01:00",
+                    "dataset": "iot",
                     "Temperature": 30,
                     "Pressure": 11,
                 },
