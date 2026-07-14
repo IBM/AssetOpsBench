@@ -16,9 +16,10 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 The IoT server reads from the asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from
 `asset_profile_sample.json`) and IoT telemetry records (`IOT_DBNAME`, default `iot`). It exposes
 registry discovery tools while the broader IoT tool surface is being rebuilt: `sites()` for site
-names, `asset_ids()` for bare `assetnum` values, `assets()` for registry metadata with optional
-`assettype` filtering, `installed_sensors()` for registry sensor inventory, and
-`measured_sensors()` for telemetry fields observed in records.
+names, `asset_ids()` for bare `assetnum` values, `get_asset_detail()` for one asset's registry
+details, `assets()` for registry metadata with optional `assettype` filtering,
+`installed_sensors()` for registry sensor inventory, and `measured_sensors()` for telemetry fields
+observed in records.
 
 **Path:** `src/servers/iot/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `ASSET_DBNAME`, `IOT_DBNAME`)
@@ -37,6 +38,7 @@ Source file: `src/couchdb/scenarios_data/shared/iot/asset_profile_sample.json`.
 | ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `sites`           | -                                          | List known site names from the asset registry, with a default fallback                                       |
 | `asset_ids`       | `site_name`                                | List bare `assetnum` values registered at a site                                                            |
+| `get_asset_detail` | `site_name`, `asset_id`                  | Return one asset's registry details, including `n_installed_sensors`                                         |
 | `installed_sensors` | `site_name`, `asset_id`                  | List sensor names installed on an asset according to the asset registry                                      |
 | `measured_sensors` | `site_name`, `asset_id`                   | List measured telemetry fields observed for an asset                                                         |
 | `assets`          | `site_name`, `assettype?`                  | List assets with metadata (assettype, description, vintage, installed sensor count), optionally filtered by assettype |
