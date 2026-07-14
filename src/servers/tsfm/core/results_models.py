@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -70,7 +70,7 @@ class CharacterizeResult(BaseModel):
 # ---- compose + run (file pointers) ----
 class RecipeResult(BaseModel):
     """A recipe run. Forecasting carries metric+backtest_score; anomaly carries n_anomalies+
-    n_observations (extra-allowed) — run_recipe dispatches by recipe.task."""
+    n_observations (extra-allowed); run_recipe dispatches by recipe.task."""
 
     model_config = ConfigDict(extra="allow")
     status: str
