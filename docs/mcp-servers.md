@@ -11,15 +11,18 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 - [tsfm — Time Series Foundation Model](#tsfm--time-series-foundation-model)
 - [vibration — Vibration Diagnostics](#vibration--vibration-diagnostics)
 
-## iot — IoT Asset Registry
+## iot — IoT Asset Registry and Telemetry Records
 
 The IoT server reads from the asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from
-`asset_profile_sample.json`). It exposes registry discovery tools while the broader IoT tool surface
-is being rebuilt: `sites()` for site names, `asset_ids()` for bare `assetnum` values, and `assets()`
-for registry metadata with optional `assettype` filtering.
+`asset_profile_sample.json`) and IoT telemetry records (`IOT_DBNAME`, default `iot`). It exposes
+registry discovery tools while the broader IoT tool surface is being rebuilt: `sites()` for site
+names, `asset_ids()` for bare `assetnum` values, `asset_detail()` for one asset's registry
+details, `assets()` for registry metadata with optional `assettype` filtering,
+`find_assets_by_sensors()` to find assets by installed or measured sensors, `installed_sensors()`
+for registry sensor inventory, and `measured_sensors()` for telemetry fields observed in records.
 
 **Path:** `src/servers/iot/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `ASSET_DBNAME`)
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `ASSET_DBNAME`, `IOT_DBNAME`)
 
 **Sample asset profiles shipped in the `asset` database** (loaded by `src/couchdb/init_data.py`):
 
@@ -35,7 +38,18 @@ Source file: `src/couchdb/scenarios_data/shared/iot/asset_profile_sample.json`.
 | ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `sites`           | -                                          | List known site names from the asset registry, with a default fallback                                       |
 | `asset_ids`       | `site_name`                                | List bare `assetnum` values registered at a site                                                            |
+| `asset_detail`    | `site_name`, `asset_id`                  | Return one asset's registry details, including `n_installed_sensors`                                         |
+| `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?` | Find assets at a site by installed or measured sensor names                                                  |
+| `installed_sensors` | `site_name`, `asset_id`                  | List sensor names installed on an asset according to the asset registry                                      |
+| `measured_sensors` | `site_name`, `asset_id`                   | List measured telemetry fields observed for an asset                                                         |
 | `assets`          | `site_name`, `assettype?`                  | List assets with metadata (assettype, description, vintage, installed sensor count), optionally filtered by assettype |
+
+`find_assets_by_sensors()` searches only assets registered at the requested site. `match="all"`
+requires every query sensor to match, while `match="any"` requires at least one. Set
+`substring=true` to perform case-insensitive substring matching instead of exact sensor-name
+matching. `source="installed"` searches the asset registry sensor inventory; `source="measured"`
+searches telemetry fields observed in IoT records. Duplicate query sensors are deduplicated in
+the response while preserving their first occurrence order.
 
 ## utilities — Utilities
 
