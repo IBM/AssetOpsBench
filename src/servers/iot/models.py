@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -78,6 +78,27 @@ class StreamExtentResult(BaseModel):
     total_records: int
     exceeds_page_limit: bool
     approx_interval_seconds: Optional[float]
+    message: str
+
+
+class HistoryResult(BaseModel):
+    site_name: str
+    asset_id: str
+    observations: List[Dict[str, Any]]
+    returned: int
+    next_cursor: Optional[str]
+    has_more: bool
+    start: Optional[str]
+    end: Optional[str]
+    message: str
+
+
+class LatestReadingResult(BaseModel):
+    site_name: str
+    asset_id: str
+    timestamp: str
+    values: Dict[str, Any]
+    age_seconds: float
     message: str
 
 
