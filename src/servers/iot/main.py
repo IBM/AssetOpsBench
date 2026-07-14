@@ -1,12 +1,28 @@
 import logging
+import math
 import os
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import couchdb3
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel
+
+from servers.iot.models import (
+    AssetDetail,
+    AssetSensorMatch,
+    AssetSummary,
+    AssetsResult,
+    AssetsWithMetadataResult,
+    ErrorResult,
+    FindAssetsResult,
+    SensorStat,
+    SensorStatsResult,
+    SensorsResult,
+    SitesResult,
+    StreamExtentResult,
+)
 
 load_dotenv()
 
@@ -56,7 +72,8 @@ mcp = FastMCP(
         "find_assets_by_sensors() to find assets by installed or measured sensors, "
         "installed_sensors() for registry sensor inventory, and measured_sensors() for "
         "observed telemetry fields. Use stream_extent() to inspect telemetry time bounds "
-        "and record counts before planning larger telemetry reads."
+        "and record counts before planning larger telemetry reads. Use sensor_stats() for "
+        "numeric summaries without returning raw telemetry rows."
     ),
 )
 
@@ -65,86 +82,70 @@ PAGE_SIZE = 1000
 RESERVED_FIELDS = {"_id", "_rev", "asset_id", "timestamp", "dataset", "type", "doctype"}
 
 
-class ErrorResult(BaseModel):
-    error: str
-
-
-class SitesResult(BaseModel):
-    sites: List[str]
-
-
-class AssetsResult(BaseModel):
-    site_name: str
-    total_assets: int
-    assets: List[str]
-    message: str
-
-
-class SensorsResult(BaseModel):
-    site_name: str
-    asset_id: str
-    total_sensors: int
-    sensors: List[str]
-    message: str
-
-
-class AssetDetail(BaseModel):
-    site_name: str
-    asset_id: str
-    description: Optional[str]
-    assettype: Optional[str]
-    status: Optional[str]
-    location: Optional[str]
-    installdate: Optional[str]
-    vintage: Optional[str]
-    n_installed_sensors: int
-    message: str
-
-
-class AssetSummary(BaseModel):
-    asset_id: str
-    description: Optional[str]
-    assettype: Optional[str]
-    vintage: Optional[str]
-    n_sensors: int
-
-
-class AssetsWithMetadataResult(BaseModel):
-    site_name: str
-    total_assets: int
-    assets: List[AssetSummary]
-    message: str
-
-
-class AssetSensorMatch(BaseModel):
-    asset_id: str
-    matched_sensors: List[str]
-
-
-class FindAssetsResult(BaseModel):
-    site_name: str
-    query_sensors: List[str]
-    match: str
-    source: str
-    total_assets: int
-    assets: List[AssetSensorMatch]
-    message: str
-
-
-class StreamExtentResult(BaseModel):
-    site_name: str
-    asset_id: str
-    sensor: Optional[str]
-    start_time: Optional[str]
-    end_time: Optional[str]
-    total_records: int
-    exceeds_page_limit: bool
-    approx_interval_seconds: Optional[float]
-    message: str
-
-
 _registry_sites_cache: Optional[List[str]] = None
 _sensor_list_cache: Dict[str, List[str]] = {}
+
+
+class _TimestampHandlingError(ValueError):
+    pass
+
+
+@dataclass
+class _SensorAccumulator:
+    count: int = 0
+    null_count: int = 0
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    mean_value: float = 0.0
+    squared_deviation_sum: float = 0.0
+    first_timestamp: Optional[str] = None
+    last_timestamp: Optional[str] = None
+    first_datetime: Optional[datetime] = None
+    last_datetime: Optional[datetime] = None
+
+    def add_invalid(self) -> None:
+        self.null_count += 1
+
+    def add_numeric(
+        self, value: float, timestamp: str, timestamp_dt: datetime
+    ) -> None:
+        self.count += 1
+        delta = value - self.mean_value
+        self.mean_value += delta / self.count
+        self.squared_deviation_sum += delta * (value - self.mean_value)
+        self.min_value = (
+            value if self.min_value is None else min(self.min_value, value)
+        )
+        self.max_value = (
+            value if self.max_value is None else max(self.max_value, value)
+        )
+        if self.first_datetime is None or timestamp_dt < self.first_datetime:
+            self.first_datetime = timestamp_dt
+            self.first_timestamp = timestamp
+        if self.last_datetime is None or timestamp_dt > self.last_datetime:
+            self.last_datetime = timestamp_dt
+            self.last_timestamp = timestamp
+
+    def result(self, sensor: str) -> SensorStat:
+        mean = None
+        stddev = None
+        if self.count:
+            if math.isfinite(self.mean_value):
+                mean = self.mean_value
+            variance = self.squared_deviation_sum / self.count
+            if math.isfinite(variance):
+                stddev = math.sqrt(max(variance, 0.0))
+        return SensorStat(
+            sensor=sensor,
+            count=self.count,
+            null_count=self.null_count,
+            min=self.min_value,
+            max=self.max_value,
+            mean=mean,
+            stddev=stddev,
+            first_timestamp=self.first_timestamp,
+            last_timestamp=self.last_timestamp,
+        )
 
 
 def _iter_records(
@@ -289,6 +290,59 @@ def _validate_dates(start: Optional[str], end: Optional[str]) -> Optional[str]:
         if start_dt >= end_dt:
             return "start >= end"
     return None
+
+
+def _iter_records_in_window(
+    selector: Dict[str, Any],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    fields: Optional[List[str]] = None,
+) -> Iterator[Tuple[Dict[str, Any], str, datetime]]:
+    """Yield timestamped records in a parsed half-open time window."""
+    stream_is_aware: Optional[bool] = None
+    for doc in _iter_records(selector, fields=fields):
+        timestamp = doc.get("timestamp")
+        if timestamp is None:
+            continue
+        timestamp_dt = _parse_iso_timestamp(timestamp)
+        if timestamp_dt is None:
+            raise _TimestampHandlingError(
+                "telemetry record has an invalid ISO 8601 timestamp"
+            )
+
+        timestamp_is_aware = _is_timezone_aware(timestamp_dt)
+        if stream_is_aware is None:
+            stream_is_aware = timestamp_is_aware
+            for bound in (start_dt, end_dt):
+                if (
+                    bound is not None
+                    and _is_timezone_aware(bound) != stream_is_aware
+                ):
+                    raise _TimestampHandlingError(
+                        "timestamp bounds must use the same timezone awareness "
+                        "as telemetry timestamps"
+                    )
+        elif timestamp_is_aware != stream_is_aware:
+            raise _TimestampHandlingError(
+                "telemetry timestamps use mixed timezone awareness"
+            )
+
+        if start_dt is not None and timestamp_dt < start_dt:
+            continue
+        if end_dt is not None and timestamp_dt >= end_dt:
+            continue
+        yield doc, timestamp, timestamp_dt
+
+
+def _coerce_finite_number(value: Any) -> Optional[float]:
+    """Return a finite float for numeric values and numeric strings."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 @mcp.tool(title="List Sites")
@@ -716,43 +770,11 @@ def stream_extent(
     last_timestamp: Optional[str] = None
     first_datetime: Optional[datetime] = None
     last_datetime: Optional[datetime] = None
-    stream_is_aware: Optional[bool] = None
     total_records = 0
     try:
-        for doc in _iter_records(selector, fields=["timestamp"]):
-            timestamp = doc.get("timestamp")
-            if timestamp is None:
-                continue
-            timestamp_dt = _parse_iso_timestamp(timestamp)
-            if timestamp_dt is None:
-                return ErrorResult(
-                    error="telemetry record has an invalid ISO 8601 timestamp"
-                )
-
-            timestamp_is_aware = _is_timezone_aware(timestamp_dt)
-            if stream_is_aware is None:
-                stream_is_aware = timestamp_is_aware
-                for bound in (start_dt, end_dt):
-                    if (
-                        bound is not None
-                        and _is_timezone_aware(bound) != stream_is_aware
-                    ):
-                        return ErrorResult(
-                            error=(
-                                "timestamp bounds must use the same timezone awareness "
-                                "as telemetry timestamps"
-                            )
-                        )
-            elif timestamp_is_aware != stream_is_aware:
-                return ErrorResult(
-                    error="telemetry timestamps use mixed timezone awareness"
-                )
-
-            if start_dt is not None and timestamp_dt < start_dt:
-                continue
-            if end_dt is not None and timestamp_dt >= end_dt:
-                continue
-
+        for _, timestamp, timestamp_dt in _iter_records_in_window(
+            selector, start_dt, end_dt, fields=["timestamp"]
+        ):
             if first_datetime is None or timestamp_dt < first_datetime:
                 first_datetime = timestamp_dt
                 first_timestamp = timestamp
@@ -790,9 +812,117 @@ def stream_extent(
             + (f" (sensor {sensor})" if sensor else "")
             + f" from {first_timestamp} to {last_timestamp}.",
         )
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
     except Exception as e:
         logger.error(f"stream_extent failed: {e}")
         return ErrorResult(error="unable to inspect telemetry stream extent")
+
+
+@mcp.tool(title="Sensor Statistics")
+def sensor_stats(
+    site_name: str,
+    asset_id: str,
+    sensor: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+) -> Union[SensorStatsResult, ErrorResult]:
+    """Return numeric sensor statistics over an optional time window.
+
+    The window is half-open: `start` is inclusive and `end` is exclusive.
+    Timestamps are parsed and compared chronologically with the same timezone
+    handling as `stream_extent()`. Omit `sensor` to summarize every measured
+    telemetry field for the asset.
+
+    Numeric values and numeric strings contribute to `count`, `min`, `max`,
+    `mean`, and population `stddev`. Present values that are null, boolean,
+    non-numeric, or non-finite contribute to `null_count`. Missing fields do not
+    contribute to either count. First and last timestamps identify the earliest
+    and latest numeric samples included in the statistics.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
+        sensor: Optional exact field name from `measured_sensors()`. Omit it to
+            summarize every measured field.
+        start: Optional inclusive ISO 8601 timestamp lower bound.
+        end: Optional exclusive ISO 8601 timestamp upper bound.
+
+    Returns:
+        SensorStatsResult: Contains one `SensorStat` per requested field with
+        finite numeric counts, null counts, range, mean, population standard
+        deviation, and first/last numeric sample timestamps.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    validation_error = _validate_dates(start, end)
+    if validation_error:
+        return ErrorResult(error=validation_error)
+    if not iot_db:
+        return ErrorResult(error="IoT records database not connected")
+    if sensor is not None and not sensor.strip():
+        return ErrorResult(error="sensor must not be empty")
+    if sensor in RESERVED_FIELDS:
+        return ErrorResult(
+            error=f"sensor must be a telemetry field, not reserved metadata field {sensor}"
+        )
+
+    available_sensors = get_sensor_list(asset_id)
+    if not available_sensors:
+        return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
+    if sensor is not None and sensor not in available_sensors:
+        return ErrorResult(error=f"unknown sensor {sensor} for asset_id {asset_id}")
+
+    targets = [sensor] if sensor is not None else available_sensors
+    accumulators = {target: _SensorAccumulator() for target in targets}
+    start_dt = _parse_iso_timestamp(start) if start is not None else None
+    end_dt = _parse_iso_timestamp(end) if end is not None else None
+    selector: Dict[str, Any] = {
+        "asset_id": asset_id,
+        "timestamp": {"$exists": True, "$ne": None},
+    }
+    if sensor is not None:
+        selector[sensor] = {"$exists": True}
+
+    records_in_window = 0
+    try:
+        for doc, timestamp, timestamp_dt in _iter_records_in_window(
+            selector,
+            start_dt,
+            end_dt,
+            fields=["timestamp", *targets],
+        ):
+            records_in_window += 1
+            for target in targets:
+                if target not in doc:
+                    continue
+                numeric_value = _coerce_finite_number(doc.get(target))
+                if numeric_value is None:
+                    accumulators[target].add_invalid()
+                    continue
+                accumulators[target].add_numeric(
+                    numeric_value, timestamp, timestamp_dt
+                )
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
+    except Exception as e:
+        logger.error(f"sensor_stats failed: {e}")
+        return ErrorResult(error="unable to calculate sensor statistics")
+
+    if records_in_window == 0:
+        return ErrorResult(
+            error=f"no records for asset_id {asset_id}"
+            + (f", sensor {sensor}" if sensor else "")
+        )
+
+    stats = [accumulators[target].result(target) for target in targets]
+    return SensorStatsResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        stats=stats,
+        message=f"numeric stats for {len(stats)} sensor(s) on asset_id {asset_id}.",
+    )
 
 
 def main():

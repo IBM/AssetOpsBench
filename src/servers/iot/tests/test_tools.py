@@ -17,6 +17,7 @@ class TestToolRegistration:
             "find_assets_by_sensors",
             "installed_sensors",
             "measured_sensors",
+            "sensor_stats",
             "sites",
             "stream_extent",
         ]
@@ -24,9 +25,16 @@ class TestToolRegistration:
     @pytest.mark.anyio
     async def test_stream_extent_description_is_storage_neutral(self):
         tools = await mcp.list_tools()
-        stream_extent_tool = next(tool for tool in tools if tool.name == "stream_extent")
+        descriptions = {
+            tool.name: tool.description
+            for tool in tools
+            if tool.name in {"sensor_stats", "stream_extent"}
+        }
 
-        assert "couchdb" not in stream_extent_tool.description.lower()
+        assert all(
+            "couchdb" not in description.lower()
+            for description in descriptions.values()
+        )
 
 
 class TestSites:
@@ -825,6 +833,265 @@ class TestStreamExtent:
         assert data["total_records"] > 0
         assert data["start_time"] is not None
         assert data["end_time"] is not None
+
+
+class TestSensorStats:
+    @pytest.mark.anyio
+    async def test_invalid_site(self):
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {"site_name": "INVALID", "asset_id": "Pump-1"},
+        )
+
+        assert "unknown site" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_invalid_date(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "start": "not-a-date",
+            },
+        )
+
+        assert "Invalid date format" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_db_disconnected(self, mock_asset_db, no_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {"site_name": "MAIN", "asset_id": "Pump-1"},
+        )
+
+        assert "not connected" in data["error"].lower()
+
+    @pytest.mark.anyio
+    async def test_rejects_reserved_sensor_field(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "sensor": "timestamp",
+            },
+        )
+
+        assert data == {
+            "error": (
+                "sensor must be a telemetry field, "
+                "not reserved metadata field timestamp"
+            )
+        }
+        mock_iot_db.find.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_rejects_unknown_sensor(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [{"timestamp": "2024-01-01T00:00:00", "Pressure": 1.0}]
+        }
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "sensor": "Temperature",
+            },
+        )
+
+        assert data == {
+            "error": "unknown sensor Temperature for asset_id Pump-1"
+        }
+
+    @pytest.mark.anyio
+    async def test_single_sensor_numeric_summary(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {"timestamp": "2024-01-01T00:02:00", "Temp": None},
+                {"timestamp": "2024-01-01T00:00:00", "Temp": 1.0},
+                {"timestamp": "2024-01-01T00:04:00", "Temp": "bad"},
+                {"timestamp": "2024-01-01T00:01:00", "Temp": "2.5"},
+                {"timestamp": "2024-01-01T00:03:00", "Temp": True},
+                {"timestamp": "2024-01-01T00:05:00", "Temp": float("inf")},
+                {"timestamp": "2024-01-01T00:06:00"},
+            ]
+        }
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {"site_name": "MAIN", "asset_id": "Pump-1", "sensor": "Temp"},
+        )
+
+        assert data == {
+            "site_name": "MAIN",
+            "asset_id": "Pump-1",
+            "stats": [
+                {
+                    "sensor": "Temp",
+                    "count": 2,
+                    "null_count": 4,
+                    "min": 1.0,
+                    "max": 2.5,
+                    "mean": 1.75,
+                    "stddev": 0.75,
+                    "first_timestamp": "2024-01-01T00:00:00",
+                    "last_timestamp": "2024-01-01T00:01:00",
+                }
+            ],
+            "message": "numeric stats for 1 sensor(s) on asset_id Pump-1.",
+        }
+        stats_query = mock_iot_db.find.call_args_list[1]
+        assert stats_query.args[0] == {
+            "asset_id": "Pump-1",
+            "timestamp": {"$exists": True, "$ne": None},
+            "Temp": {"$exists": True},
+        }
+        assert stats_query.kwargs["fields"] == ["timestamp", "Temp"]
+
+    @pytest.mark.anyio
+    async def test_all_measured_sensors_when_omitted(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {
+                    "timestamp": "2024-01-01T00:00:00",
+                    "Temp": 10.0,
+                    "Pressure": 1.0,
+                    "Mode": "auto",
+                },
+                {
+                    "timestamp": "2024-01-01T00:01:00",
+                    "Temp": 20.0,
+                    "Pressure": 3.0,
+                    "Mode": "manual",
+                },
+            ]
+        }
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {"site_name": "MAIN", "asset_id": "Pump-1"},
+        )
+
+        stats = {item["sensor"]: item for item in data["stats"]}
+        assert list(item["sensor"] for item in data["stats"]) == [
+            "Mode",
+            "Pressure",
+            "Temp",
+        ]
+        assert stats["Pressure"]["mean"] == 2.0
+        assert stats["Temp"]["stddev"] == 5.0
+        assert stats["Mode"]["count"] == 0
+        assert stats["Mode"]["null_count"] == 2
+
+    @pytest.mark.anyio
+    async def test_half_open_window_uses_chronological_order(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {"timestamp": "2024-01-01T00:05:00", "Temp": 5.0},
+                {"timestamp": "2024-01-01T00:02:00", "Temp": 2.0},
+                {"timestamp": "2024-01-01T00:00:00", "Temp": 0.0},
+                {"timestamp": "2024-01-01T00:04:00", "Temp": 4.0},
+            ]
+        }
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "sensor": "Temp",
+                "start": "2024-01-01T00:02:00",
+                "end": "2024-01-01T00:05:00",
+            },
+        )
+
+        stat = data["stats"][0]
+        assert stat["count"] == 2
+        assert stat["mean"] == 3.0
+        assert stat["first_timestamp"] == "2024-01-01T00:02:00"
+        assert stat["last_timestamp"] == "2024-01-01T00:04:00"
+
+    @pytest.mark.anyio
+    async def test_no_records_in_window(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [{"timestamp": "2024-01-01T00:00:00", "Temp": 1.0}]
+        }
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Pump-1",
+                "sensor": "Temp",
+                "start": "2024-01-02T00:00:00",
+            },
+        )
+
+        assert data == {"error": "no records for asset_id Pump-1, sensor Temp"}
+
+    @pytest.mark.anyio
+    async def test_timestamp_error_is_returned(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [{"timestamp": "not-a-date", "Temp": 1.0}]
+        }
+
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {"site_name": "MAIN", "asset_id": "Pump-1", "sensor": "Temp"},
+        )
+
+        assert data == {
+            "error": "telemetry record has an invalid ISO 8601 timestamp"
+        }
+
+    @requires_iot_db
+    @pytest.mark.anyio
+    async def test_discovery_integration(self):
+        data = await call_tool(
+            mcp,
+            "sensor_stats",
+            {
+                "site_name": "MAIN",
+                "asset_id": "Chiller 6",
+                "sensor": "Chiller 6 Supply Temperature",
+                "start": "2020-06-10",
+                "end": "2020-06-11",
+            },
+        )
+
+        stat = data["stats"][0]
+        assert stat["sensor"] == "Chiller 6 Supply Temperature"
+        assert stat["count"] > 0
+        assert stat["min"] is not None
+        assert stat["max"] is not None
 
 
 class TestAssets:
