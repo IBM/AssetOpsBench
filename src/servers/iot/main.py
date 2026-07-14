@@ -261,43 +261,34 @@ def _installed_sensors(asset_id: str, site_name: Optional[str] = None) -> List[s
         return []
 
 
+def _parse_iso_timestamp(value: Any) -> Optional[datetime]:
+    """Parse one ISO 8601 timestamp, returning None for invalid values."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_timezone_aware(value: datetime) -> bool:
+    return value.utcoffset() is not None
+
+
 def _validate_dates(start: Optional[str], end: Optional[str]) -> Optional[str]:
     """Return None when the optional ISO 8601 bounds are valid."""
-    try:
-        start_dt = datetime.fromisoformat(start) if start is not None else None
-        end_dt = datetime.fromisoformat(end) if end is not None else None
-    except ValueError as e:
-        return f"Invalid date format (expected ISO 8601, e.g. 2024-01-15T00:00:00): {e}"
+    start_dt = _parse_iso_timestamp(start) if start is not None else None
+    end_dt = _parse_iso_timestamp(end) if end is not None else None
+    if start is not None and start_dt is None:
+        return "Invalid date format for start (expected ISO 8601)"
+    if end is not None and end_dt is None:
+        return "Invalid date format for end (expected ISO 8601)"
     if start_dt is not None and end_dt is not None:
-        try:
-            if start_dt >= end_dt:
-                return "start >= end"
-        except TypeError:
+        if _is_timezone_aware(start_dt) != _is_timezone_aware(end_dt):
             return "start and end must use matching timezone awareness"
+        if start_dt >= end_dt:
+            return "start >= end"
     return None
-
-
-def _time_selector(
-    asset_id: str, start: Optional[str], end: Optional[str]
-) -> Dict[str, Any]:
-    selector: Dict[str, Any] = {"asset_id": asset_id}
-    timestamp: Dict[str, Any] = {}
-    if start is not None:
-        timestamp["$gte"] = start
-    if end is not None:
-        timestamp["$lt"] = end
-    if timestamp:
-        selector["timestamp"] = timestamp
-    return selector
-
-
-def _span_seconds(start_iso: str, end_iso: str) -> Optional[float]:
-    try:
-        return (
-            datetime.fromisoformat(end_iso) - datetime.fromisoformat(start_iso)
-        ).total_seconds()
-    except ValueError:
-        return None
 
 
 @mcp.tool(title="List Sites")
@@ -678,10 +669,10 @@ def stream_extent(
     `end` is exclusive. When `sensor` is provided, only records where that
     telemetry field exists and is not null are counted.
 
-    Timestamp bounds are validated as ISO 8601 and applied as the same strings
-    provided by the caller. Use the timestamp granularity and timezone style
-    stored in the telemetry records, such as `2024-01-15T00:00:00` for datetime
-    streams or `2024-01-15` for date-only streams.
+    Timestamp bounds are validated as ISO 8601 and compared chronologically
+    after parsing. Different explicit UTC offsets are supported. Bounds and
+    telemetry timestamps must either all include timezone offsets or all omit
+    them; ambiguous mixtures return an error.
 
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
@@ -712,50 +703,96 @@ def stream_extent(
             error=f"sensor must be a telemetry field, not reserved metadata field {sensor}"
         )
 
-    selector = _time_selector(asset_id, start, end)
+    start_dt = _parse_iso_timestamp(start) if start is not None else None
+    end_dt = _parse_iso_timestamp(end) if end is not None else None
+    selector: Dict[str, Any] = {
+        "asset_id": asset_id,
+        "timestamp": {"$exists": True, "$ne": None},
+    }
     if sensor:
         selector[sensor] = {"$exists": True, "$ne": None}
 
     first_timestamp: Optional[str] = None
     last_timestamp: Optional[str] = None
+    first_datetime: Optional[datetime] = None
+    last_datetime: Optional[datetime] = None
+    stream_is_aware: Optional[bool] = None
     total_records = 0
     try:
         for doc in _iter_records(selector, fields=["timestamp"]):
             timestamp = doc.get("timestamp")
-            if timestamp is not None:
-                if first_timestamp is None:
-                    first_timestamp = timestamp
+            if timestamp is None:
+                continue
+            timestamp_dt = _parse_iso_timestamp(timestamp)
+            if timestamp_dt is None:
+                return ErrorResult(
+                    error="telemetry record has an invalid ISO 8601 timestamp"
+                )
+
+            timestamp_is_aware = _is_timezone_aware(timestamp_dt)
+            if stream_is_aware is None:
+                stream_is_aware = timestamp_is_aware
+                for bound in (start_dt, end_dt):
+                    if (
+                        bound is not None
+                        and _is_timezone_aware(bound) != stream_is_aware
+                    ):
+                        return ErrorResult(
+                            error=(
+                                "timestamp bounds must use the same timezone awareness "
+                                "as telemetry timestamps"
+                            )
+                        )
+            elif timestamp_is_aware != stream_is_aware:
+                return ErrorResult(
+                    error="telemetry timestamps use mixed timezone awareness"
+                )
+
+            if start_dt is not None and timestamp_dt < start_dt:
+                continue
+            if end_dt is not None and timestamp_dt >= end_dt:
+                continue
+
+            if first_datetime is None or timestamp_dt < first_datetime:
+                first_datetime = timestamp_dt
+                first_timestamp = timestamp
+            if last_datetime is None or timestamp_dt > last_datetime:
+                last_datetime = timestamp_dt
                 last_timestamp = timestamp
             total_records += 1
+
+        if total_records == 0:
+            return ErrorResult(
+                error=f"no records for asset_id {asset_id}"
+                + (f", sensor {sensor}" if sensor else "")
+            )
+
+        approx_interval: Optional[float] = None
+        if (
+            first_datetime is not None
+            and last_datetime is not None
+            and total_records > 1
+        ):
+            approx_interval = (last_datetime - first_datetime).total_seconds() / (
+                total_records - 1
+            )
+
+        return StreamExtentResult(
+            site_name=site_name,
+            asset_id=asset_id,
+            sensor=sensor,
+            start_time=first_timestamp,
+            end_time=last_timestamp,
+            total_records=total_records,
+            exceeds_page_limit=total_records > PAGE_SIZE,
+            approx_interval_seconds=approx_interval,
+            message=f"{total_records} record(s) for asset_id {asset_id}"
+            + (f" (sensor {sensor})" if sensor else "")
+            + f" from {first_timestamp} to {last_timestamp}.",
+        )
     except Exception as e:
         logger.error(f"stream_extent failed: {e}")
         return ErrorResult(error="unable to inspect telemetry stream extent")
-
-    if total_records == 0:
-        return ErrorResult(
-            error=f"no records for asset_id {asset_id}"
-            + (f", sensor {sensor}" if sensor else "")
-        )
-
-    approx_interval: Optional[float] = None
-    if first_timestamp and last_timestamp and total_records > 1:
-        span_seconds = _span_seconds(first_timestamp, last_timestamp)
-        if span_seconds is not None:
-            approx_interval = span_seconds / (total_records - 1)
-
-    return StreamExtentResult(
-        site_name=site_name,
-        asset_id=asset_id,
-        sensor=sensor,
-        start_time=first_timestamp,
-        end_time=last_timestamp,
-        total_records=total_records,
-        exceeds_page_limit=total_records > PAGE_SIZE,
-        approx_interval_seconds=approx_interval,
-        message=f"{total_records} record(s) for asset_id {asset_id}"
-        + (f" (sensor {sensor})" if sensor else "")
-        + f" from {first_timestamp} to {last_timestamp}.",
-    )
 
 
 def main():
