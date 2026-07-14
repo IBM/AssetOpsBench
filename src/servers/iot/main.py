@@ -80,7 +80,11 @@ except Exception as e:
 
 mcp = FastMCP(
     "iot",
-    instructions="Read-only tools for IoT asset registry operations and telemetry analysis.",
+    instructions=(
+        "Read-only IoT sensor data and asset registry tools. Browse sites, assets, and "
+        "sensors; inspect asset details; compare installed and measured sensors; and query "
+        "telemetry."
+    ),
 )
 
 DEFAULT_SITES = ["MAIN"]
