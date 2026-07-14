@@ -17,6 +17,8 @@ from servers.iot.models import (
     AssetsWithMetadataResult,
     ErrorResult,
     FindAssetsResult,
+    SensorCoverage,
+    SensorCoverageResult,
     SensorStat,
     SensorStatsResult,
     SensorsResult,
@@ -72,8 +74,9 @@ mcp = FastMCP(
         "find_assets_by_sensors() to find assets by installed or measured sensors, "
         "installed_sensors() for registry sensor inventory, and measured_sensors() for "
         "observed telemetry fields. Use stream_extent() to inspect telemetry time bounds "
-        "and record counts before planning larger telemetry reads. Use sensor_stats() for "
-        "numeric summaries without returning raw telemetry rows."
+        "and record counts before planning larger telemetry reads. Use sensor_coverage() "
+        "for per-field non-null counts and time coverage, and sensor_stats() for numeric "
+        "summaries without returning raw telemetry rows."
     ),
 )
 
@@ -143,6 +146,32 @@ class _SensorAccumulator:
             max=self.max_value,
             mean=mean,
             stddev=stddev,
+            first_timestamp=self.first_timestamp,
+            last_timestamp=self.last_timestamp,
+        )
+
+
+@dataclass
+class _SensorCoverageAccumulator:
+    non_null_count: int = 0
+    first_timestamp: Optional[str] = None
+    last_timestamp: Optional[str] = None
+    first_datetime: Optional[datetime] = None
+    last_datetime: Optional[datetime] = None
+
+    def add_non_null(self, timestamp: str, timestamp_dt: datetime) -> None:
+        self.non_null_count += 1
+        if self.first_datetime is None or timestamp_dt < self.first_datetime:
+            self.first_datetime = timestamp_dt
+            self.first_timestamp = timestamp
+        if self.last_datetime is None or timestamp_dt > self.last_datetime:
+            self.last_datetime = timestamp_dt
+            self.last_timestamp = timestamp
+
+    def result(self, sensor: str) -> SensorCoverage:
+        return SensorCoverage(
+            sensor=sensor,
+            non_null_count=self.non_null_count,
             first_timestamp=self.first_timestamp,
             last_timestamp=self.last_timestamp,
         )
@@ -817,6 +846,79 @@ def stream_extent(
     except Exception as e:
         logger.error(f"stream_extent failed: {e}")
         return ErrorResult(error="unable to inspect telemetry stream extent")
+
+
+@mcp.tool(title="Sensor Coverage")
+def sensor_coverage(
+    site_name: str,
+    asset_id: str,
+) -> Union[SensorCoverageResult, ErrorResult]:
+    """Return per-sensor non-null counts and observed time coverage.
+
+    Coverage is calculated from timestamped telemetry records in chronological
+    terms, using the same timestamp parsing and timezone-consistency rules as
+    `stream_extent()` and `sensor_stats()`. Every observed telemetry field is
+    returned, including fields seen only with null values.
+
+    The tool scans the full paged stream with constant memory so returned counts
+    and time bounds are complete. Non-null values of any type contribute to
+    `non_null_count`; first and last timestamps identify the earliest and latest
+    non-null samples.
+
+    Args:
+        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+            discover valid site ids.
+        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.
+
+    Returns:
+        SensorCoverageResult: Contains `docs_scanned` and sorted per-sensor
+        non-null counts with chronological first/last non-null timestamps.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    if not iot_db:
+        return ErrorResult(error="IoT records database not connected")
+
+    selector: Dict[str, Any] = {
+        "asset_id": asset_id,
+        "timestamp": {"$exists": True, "$ne": None},
+    }
+    coverage: Dict[str, _SensorCoverageAccumulator] = {}
+    docs_scanned = 0
+    try:
+        for doc, timestamp, timestamp_dt in _iter_records_in_window(
+            selector, None, None
+        ):
+            docs_scanned += 1
+            for field, value in doc.items():
+                if field in RESERVED_FIELDS:
+                    continue
+                accumulator = coverage.setdefault(
+                    field, _SensorCoverageAccumulator()
+                )
+                if value is not None:
+                    accumulator.add_non_null(timestamp, timestamp_dt)
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
+    except Exception as e:
+        logger.error(f"sensor_coverage failed: {e}")
+        return ErrorResult(error="unable to calculate sensor coverage")
+
+    if docs_scanned == 0:
+        return ErrorResult(error=f"unknown asset_id {asset_id} or no records found")
+
+    sensors = [coverage[field].result(field) for field in sorted(coverage)]
+    message = (
+        f"coverage for {len(sensors)} sensor(s) on asset_id {asset_id} "
+        f"across {docs_scanned} timestamped record(s)."
+    )
+    return SensorCoverageResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        docs_scanned=docs_scanned,
+        sensors=sensors,
+        message=message,
+    )
 
 
 @mcp.tool(title="Sensor Statistics")
