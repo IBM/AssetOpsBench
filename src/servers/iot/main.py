@@ -111,24 +111,33 @@ def _is_known_site(site_name: str) -> bool:
 
 @mcp.tool(title="List Sites")
 def sites() -> SitesResult:
-    """List known site names from the asset registry.
+    """Description:
+    List known site names from the asset registry.
 
-    Sites are discovered from distinct `siteid` values in asset profiles. If the registry is
-    unavailable or empty, the tool returns the default site list so callers still have a valid
-    starting point for `asset_ids()` and `assets()`.
+    Input:
+    None.
+
+    Returns:
+    SitesResult with `sites`, a sorted list of distinct `siteid` values from
+    asset profiles. If CouchDB is unavailable or the registry has no sites,
+    returns the default site list (`["MAIN"]`).
     """
     return SitesResult(sites=known_sites())
 
 
 @mcp.tool(title="List Asset IDs")
 def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
-    """List only the asset identifiers for a site.
+    """Description:
+    List only asset identifiers for one site.
 
-    Use this lightweight lookup when you only need valid `assetnum` values, for example to
-    populate a selector, validate an asset reference, or choose an id for another workflow.
-    The response contains no metadata beyond `site_name`, `total_assets`, the sorted `assets`
-    id list, and a human-readable summary. Use `assets()` instead when you need descriptions,
-    asset types, vintages, or installed sensor counts.
+    Input:
+    site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+        discover valid site ids.
+
+    Returns:
+    AssetsResult with `site_name`, `total_assets`, `assets`, and `message`.
+    The `assets` field is a sorted list of asset registry `assetnum` values.
+    Returns ErrorResult when the site is unknown or CouchDB is unavailable.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -156,12 +165,20 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
 def assets(
     site_name: str, assettype: Optional[str] = None
 ) -> Union[AssetsWithMetadataResult, ErrorResult]:
-    """List asset registry records for a site with compact metadata.
+    """Description:
+    List asset registry records for one site with compact metadata.
 
-    Use this when you need more than ids: each row includes `asset_id` (the registry
-    `assetnum`), `description`, `assettype`, `vintage`, and `n_sensors` derived from the
-    installed sensor list. Pass `assettype` to restrict results to one asset class, such as
-    `PUMP` or `COMPRESSOR`. Use `asset_ids()` instead when a compact list of ids is enough.
+    Input:
+    site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
+        discover valid site ids.
+    assettype: Optional exact asset type filter, such as `PUMP` or
+        `COMPRESSOR`.
+
+    Returns:
+    AssetsWithMetadataResult with `site_name`, `total_assets`, `assets`, and
+    `message`. Each item in `assets` includes `asset_id` (the registry
+    `assetnum`), `description`, `assettype`, `vintage`, and `n_sensors`.
+    Returns ErrorResult when the site is unknown or CouchDB is unavailable.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
