@@ -236,7 +236,12 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
 def measured_sensors(
     site_name: str, asset_id: str
 ) -> Union[SensorsResult, ErrorResult]:
-    """List measured sensor fields for one asset at one site.
+    """List telemetry fields actually measured for one asset.
+
+    This tool reads IoT records from `iot_db` (`IOT_DBNAME`, default `iot`).
+    It scans records matching `asset_id` and returns the union of observed
+    measurement fields. Use `installed_sensors()` instead when you need the
+    asset registry inventory.
 
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
@@ -246,8 +251,8 @@ def measured_sensors(
     Returns:
         SensorsResult: Contains `site_name`, `asset_id`, `total_sensors`,
         `sensors`, and `message`. The `sensors` field is a sorted list of
-        telemetry record fields observed for the asset, excluding structural
-        fields such as `asset_id`, `timestamp`, and `dataset`.
+        observed telemetry fields, excluding record metadata such as `_id`,
+        `_rev`, `asset_id`, `timestamp`, `dataset`, `type`, and `doctype`.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -274,7 +279,12 @@ def measured_sensors(
 def installed_sensors(
     site_name: str, asset_id: str
 ) -> Union[SensorsResult, ErrorResult]:
-    """List installed sensor names for one asset from the asset registry.
+    """List sensor names installed on one asset according to the registry.
+
+    This tool reads the asset registry from `asset_db` (`ASSET_DBNAME`, default
+    `asset`) and returns the asset record's `sensors` inventory. Use
+    `measured_sensors()` instead when you need fields actually observed in IoT
+    telemetry records.
 
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
@@ -283,9 +293,8 @@ def installed_sensors(
 
     Returns:
         SensorsResult: Contains `site_name`, `asset_id`, `total_sensors`,
-        `sensors`, and `message`. The `sensors` field is the registry
-        inventory for the asset, distinct from `measured_sensors()`, which
-        lists fields observed in IoT telemetry records.
+        `sensors`, and `message`. The `sensors` field preserves the registry
+        sensor inventory order from the asset record.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
