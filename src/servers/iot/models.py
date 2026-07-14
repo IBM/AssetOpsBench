@@ -81,6 +81,21 @@ class StreamExtentResult(BaseModel):
     message: str
 
 
+class SensorCoverage(BaseModel):
+    sensor: str
+    non_null_count: int
+    first_timestamp: Optional[str]
+    last_timestamp: Optional[str]
+
+
+class SensorCoverageResult(BaseModel):
+    site_name: str
+    asset_id: str
+    docs_scanned: int
+    sensors: List[SensorCoverage]
+    message: str
+
+
 class SensorStat(BaseModel):
     sensor: str
     count: int
