@@ -58,9 +58,10 @@ mcp = FastMCP(
     instructions=(
         "IoT sensor data + asset registry. Browse sites, assets, and sensors, read the asset "
         "nameplate (registry), see which installed sensors are actually measured (streaming), and "
-        "query historical readings from CouchDB. NOTE: assets()/sensors() reflect TELEMETRY (what "
-        "streams = measured); get_asset()/asset_sensors()/registry_assets() reflect the REGISTRY "
-        "(what is installed, by name). Compare the two to find installed-but-not-streaming sensors."
+        "query historical readings from CouchDB. NOTE: asset_ids() lists IDs to pass to telemetry "
+        "tools; sensors() reflects TELEMETRY (what streams = measured); assets()/get_asset()/"
+        "asset_sensors()/registry_assets() reflect the REGISTRY (what is installed, by name). "
+        "Compare the two to find installed-but-not-streaming sensors."
     ),
 )
 
@@ -119,6 +120,21 @@ class AssetSensorsResult(BaseModel):
     asset_id: str
     total_sensors: int
     sensors: List[str]
+    message: str
+
+
+class AssetSummary(BaseModel):
+    asset_id: str
+    description: Optional[str]
+    assettype: Optional[str]
+    vintage: Optional[str]
+    n_sensors: int
+
+
+class AssetsWithMetadataResult(BaseModel):
+    site_name: str
+    total_assets: int
+    assets: List[AssetSummary]
     message: str
 
 
@@ -254,9 +270,9 @@ def sites() -> SitesResult:
     return SitesResult(sites=known_sites())
 
 
-@mcp.tool(title="List Assets")
-def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
-    """Returns the assets registered at a given site, from the asset registry filtered by `siteid`.
+@mcp.tool(title="List Asset IDs")
+def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
+    """Returns the asset IDs registered at a given site, from the asset registry filtered by `siteid`.
     Each returned id is the asset's telemetry id (`iot_asset_id`) where it has one, otherwise its
     registry `assetnum` — so the id works with sensors()/history() when telemetry exists.
     """
@@ -276,6 +292,53 @@ def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
             total_assets=len(ids),
             assets=ids,
             message=f"found {len(ids)} assets at site {site_name}: {', '.join(ids)}.",
+        )
+    except Exception as e:
+        logger.error(f"asset_ids failed: {e}")
+        return ErrorResult(error=str(e))
+
+
+@mcp.tool(title="List Assets")
+def assets(
+    site_name: str, assettype: Optional[str] = None
+) -> Union[AssetsWithMetadataResult, ErrorResult]:
+    """List assets at a site with metadata: description, assettype, vintage, and installed sensor
+    count. Optionally filter by `assettype` (e.g. 'PUMP', 'COMPRESSOR'). For just the bare IDs to
+    pass to other tools, use `asset_ids`.
+    """
+    if not _is_known_site(site_name):
+        return ErrorResult(error=f"unknown site {site_name}")
+    if not asset_db:
+        return ErrorResult(error="CouchDB not connected")
+    try:
+        selector: Dict[str, Any] = {"doctype": "asset", "siteid": site_name}
+        if assettype:
+            selector["assettype"] = assettype
+        res = asset_db.find(
+            selector,
+            fields=["assetnum", "assettype", "description", "vintage", "sensors"],
+            limit=100000,
+        )
+        rows = sorted(
+            (
+                AssetSummary(
+                    asset_id=d["assetnum"],
+                    assettype=d.get("assettype"),
+                    description=d.get("description"),
+                    vintage=d.get("vintage"),
+                    n_sensors=len(d.get("sensors", [])),
+                )
+                for d in res["docs"]
+            ),
+            key=lambda r: r.asset_id,
+        )
+        return AssetsWithMetadataResult(
+            site_name=site_name,
+            total_assets=len(rows),
+            assets=rows,
+            message=f"found {len(rows)} assets"
+            + (f" of type '{assettype}'" if assettype else "")
+            + ".",
         )
     except Exception as e:
         logger.error(f"assets failed: {e}")
