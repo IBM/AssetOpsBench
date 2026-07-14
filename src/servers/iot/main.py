@@ -28,9 +28,9 @@ try:
         user=COUCHDB_USERNAME,
         password=COUCHDB_PASSWORD,
     )
-    logger.info(f"Connected to CouchDB: {ASSET_DBNAME}")
+    logger.info(f"Connected to asset registry database: {ASSET_DBNAME}")
 except Exception as e:
-    logger.error(f"Failed to connect to asset registry DB: {e}")
+    logger.error(f"Failed to connect to asset registry database: {e}")
     asset_db = None
 
 mcp = FastMCP(
@@ -115,7 +115,7 @@ def sites() -> SitesResult:
 
     Returns:
         SitesResult: `sites` contains sorted distinct `siteid` values from
-        asset profiles. If CouchDB is unavailable or the registry has no sites,
+        asset profiles. If the registry database is unavailable or has no sites,
         `sites` falls back to `["MAIN"]`.
     """
     return SitesResult(sites=known_sites())
@@ -133,13 +133,13 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
         AssetsResult: Contains `site_name`, `total_assets`, `assets`, and
         `message`. The `assets` field is a sorted list of asset registry
         `assetnum` values.
-        ErrorResult: Returned when the site is unknown or CouchDB is
-        unavailable.
+        ErrorResult: Returned when the site is unknown or the registry database
+        is unavailable.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
-        return ErrorResult(error="CouchDB not connected")
+        return ErrorResult(error="asset registry database not connected")
     try:
         res = asset_db.find(
             {"siteid": site_name},
@@ -175,13 +175,13 @@ def assets(
         `assets`, and `message`. Each item in `assets` includes `asset_id`
         (the registry `assetnum`), `description`, `assettype`, `vintage`, and
         `n_sensors`.
-        ErrorResult: Returned when the site is unknown or CouchDB is
-        unavailable.
+        ErrorResult: Returned when the site is unknown or the registry database
+        is unavailable.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
     if not asset_db:
-        return ErrorResult(error="CouchDB not connected")
+        return ErrorResult(error="asset registry database not connected")
     try:
         selector: Dict[str, Any] = {"siteid": site_name}
         if assettype:
