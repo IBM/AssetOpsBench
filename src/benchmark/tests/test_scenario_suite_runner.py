@@ -54,51 +54,55 @@ def test_read_question_raises_when_missing(tmp_path: Path) -> None:
         mr.read_question(tmp_path, "11")
 
 
-def test_stage_scenario_workspace_copies_inputs_without_groundtruth(
-    tmp_path: Path,
+def test_run_agent_for_scenario_starts_with_empty_opencode_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    scenario_root = tmp_path / "scenarios_data"
-    scenario_dir = scenario_root / "scenario_1001"
-    shared_iot = scenario_root / "shared" / "iot"
-    shared_failure = scenario_root / "shared" / "failure_code"
-    scenario_dir.mkdir(parents=True)
-    shared_iot.mkdir(parents=True)
-    shared_failure.mkdir(parents=True)
+    captured = {}
 
-    (scenario_dir / "question.txt").write_text("Find anomaly.", encoding="utf-8")
-    (scenario_dir / "groundtruth.txt").write_text(
-        '{"condition":"faulty"}',
-        encoding="utf-8",
-    )
-    (scenario_dir / "manifest.json").write_text(
-        """
-        {
-          "iot": "shared/iot/asset_data.json",
-          "asset": ["shared/iot/asset_registry.json"],
-          "failure_code": "shared/failure_code/failure_codes.csv"
-        }
-        """,
-        encoding="utf-8",
-    )
-    (shared_iot / "asset_data.json").write_text("[]", encoding="utf-8")
-    (shared_iot / "asset_registry.json").write_text("[]", encoding="utf-8")
-    (shared_failure / "failure_codes.csv").write_text("code,name\n", encoding="utf-8")
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
 
-    workspace = tmp_path / "workspace"
-    copied = mr.stage_scenario_workspace(
-        scenario_root=scenario_root,
+    monkeypatch.setattr(mr.subprocess, "run", fake_run)
+
+    workspace_root = tmp_path / "workspaces"
+    expected_workspace = workspace_root / "opencode_agent_1001"
+    expected_workspace.mkdir(parents=True)
+    (expected_workspace / "stale.txt").write_text("old data", encoding="utf-8")
+
+    method = mr.MethodConfig(
+        agent_name="opencode_agent",
+        command="opencode-agent",
+        model_id="tokenrouter/MiniMax-M3",
+        extra_args=("--allow-files",),
+        workspace_root=workspace_root,
+    )
+
+    mr.run_agent_for_scenario(
+        method=method,
         scenario_id="1001",
-        workspace_dir=workspace,
+        question="Find anomaly.",
+        trajectory_dir=tmp_path / "traj",
+        dry_run=False,
     )
 
-    copied_relative = {path.relative_to(workspace) for path in copied}
-    assert Path("scenario_1001/question.txt") in copied_relative
-    assert Path("scenario_1001/manifest.json") in copied_relative
-    assert Path("shared/iot/asset_data.json") in copied_relative
-    assert Path("shared/iot/asset_registry.json") in copied_relative
-    assert Path("shared/failure_code/failure_codes.csv") in copied_relative
-    assert Path("README.md") in copied_relative
-    assert not (workspace / "scenario_1001" / "groundtruth.txt").exists()
+    assert expected_workspace.exists()
+    assert list(expected_workspace.iterdir()) == []
+    assert captured["cmd"] == [
+        "uv",
+        "run",
+        "opencode-agent",
+        "--model-id",
+        "tokenrouter/MiniMax-M3",
+        "--allow-files",
+        "--workspace-dir",
+        str(expected_workspace),
+        "--scenario-id",
+        "1001",
+        "--run-id",
+        "opencode_agent_1001",
+        "Find anomaly.",
+    ]
 
 
 def test_validate_workspace_root_rejects_repo_paths() -> None:
@@ -217,7 +221,6 @@ def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
 
     assert opencode.extra_args == ("--allow-files", "--allow-bash")
     assert opencode.workspace_root == tmp_path / "workspaces"
-    assert opencode.stage_workspace is True
 
 
 def test_build_methods_opencode_thinking_and_variant() -> None:
@@ -440,7 +443,7 @@ def test_run_agent_for_scenario_adds_opencode_workspace(
     ]
 
 
-def test_run_agent_for_scenario_stages_opencode_workspace(
+def test_run_agent_for_scenario_recreates_empty_opencode_workspace(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured = {}
@@ -451,26 +454,12 @@ def test_run_agent_for_scenario_stages_opencode_workspace(
 
     monkeypatch.setattr(mr.subprocess, "run", fake_run)
 
-    scenario_root = tmp_path / "scenarios_data"
-    scenario_dir = scenario_root / "scenario_1001"
-    shared_iot = scenario_root / "shared" / "iot"
-    scenario_dir.mkdir(parents=True)
-    shared_iot.mkdir(parents=True)
-    (scenario_dir / "question.txt").write_text("Find anomaly.", encoding="utf-8")
-    (scenario_dir / "groundtruth.txt").write_text("secret", encoding="utf-8")
-    (scenario_dir / "manifest.json").write_text(
-        '{"iot": "shared/iot/asset_data.json"}',
-        encoding="utf-8",
-    )
-    (shared_iot / "asset_data.json").write_text("[]", encoding="utf-8")
-
     method = mr.MethodConfig(
         agent_name="opencode_agent",
         command="opencode-agent",
         model_id="tokenrouter/MiniMax-M3",
         extra_args=("--allow-files",),
         workspace_root=tmp_path / "workspaces",
-        stage_workspace=True,
     )
 
     mr.run_agent_for_scenario(
@@ -479,14 +468,11 @@ def test_run_agent_for_scenario_stages_opencode_workspace(
         question="Find anomaly.",
         trajectory_dir=tmp_path / "traj",
         dry_run=False,
-        scenario_root=scenario_root,
     )
 
     expected_workspace = tmp_path / "workspaces" / "opencode_agent_1001"
-    assert (expected_workspace / "scenario_1001" / "question.txt").exists()
-    assert (expected_workspace / "scenario_1001" / "manifest.json").exists()
-    assert (expected_workspace / "shared" / "iot" / "asset_data.json").exists()
-    assert not (expected_workspace / "scenario_1001" / "groundtruth.txt").exists()
+    assert expected_workspace.exists()
+    assert list(expected_workspace.iterdir()) == []
     assert "--workspace-dir" in captured["cmd"]
 
 
