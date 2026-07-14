@@ -57,7 +57,7 @@ mcp = FastMCP(
 
 DEFAULT_SITES = ["MAIN"]
 PAGE_SIZE = 1000
-RESERVED_FIELDS = {"_id", "_rev", "asset_id", "timestamp"}
+RESERVED_FIELDS = {"_id", "_rev", "asset_id", "timestamp", "dataset", "type", "doctype"}
 
 
 class ErrorResult(BaseModel):
@@ -246,7 +246,7 @@ def measured_sensors(
         SensorsResult: Contains `site_name`, `asset_id`, `total_sensors`,
         `sensors`, and `message`. The `sensors` field is a sorted list of
         telemetry record fields observed for the asset, excluding structural
-        fields such as `asset_id` and `timestamp`.
+        fields such as `asset_id`, `timestamp`, and `dataset`.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
