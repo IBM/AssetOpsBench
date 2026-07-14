@@ -169,7 +169,7 @@ def list_domains(task_id: Optional[str] = None) -> Union[DomainsResult, ErrorRes
 def describe_candidates(
     task_id: str, top_k: int = 5, domain: Optional[str] = None
 ) -> Union[CandidatesResult, ErrorResult]:
-    """CANDIDATE models for a task (HuggingGPT-style shortlist, CATALOG ORDER — no ranking). A
+    """CANDIDATE models for a task (HuggingGPT-style shortlist, CATALOG ORDER (no ranking)). A
     candidate is a shortlisted MODEL; you decide which to use; top_k caps the list. Use hf_stats /
     gift_status to judge popularity / quality yourself."""
     bad = _check_task(task_id)
@@ -1113,6 +1113,8 @@ def new_feature_version(
 # ---- results / runs ----
 @mcp.tool(title="Get Result")
 def get_result(task_type: str, result_id: str) -> Union[ResultRecord, ErrorResult]:
+    """Fetch one persisted result by task_type + result_id (the record a run produced and stored).
+    Returns the stored result or an error if no such id exists for that task_type."""
     rec = results.get_result(_STORE, task_type, result_id)
     return ResultRecord(**rec) if rec else ErrorResult(error="not found")
 
@@ -1121,6 +1123,8 @@ def get_result(task_type: str, result_id: str) -> Union[ResultRecord, ErrorResul
 def list_results(
     task_type: str, asset_id: Optional[str] = None, scenario_id: Optional[str] = None
 ) -> ResultsListResult:
+    """List persisted results for a task_type, optionally narrowed by asset_id / scenario_id.
+    Compact records; use get_result for the full stored payload of one id."""
     return ResultsListResult(
         results=results.list_results(
             _STORE, task_type, asset_id=asset_id, scenario_id=scenario_id
@@ -1130,12 +1134,16 @@ def list_results(
 
 @mcp.tool(title="Get Run")
 def get_run(run_id: str) -> Union[RunRecord, ErrorResult]:
+    """Fetch one run record by run_id: a single recipe/plan execution with its config and outcome.
+    Returns the stored run or an error if the id is unknown."""
     rec = _STORE.get(RUNS_COLLECTION, run_id)
     return RunRecord(**rec) if rec else ErrorResult(error="not found")
 
 
 @mcp.tool(title="List Runs")
 def list_runs(asset_id: Optional[str] = None) -> RunsResult:
+    """List run records and plans, optionally filtered by asset_id. Runs are individual executions;
+    plans are multi-step sequences. Use get_run for one run's full detail."""
     sel = {"asset_id": asset_id} if asset_id else {}
     return RunsResult(
         runs=_STORE.find(RUNS_COLLECTION, sel), plans=_STORE.find(PLANS_COLLECTION, sel)

@@ -138,7 +138,7 @@ def describe_candidates(
             {
                 "model_id": m["model_id"],
                 "description": m.get("description", ""),
-                "family": m.get("family") or m.get("model_family"),
+                "family": m.get("model_family") or m.get("family"),
                 "sktime_class": m.get("sktime_class"),
                 "context_length": m.get("context_length"),
                 "tags": m.get("tags", []),
