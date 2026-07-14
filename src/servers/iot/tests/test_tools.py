@@ -3,14 +3,19 @@
 import pytest
 
 from servers.iot.main import mcp
-from .conftest import call_tool, requires_couchdb
+from .conftest import call_tool, requires_couchdb, requires_iot_db
 
 
 class TestToolRegistration:
     @pytest.mark.anyio
     async def test_registry_tools_are_registered(self):
         tools = await mcp.list_tools()
-        assert sorted(tool.name for tool in tools) == ["asset_ids", "assets", "sites"]
+        assert sorted(tool.name for tool in tools) == [
+            "asset_ids",
+            "assets",
+            "measured_sensors",
+            "sites",
+        ]
 
 
 class TestSites:
@@ -65,6 +70,65 @@ class TestAssetIds:
         assert "assets" in data
         assert "Chiller 6" in data["assets"]
         assert data["total_assets"] > 0
+
+
+class TestMeasuredSensors:
+    @pytest.mark.anyio
+    async def test_invalid_site(self):
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "INVALID", "asset_id": "Pump-1"}
+        )
+        assert "error" in data
+        assert "unknown site" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_with_mock_iot_db(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {
+            "docs": [
+                {
+                    "_id": "iot:Pump-1:1",
+                    "_rev": "1-abc",
+                    "asset_id": "Pump-1",
+                    "timestamp": "2024-01-01T00:00:00",
+                    "Pressure": 10,
+                },
+                {
+                    "asset_id": "Pump-1",
+                    "timestamp": "2024-01-01T00:01:00",
+                    "Temperature": 30,
+                    "Pressure": 11,
+                },
+            ]
+        }
+
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "MAIN", "asset_id": "Pump-1"}
+        )
+
+        assert data["site_name"] == "MAIN"
+        assert data["asset_id"] == "Pump-1"
+        assert data["total_sensors"] == 2
+        assert data["sensors"] == ["Pressure", "Temperature"]
+
+    @pytest.mark.anyio
+    async def test_db_disconnected(self, mock_asset_db, no_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "MAIN", "asset_id": "Pump-1"}
+        )
+        assert "error" in data
+        assert "not connected" in data["error"].lower()
+
+    @requires_iot_db
+    @pytest.mark.anyio
+    async def test_discovery_integration(self):
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "MAIN", "asset_id": "Chiller 6"}
+        )
+        assert "sensors" in data
+        assert "Chiller 6 Supply Temperature" in data["sensors"]
+        assert data["total_sensors"] > 0
 
 
 class TestAssets:
