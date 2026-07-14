@@ -81,11 +81,8 @@ except Exception as e:
 mcp = FastMCP(
     "iot",
     instructions=(
-        "Read-only tools for discovering IoT assets and analyzing telemetry. Resolve valid "
-        "sites, assets, and sensor names before querying telemetry. Prefer summary tools for "
-        "extent, coverage, and statistics; request history only when raw chronological "
-        "observations are needed. ISO 8601 windows are half-open and must use timezone "
-        "offsets consistently."
+        "Read-only tools for IoT asset discovery and telemetry analysis. "
+        "Prefer summaries over raw history."
     ),
 )
 
