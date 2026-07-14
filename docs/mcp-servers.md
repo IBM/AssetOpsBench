@@ -14,15 +14,16 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 ## iot — IoT Asset Registry and Telemetry Records
 
 The IoT server reads from the asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from
-`asset_profile_sample.json`) and IoT telemetry records (`IOT_DBNAME`, default `iot`). It exposes
-registry discovery tools while the broader IoT tool surface is being rebuilt: `sites()` for site
-names, `asset_ids()` for bare `assetnum` values, `asset_detail()` for one asset's registry
-details, `assets()` for registry metadata with optional `assettype` filtering,
-`find_assets_by_sensors()` to find assets by installed or measured sensors, `installed_sensors()`
-for registry sensor inventory, and `measured_sensors()` for telemetry fields observed in records.
+`asset_profile_sample.json`) and IoT telemetry records (`IOT_DBNAME`, default `iot`). All tools are
+read-only. Use the registry and discovery tools to resolve valid sites, assets, and sensor names,
+then use the telemetry tools for raw observations or summaries.
 
 **Path:** `src/servers/iot/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `ASSET_DBNAME`, `IOT_DBNAME`)
+
+The server keeps tool registration and tool functions in `main.py`. Pydantic response models live
+in `models.py`; shared timestamp, paging, projection, and telemetry aggregation logic lives in
+`telemetry_helper.py`.
 
 **Sample asset profiles shipped in the `asset` database** (loaded by `src/couchdb/init_data.py`):
 
@@ -34,22 +35,41 @@ for registry sensor inventory, and `measured_sensors()` for telemetry fields obs
 
 Source file: `src/couchdb/scenarios_data/shared/iot/asset_profile_sample.json`.
 
-| Tool              | Arguments                                  | Description                                                                                                  |
-| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `sites`           | -                                          | List known site names from the asset registry, with a default fallback                                       |
-| `asset_ids`       | `site_name`                                | List bare `assetnum` values registered at a site                                                            |
-| `asset_detail`    | `site_name`, `asset_id`                  | Return one asset's registry details, including `n_installed_sensors`                                         |
-| `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?` | Find assets at a site by installed or measured sensor names                                                  |
-| `installed_sensors` | `site_name`, `asset_id`                  | List sensor names installed on an asset according to the asset registry                                      |
-| `measured_sensors` | `site_name`, `asset_id`                   | List measured telemetry fields observed for an asset                                                         |
-| `assets`          | `site_name`, `assettype?`                  | List assets with metadata (assettype, description, vintage, installed sensor count), optionally filtered by assettype |
+### Registry and discovery tools
 
-`find_assets_by_sensors()` searches only assets registered at the requested site. `match="all"`
-requires every query sensor to match, while `match="any"` requires at least one. Set
-`substring=true` to perform case-insensitive substring matching instead of exact sensor-name
-matching. `source="installed"` searches the asset registry sensor inventory; `source="measured"`
-searches telemetry fields observed in IoT records. Duplicate query sensors are deduplicated in
-the response while preserving their first occurrence order.
+| Tool | Arguments | Description |
+| ---- | --------- | ----------- |
+| `sites` | - | List sorted site identifiers, with `MAIN` as the fallback |
+| `asset_ids` | `site_name` | List asset identifiers registered at a site |
+| `assets` | `site_name`, `assettype?` | List assets with compact metadata and optional exact type filtering |
+| `asset_detail` | `site_name`, `asset_id` | Return registry details and installed-sensor count for one asset |
+| `installed_sensors` | `site_name`, `asset_id` | List sensor names assigned in the registry |
+| `measured_sensors` | `site_name`, `asset_id` | List measurement fields observed across the telemetry stream |
+| `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?` | Find site assets by installed or measured sensor names |
+
+`find_assets_by_sensors` defaults to `match="all"` and `source="measured"`. Exact matching is
+case-sensitive; `substring=true` enables case-insensitive fragment matching. Duplicate query
+sensors are removed while preserving first occurrence order.
+
+### Telemetry tools
+
+| Tool | Arguments | Description |
+| ---- | --------- | ----------- |
+| `stream_extent` | `site_name`, `asset_id`, `sensor?`, `start?`, `end?` | Count matching records and return their earliest and latest timestamps |
+| `latest_reading` | `site_name`, `asset_id`, `sensor?` | Return the newest record, or the newest non-null value for one sensor |
+| `history` | `site_name`, `asset_id`, `start?`, `end?`, `sensors?`, `limit?`, `cursor?` | Return chronological, projected observations with cursor paging |
+| `sensor_coverage` | `site_name`, `asset_id` | Scan the full stream for per-sensor non-null counts and time coverage |
+| `sensor_stats` | `site_name`, `asset_id`, `sensor?`, `start?`, `end?` | Compute per-sensor numeric counts, range, mean, and population standard deviation |
+
+Telemetry windows use ISO 8601 bounds with `start` inclusive and `end` exclusive. Bounds and
+record timestamps must consistently include or omit timezone offsets; aware timestamps with
+different offsets are compared by instant. `history` returns 1 to 1000 observations per page and
+uses opaque cursors bound to the original query.
+
+`stream_extent` counts sensor-filtered records only when that field is present and non-null.
+`sensor_coverage` counts non-null values of any type and always scans the complete timestamped
+stream. `sensor_stats` accepts finite numbers and numeric strings; present null, boolean,
+non-numeric, and non-finite values increment `null_count`, while missing fields do not.
 
 ## utilities — Utilities
 
