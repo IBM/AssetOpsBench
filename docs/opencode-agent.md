@@ -103,7 +103,7 @@ uv run opencode-agent --show-trajectory \
 ```
 
 In the `--show-trajectory` output, look for domain tool calls such as
-`iot_asset_ids`, `iot_assets`, or `wo_list_workorders`. That confirms
+`iot_sites`, `iot_asset_ids`, `iot_assets`, or `wo_list_workorders`. That confirms
 OpenCode discovered and called the AssetOpsBench MCP tools.
 
 > **Quiet runs.** `opencode-agent` runs OpenCode as a subprocess. During long

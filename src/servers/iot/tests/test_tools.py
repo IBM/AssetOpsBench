@@ -8,9 +8,25 @@ from .conftest import call_tool, requires_couchdb
 
 class TestToolRegistration:
     @pytest.mark.anyio
-    async def test_only_asset_tools_are_registered(self):
+    async def test_registry_tools_are_registered(self):
         tools = await mcp.list_tools()
-        assert sorted(tool.name for tool in tools) == ["asset_ids", "assets"]
+        assert sorted(tool.name for tool in tools) == ["asset_ids", "assets", "sites"]
+
+
+class TestSites:
+    @pytest.mark.anyio
+    async def test_returns_known_sites(self, mock_asset_db):
+        mock_asset_db.find.return_value = {
+            "docs": [{"siteid": "MAIN"}, {"siteid": "NORTH"}, {"siteid": "MAIN"}]
+        }
+        data = await call_tool(mcp, "sites", {})
+
+        assert data["sites"] == ["MAIN", "NORTH"]
+
+    @pytest.mark.anyio
+    async def test_falls_back_to_default_site(self, no_asset_db):
+        data = await call_tool(mcp, "sites", {})
+        assert data["sites"] == ["MAIN"]
 
 
 class TestAssetIds:

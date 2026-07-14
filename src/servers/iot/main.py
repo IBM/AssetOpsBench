@@ -36,8 +36,9 @@ except Exception as e:
 mcp = FastMCP(
     "iot",
     instructions=(
-        "IoT asset registry tools. This server only exposes asset_ids(), for bare assetnum "
-        "values, and assets(), for registry metadata with optional assettype filtering."
+        "IoT asset registry tools. Use sites() to discover site names, asset_ids() for bare "
+        "assetnum values at a site, and assets() for registry metadata with optional "
+        "assettype filtering."
     ),
 )
 
@@ -46,6 +47,10 @@ DEFAULT_SITES = ["MAIN"]
 
 class ErrorResult(BaseModel):
     error: str
+
+
+class SitesResult(BaseModel):
+    sites: List[str]
 
 
 class AssetsResult(BaseModel):
@@ -104,11 +109,26 @@ def _is_known_site(site_name: str) -> bool:
     return site_name in known_sites()
 
 
+@mcp.tool(title="List Sites")
+def sites() -> SitesResult:
+    """List known site names from the asset registry.
+
+    Sites are discovered from distinct `siteid` values in asset profiles. If the registry is
+    unavailable or empty, the tool returns the default site list so callers still have a valid
+    starting point for `asset_ids()` and `assets()`.
+    """
+    return SitesResult(sites=known_sites())
+
+
 @mcp.tool(title="List Asset IDs")
 def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
-    """Return bare asset ids registered at a site.
+    """List only the asset identifiers for a site.
 
-    Each returned id is the registry `assetnum`.
+    Use this lightweight lookup when you only need valid `assetnum` values, for example to
+    populate a selector, validate an asset reference, or choose an id for another workflow.
+    The response contains no metadata beyond `site_name`, `total_assets`, the sorted `assets`
+    id list, and a human-readable summary. Use `assets()` instead when you need descriptions,
+    asset types, vintages, or installed sensor counts.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
@@ -136,10 +156,12 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
 def assets(
     site_name: str, assettype: Optional[str] = None
 ) -> Union[AssetsWithMetadataResult, ErrorResult]:
-    """Return registry assets with metadata.
+    """List asset registry records for a site with compact metadata.
 
-    The result includes description, assettype, vintage, and installed sensor count. Optionally
-    filter by `assettype`, for example `PUMP` or `COMPRESSOR`.
+    Use this when you need more than ids: each row includes `asset_id` (the registry
+    `assetnum`), `description`, `assettype`, `vintage`, and `n_sensors` derived from the
+    installed sensor list. Pass `assettype` to restrict results to one asset class, such as
+    `PUMP` or `COMPRESSOR`. Use `asset_ids()` instead when a compact list of ids is enough.
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
