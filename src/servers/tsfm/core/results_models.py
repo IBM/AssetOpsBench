@@ -245,3 +245,26 @@ class GiftStatusResult(BaseModel):
     found: bool
     rank: Optional[int] = None
     score: Optional[float] = None
+
+class ModelDescription(BaseModel):
+    model_id: str
+    description: Optional[str]
+    family: Optional[str]
+    sktime_class: Optional[str]
+    context_length: Optional[int]
+    domain: Optional[str]
+    tags: List[str] = []
+
+
+class DescribeModelsResult(BaseModel):
+    models: List[ModelDescription]
+    unknown: List[str]
+    message: str
+
+
+class ModelTemplateResult(BaseModel):
+    required_fields: List[str]
+    pointer_choices: List[str]
+    optional_fields: List[str]
+    resolution_rules: List[str]
+    example: dict
