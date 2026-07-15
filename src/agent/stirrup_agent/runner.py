@@ -32,6 +32,7 @@ from __future__ import annotations
 import datetime as _dt
 import logging
 import os
+import shutil
 import time
 from pathlib import Path
 
@@ -51,6 +52,48 @@ _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "python:3.12-slim")
 
 
+def _copy_workspace_contents(source: Path, destination: Path) -> None:
+    """Copy code-exec workspace contents out of Stirrup's temp child dir."""
+    destination.mkdir(parents=True, exist_ok=True)
+    for item in source.iterdir():
+        target = destination / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, dirs_exist_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, target)
+
+
+def _preserving_provider_class(provider_cls):
+    class _PreservingCodeExecToolProvider(provider_cls):
+        def __init__(self, *args, preserve_dir: Path, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self._assetops_preserve_dir = preserve_dir
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            temp_dir = self.temp_dir
+            if temp_dir is not None and temp_dir.exists():
+                try:
+                    fix_ownership = getattr(self, "_fix_file_ownership", None)
+                    if fix_ownership is not None:
+                        await fix_ownership()
+                    _copy_workspace_contents(temp_dir, self._assetops_preserve_dir)
+                    _log.info(
+                        "Preserved Stirrup code workspace %s -> %s",
+                        temp_dir,
+                        self._assetops_preserve_dir,
+                    )
+                except Exception:
+                    _log.warning(
+                        "Failed to preserve Stirrup code workspace %s",
+                        temp_dir,
+                        exc_info=True,
+                    )
+            return await super().__aexit__(exc_type, exc_val, exc_tb)
+
+    return _PreservingCodeExecToolProvider
+
+
 class StirrupAgentRunner(AgentRunner):
     """Run a question through a Stirrup agent against the MCP servers.
 
@@ -60,6 +103,8 @@ class StirrupAgentRunner(AgentRunner):
         model: ``litellm_proxy/<provider>/<model>`` or native ``<provider>/<model>``.
         code_enabled: Add a sandboxed code-execution tool (the code track).
         code_backend: ``"docker"`` (sandboxed, default), ``"local"``, or ``"e2b"``.
+        workspace_dir: Optional host base directory for Docker/local code execution.
+        preserve_workspace: Copy final code-execution files back into ``workspace_dir``.
         max_turns: Stirrup agent loop bound.
         max_tokens: Context window hint passed to the client.
     """
@@ -71,6 +116,8 @@ class StirrupAgentRunner(AgentRunner):
         model: str = _DEFAULT_MODEL,
         code_enabled: bool = True,
         code_backend: str = "docker",
+        workspace_dir: Path | str | None = None,
+        preserve_workspace: bool = False,
         max_turns: int = 30,
         max_tokens: int = 16_384,
     ) -> None:
@@ -78,6 +125,18 @@ class StirrupAgentRunner(AgentRunner):
         self._model_id = model
         self._code_enabled = code_enabled
         self._code_backend = code_backend
+        self._workspace_dir = (
+            Path(workspace_dir).expanduser().resolve()
+            if workspace_dir is not None
+            else None
+        )
+        if preserve_workspace and self._workspace_dir is None:
+            raise ValueError("workspace_dir is required when preserve_workspace is enabled")
+        if preserve_workspace and code_backend not in {"docker", "local"}:
+            raise ValueError(
+                "preserve_workspace is only supported with docker or local code backends"
+            )
+        self._preserve_workspace = preserve_workspace
         self._max_turns = max_turns
         self._max_tokens = max_tokens
 
@@ -123,14 +182,30 @@ class StirrupAgentRunner(AgentRunner):
         if self._code_backend == "local":
             from stirrup.tools.code_backends.local import LocalCodeExecToolProvider
 
-            return LocalCodeExecToolProvider()
+            provider_cls = LocalCodeExecToolProvider
+            kwargs = {"temp_base_dir": self._workspace_dir}
+            if self._preserve_workspace:
+                provider_cls = _preserving_provider_class(provider_cls)
+                kwargs["preserve_dir"] = self._workspace_dir
+            return provider_cls(**kwargs)
         if self._code_backend == "e2b":
             from stirrup.tools.code_backends.e2b import E2BCodeExecToolProvider
 
             return E2BCodeExecToolProvider()
         from stirrup.tools.code_backends.docker import DockerCodeExecToolProvider
 
-        return DockerCodeExecToolProvider.from_image(_DEFAULT_CODE_IMAGE)
+        if self._preserve_workspace:
+            provider_cls = _preserving_provider_class(DockerCodeExecToolProvider)
+            return provider_cls(
+                _DEFAULT_CODE_IMAGE,
+                is_dockerfile=False,
+                temp_base_dir=self._workspace_dir,
+                preserve_dir=self._workspace_dir,
+            )
+        return DockerCodeExecToolProvider.from_image(
+            _DEFAULT_CODE_IMAGE,
+            temp_base_dir=self._workspace_dir,
+        )
 
     def _build_tools(self) -> list:
         tools: list = []
@@ -159,10 +234,12 @@ class StirrupAgentRunner(AgentRunner):
             )
 
             _log.info(
-                "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s)",
+                "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s, workspace=%s, preserve=%s)",
                 self._model_id,
                 self._code_enabled,
                 self._code_backend,
+                self._workspace_dir,
+                self._preserve_workspace,
             )
 
             async with agent.session() as session:
