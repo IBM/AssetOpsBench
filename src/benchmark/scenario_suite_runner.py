@@ -49,6 +49,7 @@ class MethodConfig:
     model_id: str
     extra_args: tuple[str, ...] = ()
     workspace_root: Path | None = None
+    reset_workspace: bool = True
 
 
 def model_dir_name(model_id: str) -> str:
@@ -204,7 +205,7 @@ def run_agent_for_scenario(
         workspace_dir = method.workspace_root / run_id
         extra_args.extend(["--workspace-dir", str(workspace_dir)])
         if not dry_run:
-            if workspace_dir.exists():
+            if method.reset_workspace and workspace_dir.exists():
                 shutil.rmtree(workspace_dir)
             workspace_dir.mkdir(parents=True, exist_ok=True)
 
@@ -276,6 +277,13 @@ def run_evaluation(
 
 def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     """Build available method configs from CLI args."""
+    stirrup_extra_args: list[str] = []
+    stirrup_extra_args.extend(["--max-tokens", str(args.stirrup_max_tokens)])
+    if getattr(args, "preserve_workspaces", False) and getattr(
+        args, "stirrup_workspace_root", None
+    ) is not None:
+        stirrup_extra_args.append("--preserve-workspace")
+
     opencode_extra_args: list[str] = []
     if args.opencode_allow_files:
         opencode_extra_args.append("--allow-files")
@@ -323,6 +331,8 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             agent_name="stirrup_agent",
             command="stirrup-agent",
             model_id=args.model_id,
+            extra_args=tuple(stirrup_extra_args),
+            workspace_root=getattr(args, "stirrup_workspace_root", None),
         ),
         "opencode_agent": MethodConfig(
             agent_name="opencode_agent",
@@ -369,7 +379,12 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="scenario_suite_runner",
         description="Run benchmark scenarios sequentially.",
     )
-
+    parser.add_argument(
+    "--stirrup-max-tokens",
+    type=int,
+    default=4096,
+    help="Max output tokens per Stirrup model call.",
+    )
     parser.add_argument(
         "--scenario-ids",
         type=Path,
@@ -411,6 +426,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model-id",
         default=_DEFAULT_MODEL_ID,
         help="Model id used by direct_llm, stirrup_agent, and opencode_agent.",
+    )
+    parser.add_argument(
+        "--stirrup-workspace-root",
+        type=Path,
+        default=None,
+        help=(
+            "Root directory for per-run Stirrup code-execution workspaces. "
+            "Workspaces are nested by agent/model/run_id."
+        ),
     )
     parser.add_argument(
         "--gemini-model-id",
@@ -542,6 +566,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip a scenario if its expected trajectory file already exists.",
     )
     parser.add_argument(
+        "--preserve-workspaces",
+        action="store_true",
+        help=(
+            "Keep existing per-run workspaces instead of deleting them before a run. "
+            "For Stirrup, also preserve final code-execution files in --stirrup-workspace-root."
+        ),
+    )
+    parser.add_argument(
         "--no-evaluate",
         action="store_true",
         help="Run agents only; do not invoke evaluator after the run.",
@@ -578,6 +610,13 @@ def main() -> None:
         try:
             validate_workspace_root_outside_repo(
                 args.opencode_workspace_root, "--opencode-workspace-root"
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+    if args.stirrup_workspace_root is not None:
+        try:
+            validate_workspace_root_outside_repo(
+                args.stirrup_workspace_root, "--stirrup-workspace-root"
             )
         except ValueError as exc:
             parser.error(str(exc))
@@ -621,6 +660,7 @@ def main() -> None:
             model_id=method.model_id,
             extra_args=method.extra_args,
             workspace_root=method_workspace_root,
+            reset_workspace=method.reset_workspace and not args.preserve_workspaces,
         )
 
         if not args.dry_run:
