@@ -8,7 +8,11 @@ they run without Stirrup, the MCP servers, Docker, or a model.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
+import pytest
+
+from agent.stirrup_agent.runner import StirrupAgentRunner, _copy_workspace_contents
 from agent.stirrup_agent.trajectory import (
     build_trajectory,
     classify_tool,
@@ -67,6 +71,25 @@ def test_classify_tool():
     assert classify_tool("code_exec", _DOMAIN) == "code"
     assert classify_tool("web_search", _DOMAIN) == "other"
     assert classify_tool("calculator", _DOMAIN) == "other"
+
+
+def test_copy_workspace_contents_preserves_nested_outputs(tmp_path: Path):
+    destination = tmp_path / "stirrup_agent_1001"
+    source = destination / "docker_exec_env_abc"
+    nested = source / "nested"
+    nested.mkdir(parents=True)
+    (source / "answer.txt").write_text("done", encoding="utf-8")
+    (nested / "plot.csv").write_text("x,y\n1,2\n", encoding="utf-8")
+
+    _copy_workspace_contents(source, destination)
+
+    assert (destination / "answer.txt").read_text(encoding="utf-8") == "done"
+    assert (destination / "nested" / "plot.csv").exists()
+
+
+def test_stirrup_runner_requires_workspace_when_preserving():
+    with pytest.raises(ValueError, match="workspace_dir"):
+        StirrupAgentRunner(preserve_workspace=True)
 
 
 def test_build_trajectory_maps_turns_calls_and_outputs():
