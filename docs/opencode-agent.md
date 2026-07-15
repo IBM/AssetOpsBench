@@ -103,7 +103,7 @@ uv run opencode-agent --show-trajectory \
 ```
 
 In the `--show-trajectory` output, look for domain tool calls such as
-`iot_sites`, `iot_registry_assets`, or `wo_list_workorders`. That confirms
+`iot_sites`, `iot_asset_ids`, `iot_assets`, or `wo_list_workorders`. That confirms
 OpenCode discovered and called the AssetOpsBench MCP tools.
 
 > **Quiet runs.** `opencode-agent` runs OpenCode as a subprocess. During long
@@ -164,9 +164,11 @@ For scenario `401`, this creates a workspace such as:
 traces/opencode_workspaces/opencode_agent_401
 ```
 
-OpenCode is instructed to use the current working directory as the run workspace
-when file or bash access is enabled. It should write scripts, temporary files,
-intermediate data, and final artifacts there.
+Each scenario run starts with an empty per-run workspace directory. The
+benchmark loader fills CouchDB from the scenario repository, but the OpenCode
+process itself does not get the scenario's raw `shared/` files staged into the
+workspace. This keeps the CLI run focused on MCP/CouchDB access instead of
+reading the source files directly.
 
 > **Safety note.** `--opencode-allow-bash` is not a hard OS-level sandbox. A
 > shell or Python process can still attempt to access files outside the workspace.
@@ -351,7 +353,7 @@ Scenario-suite OpenCode flags:
 
 | Flag | Description |
 | ---- | ----------- |
-| `--opencode-workspace-root PATH` | Root directory for per-run OpenCode workspaces. |
+| `--opencode-workspace-root PATH` | Root directory for empty per-run OpenCode workspaces. |
 | `--opencode-allow-files` | Pass `--allow-files` to `opencode-agent`. |
 | `--opencode-allow-bash` | Pass `--allow-bash` to `opencode-agent`. |
 | `--opencode-allow-edit` | Pass `--allow-edit` to `opencode-agent`. |
