@@ -94,6 +94,7 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `COUCHDB_PASSWORD` | `password`              | CouchDB admin password   |
 | `IOT_DBNAME`         | `iot`                   | IoT sensor database name      |
 | `WO_DBNAME`          | `workorder`             | Work order database name      |
+| `FAILURE_CODE_DBNAME` | `failure_code`          | FCC failure-code database name |
 | `VIBRATION_DBNAME`   | `vibration`             | Vibration sensor database name |
 
 **WatsonX** — plan-execute runner and WatsonX-backed agent routes
@@ -143,7 +144,7 @@ Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagn
 | `iot`       | 7     | read                     | CouchDB  (telemetry + asset registry)  |
 | `utilities` | 3     | read                     | none                                   |
 | `fmsr`      | 2     | read, LLM-use            | LiteLLM + `failure_modes.yaml`         |
-| `wo`        | 14    | read, write              | CouchDB                                |
+| `wo`        | 15    | read, write              | CouchDB                                |
 | `tsfm`      | 6     | read, write, cpu-centric | IBM Granite TinyTimeMixer (torch)      |
 | `vibration` | 8     | read, cpu-centric        | CouchDB + numpy/scipy DSP              |
 

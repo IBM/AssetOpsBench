@@ -18,6 +18,7 @@ binds a real client; tests bind an in-memory fake. Each returns the same
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -28,6 +29,8 @@ APPROVED_PENDING = ("APPR", "WMATL", "WSCH", "INPRG", "WPCOND")
 TERMINAL = ("COMP", "CLOSE", "CAN")
 ALL_STATUSES = OPEN_STATUSES + ("COMP", "CLOSE", "CAN")
 WORKTYPES = ("CM", "PM", "EM", "PdM", "CAL", "INSP", "GEN")
+FCC_QUERY_LIMIT = 1000
+logger = logging.getLogger("wo-mcp-server")
 
 
 def _doc_id(site_id: str, wonum: str) -> str:
@@ -43,9 +46,53 @@ def _public(doc: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in doc.items() if k not in ("_rev",)}
 
 
+def _failure_code_public(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Return only the FCC fields agents need."""
+    return {
+        "code": doc.get("code"),
+        "description": doc.get("description"),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Read tools
 # --------------------------------------------------------------------------- #
+async def get_failure_codes(db, code: Optional[str] = None) -> Dict[str, Any]:
+    """Read all FCC reference rows, or one exact failure code, from CouchDB."""
+    with Timer() as t:
+        normalized = code.strip().upper() if code and code.strip() else None
+        try:
+            if normalized:
+                doc = await db.get(f"fc:{normalized}")
+                docs = [doc] if doc else []
+            else:
+                docs = await db.find(
+                    {"dataset": "failure_code"},
+                    fields=["code", "description"],
+                    limit=FCC_QUERY_LIMIT,
+                )
+        except Exception as exc:
+            logger.error("Failed to read the failure-code catalog: %s", exc)
+            return error(
+                "Unable to read the failure-code catalog from CouchDB. Verify "
+                "CouchDB is running and FAILURE_CODE_DBNAME points to a loaded "
+                "database.",
+                "DATABASE_ERROR",
+            )
+
+        items = [_failure_code_public(doc) for doc in docs if doc and doc.get("code")]
+        items.sort(key=lambda item: item["code"])
+        return envelope(
+            {
+                "code": normalized,
+                "failure_codes": items,
+                "totalCount": len(items),
+            },
+            duration_ms=t_ms(t),
+            record_count=len(items),
+        )
+
+
 async def list_workorders(
     db,
     site_id: Optional[str] = None,
@@ -144,7 +191,10 @@ async def get_workorder_costs(db, wonum: str, site_id: str) -> Dict[str, Any]:
             return error(
                 f"Work order '{wonum}' not found in site '{site_id}'.", "NOT_FOUND"
             )
-        f = lambda n: float(wo.get(n) or 0)
+
+        def f(name: str) -> float:
+            return float(wo.get(name) or 0)
+
         labor, material, service, tool = (
             f("actlabcost"),
             f("actmatcost"),
@@ -190,7 +240,9 @@ async def get_workorder_actuals_vs_planned(
             return error(
                 f"Work order '{wonum}' not found in site '{site_id}'.", "NOT_FOUND"
             )
-        f = lambda n: float(wo.get(n) or 0)
+
+        def f(name: str) -> float:
+            return float(wo.get(name) or 0)
 
         def var(est, act):
             return {
