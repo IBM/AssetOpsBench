@@ -6,10 +6,13 @@ Run:  python -m pytest tests/ -q     (or just `python tests/test_workorders.py`)
 from __future__ import annotations
 
 import asyncio
-import re
+import json
 from datetime import datetime, timezone
 
-from servers.wo import workorders as wo
+import pytest
+
+from servers.wo import main, workorders as wo
+from servers.wo.models import ErrorResult, FailureCodesResult
 
 
 class FakeCouch:
@@ -190,6 +193,124 @@ async def scenario():
 
 def test_lifecycle():
     asyncio.run(scenario())
+
+
+def _fcc_db() -> FakeCouch:
+    db = FakeCouch()
+    db.docs = {
+        "fc:FC002": {
+            "_id": "fc:FC002",
+            "_rev": "1-test",
+            "dataset": "failure_code",
+            "code": "FC002",
+            "description": "equipment stops unexpectedly during operation",
+        },
+        "fc:FC001": {
+            "_id": "fc:FC001",
+            "_rev": "1-test",
+            "dataset": "failure_code",
+            "code": "FC001",
+            "description": "equipment does not start",
+        },
+    }
+    return db
+
+
+@pytest.mark.anyio
+async def test_reads_and_sorts_failure_code_catalog() -> None:
+    result = await wo.get_failure_codes(_fcc_db())
+
+    assert result["success"] is True
+    assert result["data"]["totalCount"] == 2
+    assert result["data"]["failure_codes"] == [
+        {"code": "FC001", "description": "equipment does not start"},
+        {
+            "code": "FC002",
+            "description": "equipment stops unexpectedly during operation",
+        },
+    ]
+    assert "_id" not in result["data"]["failure_codes"][0]
+    assert "_rev" not in result["data"]["failure_codes"][0]
+
+
+@pytest.mark.anyio
+async def test_exact_code_lookup_is_case_insensitive() -> None:
+    result = await wo.get_failure_codes(_fcc_db(), " fc002 ")
+
+    assert result["success"] is True
+    assert result["data"]["code"] == "FC002"
+    assert result["data"]["failure_codes"] == [
+        {
+            "code": "FC002",
+            "description": "equipment stops unexpectedly during operation",
+        }
+    ]
+
+
+@pytest.mark.anyio
+async def test_missing_exact_code_returns_empty_result() -> None:
+    result = await wo.get_failure_codes(_fcc_db(), "FC999")
+
+    assert result["success"] is True
+    assert result["data"]["totalCount"] == 0
+    assert result["data"]["failure_codes"] == []
+
+
+@pytest.mark.anyio
+async def test_failure_code_database_error_is_actionable() -> None:
+    class BrokenCouch:
+        async def find(self, *args, **kwargs):
+            raise RuntimeError("connection refused")
+
+    result = await wo.get_failure_codes(BrokenCouch())
+
+    assert result["success"] is False
+    assert result["error_code"] == "DATABASE_ERROR"
+    assert "FAILURE_CODE_DBNAME" in result["error"]
+    assert "connection refused" not in result["error"]
+
+
+@pytest.mark.anyio
+async def test_failure_code_mcp_boundary_returns_typed_result(monkeypatch) -> None:
+    monkeypatch.setattr(main, "_fcc_db", _fcc_db())
+
+    result = await main.get_failure_codes("fc001")
+
+    assert isinstance(result, FailureCodesResult)
+    assert result.code == "FC001"
+    assert result.total == 1
+    assert result.failure_codes[0].description == "equipment does not start"
+
+
+@pytest.mark.anyio
+async def test_failure_code_mcp_tool_is_registered_read_only(monkeypatch) -> None:
+    monkeypatch.setattr(main, "_fcc_db", _fcc_db())
+    tools = {tool.name: tool for tool in await main.mcp.list_tools()}
+
+    assert "get_failure_codes" in tools
+    assert tools["get_failure_codes"].annotations.readOnlyHint is True
+    assert tools["get_failure_codes"].annotations.destructiveHint is False
+
+    contents, _ = await main.mcp.call_tool("get_failure_codes", {"code": "FC002"})
+    data = json.loads(contents[0].text)
+    assert data["total"] == 1
+    assert data["failure_codes"][0]["code"] == "FC002"
+
+
+@pytest.mark.anyio
+async def test_failure_code_mcp_boundary_returns_typed_database_error(
+    monkeypatch,
+) -> None:
+    class BrokenCouch:
+        async def find(self, *args, **kwargs):
+            raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(main, "_fcc_db", BrokenCouch())
+
+    result = await main.get_failure_codes()
+
+    assert isinstance(result, ErrorResult)
+    assert "FAILURE_CODE_DBNAME" in result.error
 
 
 if __name__ == "__main__":

@@ -8,15 +8,16 @@ from AssetOpsBench is the *MCP server definition* convention: a single
 ``wo-mcp-server`` entry point.
 
 Env (AssetOpsBench-compatible): COUCHDB_URL, COUCHDB_USERNAME, COUCHDB_PASSWORD,
-WO_DBNAME. Set AOB_READONLY=1 to expose only the read tools.
+WO_DBNAME, FAILURE_CODE_DBNAME. Set AOB_READONLY=1 to expose only the read tools.
 """
 
 import logging
 import os
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from . import workorders as wo
 from .couch import CouchClient
@@ -24,6 +25,8 @@ from .models import (
     ActualsVsPlannedResult,
     CostsResult,
     ErrorResult,
+    FailureCodeItem,
+    FailureCodesResult,
     KpiResult,
     ScheduleResult,
     TasksResult,
@@ -48,6 +51,7 @@ mcp = FastMCP(
 )
 
 _db: Optional[CouchClient] = None
+_fcc_db: Optional[CouchClient] = None
 
 
 def db() -> CouchClient:
@@ -60,6 +64,18 @@ def db() -> CouchClient:
             password=os.environ.get("COUCHDB_PASSWORD", "password"),
         )
     return _db
+
+
+def failure_code_db() -> CouchClient:
+    global _fcc_db
+    if _fcc_db is None:
+        _fcc_db = CouchClient(
+            base_url=os.environ.get("COUCHDB_URL", "http://localhost:5984"),
+            db=os.environ.get("FAILURE_CODE_DBNAME", "failure_code"),
+            username=os.environ.get("COUCHDB_USERNAME", "admin"),
+            password=os.environ.get("COUCHDB_PASSWORD", "password"),
+        )
+    return _fcc_db
 
 
 # --------------------------------------------------------------------------- #
@@ -235,6 +251,33 @@ async def get_my_assigned_workorders(
     )
 
 
+async def get_failure_codes(
+    code: Optional[str] = None,
+) -> Union[FailureCodesResult, ErrorResult]:
+    """Read the FCC failure-code reference catalog from CouchDB.
+
+    Omit ``code`` to list all available failure codes, or pass an exact code
+    such as ``FC001``. Matching is case-insensitive and CouchDB metadata is not
+    returned.
+    """
+    res = await wo.get_failure_codes(failure_code_db(), code)
+    err = _failed(res)
+    if err:
+        return err
+    data = res["data"]
+    items = [FailureCodeItem.model_validate(item) for item in data["failure_codes"]]
+    query = data["code"]
+    message = f"Found {len(items)} failure code(s)."
+    if query:
+        message = f"Found {len(items)} failure code(s) for {query}."
+    return FailureCodesResult(
+        code=query,
+        total=data["totalCount"],
+        failure_codes=items,
+        message=message,
+    )
+
+
 async def generate_work_order(
     description: str,
     asset_num: str,
@@ -348,6 +391,7 @@ _READ_TOOLS = [
     (get_workorder_kpis, "Get Work Order KPIs"),
     (get_schedule_calendar, "Get Schedule Calendar"),
     (get_my_assigned_workorders, "Get My Assigned Work Orders"),
+    (get_failure_codes, "Get Failure Codes"),
 ]
 _WRITE_TOOLS = [
     (generate_work_order, "Generate Work Order"),
@@ -361,8 +405,16 @@ _WRITE_TOOLS = [
 _TOOLS = (
     _READ_TOOLS if os.environ.get("AOB_READONLY") == "1" else _READ_TOOLS + _WRITE_TOOLS
 )
+_TOOL_ANNOTATIONS = {
+    get_failure_codes: ToolAnnotations(
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+}
 for _fn, _title in _TOOLS:
-    mcp.tool(title=_title)(_fn)
+    mcp.tool(title=_title, annotations=_TOOL_ANNOTATIONS.get(_fn))(_fn)
 
 
 def main():

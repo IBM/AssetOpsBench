@@ -99,6 +99,18 @@ class WorkOrderResult(BaseModel):
     message: str
 
 
+class FailureCodeItem(BaseModel):
+    code: str
+    description: Optional[str] = None
+
+
+class FailureCodesResult(BaseModel):
+    code: Optional[str] = None
+    total: int
+    failure_codes: List[FailureCodeItem]
+    message: str
+
+
 class WorkOrderMutationResult(BaseModel):
     wonum: Optional[str] = None
     siteid: Optional[str] = None
