@@ -13,6 +13,8 @@ from agent.opencode_agent.runner import (
     _build_permissions,
     _build_trajectory_from_events,
     _json_events,
+    _needs_reasoning_effort_none,
+    _opencode_error_message,
     _resolve_run_dir,
     _resolve_opencode_model_and_provider,
 )
@@ -149,6 +151,27 @@ def test_resolve_tokenrouter_anthropic_model(monkeypatch):
     )  # pragma: allowlist secret
 
 
+def test_tokenrouter_gpt5_models_need_reasoning_effort_none():
+    assert _needs_reasoning_effort_none("tokenrouter", "openai/gpt-5.5")
+    assert _needs_reasoning_effort_none("tokenrouter", "openai/gpt-5.6-sol")
+    assert not _needs_reasoning_effort_none("tokenrouter", "MiniMax-M3")
+    assert not _needs_reasoning_effort_none("litellm-proxy", "openai/gpt-5.6-sol")
+
+
+def test_resolve_tokenrouter_gpt5_disables_reasoning_effort(monkeypatch):
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://router.example/v1")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "tr-test")
+    for model_id in ("tokenrouter/openai/gpt-5.5", "tokenrouter/openai/gpt-5.6-sol"):
+        model, provider, env = _resolve_opencode_model_and_provider(model_id)
+        model_name = model_id.removeprefix("tokenrouter/")
+        assert model == model_id
+        model_config = provider["tokenrouter"]["models"][model_name]
+        assert model_config["options"] == {"reasoningEffort": "none"}
+        assert (
+            env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test"
+        )  # pragma: allowlist secret
+
+
 def test_build_opencode_config_includes_agent_and_mcp():
     config, env, opencode_model = _build_opencode_config(
         model="opencode/gpt-5",
@@ -168,6 +191,29 @@ def test_json_events_parses_ndjson_and_plain_lines():
     events, plain = _json_events('{"type":"a"}\nnot-json\n{"type":"b"}\n')
     assert [event["type"] for event in events] == ["a", "b"]
     assert plain == ["not-json"]
+
+
+def test_opencode_error_message_extracts_api_error():
+    message = _opencode_error_message(
+        [
+            {
+                "type": "error",
+                "error": {
+                    "name": "APIError",
+                    "data": {
+                        "statusCode": 400,
+                        "message": "Function tools are not supported.",
+                    },
+                },
+            }
+        ]
+    )
+
+    assert message == "OpenCode error APIError (400): Function tools are not supported."
+
+
+def test_opencode_error_message_ignores_null_error_field():
+    assert _opencode_error_message([{"type": "step_finish", "error": None}]) is None
 
 
 def test_build_trajectory_from_text_and_tool_parts():

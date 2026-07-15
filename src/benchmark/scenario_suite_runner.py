@@ -26,7 +26,6 @@ The scenario root is expected to contain folders such as:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import shutil
@@ -50,7 +49,6 @@ class MethodConfig:
     model_id: str
     extra_args: tuple[str, ...] = ()
     workspace_root: Path | None = None
-    stage_workspace: bool = False
 
 
 def model_dir_name(model_id: str) -> str:
@@ -163,138 +161,6 @@ def validate_workspace_root_outside_repo(workspace_root: Path, label: str) -> No
         )
 
 
-def _iter_manifest_paths(value: object) -> list[str]:
-    """Return path-like strings from a scenario manifest value."""
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list):
-        paths: list[str] = []
-        for item in value:
-            paths.extend(_iter_manifest_paths(item))
-        return paths
-    if isinstance(value, dict):
-        paths = []
-        for item in value.values():
-            paths.extend(_iter_manifest_paths(item))
-        return paths
-    return []
-
-
-def _resolve_manifest_data_path(
-    *,
-    scenario_root: Path,
-    scenario_dir: Path,
-    spec: str,
-) -> Path | None:
-    """Resolve a manifest data path using the same search order as init_data."""
-    raw = Path(spec).expanduser()
-    candidates = [raw] if raw.is_absolute() else [
-        scenario_dir / raw,
-        scenario_root / raw,
-    ]
-
-    for candidate in candidates:
-        try:
-            resolved = candidate.resolve(strict=True)
-        except FileNotFoundError:
-            continue
-        if resolved.is_file() and _is_relative_to(resolved, scenario_root):
-            return resolved
-    return None
-
-
-def _copy_into_workspace(
-    *,
-    source: Path,
-    scenario_root: Path,
-    workspace_dir: Path,
-) -> Path:
-    relative = source.resolve().relative_to(scenario_root.resolve())
-    destination = workspace_dir / relative
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    return destination
-
-
-def stage_scenario_workspace(
-    *,
-    scenario_root: Path,
-    scenario_id: str,
-    workspace_dir: Path,
-) -> list[Path]:
-    """Create a clean run workspace with only allowed scenario input files.
-
-    The staged workspace intentionally excludes ``groundtruth.txt`` and any
-    existing reports/traces. It includes ``question.txt``, ``manifest.json``,
-    and data files referenced by the manifest.
-    """
-    scenario_root = scenario_root.expanduser().resolve()
-    scenario_dir = scenario_dir_for_id(scenario_root, scenario_id)
-    manifest_path = scenario_dir / "manifest.json"
-    question_path = scenario_dir / "question.txt"
-
-    if not question_path.exists():
-        raise FileNotFoundError(
-            f"Missing question file for scenario {scenario_id}: {question_path}"
-        )
-    if not manifest_path.exists():
-        raise FileNotFoundError(
-            f"Missing manifest file for scenario {scenario_id}: {manifest_path}"
-        )
-
-    workspace_dir = workspace_dir.expanduser().resolve()
-    if workspace_dir.exists():
-        shutil.rmtree(workspace_dir)
-    workspace_dir.mkdir(parents=True, exist_ok=True)
-
-    copied = [
-        _copy_into_workspace(
-            source=question_path,
-            scenario_root=scenario_root,
-            workspace_dir=workspace_dir,
-        ),
-        _copy_into_workspace(
-            source=manifest_path,
-            scenario_root=scenario_root,
-            workspace_dir=workspace_dir,
-        ),
-    ]
-
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    for spec in sorted(set(_iter_manifest_paths(manifest))):
-        source = _resolve_manifest_data_path(
-            scenario_root=scenario_root,
-            scenario_dir=scenario_dir,
-            spec=spec,
-        )
-        if source is None or source.name == "groundtruth.txt":
-            continue
-        copied.append(
-            _copy_into_workspace(
-                source=source,
-                scenario_root=scenario_root,
-                workspace_dir=workspace_dir,
-            )
-        )
-
-    readme = workspace_dir / "README.md"
-    readme.write_text(
-        "\n".join(
-            [
-                f"# AssetOpsBench scenario {scenario_id} workspace",
-                "",
-                "This workspace contains only staged scenario inputs.",
-                "Do not inspect files outside this directory.",
-                "Ground truth, reports, and previous trajectories are intentionally excluded.",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    copied.append(readme)
-    return copied
-
-
 def reset_and_load_couchdb(scenario_id: str, scenario_root: Path, dry_run: bool) -> None:
     """Reset CouchDB and load the scenario-specific data from scenario_root."""
     env = os.environ.copy()
@@ -338,22 +204,9 @@ def run_agent_for_scenario(
         workspace_dir = method.workspace_root / run_id
         extra_args.extend(["--workspace-dir", str(workspace_dir)])
         if not dry_run:
-            if method.stage_workspace:
-                if scenario_root is None:
-                    raise ValueError(
-                        "scenario_root is required when staging a run workspace"
-                    )
-                staged = stage_scenario_workspace(
-                    scenario_root=scenario_root,
-                    scenario_id=scenario_id,
-                    workspace_dir=workspace_dir,
-                )
-                print(
-                    f"Staged {len(staged)} files for scenario {scenario_id} "
-                    f"into {workspace_dir}"
-                )
-            else:
-                workspace_dir.mkdir(parents=True, exist_ok=True)
+            if workspace_dir.exists():
+                shutil.rmtree(workspace_dir)
+            workspace_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         "uv",
@@ -477,7 +330,6 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             model_id=args.model_id,
             extra_args=tuple(opencode_extra_args),
             workspace_root=args.opencode_workspace_root,
-            stage_workspace=True,
         ),
         "gemini_cli_agent": MethodConfig(
             agent_name="gemini_cli_agent",
@@ -769,7 +621,6 @@ def main() -> None:
             model_id=method.model_id,
             extra_args=method.extra_args,
             workspace_root=method_workspace_root,
-            stage_workspace=method.stage_workspace,
         )
 
         if not args.dry_run:

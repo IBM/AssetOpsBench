@@ -6,15 +6,15 @@ from mcphub import ToolUniverse
 tu = ToolUniverse()                          # 1. init
 tu.load_tools()                              # 2. load (connect + discover)
 tu.run({                                     # 3. run
-    "name": "iot.sensors",
-    "arguments": {"site_name": "MAIN", "asset_id": "Chiller 6"},
+    "name": "iot.asset_ids",
+    "arguments": {"site_name": "MAIN"},
 })
 tu.close()
 ```
 
 `load_tools(servers=[...])` limits to specific servers. Tools are namespaced
-`<server>.<tool>`; a bare name (e.g. `sensors`) also works when unambiguous.
-A shorthand `tu.run("iot.sensors", {...})` is accepted too.
+`<server>.<tool>`; a bare name (e.g. `asset_ids`) also works when unambiguous.
+A shorthand `tu.run("iot.asset_ids", {...})` is accepted too.
 
 ## Discovery
 
@@ -22,21 +22,13 @@ A shorthand `tu.run("iot.sensors", {...})` is accepted too.
 tu.find_tools("failure mode")     # keyword search over loaded tools
 tu.list_tools()                   # all loaded tool + workflow names
 tu.list_tools("fmsr")             # tool names for one server
-tu.tool_specification("iot.sensors")
+tu.tool_specification("iot.asset_ids")
 ```
 
 ## Workflows
 
-Composed workflows run through the **same `run` entrypoint**:
-
-```python
-tu.run({"name": "chiller_triage", "arguments": {"asset_id": "Chiller 6"}})
-```
-
 Add one by writing `fn(tu, **arguments)` in `workflows.py` and listing its name
-in `REGISTERED` (or `tu.register_workflow("name", fn)` at runtime). Built in:
-`chiller_triage` (sensors → failure modes → mapping → work order) and
-`sensor_inventory_gap` (installed vs measured sensors).
+in `REGISTERED` (or `tu.register_workflow("name", fn)` at runtime).
 
 ## Run
 
