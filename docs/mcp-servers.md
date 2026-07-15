@@ -71,10 +71,10 @@ Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based
 ## wo — Work Order
 
 **Path:** `src/servers/wo/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`)
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`, `FAILURE_CODE_DBNAME`)
 **Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on every start — database is dropped and reloaded each time)
 
-Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-centric**. Tools are registered centrally in `main.py`; set `AOB_READONLY=1` to expose only the read tools (8). The default exposes all 14 (8 read + 6 write).
+Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-centric**. Tools are registered centrally in `main.py`; set `AOB_READONLY=1` to expose only the read tools (9). The default exposes all 15 (9 read + 6 write).
 
 ### Read tools
 
@@ -88,6 +88,7 @@ Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-
 | `get_workorder_kpis`                | read     | `site_id`, `period_months?`                                                          | Site KPIs: totals, backlog, overdue, avg completion, priority/asset splits |
 | `get_schedule_calendar`             | read     | `site_id`, `date_from?`, `date_to?`, `group_by?`                                     | Scheduled (non-terminal) work orders in a date window, bucketed by day     |
 | `get_my_assigned_workorders`        | read     | `labor_code`, `site_id?`, `open_only?`                                               | Work orders assigned to a given technician (labor code)                    |
+| `get_failure_codes`                 | read     | `code?`                                                                               | List FCC failure-code references or fetch one exact code from CouchDB      |
 
 ### Write tools
 
