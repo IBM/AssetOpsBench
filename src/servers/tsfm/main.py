@@ -502,11 +502,12 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
 @mcp.tool(title="Select Features")
 def select_features(
     dataset_path: str,
-    channel: str,
-    extractors: List[str],
+    channel: Optional[str] = None,
+    extractors: Optional[List[str]] = None,
     timestamp_column: Optional[str] = None,
     reference_feature: str = "mean",
     cd_margin: float = 0.05,
+    target_column: Optional[str] = None,
 ) -> Union[FeatureSelectionResult, ErrorResult]:
     """Rank a CANDIDATE set of extractors on one series and return the shortlist worth keeping.
     Method: self-supervised one-step-ahead forecasting - slide a window over the series and score
@@ -514,33 +515,45 @@ def select_features(
     combining several criteria (correlation, F-test, mutual information, model importance) by mean
     rank, then keep those that beat `reference_feature` by at least `cd_margin`.
 
-    `channel` (required) names the column to analyze - no default column is assumed. `extractors`
-    (required) is the list of extractor names to score. Returns names only."""
+    `channel` names the column to analyze. `target_column` is accepted as a legacy alias for
+    existing clients. `extractors`, when omitted, defaults to the full extractor catalog; when
+    provided, it restricts the candidate names to score. Returns names only."""
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
-    if not channel:
+    channel_name = (channel or target_column or "").strip()
+    if channel and target_column and channel.strip() != target_column.strip():
+        return ErrorResult(error="provide either channel or target_column, not conflicting values")
+    if not channel_name:
         return ErrorResult(error="channel is required (name the column to analyze)")
-    if not extractors:
-        return ErrorResult(
-            error="extractors is required: a list of extractor names to score (see list_features)"
-        )
     from .reasoning import feature_selection as FS
 
-    unknown = [c for c in extractors if c not in FS.EXTRACTORS]
+    if reference_feature not in FS.EXTRACTORS:
+        return ErrorResult(
+            error=(
+                f"unknown reference_feature '{reference_feature}'. "
+                "See list_features(kind='extractor')."
+            )
+        )
+    extractor_names = sorted(FS.EXTRACTORS) if extractors is None else extractors
+    if not extractor_names:
+        return ErrorResult(
+            error="extractors must contain at least one name when provided (see list_features)"
+        )
+    unknown = [c for c in extractor_names if c not in FS.EXTRACTORS]
     if unknown:
         return ErrorResult(
             error=f"unknown extractor(s): {unknown}. See list_features(kind='extractor')."
         )
     try:
         obj = refs.load_series(
-            dataset_path, time_col=timestamp_column, channels=[channel]
+            dataset_path, time_col=timestamp_column, channels=[channel_name]
         )
         series = (obj.iloc[:, 0] if isinstance(obj, pd.DataFrame) else obj).to_numpy()
         # score the candidates + the reference feature (so the cd_margin cutoff is meaningful)
         names = list(
             dict.fromkeys(
-                list(extractors)
-                + ([reference_feature] if reference_feature in FS.EXTRACTORS else [])
+                list(extractor_names)
+                + ([reference_feature] if reference_feature not in extractor_names else [])
             )
         )
         subset = {n: FS.EXTRACTORS[n] for n in names}
@@ -566,8 +579,8 @@ def select_features(
 @mcp.tool(title="Extract Features")
 def extract_features(
     dataset_path: str,
-    extractors: List[str],
-    target_columns: List[str],
+    extractors: Optional[List[str]] = None,
+    target_columns: Optional[List[str]] = None,
     timestamp_column: Optional[str] = None,
     window: Optional[int] = None,
 ) -> Union[ExtractResult, ErrorResult]:
@@ -580,6 +593,8 @@ def extract_features(
     import numpy as np
     import pandas as pd
 
+    if not dataset_path.strip():
+        return ErrorResult(error="dataset_path is required")
     if not target_columns:
         return ErrorResult(
             error="target_columns is required: name the column(s) to extract from"

@@ -75,7 +75,17 @@ def test_select_features_ok_and_error():
     r = call("select_features", {"dataset_path": _iot_ref(300), "target_column": "value",
                                  "reference_feature": "kurtosis"})
     assert r["detail_file"].startswith("file://")
+    r = call("select_features", {"dataset_path": _iot_ref(300), "channel": "value",
+                                 "extractors": ["mean", "std"],
+                                 "reference_feature": "mean"})
+    assert r["reference"] == "mean" and r["scorers"]
     assert "error" in call("select_features", {"dataset_path": ""})
+    assert "error" in call("select_features", {"dataset_path": _iot_ref(300),
+                                               "channel": "value",
+                                               "reference_feature": "not_a_real_extractor"})
+    assert "error" in call("select_features", {"dataset_path": _iot_ref(300),
+                                               "channel": "value",
+                                               "target_column": "other"})
 
 
 # ---- compose + run ----
@@ -164,4 +174,8 @@ def test_extract_features_validation():
     assert "error" in call("extract_features",
                            {"dataset_path": _iot_ref(), "extractors": []})            # none picked
     assert "error" in call("extract_features",
-                           {"dataset_path": _iot_ref(), "extractors": ["not_a_real_extractor"]})
+                           {"dataset_path": _iot_ref(), "target_columns": ["value"],
+                            "extractors": []})                                        # none picked
+    assert "error" in call("extract_features",
+                           {"dataset_path": _iot_ref(), "target_columns": ["value"],
+                            "extractors": ["not_a_real_extractor"]})
