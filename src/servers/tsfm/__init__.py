@@ -17,6 +17,5 @@ Design: models & features are DATA (catalog cards), not tools; the agent compose
 reasons every parameter; the server provides evidence. See docs/STRUCTURE.md.
 """
 
-__all__ = ["core", "substrate", "stores", "reasoning", "engine", "eval", "io",
-           "bootstrap", "config"]
+__all__ = ["core", "substrate", "stores", "reasoning", "engine", "eval", "io", "config"]
 __version__ = "0.2.0"
