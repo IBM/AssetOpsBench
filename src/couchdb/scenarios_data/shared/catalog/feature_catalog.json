@@ -1,0 +1,46 @@
+[
+  {
+    "feature_id": "efe_time_robust_norm_v1",
+    "name": "Invertible robust normalization",
+    "modality": "timeseries",
+    "interface": "fit_transform_inverse",
+    "class_name": "Transformation",
+    "invertible": true,
+    "code": "import numpy as np\nclass Transformation:\n    \"\"\"Invertible robust per-channel normalization (median/IQR) for forecasting inputs.\"\"\"\n    def fit(self, X, metadata):\n        X = np.asarray(X, dtype=float)\n        center = np.median(X, axis=0)\n        q1, q3 = np.percentile(X, 25, axis=0), np.percentile(X, 75, axis=0)\n        scale = np.where((q3 - q1) > 1e-8, (q3 - q1), 1.0)\n        return {\"center\": center, \"scale\": scale}\n    def transform(self, X, state):\n        X = np.asarray(X, dtype=float)\n        return (X - state[\"center\"]) / state[\"scale\"]\n    def inverse_transform(self, Y, state):\n        Y = np.asarray(Y, dtype=float)\n        return Y * state[\"scale\"] + state[\"center\"]\n",
+    "provenance": "evolved",
+    "method": "EFE-Time",
+    "parent_feature_id": null,
+    "generation": 0,
+    "target_task": "tsfm_forecasting",
+    "target_model": null,
+    "dataset": null,
+    "output_type": "normalized_series",
+    "columns_added": [],
+    "columns_dropped": [],
+    "validity": {
+      "entry_points": true,
+      "no_inplace": true,
+      "invertible_ok": true,
+      "leakage_checked": true
+    },
+    "tags": [
+      "timeseries",
+      "EFE-Time",
+      "Future State Prediction"
+    ],
+    "status": "active",
+    "version": "1",
+    "created_by": "seed",
+    "created_at": "2026-06-20T00:00:00+00:00",
+    "kind": "transform",
+    "description": "Invertible per-channel robust normalization (median/IQR) for forecasting inputs."
+  },
+  {
+    "feature_id": "abs_2nd_diff_mean",
+    "name": "abs_2nd_diff_mean",
+    "description": "Mean absolute second difference.",
+    "kind": "extractor",
+    "extractor_name": "abs_2nd_diff_mean",
+    "status": "active"
+  }
+]
