@@ -8,7 +8,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-from .bootstrap import fresh_store
+from .core.store import make_store
 from .config import RUNS_COLLECTION, PLANS_COLLECTION
 from .core import tasks as task_spec
 from .core import glossary as _glossary
@@ -81,8 +81,7 @@ mcp = FastMCP(
     ),
 )
 
-_STORE = fresh_store()
-
+_STORE = make_store()
 
 def _load_target(
     dataset_path: str, timestamp_column: Optional[str], target_columns: List[str]
