@@ -6,7 +6,7 @@ warnings.filterwarnings("ignore")
 import numpy as np
 
 from ..reasoning import feature_selection as F
-from ..bootstrap import fresh_store
+from .conftest import seeded_store
 from ..stores import model_store, feature_store
 
 
@@ -20,7 +20,7 @@ def test_extractor_library_is_100_plus_and_robust():
 
 
 def test_migrated_foundation_models_present_and_resolvable():
-    s = fresh_store()
+    s = seeded_store()
     fc = model_store.list_models(s, task_id="tsfm_forecasting")
     fams = {m.get("model_family") for m in fc}
     assert {"chronos", "moirai", "moment", "timesfm", "timemoe"} <= fams
@@ -31,7 +31,7 @@ def test_migrated_foundation_models_present_and_resolvable():
 
 
 def test_migrated_models_carry_provenance_and_validate():
-    s = fresh_store()
+    s = seeded_store()
     migrated = [m for m in model_store.list_models(s) if m.get("created_by") == "migrated_curated"]
     assert len(migrated) >= 25
     for m in migrated:
@@ -42,7 +42,7 @@ def test_ttm_cards_are_runnable():
     """The base TTM cards resolve to an sktime forecaster (model_path set) so run_recipe can
     forecast on them — the IoT-file → TSFM forecast workflow's model entry."""
     from ..substrate import resolver as R
-    s = fresh_store()
+    s = seeded_store()
     for mid in ["ttm_96_28", "ttm_512_96", "ttm_chiller6_512_96_ft"]:
         c = model_store.get_model(s, mid)
         assert c["sktime_class"].endswith("TinyTimeMixerForecaster")
@@ -56,7 +56,7 @@ def test_every_seed_model_card_validates():
     """Lint: every model card in the catalog must satisfy ModelCard (so update/version/deprecate,
     which re-validate on write, never fail on seed data)."""
     from ..core import schemas
-    s = fresh_store()
+    s = seeded_store()
     bad = []
     for m in model_store.list_models(s, status=None):
         try:
