@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from ..core.store import MemoryStore
-from ..bootstrap import fresh_store, load_seeds
+from .conftest import seeded_store
 from ..stores import model_store as ms
 from ..stores import feature_store as fs
 from ..reasoning import feature_selection as _fsel
@@ -53,7 +53,7 @@ def test_model_lineage_and_version():
 
 
 def test_find_models_ranking_explain():
-    s = fresh_store()
+    s = seeded_store()
     r = ms.find_models(s, "tsfm_forecasting", min_context_length=512, domain="energy",
                        top_k=1, explain=True)
     assert r and r[0]["domain"] == "energy" and r[0]["_rank"]["domain_match"] is True
@@ -84,7 +84,7 @@ def test_feature_register_validity_gate_and_lineage():
 
 
 def test_feature_find_by_kind():
-    s = fresh_store()
+    s = seeded_store()
     fc = fs.find_features(s, kind="transform")
     assert any(f["feature_id"] == "spectral_residual_v1" for f in fc)
     ex = fs.list_extractors(s)
@@ -92,7 +92,7 @@ def test_feature_find_by_kind():
 
 
 def test_flops_select_from_catalog_writeback():
-    s = fresh_store()
+    s = seeded_store()
     sig = np.sin(2 * np.pi * np.arange(800) / 24) + 0.02 * np.arange(800)
     res = fs.select_features_from_catalog(s, sig,
                                           reference_feature="kurtosis", write_back=True)
