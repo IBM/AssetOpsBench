@@ -28,6 +28,7 @@ from .core.results_models import (
     DescribeModelsResult,
     DomainsResult,
     ErrorResult,
+    HfStatsResult,
     LineageResult,
     ModelCountResult,
     ModelDescription,
@@ -568,6 +569,37 @@ def resolve_model(model_id: str) -> Union[ResolveResult, ErrorResult]:
         training_regime=regime, weights_from=weights_from or "none (classical; fit from series)",
         reason="importable sktime_class + params; weights load lazily at fit",
     )
+
+
+# =============================================================================
+# Model stats (read-only external lookups)
+# =============================================================================
+
+
+@mcp.tool(title="HF Model Stats")
+def hf_stats(
+    model_id: Optional[str] = None, hf_repo: Optional[str] = None
+) -> Union[HfStatsResult, ErrorResult]:
+    """Look up a model's HuggingFace popularity: downloads + likes (READ-ONLY, does not change the
+    catalog). Give a catalog `model_id` (its hf_repo is resolved) OR an `hf_repo` directly. Use it
+    to weigh how widely adopted a model is before choosing it. Needs network to huggingface.co."""
+    repo = hf_repo
+    if model_id and not repo:
+        card = model_store.get_model(_STORE, model_id)
+        if not card:
+            return ErrorResult(error=f"model '{model_id}' not found")
+        repo = card.get("hf_repo")
+    if not repo:
+        return ErrorResult(error="give a model_id that has an hf_repo, or an hf_repo directly")
+    try:
+        st = model_store._hf_model_stats(repo)
+        return HfStatsResult(
+            model_id=model_id, hf_repo=repo,
+            downloads=st.get("downloads"), likes=st.get("likes"),
+        )
+    except Exception as exc:
+        logger.error("hf_stats failed: %s", exc)
+        return ErrorResult(error=str(exc))
 
 
 def main():
