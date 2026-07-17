@@ -90,8 +90,6 @@ This is a discovery tool: it returns the canonical task definitions, including e
 required inputs, output type, evaluation protocol, and supporting notes. Use it first when you
 need to understand what task families the TSFM server supports.
 
-Caveat: this tool is read-only and does not inspect any dataset or model card.
-
 Args:
     None
 
@@ -119,25 +117,15 @@ def profile_series(
 ) -> Union[ProfileResult, ErrorResult]:
     """Profile a time-series dataset behind a file pointer.
 
-This tool summarizes the observed series structure and basic statistical evidence, such as
-observation count, channel count, and any detectable temporal characteristics. It is intended
-to provide factual context for downstream reasoning, not a prediction or diagnosis.
-
-Caveat: the `channels` argument must reference valid numeric measurement columns only. Metadata
-columns such as identifiers, labels, or non-numeric fields should not be passed as channels.
-If `channels` is omitted, the tool will infer usable numeric columns automatically.
+Returns factual evidence only; it does not predict, diagnose, or choose a model.
 
 Args:
-    dataset_path: File pointer to the dataset, typically a `file://...` URI.
-    timestamp_column: Optional name of the time column. If omitted, the tool may auto-detect
-        common timestamp names.
-    channels: Optional list of numeric signal columns to profile. If provided, each channel must
-        exist in the dataset and be numeric.
+    dataset_path: Dataset path or `file://` URI.
+    timestamp_column: Optional time column name.
+    channels: Optional numeric signal columns; omitted means infer usable numeric columns.
 
 Returns:
-    ProfileResult: Summary evidence for the dataset, including observation count, channel count,
-    inferred temporal characteristics, and the profiled channel list. ErrorResult if the file
-    pointer is invalid or the series cannot be profiled.
+    ProfileResult: Counts, channels, temporal/statistical evidence, or ErrorResult.
 """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
@@ -161,29 +149,17 @@ def characterize_series(
 ) -> Union[CharacterizeResult, ErrorResult]:
     """Characterize the shape of a time-series dataset as structured evidence.
 
-This tool extracts pattern evidence from the series, describing how grouped channels behave over
-time across changepoint phases. It reports state labels such as stable, rise, decline, spike,
-level_shift, cessation, or oscillation, and may also describe relationships between groups such
-as decoupled, co_move, or lead_lag. The output is intended as evidence for later reasoning,
-not as a direct fault label.
-
-Caveat: the tool is sensitive to the input shape and channel selection. If `channels` is
-provided, it must refer only to valid numeric measurement columns. If `groups` is omitted, the
-tool defaults to one group per channel unless `group_rules` is supplied. Large or very wide
-datasets may be slower to process, so a compact sample is often better for smoke tests.
+Reports grouped-channel states and relationships; it does not assign fault labels.
 
 Args:
-    dataset_path: File pointer to the dataset, typically a `file://...` URI.
+    dataset_path: Dataset path or `file://` URI.
     timestamp_column: Optional name of the time column.
-    channels: Optional list of numeric signal columns to include in the characterization.
-    groups: Optional explicit channel-group mapping of the form `{group_name: [channel_names]}`.
-    group_rules: Optional grouping preset or grouping rules name, such as
-        `"vibration_temperature"`.
+    channels: Optional numeric signal columns.
+    groups: Optional `{group_name: [channel_names]}` mapping.
+    group_rules: Optional grouping preset, such as `"vibration_temperature"`.
 
 Returns:
-    CharacterizeResult: Structured pattern evidence including summary text, number of
-    observations, detected groups, phase-level states, and an evidence file pointer. ErrorResult
-    if the dataset cannot be loaded or the characterization fails.
+    CharacterizeResult: Summary, groups, phases, evidence file, or ErrorResult.
 """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
@@ -219,22 +195,14 @@ def data_quality(
 ) -> Union[DataQualityResult, ErrorResult]:
     """Assess data quality for a time-series dataset and produce a cleaned file pointer.
 
-This tool removes rows that fail the cleaning rules used by the TSFM workflow and returns a
-quality summary, including input/output row counts and per-column missing-value statistics.
-It is meant to prepare data for downstream forecasting or anomaly tasks.
-
-Caveat: this tool expects a dataset file pointer and a valid timestamp column name. Very sparse
-or malformed datasets may be reduced substantially by the cleaning step, and the cleaned output
-may be much smaller than the input.
+Removes rows that fail TSFM cleaning rules and reports missing-value stats.
 
 Args:
-    dataset_path: File pointer to the dataset, typically a `file://...` URI.
-    timestamp_column: Name of the timestamp column to use when interpreting the series.
+    dataset_path: Dataset path or `file://` URI.
+    timestamp_column: Timestamp column name.
 
 Returns:
-    DataQualityResult: Cleaning summary including a cleaned file pointer, input and output row
-    counts, a message, and missing-value statistics. ErrorResult if the dataset cannot be read
-    or cleaned.
+    DataQualityResult: Cleaned file, row counts, NaN stats, or ErrorResult.
 """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
@@ -292,20 +260,12 @@ def list_features(
 ) -> Union[FeaturesResult, ErrorResult]:
     """List feature catalog cards from the configured database.
 
-    Use this to browse candidate transform or extractor cards before choosing a
-    feature for a workflow.
-
     Args:
-        kind: Optional exact feature kind filter. Use `transform` for executable
-            fit/transform programs, `extractor` for scalar extractor metadata, or
-            omit for both. Any other value returns ErrorResult.
-        status: Optional exact status filter. Defaults to `active`; pass null or
-            an empty string to include deprecated and superseded cards.
+        kind: Optional `transform` or `extractor` filter; omit for both.
+        status: Optional exact status filter; defaults to `active`.
 
     Returns:
-        FeaturesResult: Matching feature cards as stored in the catalog. Each card
-        includes fields such as `feature_id`, `kind`, `status`, `description`,
-        and any card-specific metadata.
+        FeaturesResult: Matching feature cards and a summary message, or ErrorResult.
     """
     err = _validate_feature_kind(kind)
     if err:
@@ -330,22 +290,13 @@ def list_models(
 ) -> Union[ModelsResult, ErrorResult]:
     """List model cards in the catalog, optionally filtered by task / domain.
 
-    The broad browse entry point for the model catalog: returns full cards, unranked, with no
-    filtering by default. Pair it with `describe_models` for a by-id detail lookup, or use
-    `find_models` / `search_models` when you need task ranking or text matching. Only `active`
-    cards are returned unless another status is requested.
-
     Args:
-        task_id: Restrict to cards whose `task_ids` include this task, e.g. `tsfm_forecasting`.
-            Validated against the known tasks. None returns every task.
-        domain: Restrict to a single domain (exact match), e.g. `energy`. Use `list_domains` to
-            see valid values. None returns every domain.
-        status: Lifecycle status to include; defaults to `active` (deprecated cards are hidden
-            unless you pass `deprecated`).
+        task_id: Optional known task id, e.g. `tsfm_forecasting`.
+        domain: Optional exact domain filter, e.g. `energy`.
+        status: Optional lifecycle status; defaults to `active`.
 
     Returns:
-        ModelsResult: `models`, a list of full card dicts matching the filters. ErrorResult if
-        `task_id` is not a known task.
+        ModelsResult: Full matching card dicts, or ErrorResult for unknown `task_id`.
     """
     if task_id:
         bad = _check_task(task_id)
@@ -368,19 +319,13 @@ def search_models(
 ) -> Union[ModelsResult, ErrorResult]:
     """Substring (case-insensitive) search over the model catalog.
 
-    Matches `text` case-insensitively against each card's `model_id`, `description`,
-    `model_family` and `tags`. Use this when you have a keyword in mind (a family name, vendor,
-    or capability such as `anomaly`); use `list_models` to browse everything, or `find_models`
-    for a task-ranked shortlist.
-
     Args:
-        text: Required. The substring to match against id / description / family / tags.
-        tags: Optional list of tags; when given, a card must also carry these tags to be returned.
+        text: Required substring to match against id, description, family, or tags.
+        tags: Optional required tag set.
         status: Lifecycle status to include; defaults to `active`.
 
     Returns:
-        ModelsResult: `models`, a list of full card dicts whose fields contain `text`. ErrorResult
-        if `text` is empty.
+        ModelsResult: Full matching card dicts, or ErrorResult if `text` is empty.
     """
     if not text.strip():
         return ErrorResult(
@@ -405,25 +350,17 @@ def find_models(
 ) -> Union[ModelsResult, ErrorResult]:
     """Filter the model catalog for a task and return a ranked shortlist.
 
-    The task-aware selector: narrows to cards that support `task_id`, applies the optional
-    capability filters, and returns at most `top_k` cards. A card lacking a filtered field is
-    excluded (e.g. classical models have no `context_length`, so `min_context_length` drops
-    them). Use `describe_candidates` for an unranked shortlist, or `list_models` for the unranked
-    full list. A model is an estimator card.
+    Cards lacking filtered fields are excluded from the shortlist.
 
     Args:
-        task_id: Required. Only cards whose `task_ids` include this task are considered. Validated
-            against the known tasks.
-        min_context_length: Keep only models whose `context_length` is at least this value; cards
-            without the field are excluded.
-        prediction_length: Keep only models whose `prediction_length` covers this horizon; cards
-            without the field are excluded.
-        domain: Exact-match domain filter, e.g. `energy`. Use `list_domains` for valid values.
-        top_k: Maximum number of cards to return; clamped to the range 1..50 (default 5).
+        task_id: Required known task id.
+        min_context_length: Optional minimum `context_length`.
+        prediction_length: Optional required horizon.
+        domain: Optional exact domain filter.
+        top_k: Maximum cards to return; clamped to 1..50.
 
     Returns:
-        ModelsResult: `models`, the ranked shortlist of full card dicts (up to `top_k`).
-        ErrorResult if `task_id` is not a known task.
+        ModelsResult: Shortlisted full card dicts, or ErrorResult for unknown `task_id`.
     """
     bad = _check_task(task_id)
     if bad:
@@ -451,20 +388,15 @@ def describe_candidates(
 ) -> Union[CandidatesResult, ErrorResult]:
     """Return a shortlist of candidate models for a task, in catalog order.
 
-    A HuggingGPT-style candidate list: the cards that support `task_id`, capped at `top_k` and
-    presented in CATALOG ORDER (no ranking or scoring is applied — you decide which to use). To
-    judge popularity or quality yourself, follow up with `hf_stats` / `gift_status`. Use
-    `find_models` instead when you want capability filters and ranking.
+    No scoring is applied; use `hf_stats` separately for popularity.
 
     Args:
-        task_id: Required. Only cards whose `task_ids` include this task are shortlisted.
-            Validated against the known tasks.
-        top_k: Maximum number of candidates to return; clamped to the range 1..50 (default 5).
-        domain: Optional exact-match domain filter, e.g. `energy`.
+        task_id: Required known task id.
+        top_k: Maximum candidates; clamped to 1..50.
+        domain: Optional exact domain filter.
 
     Returns:
-        CandidatesResult: `task_id` (echoed) and `candidates`, the list of candidate card dicts in
-        catalog order. ErrorResult if `task_id` is not a known task.
+        CandidatesResult: Echoed `task_id` and candidate cards, or ErrorResult.
     """
     bad = _check_task(task_id)
     if bad:
@@ -621,23 +553,14 @@ def get_model_lineage(model_id: str) -> Union[LineageResult, ErrorResult]:
 def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
     """Register a model card in the catalog.
 
-    The card is schema-validated before storage. A card is a POINTER: it records how to construct
-    or load a model, never the weights themselves. Use `register_finetuned` for fine-tune
-    checkpoints, and `new_model_version` to supersede a card rather than replace it.
-
-    Registering an existing `model_id` is REJECTED rather than overwriting it; use
-    `new_model_version` to supersede a card, or `update_model` to patch one.
+    The card is schema-validated and stores pointers, never weights. Registering an existing
+    `model_id` is REJECTED; use `new_model_version` or `update_model` instead.
 
     Args:
-        model: The card to store. Required keys: `model_id`, `description` (>= 3 chars) and
-            `task_ids` (>= 1). Point it at the model with `sktime_class` (+ `params`) and/or
-            `hf_repo` / `artifact_path` / `remote_endpoint` / `model_checkpoint`. Call
-            `model_template()` for the full shape and a worked example. Unknown keys are kept
-            as-is, so typos are stored silently.
+        model: Card with `model_id`, `description`, `task_ids`, and at least one pointer.
 
     Returns:
-        RegisterResult: `status`, the registered `id`, and the stored `card`. ErrorResult if the
-        card fails schema validation.
+        RegisterResult: `status`, registered `id`, stored `card`, or ErrorResult.
     """
     if not model:
         return ErrorResult(error="model card is required")
@@ -708,28 +631,19 @@ def register_finetuned(
     domain: str = "general",
 ) -> Union[CardResult, ErrorResult]:
     """Register a fine-tuned model as a card pointing at its checkpoint.
-
-    Inherits the base card's `sktime_class` and `params`, then sets `params.model_path` to
-    `checkpoint_path` so the fine-tuned weights load at fit time. Records `provenance=finetuned`
-    and lineage back to the base, readable via `get_model_lineage`.
-
-    `base_model_id` must already be in the catalog and carry an `sktime_class`; if it does not,
-    this errors rather than guessing a wrapper class, which would silently produce a card that
-    loads the wrong architecture.
+    `base_model_id` must already be in the catalog with `sktime_class`; the new card inherits
+    class/params, sets `params.model_path`, and records lineage.
 
     Args:
         model_id: Id for the new fine-tuned card.
-        checkpoint_path: Directory holding the fine-tuned weights; becomes `params.model_path`.
-        base_model_id: Id of the card this was fine-tuned from; its wrapper class and params are
-            inherited. Should exist in the catalog (see `list_models`).
-        context_length: Input window the checkpoint was tuned for.
-        prediction_length: Forecast horizon the checkpoint was tuned for.
-        description: What it was tuned on and for. At least 3 characters.
-        domain: Optional domain tag, such as `energy`. Defaults to `general`.
+        checkpoint_path: Fine-tuned weights path; becomes `params.model_path`.
+        base_model_id: Existing base card id whose wrapper/params are inherited.
+        context_length: Tuned input window.
+        prediction_length: Tuned forecast horizon.
+        description: Fine-tune description.
+        domain: Optional domain tag; defaults to `general`.
 
-    Returns:
-        CardResult: The stored card, FLAT - its fields sit at the top level, unlike
-        `register_model` which nests the card under `card`. ErrorResult on validation failure.
+    Returns: CardResult: Stored card, FLAT at top level, or ErrorResult.
     """
     for k, v in (
         ("model_id", model_id),
@@ -906,22 +820,15 @@ def hf_stats(
 ) -> Union[HfStatsResult, ErrorResult]:
     """Look up HuggingFace popularity for a model card or repo.
 
-    This is a read-only catalog lookup that returns download and like counts for a model's
-    HuggingFace repository. Pass either a catalog `model_id` (the tool resolves its `hf_repo`)
-    or an `hf_repo` directly. Use it as evidence for adoption / popularity comparisons before
-    selecting a model.
-
-    Caveat: this tool needs network access to huggingface.co. If the model card does not carry an
-    `hf_repo`, you must provide `hf_repo` directly or the call will return an error.
+    Pass either a catalog `model_id` with `hf_repo` or an `hf_repo` directly.
+    Requires network access to huggingface.co.
 
     Args:
         model_id: Optional catalog model id to resolve to an HuggingFace repo.
         hf_repo: Optional HuggingFace repository name, e.g. `ibm-granite/...`.
 
     Returns:
-        HfStatsResult: `model_id`, `hf_repo`, `downloads`, and `likes` for the repo. ErrorResult
-        if the card cannot be resolved, no repo is available, or HuggingFace stats cannot be
-        fetched.
+        HfStatsResult: `model_id`, `hf_repo`, `downloads`, `likes`, or ErrorResult.
     """
     repo = hf_repo
     if model_id and not repo:
@@ -950,20 +857,15 @@ def search_features(
 ) -> Union[FeaturesResult, ErrorResult]:
     """Search feature catalog cards by id, name, description, or tags.
 
-    The search is a case-insensitive literal substring match, not semantic
-    retrieval. Use `list_features()` when you need a complete catalog browse.
+    The match is literal and case-insensitive, not semantic retrieval.
 
     Args:
-        text: Optional substring to match against `feature_id`, `name`,
-            `description`, and tags. Empty string returns all cards allowed by
-            the status and tag filters.
-        tags: Optional list of tags that must all be present on a card.
-        status: Optional exact status filter. Defaults to `active`; pass null or
-            an empty string to search every status.
+        text: Optional substring; empty means all cards allowed by filters.
+        tags: Optional required tag set.
+        status: Optional exact status; defaults to `active`.
 
     Returns:
-        FeaturesResult: Matching feature cards. The result can be empty when no
-        cards satisfy the filters.
+        FeaturesResult: Matching feature cards and message, or ErrorResult.
     """
     try:
         features = feature_store.search(
@@ -1029,23 +931,14 @@ def register_feature(
 ) -> Union[RegisterResult, ErrorResult]:
     """Register an executable transform feature card.
 
-    Registration is for `kind=transform` cards only. The card is validated
-    against the feature schema and its `code` is executed through the feature
-    runner to verify required entry points, no in-place mutation, and optional
-    invertibility.
+    Validates schema, required entry points, no in-place mutation, and optional invertibility.
 
     Args:
-        feature: Feature card payload. Required fields are `feature_id`,
-            `interface`, and `code`; optional fields include `name`,
-            `description`, `target_task`, `target_model`, `tags`, and
-            `invertible`.
-        overwrite: When false, an existing `feature_id` returns ErrorResult.
-            When true, the card replaces the existing document.
+        feature: Card with `feature_id`, `interface`, and executable `code`.
+        overwrite: Whether to replace an existing `feature_id`.
 
     Returns:
-        RegisterResult: Registration status, feature id, and the stored card.
-        Returns ErrorResult for missing payload, schema errors, failed execution
-        validation, duplicate ids, or database write failures.
+        RegisterResult: Status, id, stored card, message, or ErrorResult.
     """
     if not feature:
         return ErrorResult(error="feature card is required")
@@ -1068,19 +961,14 @@ def register_feature(
 def update_feature(feature_id: str, fields: dict) -> Union[CardResult, ErrorResult]:
     """Patch fields on an existing feature catalog card.
 
-    This is a direct metadata patch for catalog maintenance. It does not rerun
-    transform-code validation, so use `register_feature()` or
-    `new_feature_version()` when changing executable transform code.
+    Does not rerun transform-code validation; use versioning for executable code changes.
 
     Args:
-        feature_id: Exact feature id without the database `feature:` prefix.
-            Empty input returns ErrorResult.
-        fields: Non-empty mapping of fields to merge into the stored card.
+        feature_id: Exact feature id without the `feature:` prefix.
+        fields: Non-empty fields to merge into the stored card.
 
     Returns:
-        CardResult: The updated feature card, including `updated_at`. Returns
-        ErrorResult when inputs are blank, the feature does not exist, or the
-        backing database write fails.
+        CardResult: Updated card with `updated_at`, or ErrorResult.
     """
     if not feature_id.strip() or not fields:
         return ErrorResult(error="feature_id and fields are required")
@@ -1141,21 +1029,15 @@ def new_feature_version(
 ) -> Union[CardResult, ErrorResult]:
     """Create a successor version for a transform feature.
 
-    Only `kind=transform` cards can be versioned. The new card is validated like
-    `register_feature()`, receives a bumped `version`, points back through
-    `parent_feature_id`, and the predecessor is marked `superseded`.
+    Only `kind=transform` cards can be versioned; the predecessor is marked `superseded`.
 
     Args:
-        feature_id: Exact transform feature id to version. Empty input returns
-            ErrorResult.
-        fields: Optional mapping of changes to apply to the successor card.
-        new_feature_id: Optional explicit id for the successor. When omitted,
-            the id is generated as `<feature_id>_v<version>`.
+        feature_id: Exact transform feature id to version.
+        fields: Optional changes for the successor card.
+        new_feature_id: Optional explicit successor id; default is `<feature_id>_v<version>`.
 
     Returns:
-        CardResult: The newly stored successor feature card. Returns ErrorResult
-        for blank or unknown ids, extractor cards, validation failures,
-        duplicate successor ids, or database write failures.
+        CardResult: New successor card, or ErrorResult.
     """
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
