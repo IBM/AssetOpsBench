@@ -8,7 +8,7 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 - [utilities — Utilities](#utilities--utilities)
 - [fmsr — Failure Mode and Sensor Relations](#fmsr--failure-mode-and-sensor-relations)
 - [wo — Work Order](#wo--work-order)
-- [tsfm — Time Series Foundation Model](#tsfm--time-series-foundation-model)
+- [tsfm — Time Series Feature Catalog](#tsfm--time-series-feature-catalog)
 - [vibration — Vibration Diagnostics](#vibration--vibration-diagnostics)
 
 ## iot — IoT Asset Registry and Telemetry Records
@@ -109,20 +109,32 @@ _None — the WO server makes no LLM calls; all tools are direct CouchDB operati
 
 _None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `GET` / `PUT`), with no heavy computation._
 
-## tsfm — Time Series Foundation Model
+## tsfm — Time Series Feature Catalog
 
 **Path:** `src/servers/tsfm/main.py`
-**Requires:** `tsfm_public` (IBM Granite TSFM), `transformers`, `torch` for ML tools — imported lazily; static tools work without them.
-**Model checkpoints:** resolved relative to `PATH_TO_MODELS_DIR` (default: `src/servers/tsfm/artifacts/output/tuned_models`)
+**Requires:** configured catalog database; `FEATURE_CATALOG_DBNAME` selects the database name (default: `feature_catalog`).
+**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/feature_catalog.json`
 
-| Tool                   | Category                 | Arguments                                                                                                                   | Description                                                                                      |
-| ---------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `get_ai_tasks`         | read                     | —                                                                                                                           | List supported AI task types for time-series analysis                                            |
-| `get_tsfm_models`      | read                     | —                                                                                                                           | List available pre-trained TinyTimeMixer (TTM) model checkpoints                                 |
-| `run_tsfm_forecasting` | read, write, cpu-centric | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `forecast_horizon?`, `frequency_sampling?`, ...  | Zero-shot TTM inference; returns path to a JSON predictions file                                 |
-| `run_tsfm_finetuning`  | read, write, cpu-centric | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `save_model_dir?`, `n_finetune?`, `n_test?`, ... | Few-shot fine-tune a TTM model; returns saved checkpoint path and metrics file                   |
-| `run_tsad`             | read, write, cpu-centric | `dataset_path`, `tsfm_output_json`, `timestamp_column`, `target_columns`, `task?`, `false_alarm?`, `ad_model_type?`, ...    | Conformal anomaly detection on top of a forecasting output JSON; returns CSV with anomaly labels |
-| `run_integrated_tsad`  | read, write, cpu-centric | `dataset_path`, `timestamp_column`, `target_columns`, `model_checkpoint?`, `false_alarm?`, `n_calibration?`, ...            | End-to-end forecasting + anomaly detection in one call; returns combined CSV                     |
+The TSFM server manages feature catalog cards. Transform cards store executable
+EFE-style `fit` / `transform` programs; extractor cards store searchable metadata
+for scalar feature extractors.
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `list_features` | read | `kind?`, `status?` | List transform and/or extractor cards. `kind` may be `transform`, `extractor`, or omitted. |
+| `search_features` | read | `text?`, `tags?`, `status?` | Search cards by feature id, name, description, or tags. |
+| `get_feature` | read | `feature_id` | Return one stored feature card by id. |
+| `register_feature` | write | `feature`, `overwrite?` | Register a transform card after schema and executable-code validation. |
+| `update_feature` | write | `feature_id`, `fields` | Patch metadata fields on an existing card without rerunning executable validation. |
+| `deprecate_feature` | write | `feature_id`, `reason?` | Mark a card deprecated while keeping it available for audit and lineage. |
+| `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and mark the predecessor superseded. |
+| `get_feature_lineage` | read | `feature_id` | Return parent and direct-descendant ids for a feature card. |
+
+Successful TSFM tool responses include a top-level `message` string. List and
+search responses also include `features`; registration returns `status`, `id`,
+and `card`; card operations return the card fields plus `message`; lineage
+returns `feature_id`, `ancestors`, `root`, `descendants`, and `message`. Errors
+return `ErrorResult` with an `error` field.
 
 ## vibration — Vibration Diagnostics
 
