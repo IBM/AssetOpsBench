@@ -30,9 +30,7 @@ logger = logging.getLogger("tsfm-mcp-server")
 mcp = FastMCP(
     "tsfm",
     instructions=(
-        "Time-series feature catalog tools backed by CouchDB. Browse, search, "
-        "register, update, deprecate, version, and inspect lineage for feature "
-        "catalog cards."
+        "Time-series foundation models. TBD"
     ),
 )
 
@@ -53,8 +51,7 @@ def list_features(
     """List feature catalog cards from the configured CouchDB database.
 
     Use this to browse candidate transform or extractor cards before choosing a
-    feature for a workflow. The runtime database name comes from
-    `FEATURE_CATALOG_DBNAME`, defaulting to `feature_catalog`.
+    feature for a workflow.
 
     Args:
         kind: Optional exact feature kind filter. Use `transform` for executable
