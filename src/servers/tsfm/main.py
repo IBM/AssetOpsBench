@@ -397,8 +397,6 @@ def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
     or load a model, never the weights themselves. Use `register_finetuned` for fine-tune
     checkpoints, and `new_model_version` to supersede a card rather than replace it.
 
-    Caveat: an existing card with the same `model_id` is OVERWRITTEN without warning.
-
     Args:
         model: The card to store. Required keys: `model_id`, `description` (>= 3 chars) and
             `task_ids` (>= 1). Point it at the model with `sktime_class` (+ `params`) and/or
@@ -413,7 +411,7 @@ def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
     if not model:
         return ErrorResult(error="model card is required")
     try:
-        rec = model_store.register_model(_STORE, model, overwrite=True)
+        rec = model_store.register_model(_STORE, model, overwrite=False)
         return RegisterResult(status="registered", id=rec.get("model_id", ""), card=rec)
     except Exception as exc:
         logger.error("register_model failed: %s", exc)
