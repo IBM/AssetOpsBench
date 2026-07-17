@@ -39,7 +39,7 @@ def seeded_feature_store() -> MemoryStore:
     store = MemoryStore()
     with _CATALOG.open() as fh:
         for doc in json.load(fh):
-            store.put(feature_store.COLLECTION, _feature_doc(doc))
+            store.put(feature_store.collection_name(), _feature_doc(doc))
     return store
 
 
