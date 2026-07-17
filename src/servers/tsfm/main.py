@@ -40,6 +40,7 @@ from .core.results_models import (
     ModelTemplateResult,
     ProfileResult,
     RecipeResult,
+    RecipeTemplateResult,
     RegisterResult,
     ResolveResult,
     ResultRecord,
@@ -1241,6 +1242,91 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
 # =============================================================================
 # Compose and run (file pointers in/out)
 # =============================================================================
+
+
+@mcp.tool(title="Recipe Template")
+def recipe_template() -> RecipeTemplateResult:
+    """Return the template for authoring a recipe for run_recipe / run_tabular_recipe.
+
+    Read this before run_recipe. A recipe is the agent's decision surface: it names the model and
+    every choice around it, and the server executes exactly what it says. Static - it reads nothing
+    from the catalog. Pair it with find_models / describe_candidates to choose a `model_id`, and
+    resolve_model to preflight that the card loads.
+
+    Returns:
+        RecipeTemplateResult: `task_choices` (what recipe["task"] dispatches on), `estimator_spec`
+        (the two ways to name a model), `optional_blocks` (what else a recipe may carry), `rules`,
+        and worked `examples` keyed by scenario - each one runs as-is.
+    """
+    return RecipeTemplateResult(
+        task_choices=[
+            "omitted / anything else  - FORECASTING: transforms -> single|ensemble -> conformal",
+            "tsfm_anomaly_detection   - detector path, producing dense anomaly labels",
+            "tsfm_classification | tsfm_regression | tsfm_clustering  - run_tabular_recipe only",
+        ],
+        estimator_spec=[
+            'model_id     - a catalog card, e.g. {"model_id": "ttm_r1_512_96"}; its sktime_class '
+            "and params are read from the card (see find_models / resolve_model)",
+            'sktime_class - an inline class path + params, e.g. '
+            '{"sktime_class": "sktime.forecasting.naive.NaiveForecaster", '
+            '"params": {"strategy": "drift"}}',
+        ],
+        optional_blocks=[
+            'fh         - forecast horizon, e.g. [1, 2, 3]. Default [1, 2, 3, 4, 5]',
+            'transforms - list of transform specs applied to the target before the forecaster',
+            'ensemble   - {"members": [<estimator spec>, ...], "combine": '
+            '"mean|median|min|max|weighted|stack", "weights": [...]} - use INSTEAD of estimator',
+            'conformal  - {"coverage": 0.9} for calibrated prediction intervals',
+            'finetune   - training block; see param_hints (lr, epochs, batch_size, ...)',
+            'anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)',
+            'impute     - fill gaps before fitting',
+            'eval       - {"metrics": ["smape", ...]} - the first metric scores the backtest',
+        ],
+        rules=[
+            "a recipe MUST carry an `estimator` or an `ensemble` (not both)",
+            "`model_id` must exist in the catalog; run_recipe errors if it does not",
+            "run_tabular_recipe extracts FLOps features first, then fits `estimator`; omit "
+            "label_column for clustering",
+            "the series itself is never in the recipe - it arrives via dataset_path",
+        ],
+        examples={
+            "forecast_with_a_catalog_model": {
+                "estimator": {"model_id": "ttm_96_28"},
+                "fh": [1, 2, 3],
+            },
+            "forecast_inline_estimator": {
+                "estimator": {
+                    "sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+                    "params": {"strategy": "drift"},
+                },
+                "fh": [1, 2, 3, 4, 5],
+                "eval": {"metrics": ["smape"]},
+            },
+            "forecast_ensemble_with_intervals": {
+                "ensemble": {
+                    "members": [
+                        {"sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+                         "params": {"strategy": "drift"}},
+                        {"sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+                         "params": {"strategy": "mean"}},
+                    ],
+                    "combine": "mean",
+                },
+                "fh": [1, 2, 3],
+                "conformal": {"coverage": 0.9},
+            },
+            "anomaly_detection": {
+                "task": "tsfm_anomaly_detection",
+                "estimator": {"sktime_class": "sktime.detection.lof.SubLOF",
+                              "params": {"window_size": 24, "n_neighbors": 5, "novelty": True}},
+            },
+            "tabular_classification": {
+                "task": "tsfm_classification",
+                "estimator": {"sktime_class": "sklearn.ensemble.RandomForestClassifier",
+                              "params": {"n_estimators": 100}},
+            },
+        },
+    )
 
 
 @mcp.tool(title="Run Recipe")
