@@ -70,6 +70,20 @@ def test_feature_store_lists_searches_and_versions_catalog_cards():
     ] == ["efe_time_robust_norm_v1"]
 
 
+def test_feature_store_reads_collection_name_from_env(monkeypatch):
+    monkeypatch.setenv("FEATURE_CATALOG_DBNAME", "custom_feature_catalog")
+    store = MemoryStore()
+    with _CATALOG.open() as fh:
+        doc = _feature_doc(json.load(fh)[0])
+    store.put("custom_feature_catalog", doc)
+
+    assert feature_store.collection_name() == "custom_feature_catalog"
+    assert feature_store.get_feature(store, doc["feature_id"])["feature_id"] == doc[
+        "feature_id"
+    ]
+    assert feature_store.find_features(store, kind="transform")
+
+
 def test_register_feature_rejects_in_place_transform():
     store = MemoryStore()
     bad = {

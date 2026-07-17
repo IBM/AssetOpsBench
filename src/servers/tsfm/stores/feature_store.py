@@ -13,6 +13,7 @@ Capabilities:
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -20,6 +21,12 @@ from typing import Dict, List, Optional
 from ..core import schemas
 
 COLLECTION = "feature_catalog"
+COLLECTION_ENV_VAR = "FEATURE_CATALOG_DBNAME"
+
+
+def collection_name() -> str:
+    """Runtime CouchDB database name, defaulting to the loader's feature_catalog DB."""
+    return os.environ.get(COLLECTION_ENV_VAR, COLLECTION)
 
 
 def _now():
@@ -41,7 +48,7 @@ def _next_version(v) -> str:
 # read
 # --------------------------------------------------------------------------- #
 def get_feature(store, feature_id: str) -> Optional[dict]:
-    return store.get(COLLECTION, _id(feature_id))
+    return store.get(collection_name(), _id(feature_id))
 
 
 def find_features(
@@ -58,7 +65,7 @@ def find_features(
         sel["target_task"] = target_task
     if target_model:
         sel["target_model"] = target_model
-    docs = store.find(COLLECTION, sel)
+    docs = store.find(collection_name(), sel)
     if kind:
         docs = [d for d in docs if d.get("kind", "transform") == kind]
     return docs
@@ -73,7 +80,7 @@ def search(
 ):
     text = (text or "").lower()
     out = []
-    for f in store.find(COLLECTION, {"status": status} if status else {}):
+    for f in store.find(collection_name(), {"status": status} if status else {}):
         hay = " ".join(
             [
                 f.get("feature_id") or "",
@@ -103,7 +110,7 @@ def get_lineage(store, feature_id: str) -> dict:
         cur = p
     descendants = [
         f["feature_id"]
-        for f in store.find(COLLECTION, {"parent_feature_id": feature_id})
+        for f in store.find(collection_name(), {"parent_feature_id": feature_id})
     ]
     return {
         "feature_id": feature_id,
@@ -129,12 +136,13 @@ def register_feature(store, feature: dict, *, overwrite: bool = False) -> dict:
     )
     doc.setdefault("validity", {}).update(chk["checks"])
     doc["kind"] = "transform"
-    if store.get(COLLECTION, doc["_id"]) and not overwrite:
+    collection = collection_name()
+    if store.get(collection, doc["_id"]) and not overwrite:
         raise ValueError(
             f"feature '{doc['feature_id']}' exists (overwrite=True or new_version)"
         )
     doc.setdefault("created_at", _now())
-    return store.put(COLLECTION, doc)
+    return store.put(collection, doc)
 
 
 def update_feature(store, feature_id: str, fields: dict) -> dict:
@@ -143,7 +151,7 @@ def update_feature(store, feature_id: str, fields: dict) -> dict:
         raise ValueError(f"no feature {feature_id}")
     doc.update(fields)
     doc["updated_at"] = _now()
-    return store.put(COLLECTION, doc)
+    return store.put(collection_name(), doc)
 
 
 def deprecate_feature(store, feature_id: str, reason: Optional[str] = None) -> dict:
