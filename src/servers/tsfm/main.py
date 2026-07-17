@@ -57,7 +57,6 @@ from .reasoning import dataquality as _dq
 from .reasoning import patterns, profile
 from .stores import model_store
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
 from .config import PLANS_COLLECTION, RUNS_COLLECTION
 from .engine import composition, plan
 from .eval import forecast_eval
