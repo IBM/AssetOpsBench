@@ -58,9 +58,10 @@ def list_models(
     if framework:
         sel["framework"] = framework
     if task_id:
-        sel["task_ids"] = {"$elemMatch": task_id}
+        # CouchDB requires a condition object here; a bare scalar is a 400.
+        sel["task_ids"] = {"$elemMatch": {"$eq": task_id}}
     if usage_mode:
-        sel["usage_modes"] = {"$elemMatch": usage_mode}
+        sel["usage_modes"] = {"$elemMatch": {"$eq": usage_mode}}
     return store.find(COLLECTION, sel)
 
 
