@@ -86,7 +86,7 @@ AssetOpsBench is a **unified framework for developing, orchestrating, and evalua
 |---|---|
 | **IoT** | `sites`, `asset_ids`, `asset_detail`, `assets`, `find_assets_by_sensors`, `installed_sensors`, `measured_sensors` |
 | **FMSR** | `get_failure_modes`, `generate_failure_modes`, `add_failure_modes`, `generate_failure_mode_sensor_mapping` |
-| **TSFM** | `list_features`, `search_features`, `get_feature`, `register_feature`, `new_feature_version` |
+| **TSFM** | `list_models`, `find_models`, `resolve_model`, `register_model`, `register_finetuned`, `list_features`, `search_features`, `register_feature` |
 | **WO** | `get_work_order_distribution`, `predict_next_work_order`, ... |
 | **Vibration** | `compute_fft_spectrum`, `compute_envelope_spectrum`, ... |
 | **...** | **...** |
@@ -112,7 +112,7 @@ The `src/` directory contains MCP servers and a plan-execute runner built on the
 |---|---|
 | **IoT** | "List all assets in MAIN site" |
 | **FMSR** | "List known failure modes for asset class pump" |
-| **TSFM** | "Find active time-series normalization features in the feature catalog" |
+| **TSFM** | "Find a forecasting model for Chiller 6 and check it can be loaded" |
 | **WO** | "Generate a work order for Chiller 6 anomaly detection" |
 
 Some tasks focus on a single domain, others are multi-step end-to-end workflows. Explore all scenarios on [Hugging Face](https://huggingface.co/datasets/ibm-research/AssetOpsBench).

@@ -109,32 +109,73 @@ _None — the WO server makes no LLM calls; all tools are direct CouchDB operati
 
 _None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `GET` / `PUT`), with no heavy computation._
 
-## tsfm — Time Series Feature Catalog
+## tsfm — Time Series Model & Feature Catalogs
 
 **Path:** `src/servers/tsfm/main.py`
-**Requires:** configured catalog database; `FEATURE_CATALOG_DBNAME` selects the database name (default: `feature_catalog`).
-**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/feature_catalog.json`
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`); `numpy`, `pandas`. Set `TSFM_STORE=memory` for the in-memory backend the test suite uses.
+**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/{model,feature}_catalog.json`, loaded by `src/couchdb/init_data.py` into the `model_catalog` and `feature_catalog` collections like every other AssetOpsBench collection. `FEATURE_CATALOG_DBNAME` overrides the feature database name.
 
-The TSFM server manages feature catalog cards. Transform cards store executable
-EFE-style `fit` / `transform` programs; extractor cards store searchable metadata
-for scalar feature extractors.
+Models and features are catalog **data, not tools**. A model card is a *pointer*: it records how to
+construct or load a model — `sktime_class` + `params`, and/or `hf_repo` / `artifact_path` /
+`remote_endpoint` / `model_checkpoint` — never the weights themselves. Feature transform cards store
+executable EFE-style `fit` / `transform` programs; extractor cards store searchable metadata for
+scalar feature extractors. The server reads both catalogs from CouchDB; it does not seed them.
+
+### Tasks and evidence tools
+
+Evidence tools take **file pointers** (`dataset_path`) and return typed results plus a pointer to
+the full output. The server supplies evidence; the agent makes the decisions.
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `list_tasks` | read | — | List the standardized TSFM tasks and their contracts. |
+| `profile_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?` | Structured facts about a series: dominant period, trend, gaps, channel count. |
+| `characterize_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?`, `groups?`, `group_rules?` | Pattern evidence for a dataset; returns an evidence file pointer. |
+| `data_quality` | read, write, cpu-centric | `dataset_path`, `timestamp_column?` | NaN stats + removal; emits a cleaned file pointer for downstream tools. |
+
+### Model catalog — discovery
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `list_models` | read | `task_id?`, `domain?`, `status?` | List model cards, optionally filtered by task or domain. |
+| `search_models` | read | `text`, `tags?`, `status?` | Case-insensitive substring search over id, description, family, and tags. |
+| `find_models` | read | `task_id`, `min_context_length?`, `prediction_length?`, `domain?`, `top_k?` | Filter by task plus structured constraints and return a shortlist. |
+| `describe_candidates` | read | `task_id`, `top_k?`, `domain?` | Compact candidate shortlist for a task, for an agent to reason over. |
+| `describe_models` | read | `model_ids` | Compact record per id: description, family, `sktime_class`, context length, domain, tags. |
+| `count_models` | read | — | Total active models plus a per-task breakdown. |
+| `list_domains` | read | `task_id?` | The distinct domains present, with counts — the valid values for the `domain` filter. |
+| `get_model_lineage` | read | `model_id` | Fine-tune ancestors and descendants, plus `supersedes` / `superseded_by` links. |
+| `resolve_model` | read | `model_id` | Preflight: confirm a card can be loaded and report where its weights come from. Does not download or fit. |
+| `hf_stats` | read | `model_id?`, `hf_repo?` | HuggingFace downloads and likes for a card's repo. Read-only; needs network to huggingface.co. |
+
+### Model catalog — authoring and lifecycle
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `model_template` | read | — | The card contract: required and optional fields, the pointer choices, and a worked example. Static. |
+| `register_model` | write | `model` | Register a schema-validated model card. A duplicate `model_id` is rejected, not overwritten. |
+| `register_finetuned` | write | `model_id`, `checkpoint_path`, `base_model_id`, `context_length`, `prediction_length`, `description`, `domain?` | Point a card at a fine-tune checkpoint; inherits the base's `sktime_class` and records lineage. |
+| `update_model` | write | `model_id`, `fields` | Patch fields, stamp `updated_at`, and re-validate against the schema. |
+| `deprecate_model` | write | `model_id`, `reason?` | Soft delete: `status=deprecated`, dropping the card from active listings. |
+| `new_model_version` | write | `model_id`, `fields`, `new_model_id?` | Register a successor and mark the predecessor superseded, cross-linked. |
+
+### Feature catalog
 
 | Tool | Category | Arguments | Description |
 | ---- | -------- | --------- | ----------- |
 | `list_features` | read | `kind?`, `status?` | List transform and/or extractor cards. `kind` may be `transform`, `extractor`, or omitted. |
 | `search_features` | read | `text?`, `tags?`, `status?` | Search cards by feature id, name, description, or tags. |
 | `get_feature` | read | `feature_id` | Return one stored feature card by id. |
+| `get_feature_lineage` | read | `feature_id` | Parent and direct-descendant ids for a feature card. |
 | `register_feature` | write | `feature`, `overwrite?` | Register a transform card after schema and executable-code validation. |
-| `update_feature` | write | `feature_id`, `fields` | Patch metadata fields on an existing card without rerunning executable validation. |
-| `deprecate_feature` | write | `feature_id`, `reason?` | Mark a card deprecated while keeping it available for audit and lineage. |
-| `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and mark the predecessor superseded. |
-| `get_feature_lineage` | read | `feature_id` | Return parent and direct-descendant ids for a feature card. |
+| `update_feature` | write | `feature_id`, `fields` | Patch metadata fields without rerunning executable validation. |
+| `deprecate_feature` | write | `feature_id`, `reason?` | Mark a card deprecated while keeping it for audit and lineage. |
+| `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and supersede the predecessor. |
 
-Successful TSFM tool responses include a top-level `message` string. List and
-search responses also include `features`; registration returns `status`, `id`,
-and `card`; card operations return the card fields plus `message`; lineage
-returns `feature_id`, `ancestors`, `root`, `descendants`, and `message`. Errors
-return `ErrorResult` with an `error` field.
+Successful TSFM tool responses include a top-level `message` string. List and search responses also
+include `features` or `models`; registration returns `status`, `id`, and `card`; card operations
+return the card fields plus `message`; lineage returns `feature_id` / `model_id`, `ancestors`,
+`root`, `descendants`, and `message`. Errors return `ErrorResult` with an `error` field.
 
 ## vibration — Vibration Diagnostics
 
