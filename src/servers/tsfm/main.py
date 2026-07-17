@@ -904,9 +904,25 @@ def resolve_model(model_id: str) -> Union[ResolveResult, ErrorResult]:
 def hf_stats(
     model_id: Optional[str] = None, hf_repo: Optional[str] = None
 ) -> Union[HfStatsResult, ErrorResult]:
-    """Look up a model's HuggingFace popularity: downloads + likes (READ-ONLY, does not change the
-    catalog). Give a catalog `model_id` (its hf_repo is resolved) OR an `hf_repo` directly. Use it
-    to weigh how widely adopted a model is before choosing it. Needs network to huggingface.co."""
+    """Look up HuggingFace popularity for a model card or repo.
+
+    This is a read-only catalog lookup that returns download and like counts for a model's
+    HuggingFace repository. Pass either a catalog `model_id` (the tool resolves its `hf_repo`)
+    or an `hf_repo` directly. Use it as evidence for adoption / popularity comparisons before
+    selecting a model.
+
+    Caveat: this tool needs network access to huggingface.co. If the model card does not carry an
+    `hf_repo`, you must provide `hf_repo` directly or the call will return an error.
+
+    Args:
+        model_id: Optional catalog model id to resolve to an HuggingFace repo.
+        hf_repo: Optional HuggingFace repository name, e.g. `ibm-granite/...`.
+
+    Returns:
+        HfStatsResult: `model_id`, `hf_repo`, `downloads`, and `likes` for the repo. ErrorResult
+        if the card cannot be resolved, no repo is available, or HuggingFace stats cannot be
+        fetched.
+    """
     repo = hf_repo
     if model_id and not repo:
         card = model_store.get_model(_STORE, model_id)
