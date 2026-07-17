@@ -113,7 +113,7 @@ _None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `
 
 **Path:** `src/servers/tsfm/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`); `numpy`, `pandas`. Set `TSFM_STORE=memory` for the in-memory backend the test suite uses.
-**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/{model,feature}_catalog.json`, loaded by `src/couchdb/init_data.py` into the `model_catalog` and `feature_catalog` collections like every other AssetOpsBench collection. `FEATURE_CATALOG_DBNAME` overrides the feature database name.
+**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/{model,feature}_catalog.json`, loaded by `src/couchdb/init_data.py` into the `model_catalog` and `feature_catalog` collections like every other AssetOpsBench collection. `MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` override the model and feature database names.
 
 Models and features are catalog **data, not tools**. A model card is a *pointer*: it records how to
 construct or load a model — `sktime_class` + `params`, and/or `hf_repo` / `artifact_path` /

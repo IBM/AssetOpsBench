@@ -1,8 +1,9 @@
 """TSFM MCP server : the model + feature catalogs.
 
-Model cards are catalog DATA, not tools: they live in the CouchDB `model_catalog` collection
-(loaded by src/couchdb/init_data.py like every other AssetOpsBench collection) and this surface is
-their discovery + lifecycle API. A card is a POINTER — it records how to construct/load a model
+Model cards are catalog DATA, not tools: they live in the CouchDB collection named by
+`MODEL_CATALOG_DBNAME` (default `model_catalog`, loaded by src/couchdb/init_data.py like every
+other AssetOpsBench collection) and this surface is their discovery + lifecycle API. A card is a
+POINTER — it records how to construct/load a model
 (`sktime_class` + `params`, or an `hf_repo` / `artifact_path` / `remote_endpoint` /
 `model_checkpoint`), never the weights themselves.
 
@@ -72,8 +73,8 @@ mcp = FastMCP(
     ),
 )
 
-# The catalog is an ordinary AssetOpsBench CouchDB collection (model_catalog), loaded by
-# src/couchdb/init_data.py. The server reads it; it does not seed.
+# The catalog is an ordinary AssetOpsBench CouchDB collection (MODEL_CATALOG_DBNAME, default
+# model_catalog), loaded by src/couchdb/init_data.py. The server reads it; it does not seed.
 _STORE = make_store()
 
 
