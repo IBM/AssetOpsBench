@@ -85,10 +85,21 @@ def _check_task(task_id: str) -> Optional[str]:
 
 @mcp.tool(title="List Tasks")
 def list_tasks() -> Union[TasksResult, ErrorResult]:
-    """List the 8 standardized TS-AI TASKS (forecasting, regression, classification, anomaly,
-    imputation, evaluation, similarity_search, clustering). Each entry has a plain `description`
-    plus its contract (required inputs, output, eval protocol). Start here, then profile_series.
-    """
+    """List the standardized TSFM tasks available in the benchmark.
+
+This is a discovery tool: it returns the canonical task definitions, including each task's
+required inputs, output type, evaluation protocol, and supporting notes. Use it first when you
+need to understand what task families the TSFM server supports.
+
+Caveat: this tool is read-only and does not inspect any dataset or model card.
+
+Args:
+    None
+
+Returns:
+    TasksResult: The task catalog, including task IDs, descriptions, required inputs, metrics,
+    and protocol metadata. ErrorResult if the task catalog cannot be loaded.
+"""
     try:
         return TasksResult(tasks=task_spec.list_tasks())
     except Exception as exc:
@@ -107,10 +118,28 @@ def profile_series(
     timestamp_column: Optional[str] = None,
     channels: Optional[List[str]] = None,
 ) -> Union[ProfileResult, ErrorResult]:
-    """EVIDENCE about the data behind a file pointer (dataset_path): seasonality, stationarity,
-    channels, length. Facts only, no recommendations: you reason the recipe from these. This is
-    the data the param_schema hints depend on (e.g. context_length ≥ 2× dominant_period).
-    """
+    """Profile a time-series dataset behind a file pointer.
+
+This tool summarizes the observed series structure and basic statistical evidence, such as
+observation count, channel count, and any detectable temporal characteristics. It is intended
+to provide factual context for downstream reasoning, not a prediction or diagnosis.
+
+Caveat: the `channels` argument must reference valid numeric measurement columns only. Metadata
+columns such as identifiers, labels, or non-numeric fields should not be passed as channels.
+If `channels` is omitted, the tool will infer usable numeric columns automatically.
+
+Args:
+    dataset_path: File pointer to the dataset, typically a `file://...` URI.
+    timestamp_column: Optional name of the time column. If omitted, the tool may auto-detect
+        common timestamp names.
+    channels: Optional list of numeric signal columns to profile. If provided, each channel must
+        exist in the dataset and be numeric.
+
+Returns:
+    ProfileResult: Summary evidence for the dataset, including observation count, channel count,
+    inferred temporal characteristics, and the profiled channel list. ErrorResult if the file
+    pointer is invalid or the series cannot be profiled.
+"""
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
@@ -131,14 +160,32 @@ def characterize_series(
     groups: Optional[dict] = None,
     group_rules: Optional[str] = None,
 ) -> Union[CharacterizeResult, ErrorResult]:
-    """Describe the SHAPE of a series as structured EVIDENCE for an LLM to reason over (fault,
-    cause, RUL, work-order, …): it never names a fault. Generic: any signals, any count, any
-    names. Per channel-group it labels a state (stable / rise / decline / spike / level_shift /
-    cessation / oscillation) + rate over changepoint phases, plus the bivariate relation
-    (decoupled / co_move / lead_lag) between groups. Grouping is optional and yours to choose:
-    pass groups={group:[channels]}, or group_rules (a preset name like 'vibration_temperature');
-    default is one group per channel. Reference-free (reads the series' own median/MAD scale).
-    """
+    """Characterize the shape of a time-series dataset as structured evidence.
+
+This tool extracts pattern evidence from the series, describing how grouped channels behave over
+time across changepoint phases. It reports state labels such as stable, rise, decline, spike,
+level_shift, cessation, or oscillation, and may also describe relationships between groups such
+as decoupled, co_move, or lead_lag. The output is intended as evidence for later reasoning,
+not as a direct fault label.
+
+Caveat: the tool is sensitive to the input shape and channel selection. If `channels` is
+provided, it must refer only to valid numeric measurement columns. If `groups` is omitted, the
+tool defaults to one group per channel unless `group_rules` is supplied. Large or very wide
+datasets may be slower to process, so a compact sample is often better for smoke tests.
+
+Args:
+    dataset_path: File pointer to the dataset, typically a `file://...` URI.
+    timestamp_column: Optional name of the time column.
+    channels: Optional list of numeric signal columns to include in the characterization.
+    groups: Optional explicit channel-group mapping of the form `{group_name: [channel_names]}`.
+    group_rules: Optional grouping preset or grouping rules name, such as
+        `"vibration_temperature"`.
+
+Returns:
+    CharacterizeResult: Structured pattern evidence including summary text, number of
+    observations, detected groups, phase-level states, and an evidence file pointer. ErrorResult
+    if the dataset cannot be loaded or the characterization fails.
+"""
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
@@ -171,9 +218,25 @@ def data_quality(
     dataset_path: str,
     timestamp_column: str = "timestamp",
 ) -> Union[DataQualityResult, ErrorResult]:
-    """Clean a series from a file pointer (NaN removal) + report a data-quality summary; returns a
-    cleaned file pointer to feed forecasting / anomaly. (The continuous-segment IoT filter lives
-    in reasoning/dataquality for the forecasting-context path.)"""
+    """Assess data quality for a time-series dataset and produce a cleaned file pointer.
+
+This tool removes rows that fail the cleaning rules used by the TSFM workflow and returns a
+quality summary, including input/output row counts and per-column missing-value statistics.
+It is meant to prepare data for downstream forecasting or anomaly tasks.
+
+Caveat: this tool expects a dataset file pointer and a valid timestamp column name. Very sparse
+or malformed datasets may be reduced substantially by the cleaning step, and the cleaned output
+may be much smaller than the input.
+
+Args:
+    dataset_path: File pointer to the dataset, typically a `file://...` URI.
+    timestamp_column: Name of the timestamp column to use when interpreting the series.
+
+Returns:
+    DataQualityResult: Cleaning summary including a cleaned file pointer, input and output row
+    counts, a message, and missing-value statistics. ErrorResult if the dataset cannot be read
+    or cleaned.
+"""
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
