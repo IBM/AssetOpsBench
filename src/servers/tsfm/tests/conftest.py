@@ -20,6 +20,21 @@ _SEEDS = os.environ.get("TSFM_SEEDS_DIR") or os.path.normpath(
 )
 
 
+
+async def call_tool(mcp_instance, name: str, args: dict):
+    """Invoke a tool through the MCP boundary and return its payload.
+
+    FastMCP's wire shape is not uniform: a tool annotated `-> Union[X, ErrorResult]` arrives
+    wrapped as {"result": {...}}, while one annotated `-> X` (a bare model, e.g. model_template)
+    arrives flat. Unwrap the envelope so tests can assert on the payload either way.
+    """
+    content, _ = await mcp_instance.call_tool(name, args)
+    payload = json.loads(content[0].text)
+    if isinstance(payload, dict) and set(payload) == {"result"}:
+        return payload["result"]
+    return payload
+
+
 def _seed_into(store):
     """Load the shipped model_catalog seed into a store (test-only)."""
     from ..stores import model_store
