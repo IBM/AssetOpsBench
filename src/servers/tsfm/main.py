@@ -1,16 +1,8 @@
-"""TSFM MCP server : the model + feature catalogs.
+"""TSFM MCP server for task evidence, model cards, and feature cards.
 
-Model cards are catalog DATA, not tools: they live in the CouchDB collection named by
-`MODEL_CATALOG_DBNAME` (default `model_catalog`, loaded by src/couchdb/init_data.py like every
-other AssetOpsBench collection) and this surface is their discovery + lifecycle API. A card is a
-POINTER — it records how to construct/load a model
-(`sktime_class` + `params`, or an `hf_repo` / `artifact_path` / `remote_endpoint` /
-`model_checkpoint`), never the weights themselves.
-
-Browse with list_models / search_models / find_models, shortlist with describe_candidates, read
-detail with describe_models, then author via model_template + register_model and manage with
-update_model / deprecate_model / new_model_version. resolve_model preflights that a card can
-actually be loaded.
+Catalogs are CouchDB data loaded by src/couchdb/init_data.py; `MODEL_CATALOG_DBNAME` and
+`FEATURE_CATALOG_DBNAME` select the collections. Model cards are pointers to loadable models,
+never weights.
 """
 
 from __future__ import annotations
