@@ -55,26 +55,11 @@ logger = logging.getLogger("tsfm-mcp-server")
 mcp = FastMCP(
     "tsfm",
     instructions=(
-        "The TSFM server exposes time-series task metadata, evidence tools, and CouchDB-backed "
-        "model and feature catalogs. Catalog entries are data, not tools. A model card is a "
-        "pointer to a model: `sktime_class` + `params`, `hf_repo`, `artifact_path`, "
-        "`remote_endpoint`, or `model_checkpoint`; it never contains weights. The server reads "
-        "catalogs loaded by src/couchdb/init_data.py and does not seed them at runtime. "
-        "`MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` override the default CouchDB "
-        "collections. Start with `list_tasks` to understand the supported TSFM tasks and required "
-        "inputs. Evidence tools take dataset file pointers: use `data_quality` to clean a series, "
-        "`profile_series` for factual shape/statistical context, and `characterize_series` for "
-        "pattern evidence; these tools provide evidence only and do not choose a model or diagnose "
-        "a fault. For model selection, browse with `list_models` or `search_models`, filter with "
-        "`find_models`, get compact shortlists with `describe_candidates`, inspect ids with "
-        "`describe_models`, and call `resolve_model` before composing a workflow so broken "
-        "`sktime_class` pointers fail early. Use `hf_stats` only as a read-only popularity lookup. "
-        "For authoring, call `model_template` before `register_model`; duplicates are rejected, "
-        "fine-tuned cards must reference an existing base with `sktime_class`, and lifecycle "
-        "changes should use `update_model`, `deprecate_model`, or `new_model_version`. Feature "
-        "tools manage transform/extractor cards: browse/search/get first, then register or version "
-        "transform cards only when changing executable feature code. Errors are returned as "
-        "`ErrorResult` with an `error` field."
+        "The TSFM server provides task discovery, file-pointer evidence tools, and CouchDB-backed "
+        "model and feature catalog tools. Use the model tools to browse, resolve, register, "
+        "fine-tune, version, or deprecate model cards; use the feature tools to browse, register, "
+        "version, or deprecate transform/extractor cards. Catalog cards are data, not weights; "
+        "`MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` select the backing collections."
     ),
 )
 
