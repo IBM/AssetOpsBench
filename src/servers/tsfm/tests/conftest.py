@@ -20,6 +20,12 @@ _SEEDS = os.environ.get("TSFM_SEEDS_DIR") or os.path.normpath(
 )
 
 
+async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:
+    """Call an MCP tool and return the parsed JSON response."""
+    contents, _ = await mcp_instance.call_tool(tool_name, args)
+    return json.loads(contents[0].text)
+
+
 def _seed_into(store):
     """Load the shipped model_catalog seed into a store (test-only)."""
     from ..stores import model_store
