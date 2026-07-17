@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 # ── Static data ───────────────────────────────────────────────────────────────
@@ -76,6 +76,25 @@ class TSFMModelEntry(BaseModel):
 
 class TSFMModelsResult(BaseModel):
     models: List[TSFMModelEntry]
+
+
+class FeaturesResult(BaseModel):
+    features: List[dict]
+
+
+class RegisterResult(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    status: str
+    id: str
+
+
+class CardResult(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class LineageResult(BaseModel):
+    model_config = ConfigDict(extra="allow")
 
 
 class ForecastingResult(BaseModel):
