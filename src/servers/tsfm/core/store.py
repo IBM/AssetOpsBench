@@ -35,7 +35,9 @@ def _match(doc: dict, selector: dict) -> bool:
                     if not isinstance(val, list) or not any(
                         _match({"_": v}, {"_": operand}) for v in val
                     ):
-                        return False
+                        # $elemMatch with a scalar equality operand
+                        if not (isinstance(val, list) and operand in val):
+                            return False
         else:
             if val != cond:
                 return False
@@ -68,7 +70,7 @@ class Store:
 # --------------------------------------------------------------------------- #
 class MemoryStore(Store):
     """In-memory store — TEST DOUBLE ONLY (hermetic suite). Production never uses this; the
-    server runs on CouchStore (CouchDB). Selected only when TSFM_STORE=memory, which the test
+    server uses the configured database store. Selected only when TSFM_STORE=memory, which the test
     conftest sets."""
 
     def __init__(self):
@@ -104,7 +106,7 @@ class MemoryStore(Store):
 
 # --------------------------------------------------------------------------- #
 class CouchStore(Store):
-    """CouchDB backend — same wire format as the AssetOpsBench loader."""
+    """Database backend using the same wire format as the AssetOpsBench loader."""
 
     def __init__(self, url=None, auth=None):
         import requests  # lazy
