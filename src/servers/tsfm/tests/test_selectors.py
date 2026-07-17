@@ -18,6 +18,8 @@ import pytest
 from ..core.store import MemoryStore, _match
 from ..stores import model_store
 
+NAIVE = "sktime.forecasting.naive.NaiveForecaster"
+
 
 class _SpySt(MemoryStore):
     """Records the selector handed to find(), so we can assert on the wire format."""
@@ -68,3 +70,76 @@ def test_task_filter_actually_filters():
                                    "sktime_class": "sktime.clustering.k_means.TimeSeriesKMeans"})
     got = [m["model_id"] for m in model_store.list_models(s, task_id="tsfm_forecasting")]
     assert got == ["fc"]
+
+
+# ---- the fixes: a card must never silently point at the wrong model ----
+def test_finetuned_rejects_an_unknown_base_instead_of_guessing():
+    """Regression: register_finetuned used to do `get_model(...) or {}` and then default
+    sktime_class to TinyTimeMixerForecaster - a typo'd base produced a card that loads the wrong
+    architecture, and it "succeeded"."""
+    s = MemoryStore()
+    with pytest.raises(ValueError, match="not in the catalog"):
+        model_store.register_finetuned(
+            s, model_id="ft", checkpoint_path="/ckpt", base_model_id="ghost",
+            context_length=96, prediction_length=28, description="finetune of a ghost")
+    assert model_store.get_model(s, "ft") is None
+
+
+def test_finetuned_rejects_a_base_with_no_sktime_class():
+    s = MemoryStore()
+    model_store.register_model(s, {"model_id": "stub", "description": "toolkit-only card",
+                                   "task_ids": ["tsfm_forecasting"],
+                                   "model_checkpoint": "anomalykits://iforest"})
+    with pytest.raises(ValueError, match="no sktime_class"):
+        model_store.register_finetuned(
+            s, model_id="ft2", checkpoint_path="/ckpt", base_model_id="stub",
+            context_length=96, prediction_length=28, description="finetune of a stub")
+
+
+def test_finetuned_still_inherits_from_a_real_base():
+    s = MemoryStore()
+    model_store.register_model(s, {"model_id": "base", "description": "naive base",
+                                   "task_ids": ["tsfm_forecasting"], "sktime_class": NAIVE,
+                                   "params": {"strategy": "drift"}})
+    card = model_store.register_finetuned(
+        s, model_id="ft3", checkpoint_path="/ckpt/x", base_model_id="base",
+        context_length=96, prediction_length=28, description="finetune of the naive base")
+    assert card["sktime_class"] == NAIVE                      # inherited, not invented
+    assert card["params"]["model_path"] == "/ckpt/x"
+    assert card["params"]["strategy"] == "drift"
+
+
+def test_register_model_rejects_a_duplicate_id():
+    s = MemoryStore()
+    card = {"model_id": "dup", "description": "first version",
+            "task_ids": ["tsfm_forecasting"], "sktime_class": NAIVE}
+    model_store.register_model(s, card)
+    with pytest.raises(ValueError, match="already exists"):
+        model_store.register_model(s, {**card, "description": "second version"})
+    assert model_store.get_model(s, "dup")["description"] == "first version"
+
+
+# ---- resolvable: computed AND persisted, with sktime_class counting as a pointer ----
+def test_sktime_class_alone_makes_a_card_resolvable():
+    """Regression: sktime_class was missing from the validator's refs, so the operative loader
+    did not count and such a card was flagged unresolvable."""
+    from ..core.schemas import ModelCard
+    c = ModelCard(model_id="m", description="sktime pointer only",
+                  task_ids=["tsfm_forecasting"], sktime_class=NAIVE, params={"strategy": "drift"})
+    assert c.resolvable is True
+
+
+def test_resolvable_survives_into_the_stored_card():
+    """Regression: the flag was set with object.__setattr__ on an undeclared field, so
+    model_dump() dropped it and the stored card never carried it."""
+    from ..core.schemas import ModelCard
+    doc = ModelCard(model_id="m", description="hf pointer",
+                    task_ids=["tsfm_forecasting"], hf_repo="amazon/chronos-t5-small").to_doc()
+    assert doc["resolvable"] is True
+
+
+def test_a_card_with_no_pointer_is_flagged_unresolvable():
+    from ..core.schemas import ModelCard
+    doc = ModelCard(model_id="stub", description="catalog-only stub",
+                    task_ids=["tsfm_forecasting"]).to_doc()
+    assert doc["resolvable"] is False

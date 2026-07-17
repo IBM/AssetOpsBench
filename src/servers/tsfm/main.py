@@ -397,6 +397,9 @@ def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
     or load a model, never the weights themselves. Use `register_finetuned` for fine-tune
     checkpoints, and `new_model_version` to supersede a card rather than replace it.
 
+    Registering an existing `model_id` is REJECTED rather than overwriting it; use
+    `new_model_version` to supersede a card, or `update_model` to patch one.
+
     Args:
         model: The card to store. Required keys: `model_id`, `description` (>= 3 chars) and
             `task_ids` (>= 1). Point it at the model with `sktime_class` (+ `params`) and/or
@@ -482,9 +485,9 @@ def register_finetuned(
     `checkpoint_path` so the fine-tuned weights load at fit time. Records `provenance=finetuned`
     and lineage back to the base, readable via `get_model_lineage`.
 
-    Caveats: `base_model_id` is NOT checked for existence - if it is unknown, `sktime_class`
-    silently falls back to TinyTimeMixerForecaster, which may be the wrong architecture. An
-    existing card with the same `model_id` is overwritten without warning.
+    `base_model_id` must already be in the catalog and carry an `sktime_class`; if it does not,
+    this errors rather than guessing a wrapper class, which would silently produce a card that
+    loads the wrong architecture.
 
     Args:
         model_id: Id for the new fine-tuned card.

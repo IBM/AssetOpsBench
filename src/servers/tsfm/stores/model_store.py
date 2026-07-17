@@ -215,7 +215,8 @@ def register_model(store, model: dict, *, overwrite: bool = False) -> dict:
     doc = schemas.validate_model(model)  # raises on invalid
     if store.get(COLLECTION, doc["_id"]) and not overwrite:
         raise ValueError(
-            f"model '{doc['model_id']}' exists (overwrite=True or new_version)"
+            f"model '{doc['model_id']}' already exists; use new_model_version to supersede it, "
+            "or update_model to patch it"
         )
     doc.setdefault("created_at", _now())
     return store.put(COLLECTION, doc)
@@ -271,8 +272,19 @@ def register_finetuned(
     """Register a fine-tuned model that points the catalog at a checkpoint. Inherits the sktime
     wrapper class from the base model and sets params.model_path to the checkpoint, so the
     fine-tuned weights are resolvable (loaded from checkpoint_path at fit), with lineage to base."""
-    base = get_model(store, base_model_id) or {}
-    sktime_class = base.get("sktime_class") or "sktime.forecasting.ttm.TinyTimeMixerForecaster"
+    base = get_model(store, base_model_id)
+    if not base:
+        raise ValueError(
+            f"base model '{base_model_id}' is not in the catalog; register it first "
+            "(see list_models). Inventing a wrapper class here would silently produce a card "
+            "that loads the wrong architecture."
+        )
+    sktime_class = base.get("sktime_class")
+    if not sktime_class:
+        raise ValueError(
+            f"base model '{base_model_id}' has no sktime_class to inherit; the fine-tuned card "
+            "would not be resolvable"
+        )
     params = {**(base.get("params") or {}), "model_path": checkpoint_path}
     return register_model(
         store,
