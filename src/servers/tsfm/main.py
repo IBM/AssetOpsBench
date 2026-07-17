@@ -391,9 +391,25 @@ def get_model_lineage(model_id: str) -> Union[LineageResult, ErrorResult]:
 
 @mcp.tool(title="Register Model")
 def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
-    """Register a model card in the catalog (schema-validated). Requires `model_id`, `description`,
-    and `task_ids`; point it at weights via one of `sktime_class` / `artifact_path` / `hf_repo` /
-    `remote_endpoint` / `model_checkpoint`. Use register_finetuned for fine-tune checkpoints."""
+    """Register a model card in the catalog.
+
+    The card is schema-validated before storage. A card is a POINTER: it records how to construct
+    or load a model, never the weights themselves. Use `register_finetuned` for fine-tune
+    checkpoints, and `new_model_version` to supersede a card rather than replace it.
+
+    Caveat: an existing card with the same `model_id` is OVERWRITTEN without warning.
+
+    Args:
+        model: The card to store. Required keys: `model_id`, `description` (>= 3 chars) and
+            `task_ids` (>= 1). Point it at the model with `sktime_class` (+ `params`) and/or
+            `hf_repo` / `artifact_path` / `remote_endpoint` / `model_checkpoint`. Call
+            `model_template()` for the full shape and a worked example. Unknown keys are kept
+            as-is, so typos are stored silently.
+
+    Returns:
+        RegisterResult: `status`, the registered `id`, and the stored `card`. ErrorResult if the
+        card fails schema validation.
+    """
     if not model:
         return ErrorResult(error="model card is required")
     try:
@@ -406,10 +422,17 @@ def register_model(model: dict) -> Union[RegisterResult, ErrorResult]:
 
 @mcp.tool(title="Model Template")
 def model_template() -> ModelTemplateResult:
-    """The template for authoring a NEW model card for register_model. Returns the required and
-    optional fields, the weight-pointer choices (a card must resolve via at least one), the
-    resolution rules, and a filled example. Fill it in, then submit via register_model. (Use
-    register_finetuned for fine-tune checkpoints.) Mirrors feature_template on the feature side."""
+    """Return the template for authoring a new model card.
+
+    Read this before `register_model` to learn the card shape: which fields are required, which
+    are optional, the ways a card can point at a model, and a filled example that registers
+    as-is. Static - it reads nothing from the catalog. Use `register_finetuned` for fine-tune
+    checkpoints.
+
+    Returns:
+        ModelTemplateResult: `required_fields`, `optional_fields`, `pointer_choices` (the ways a
+        card can reference a model), `resolution_rules`, and a worked `example`.
+    """
     return ModelTemplateResult(
         required_fields=["model_id", "description", "task_ids"],
         pointer_choices=[
@@ -455,7 +478,30 @@ def register_finetuned(
     description: str,
     domain: str = "general",
 ) -> Union[CardResult, ErrorResult]:
-    """Add a fine-tuned model: point the catalog at a checkpoint, with lineage to its base model."""
+    """Register a fine-tuned model as a card pointing at its checkpoint.
+
+    Inherits the base card's `sktime_class` and `params`, then sets `params.model_path` to
+    `checkpoint_path` so the fine-tuned weights load at fit time. Records `provenance=finetuned`
+    and lineage back to the base, readable via `get_model_lineage`.
+
+    Caveats: `base_model_id` is NOT checked for existence - if it is unknown, `sktime_class`
+    silently falls back to TinyTimeMixerForecaster, which may be the wrong architecture. An
+    existing card with the same `model_id` is overwritten without warning.
+
+    Args:
+        model_id: Id for the new fine-tuned card.
+        checkpoint_path: Directory holding the fine-tuned weights; becomes `params.model_path`.
+        base_model_id: Id of the card this was fine-tuned from; its wrapper class and params are
+            inherited. Should exist in the catalog (see `list_models`).
+        context_length: Input window the checkpoint was tuned for.
+        prediction_length: Forecast horizon the checkpoint was tuned for.
+        description: What it was tuned on and for. At least 3 characters.
+        domain: Optional domain tag, such as `energy`. Defaults to `general`.
+
+    Returns:
+        CardResult: The stored card, FLAT - its fields sit at the top level, unlike
+        `register_model` which nests the card under `card`. ErrorResult on validation failure.
+    """
     for k, v in (
         ("model_id", model_id),
         ("checkpoint_path", checkpoint_path),
@@ -484,7 +530,19 @@ def register_finetuned(
 
 @mcp.tool(title="Update Model")
 def update_model(model_id: str, fields: dict) -> Union[CardResult, ErrorResult]:
-    """Patch fields on a model card (status, tags, domain, …)."""
+    """Patch fields on an existing model card.
+
+    `fields` are merged into the card, `updated_at` is stamped, and the result is re-validated
+    against the schema, so an invalid patch is rejected. Unknown keys are accepted and stored.
+
+    Args:
+        model_id: Id of the card to patch. Use `list_models` to discover valid ids.
+        fields: Keys to merge, such as `status`, `tags`, `domain` or `description`.
+
+    Returns:
+        CardResult: The updated card, FLAT (fields at the top level). ErrorResult if the model is
+        unknown or the patch fails validation.
+    """
     if not model_id.strip() or not fields:
         return ErrorResult(error="model_id and fields are required")
     try:
@@ -498,7 +556,19 @@ def update_model(model_id: str, fields: dict) -> Union[CardResult, ErrorResult]:
 def deprecate_model(
     model_id: str, reason: Optional[str] = None
 ) -> Union[CardResult, ErrorResult]:
-    """Retire a model card (status=deprecated); it stops appearing in active listings."""
+    """Retire a model card by setting `status=deprecated`.
+
+    A soft delete: the card stays in the catalog but drops out of the default active listings
+    (`list_models`, `find_models`). Reversible with `update_model(model_id, {"status": "active"})`.
+
+    Args:
+        model_id: Id of the card to retire. Use `list_models` to discover valid ids.
+        reason: Optional note, stored on the card as `deprecation_reason`.
+
+    Returns:
+        CardResult: The deprecated card, FLAT (fields at the top level). ErrorResult if the model
+        is unknown.
+    """
     if not model_id.strip():
         return ErrorResult(error="model_id is required")
     try:
@@ -514,7 +584,21 @@ def deprecate_model(
 def new_model_version(
     model_id: str, fields: dict, new_model_id: Optional[str] = None
 ) -> Union[CardResult, ErrorResult]:
-    """Create a successor version of a model; the predecessor is marked superseded + linked."""
+    """Create a successor version of a model card.
+
+    Copies the card, applies `fields`, bumps `version` (its leading integer + 1) and links the
+    pair: the successor records `supersedes`, the predecessor is marked `status=superseded` with
+    `superseded_by`. Prefer this over re-registering, which would overwrite the original.
+
+    Args:
+        model_id: Id of the card to supersede. Use `list_models` to discover valid ids.
+        fields: Keys to change on the successor, such as `context_length` or `params`.
+        new_model_id: Id for the successor. Defaults to `<model_id>_v<version>`.
+
+    Returns:
+        CardResult: The successor's card, FLAT (fields at the top level). ErrorResult if the model
+        is unknown.
+    """
     if not model_id.strip():
         return ErrorResult(error="model_id is required")
     try:
@@ -530,10 +614,21 @@ def new_model_version(
 
 @mcp.tool(title="Resolve Model")
 def resolve_model(model_id: str) -> Union[ResolveResult, ErrorResult]:
-    """Read-only PREFLIGHT: check whether a model card can be resolved (loaded) before you compose a
-    recipe. Confirms the card exists, has an importable sktime_class, and reports where its weights
-    come from (params.model_path / hf_repo / checkpoint, or none for classical models). Does NOT
-    download weights or fit."""
+    """Preflight a model card: check that it can actually be loaded.
+
+    Read-only. Confirms the card exists, that its `sktime_class` is importable, and reports where
+    the weights come from (`params.model_path`, `hf_repo` or a checkpoint; none for classical
+    models, which fit from scratch). Does NOT download weights or fit. Run it before composing a
+    recipe to fail fast on a broken card.
+
+    Args:
+        model_id: Id of the card to check. Use `list_models` to discover valid ids.
+
+    Returns:
+        ResolveResult: `resolvable` plus a human `reason`, and when resolvable the
+        `sktime_class`, `training_regime` and `weights_from`. ErrorResult if `model_id` is empty
+        or unknown.
+    """
     if not model_id.strip():
         return ErrorResult(error="model_id is required")
     card = model_store.get_model(_STORE, model_id)
