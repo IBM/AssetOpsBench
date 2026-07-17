@@ -1,7 +1,7 @@
 """Feature catalog store tests.
 
-These cover the CouchDB-backed store logic through the in-memory test double, so
-they do not require CouchDB.
+These cover the database-backed store logic through the in-memory test double, so
+they do not require a live database.
 """
 
 from __future__ import annotations

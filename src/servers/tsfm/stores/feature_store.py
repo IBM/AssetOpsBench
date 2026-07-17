@@ -25,7 +25,7 @@ COLLECTION_ENV_VAR = "FEATURE_CATALOG_DBNAME"
 
 
 def collection_name() -> str:
-    """Runtime CouchDB database name, defaulting to the loader's feature_catalog DB."""
+    """Runtime feature catalog database name, defaulting to feature_catalog."""
     return os.environ.get(COLLECTION_ENV_VAR, COLLECTION)
 
 

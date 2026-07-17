@@ -63,7 +63,7 @@ def list_features(
     kind: Optional[str] = None,
     status: Optional[str] = "active",
 ) -> Union[FeaturesResult, ErrorResult]:
-    """List feature catalog cards from the configured CouchDB database.
+    """List feature catalog cards from the configured database.
 
     Use this to browse candidate transform or extractor cards before choosing a
     feature for a workflow.
@@ -76,7 +76,7 @@ def list_features(
             an empty string to include deprecated and superseded cards.
 
     Returns:
-        FeaturesResult: Matching feature cards as stored in CouchDB. Each card
+        FeaturesResult: Matching feature cards as stored in the catalog. Each card
         includes fields such as `feature_id`, `kind`, `status`, `description`,
         and any card-specific metadata.
     """
@@ -152,11 +152,11 @@ def get_feature(feature_id: str) -> Union[CardResult, ErrorResult]:
     is needed, including executable transform code and validity metadata.
 
     Args:
-        feature_id: Exact feature id without the CouchDB `feature:` prefix, such
+        feature_id: Exact feature id without the database `feature:` prefix, such
             as `efe_time_robust_norm_v1`. Empty input returns ErrorResult.
 
     Returns:
-        CardResult: The stored feature card with CouchDB revision metadata
+        CardResult: The stored feature card with database revision metadata
         stripped. Returns ErrorResult when the id is blank, absent, or the
         backing database query fails.
     """
@@ -200,7 +200,7 @@ def register_feature(
     Returns:
         RegisterResult: Registration status, feature id, and the stored card.
         Returns ErrorResult for missing payload, schema errors, failed execution
-        validation, duplicate ids, or CouchDB write failures.
+        validation, duplicate ids, or database write failures.
     """
     if not feature:
         return ErrorResult(error="feature card is required")
@@ -228,7 +228,7 @@ def update_feature(feature_id: str, fields: dict) -> Union[CardResult, ErrorResu
     `new_feature_version()` when changing executable transform code.
 
     Args:
-        feature_id: Exact feature id without the CouchDB `feature:` prefix.
+        feature_id: Exact feature id without the database `feature:` prefix.
             Empty input returns ErrorResult.
         fields: Non-empty mapping of fields to merge into the stored card.
 
@@ -263,7 +263,7 @@ def deprecate_feature(
     removes it from default `active` list/search results.
 
     Args:
-        feature_id: Exact feature id without the CouchDB `feature:` prefix.
+        feature_id: Exact feature id without the database `feature:` prefix.
             Empty input returns ErrorResult.
         reason: Optional human-readable reason stored as `deprecation_reason`.
 
@@ -310,7 +310,7 @@ def new_feature_version(
     Returns:
         CardResult: The newly stored successor feature card. Returns ErrorResult
         for blank or unknown ids, extractor cards, validation failures,
-        duplicate successor ids, or CouchDB write failures.
+        duplicate successor ids, or database write failures.
     """
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
@@ -339,7 +339,7 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
     an empty ancestor and descendant list.
 
     Args:
-        feature_id: Exact feature id without the CouchDB `feature:` prefix.
+        feature_id: Exact feature id without the database `feature:` prefix.
             Empty input returns ErrorResult.
 
     Returns:

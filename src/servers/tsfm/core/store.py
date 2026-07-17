@@ -62,7 +62,7 @@ class Store:
 # --------------------------------------------------------------------------- #
 class MemoryStore(Store):
     """In-memory store — TEST DOUBLE ONLY (hermetic suite). Production never uses this; the
-    server runs on CouchStore (CouchDB). Selected only when TSFM_STORE=memory, which the test
+    server uses the configured database store. Selected only when TSFM_STORE=memory, which the test
     conftest sets."""
 
     def __init__(self):
@@ -98,7 +98,7 @@ class MemoryStore(Store):
 
 # --------------------------------------------------------------------------- #
 class CouchStore(Store):
-    """CouchDB backend — same wire format as the AssetOpsBench loader."""
+    """Database backend using the same wire format as the AssetOpsBench loader."""
 
     def __init__(self, url=None, auth=None):
         import requests  # lazy
