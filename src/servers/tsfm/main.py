@@ -63,13 +63,26 @@ logger = logging.getLogger("tsfm-mcp-server")
 mcp = FastMCP(
     "tsfm",
     instructions=(
-        "The TSFM model catalog. Model cards are catalog data in CouchDB, not tools. A card is a "
-        "POINTER to a model: it carries `sktime_class` + `params` (constructed via sktime) and/or "
-        "an `hf_repo` / `artifact_path` / `remote_endpoint` / `model_checkpoint`, never weights. "
-        "Browse with list_models / search_models / find_models, shortlist with "
-        "describe_candidates, read detail with describe_models. Call model_template for the card "
-        "shape, register_model / register_finetuned to add, resolve_model to preflight that a card "
-        "can be loaded, and update_model / deprecate_model / new_model_version for lifecycle."
+        "The TSFM server exposes time-series task metadata, evidence tools, and CouchDB-backed "
+        "model and feature catalogs. Catalog entries are data, not tools. A model card is a "
+        "pointer to a model: `sktime_class` + `params`, `hf_repo`, `artifact_path`, "
+        "`remote_endpoint`, or `model_checkpoint`; it never contains weights. The server reads "
+        "catalogs loaded by src/couchdb/init_data.py and does not seed them at runtime. "
+        "`MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` override the default CouchDB "
+        "collections. Start with `list_tasks` to understand the supported TSFM tasks and required "
+        "inputs. Evidence tools take dataset file pointers: use `data_quality` to clean a series, "
+        "`profile_series` for factual shape/statistical context, and `characterize_series` for "
+        "pattern evidence; these tools provide evidence only and do not choose a model or diagnose "
+        "a fault. For model selection, browse with `list_models` or `search_models`, filter with "
+        "`find_models`, get compact shortlists with `describe_candidates`, inspect ids with "
+        "`describe_models`, and call `resolve_model` before composing a workflow so broken "
+        "`sktime_class` pointers fail early. Use `hf_stats` only as a read-only popularity lookup. "
+        "For authoring, call `model_template` before `register_model`; duplicates are rejected, "
+        "fine-tuned cards must reference an existing base with `sktime_class`, and lifecycle "
+        "changes should use `update_model`, `deprecate_model`, or `new_model_version`. Feature "
+        "tools manage transform/extractor cards: browse/search/get first, then register or version "
+        "transform cards only when changing executable feature code. Errors are returned as "
+        "`ErrorResult` with an `error` field."
     ),
 )
 
