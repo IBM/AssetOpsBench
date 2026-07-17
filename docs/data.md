@@ -21,7 +21,7 @@ docker compose -f src/couchdb/docker-compose.yaml up -d
 
 # 2. Verify (Fauxton UI: http://localhost:5984/_utils — admin / password)
 curl -s -u admin:password http://localhost:5984/_all_dbs
-# → ["workorder","iot","vibration","failurecode", ...]
+# → ["workorder","iot","vibration","failure_code", ...]
 
 curl -s -u admin:password http://localhost:5984/workorder/wo:MAIN:1000045
 ```
@@ -134,7 +134,7 @@ init_data()                      # back to default
     "workorder":   "shared/work_order/workorders.csv",
     "iot":         ["shared/iot/chiller_6.json", "shared/iot/metro_pump_1.json"],
     "vibration":   "shared/iot/motor_01.json",
-    "failurecode": "shared/failure_code/failure_code_sample.csv"
+    "failure_code": "shared/failure_code/failure_code_sample.csv"
 }
 ```
 
@@ -155,7 +155,7 @@ Edit this file and re-run `init_data.py` — that's the whole change.
 ### 2. Change *how* a collection is parsed — `collections.json`
 
 ```json
-"failurecode": {
+"failure_code": {
     "format": "csv",
     "primary_key": ["code"],
     "id_prefix": "fc",
@@ -270,7 +270,7 @@ folder's parent); data unique to a private scenario goes in that scenario's fold
 ## Gotchas
 
 - **Database name = manifest key.** Consumers must match: the WO MCP server reads
-  `WO_DBNAME=workorder`.
+  `WO_DBNAME=workorder` and `FAILURE_CODE_DBNAME=failure_code`.
 - **Shared paths resolve via the scenario folder's parent.** `shared/...` works because
   `shared/` sits beside the scenario folders under `scenarios_data/`. If you relocate the
   corpus, update the manifests (or use an explicit relative path).

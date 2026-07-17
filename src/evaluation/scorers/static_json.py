@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import json
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -38,25 +39,45 @@ class KeyComparison:
     exact: bool
     match_type: str
     similarity: float
+    accepted: bool
+    numeric: bool = False
+    range_match: bool | None = None
+    delta_1_match: bool | None = None
 
 
 @dataclass
 class StaticJsonScore:
     """Structured score for one gold/model answer pair."""
 
+    partial_match_accuracy: float
     partial_exact_match_accuracy: float
     strict_exact_match_accuracy: float
     partial_similarity_score: float
+    partial_numeric_match_accuracy: float
+    range_match_accuracy: float
+    delta_1_match_accuracy: float
     precision: float
     recall: float
     f1: float
     total_gold_keys: int
     total_model_keys: int
     matched_keys: int
+    accepted_value_matches: int
     exact_value_matches: int
+    numeric_gold_keys: int
+    numeric_value_matches: int
+    range_eligible_keys: int
+    range_value_matches: int
+    delta_1_eligible_keys: int
+    delta_1_value_matches: int
     missing_keys: list[str] = field(default_factory=list)
     extra_keys: list[str] = field(default_factory=list)
     details: list[KeyComparison] = field(default_factory=list)
+    mode_key_match: float | None = None
+    mode_exactly_one_key: float | None = None
+    mode_required_terms: list[str] = field(default_factory=list)
+    mode_matched_terms: list[str] = field(default_factory=list)
+    mode_term_coverage: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dictionary."""
@@ -73,12 +94,12 @@ def extract_answer_text(text: Any) -> str:
     content = text.strip()
 
     patterns = [
-        r"<Answer>\s*:?\s*(.*)$",
-        r"Final Answer\s*:?\s*(.*)$",
-        r"Answer\s*:?\s*(.*)$",
-        r"Output\s*:?\s*(.*)$",
-        r"Result\s*:?\s*(.*)$",
-        r"Response\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*<Answer>\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Final Answer\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Answer\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Output\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Result\s*:?\s*(.*)$",
+        r"(?:^|\n)\s*Response\s*:?\s*(.*)$",
     ]
 
     for pattern in patterns:
@@ -166,7 +187,10 @@ def _extract_count_from_text(content: str) -> int | float | None:
     if re.fullmatch(r"-?\d+\.\d+", stripped):
         return float(stripped)
 
-    numbers = re.findall(r"-?\d+(?:\.\d+)?", stripped)
+    numbers = re.findall(
+        r"(?<![A-Za-z0-9_])-?\d+(?:\.\d+)?(?![A-Za-z0-9_])",
+        stripped,
+    )
     if len(numbers) == 1:
         number = numbers[0]
         return float(number) if "." in number else int(number)
@@ -181,10 +205,6 @@ def parse_structured_answer(value: Any) -> Any:
 
     content = extract_answer_text(value)
     content = _strip_markdown_fence(content)
-
-    count = _extract_count_from_text(content)
-    if count is not None:
-        return count
 
     content = _extract_balanced_structure(content)
 
@@ -289,6 +309,414 @@ def similarity_score(gold_value: str, model_value: str) -> float:
     return score
 
 
+_MODE_KEYS = frozenset({"response", "clarification", "abstain"})
+_IMPORTANT_MODE_TERMS = (
+    "air conditioner",
+    "cannot determine",
+    "date",
+    "dataset",
+    "exhaust leak",
+    "handrail",
+    "lately",
+    "main unit",
+    "pressure vessel",
+    "pump",
+    "steering",
+    "tag",
+    "time",
+    "unreliable",
+    "usual suspect",
+)
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "because",
+        "by",
+        "do",
+        "does",
+        "for",
+        "has",
+        "have",
+        "is",
+        "it",
+        "of",
+        "or",
+        "the",
+        "this",
+        "to",
+        "what",
+        "which",
+        "why",
+        "with",
+        "you",
+    }
+)
+
+
+def _normalize_text_for_terms(value: Any) -> str:
+    if value is None:
+        text = ""
+    elif isinstance(value, (dict, list, tuple)):
+        text = json.dumps(value, sort_keys=True)
+    else:
+        text = str(value).strip().lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _strip_leading_article(term: str) -> str:
+    parts = term.split()
+    if parts and parts[0] in {"a", "an", "the"}:
+        return " ".join(parts[1:])
+    return term
+
+
+def _dedupe_terms(terms: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for term in terms:
+        normalized = _normalize_text_for_terms(term)
+        normalized = _strip_leading_article(normalized)
+        if not normalized or normalized in _STOPWORDS or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
+def _extract_required_mode_terms(value: Any) -> list[str]:
+    """Extract lightweight required terms for mode-selection scenarios.
+
+    The mode scenarios are not exact-string tasks: answers can be phrased
+    differently as long as they choose the correct mode and mention the
+    important ambiguity/evidence. We therefore extract only high-signal terms:
+    quoted phrases, asset/fault identifiers, yes/no stance, and a small
+    domain-term allowlist.
+    """
+    text = str(value)
+    terms: list[str] = []
+
+    quoted = re.findall(r"""["'“”‘’]([^"'“”‘’]{2,80})["'“”‘’]""", text)
+    quoted = [
+        phrase
+        for phrase in quoted
+        if not re.fullmatch(r"[A-Z]{2,4}", phrase.strip())
+    ]
+    terms.extend(quoted)
+
+    identifiers = re.findall(r"\b[A-Z]{2,}[A-Z0-9-]*\d+[A-Z0-9-]*\b", text)
+    terms.extend(identifiers)
+
+    normalized = _normalize_text_for_terms(text)
+    for term in _IMPORTANT_MODE_TERMS:
+        if f" {term} " in f" {normalized} ":
+            terms.append(term)
+
+    if normalized.startswith("no "):
+        terms.append("no")
+    elif normalized.startswith("yes "):
+        terms.append("yes")
+
+    return _dedupe_terms(terms)
+
+
+def _is_mode_gold_answer(value: Any) -> bool:
+    parsed = parse_structured_answer(value)
+    if not isinstance(parsed, dict) or len(parsed) != 1:
+        return False
+    key = str(next(iter(parsed))).strip().lower()
+    return key in _MODE_KEYS
+
+
+def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
+    gold = parse_structured_answer(gold_answer)
+    model = parse_structured_answer(model_answer)
+
+    gold_key = str(next(iter(gold))).strip().lower()
+    gold_value = next(iter(gold.values()))
+
+    model_is_dict = isinstance(model, dict)
+    model_keys = [str(key).strip().lower() for key in model.keys()] if model_is_dict else []
+    model_exactly_one_key = len(model_keys) == 1
+    model_key = model_keys[0] if model_exactly_one_key else "INVALID"
+    model_value = next(iter(model.values())) if model_is_dict and model_exactly_one_key else ""
+
+    key_match = model_exactly_one_key and model_key == gold_key
+    required_terms = _extract_required_mode_terms(gold_value)
+    model_text = _normalize_text_for_terms(model_value)
+    matched_terms = [
+        term for term in required_terms if f" {term} " in f" {model_text} "
+    ]
+    term_coverage = (
+        len(matched_terms) / len(required_terms) if required_terms else 1.0
+    )
+
+    details = [
+        KeyComparison(
+            key="answer.mode",
+            gold_value=gold_key,
+            model_value=model_key,
+            exact=key_match,
+            match_type="exact" if key_match else "mode_mismatch",
+            similarity=1.0 if key_match else similarity_score(gold_key, model_key),
+            accepted=key_match,
+        )
+    ]
+
+    for term in required_terms:
+        matched = term in matched_terms
+        details.append(
+            KeyComparison(
+                key=f"answer.required_term.{term}",
+                gold_value=term,
+                model_value=term if matched else "MISSING",
+                exact=matched,
+                match_type="term_present" if matched else "term_missing",
+                similarity=1.0 if matched else 0.0,
+                accepted=matched,
+            )
+        )
+
+    missing_keys = [] if key_match else [f"answer.{gold_key}"]
+    extra_keys = []
+    if model_is_dict:
+        extra_keys = [
+            f"answer.{key}"
+            for key in model_keys
+            if key not in {gold_key} or not model_exactly_one_key
+        ]
+    else:
+        extra_keys = ["answer"] if model is not None else []
+
+    total_gold_keys = 1 + len(required_terms)
+    total_model_keys = 1 + len(required_terms) + len(extra_keys)
+    exact_matches = (1 if key_match else 0) + len(matched_terms)
+
+    precision = exact_matches / total_model_keys if total_model_keys else 0.0
+    recall = exact_matches / total_gold_keys if total_gold_keys else 0.0
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if precision + recall > 0
+        else 0.0
+    )
+    strict_exact = 1.0 if key_match and term_coverage == 1.0 and not extra_keys else 0.0
+
+    return StaticJsonScore(
+        partial_match_accuracy=recall,
+        partial_exact_match_accuracy=recall,
+        strict_exact_match_accuracy=strict_exact,
+        partial_similarity_score=sum(item.similarity for item in details)
+        / total_gold_keys,
+        partial_numeric_match_accuracy=0.0,
+        range_match_accuracy=0.0,
+        delta_1_match_accuracy=0.0,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        total_gold_keys=total_gold_keys,
+        total_model_keys=total_model_keys,
+        matched_keys=1 if key_match else 0,
+        accepted_value_matches=exact_matches,
+        exact_value_matches=exact_matches,
+        numeric_gold_keys=0,
+        numeric_value_matches=0,
+        range_eligible_keys=0,
+        range_value_matches=0,
+        delta_1_eligible_keys=0,
+        delta_1_value_matches=0,
+        missing_keys=missing_keys,
+        extra_keys=extra_keys,
+        details=details,
+        mode_key_match=1.0 if key_match else 0.0,
+        mode_exactly_one_key=1.0 if model_exactly_one_key else 0.0,
+        mode_required_terms=required_terms,
+        mode_matched_terms=matched_terms,
+        mode_term_coverage=term_coverage,
+    )
+
+
+_NUMBER_RE = r"[+-]?\d+(?:\.\d+)?"
+_RANGE_FIELD_PAIRS = (
+    ("start_point", "end_point"),
+    ("start", "end"),
+    ("start_time", "end_time"),
+    ("start_timestamp", "end_timestamp"),
+    ("min", "max"),
+    ("minimum", "maximum"),
+    ("lower", "upper"),
+    ("lower_bound", "upper_bound"),
+    ("range_start", "range_end"),
+)
+
+
+@dataclass(frozen=True)
+class _ValueComparison:
+    exact: bool
+    accepted: bool
+    match_type: str
+    similarity: float
+    numeric: bool
+    numeric_match: bool
+    range_eligible: bool
+    range_match: bool | None
+    delta_1_eligible: bool
+    delta_1_match: bool | None
+
+
+def _as_float(value: str) -> float | None:
+    """Parse a normalized scalar value as a finite float when possible."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isfinite(number):
+        return number
+    return None
+
+
+def _normalize_range(left: float, right: float) -> tuple[float, float]:
+    return (left, right) if left <= right else (right, left)
+
+
+def _extract_numeric_range(value: str) -> tuple[float, float] | None:
+    """Parse simple range strings such as ``240-511`` or ``between 3 and 7``."""
+    value = value.strip().lower()
+
+    patterns = [
+        rf"^({_NUMBER_RE})\s*(?:\.\.|-|to|through|,|–|—)\s*({_NUMBER_RE})$",
+        rf"^between\s+({_NUMBER_RE})\s+and\s+({_NUMBER_RE})$",
+        rf"^(?:min|minimum|lower|start)\s*[:=]\s*({_NUMBER_RE}).*"
+        rf"(?:max|maximum|upper|end)\s*[:=]\s*({_NUMBER_RE})$",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, value)
+        if not match:
+            continue
+        left = _as_float(match.group(1))
+        right = _as_float(match.group(2))
+        if left is not None and right is not None:
+            return _normalize_range(left, right)
+
+    return None
+
+
+def _split_flat_key(key: str) -> tuple[str, str] | None:
+    if "." not in key:
+        return None
+    parent, field_name = key.rsplit(".", 1)
+    return parent, field_name
+
+
+def _build_context_ranges(gold_flat: dict[str, str]) -> dict[str, tuple[float, float]]:
+    """Infer sibling numeric ranges from flattened gold fields.
+
+    For anomaly detection outputs, this maps both ``answer.start_point`` and
+    ``answer.end_point`` to the interval bounded by those gold values.
+    """
+    by_parent: dict[str, dict[str, str]] = {}
+    for key in gold_flat:
+        split = _split_flat_key(key)
+        if split is None:
+            continue
+        parent, field_name = split
+        by_parent.setdefault(parent, {})[field_name] = key
+
+    ranges: dict[str, tuple[float, float]] = {}
+    for fields in by_parent.values():
+        for lower_field, upper_field in _RANGE_FIELD_PAIRS:
+            lower_key = fields.get(lower_field)
+            upper_key = fields.get(upper_field)
+            if lower_key is None or upper_key is None:
+                continue
+
+            lower = _as_float(gold_flat[lower_key])
+            upper = _as_float(gold_flat[upper_key])
+            if lower is None or upper is None:
+                continue
+
+            value_range = _normalize_range(lower, upper)
+            ranges[lower_key] = value_range
+            ranges[upper_key] = value_range
+
+    return ranges
+
+
+def _compare_value(
+    key: str,
+    gold_value: str,
+    model_value: str,
+    context_ranges: dict[str, tuple[float, float]],
+    *,
+    similarity_threshold: float,
+) -> _ValueComparison:
+    """Compare one flattened value with exact, range, and delta-1 checks."""
+    base_similarity = similarity_score(gold_value, model_value)
+    exact = gold_value == model_value
+
+    gold_num = _as_float(gold_value)
+    model_num = _as_float(model_value)
+    gold_range = _extract_numeric_range(gold_value)
+    context_range = context_ranges.get(key)
+    value_range = context_range or gold_range
+
+    numeric = (
+        gold_num is not None
+        or gold_range is not None
+        or context_range is not None
+    )
+
+    delta_1_eligible = gold_num is not None and model_num is not None
+    delta_1_match = (
+        abs(model_num - gold_num) <= 1
+        if delta_1_eligible and model_num is not None and gold_num is not None
+        else None
+    )
+
+    range_eligible = value_range is not None and model_num is not None
+    range_match = (
+        value_range[0] <= model_num <= value_range[1]
+        if range_eligible and model_num is not None and value_range is not None
+        else None
+    )
+
+    numeric_match = bool(exact or range_match or delta_1_match) if numeric else False
+    accepted = bool(exact or numeric_match)
+
+    if exact:
+        match_type = "exact"
+        similarity = 1.0
+    elif delta_1_match:
+        match_type = "partial_delta_1"
+        similarity = 1.0
+    elif range_match:
+        match_type = "partial_range"
+        similarity = 1.0
+    elif base_similarity > similarity_threshold:
+        match_type = f"partial ({base_similarity:.2f})"
+        similarity = base_similarity
+    else:
+        match_type = "mismatch"
+        similarity = base_similarity
+
+    return _ValueComparison(
+        exact=exact,
+        accepted=accepted,
+        match_type=match_type,
+        similarity=similarity,
+        numeric=numeric,
+        numeric_match=numeric_match,
+        range_eligible=range_eligible,
+        range_match=range_match,
+        delta_1_eligible=delta_1_eligible,
+        delta_1_match=delta_1_match,
+    )
+
+
 def evaluate_static_json(
     gold_answer: Any,
     model_answer: Any,
@@ -296,8 +724,12 @@ def evaluate_static_json(
     similarity_threshold: float = 0.0,
 ) -> StaticJsonScore:
     """Evaluate one structured gold answer against one model answer."""
+    if _is_mode_gold_answer(gold_answer):
+        return _evaluate_mode_json(gold_answer, model_answer)
+
     gold_flat = flatten_answer(gold_answer)
     model_flat = flatten_answer(model_answer)
+    context_ranges = _build_context_ranges(gold_flat)
 
     gold_keys = set(gold_flat)
     model_keys = set(model_flat)
@@ -305,32 +737,61 @@ def evaluate_static_json(
 
     details: list[KeyComparison] = []
     exact_matches = 0
+    accepted_matches = 0
+    numeric_gold_keys = 0
+    numeric_matches = 0
+    range_eligible_keys = 0
+    range_matches = 0
+    delta_1_eligible_keys = 0
+    delta_1_matches = 0
     total_similarity = 0.0
 
     for key in sorted(common_keys):
         gold_value = gold_flat[key]
         model_value = model_flat[key]
 
-        score = similarity_score(gold_value, model_value)
-        total_similarity += score
+        comparison = _compare_value(
+            key,
+            gold_value,
+            model_value,
+            context_ranges,
+            similarity_threshold=similarity_threshold,
+        )
+        total_similarity += comparison.similarity
 
-        exact = score == 1.0
-        if exact:
+        if comparison.exact:
             exact_matches += 1
-            match_type = "exact"
-        elif score > similarity_threshold:
-            match_type = f"partial ({score:.2f})"
-        else:
-            match_type = "mismatch"
+
+        if comparison.accepted:
+            accepted_matches += 1
+
+        if comparison.numeric:
+            numeric_gold_keys += 1
+            if comparison.numeric_match:
+                numeric_matches += 1
+
+        if comparison.range_eligible:
+            range_eligible_keys += 1
+            if comparison.range_match:
+                range_matches += 1
+
+        if comparison.delta_1_eligible:
+            delta_1_eligible_keys += 1
+            if comparison.delta_1_match:
+                delta_1_matches += 1
 
         details.append(
             KeyComparison(
                 key=key,
                 gold_value=gold_value,
                 model_value=model_value,
-                exact=exact,
-                match_type=match_type,
-                similarity=score,
+                exact=comparison.exact,
+                match_type=comparison.match_type,
+                similarity=comparison.similarity,
+                accepted=comparison.accepted,
+                numeric=comparison.numeric,
+                range_match=comparison.range_match,
+                delta_1_match=comparison.delta_1_match,
             )
         )
 
@@ -346,6 +807,7 @@ def evaluate_static_json(
                 exact=False,
                 match_type="missing",
                 similarity=0.0,
+                accepted=False,
             )
         )
 
@@ -358,6 +820,7 @@ def evaluate_static_json(
                 exact=False,
                 match_type="extra",
                 similarity=0.0,
+                accepted=False,
             )
         )
 
@@ -372,21 +835,42 @@ def evaluate_static_json(
         else 0.0
     )
 
+    partial_match = accepted_matches / total_gold_keys if total_gold_keys else 0.0
     partial_exact = exact_matches / total_gold_keys if total_gold_keys else 0.0
     partial_similarity = total_similarity / total_gold_keys if total_gold_keys else 0.0
+    partial_numeric = (
+        numeric_matches / numeric_gold_keys if numeric_gold_keys else 0.0
+    )
+    range_accuracy = (
+        range_matches / range_eligible_keys if range_eligible_keys else 0.0
+    )
+    delta_1_accuracy = (
+        delta_1_matches / delta_1_eligible_keys if delta_1_eligible_keys else 0.0
+    )
     strict_exact = 1.0 if gold_flat == model_flat else 0.0
 
     return StaticJsonScore(
+        partial_match_accuracy=partial_match,
         partial_exact_match_accuracy=partial_exact,
         strict_exact_match_accuracy=strict_exact,
         partial_similarity_score=partial_similarity,
+        partial_numeric_match_accuracy=partial_numeric,
+        range_match_accuracy=range_accuracy,
+        delta_1_match_accuracy=delta_1_accuracy,
         precision=precision,
         recall=recall,
         f1=f1,
         total_gold_keys=total_gold_keys,
         total_model_keys=total_model_keys,
         matched_keys=len(common_keys),
+        accepted_value_matches=accepted_matches,
         exact_value_matches=exact_matches,
+        numeric_gold_keys=numeric_gold_keys,
+        numeric_value_matches=numeric_matches,
+        range_eligible_keys=range_eligible_keys,
+        range_value_matches=range_matches,
+        delta_1_eligible_keys=delta_1_eligible_keys,
+        delta_1_value_matches=delta_1_matches,
         missing_keys=missing_keys,
         extra_keys=extra_keys,
         details=details,

@@ -11,6 +11,19 @@ def test_parse_json_object_from_noisy_markdown_answer():
     assert parse_structured_answer(raw) == {"energy": 3, "material": 12}
 
 
+def test_parse_fenced_json_response_key_from_noisy_answer():
+    raw = (
+        "Based on my analysis, here are the findings.\n\n"
+        "```json\n"
+        '{"response": "PMP42144 has 4 recurring air conditioner issues."}\n'
+        "```"
+    )
+
+    assert parse_structured_answer(raw) == {
+        "response": "PMP42144 has 4 recurring air conditioner issues."
+    }
+
+
 def test_parse_python_style_dict():
     raw = "{'energy': 14, 'material': 48}"
 
@@ -32,6 +45,10 @@ def test_parse_count_only_answer():
 
 def test_parse_noisy_count_answer():
     assert parse_structured_answer("The answer is 34.") == 34
+
+
+def test_parse_fault_code_as_categorical_string():
+    assert parse_structured_answer("FC101") == "FC101"
 
 
 def test_flatten_nested_json():
@@ -101,6 +118,180 @@ def test_numeric_partial_similarity():
 
     assert score.strict_exact_match_accuracy == 0.0
     assert score.partial_similarity_score == 0.7
+
+
+def test_anomaly_segment_scores_exact_categorical_and_numeric_delta():
+    gold = {
+        "condition": "faulty",
+        "start_point": "240",
+        "end_point": "511",
+        "fault_type": "FC101",
+    }
+    model = {
+        "condition": "faulty",
+        "start_point": "241",
+        "end_point": "512",
+        "fault_type": "FC101",
+    }
+
+    score = evaluate_static_json(gold, model)
+    details = {item.key: item for item in score.details}
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.partial_exact_match_accuracy == 0.5
+    assert score.partial_match_accuracy == 1.0
+    assert score.partial_numeric_match_accuracy == 1.0
+    assert score.range_match_accuracy == 0.5
+    assert score.delta_1_match_accuracy == 1.0
+    assert details["answer.condition"].match_type == "exact"
+    assert details["answer.fault_type"].match_type == "exact"
+    assert details["answer.start_point"].match_type == "partial_delta_1"
+    assert details["answer.start_point"].range_match is True
+    assert details["answer.start_point"].delta_1_match is True
+    assert details["answer.end_point"].match_type == "partial_delta_1"
+    assert details["answer.end_point"].range_match is False
+    assert details["answer.end_point"].delta_1_match is True
+
+
+def test_anomaly_segment_scores_numeric_range_match():
+    gold = {
+        "condition": "faulty",
+        "start_point": "240",
+        "end_point": "511",
+        "fault_type": "FC101",
+    }
+    model = {
+        "condition": "faulty",
+        "start_point": "300",
+        "end_point": "500",
+        "fault_type": "FC101",
+    }
+
+    score = evaluate_static_json(gold, model)
+    details = {item.key: item for item in score.details}
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.partial_exact_match_accuracy == 0.5
+    assert score.partial_match_accuracy == 1.0
+    assert score.range_match_accuracy == 1.0
+    assert score.delta_1_match_accuracy == 0.0
+    assert details["answer.start_point"].match_type == "partial_range"
+    assert details["answer.end_point"].match_type == "partial_range"
+
+
+def test_count_only_delta_one_is_numeric_partial_match():
+    score = evaluate_static_json("34", "35")
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.partial_exact_match_accuracy == 0.0
+    assert score.partial_match_accuracy == 1.0
+    assert score.partial_numeric_match_accuracy == 1.0
+    assert score.delta_1_match_accuracy == 1.0
+    assert score.details[0].match_type == "partial_delta_1"
+
+
+def test_numeric_answer_can_match_explicit_ground_truth_range():
+    score = evaluate_static_json({"count": "10-12"}, {"count": 11})
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.partial_match_accuracy == 1.0
+    assert score.partial_numeric_match_accuracy == 1.0
+    assert score.range_match_accuracy == 1.0
+    assert score.details[0].match_type == "partial_range"
+
+
+def test_mode_clarification_accepts_equivalent_question_with_required_phrase():
+    score = evaluate_static_json(
+        {"clarification": "Which asset do you mean by 'the main unit'?"},
+        {"clarification": "Can you clarify which asset you mean by the main unit?"},
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.mode_key_match == 1.0
+    assert score.mode_exactly_one_key == 1.0
+    assert score.mode_required_terms == ["main unit"]
+    assert score.mode_matched_terms == ["main unit"]
+    assert score.mode_term_coverage == 1.0
+
+
+def test_mode_clarification_fails_when_mode_key_is_wrong():
+    score = evaluate_static_json(
+        {"clarification": "Which asset do you mean by 'the usual suspect'?"},
+        {"response": "The usual suspect is pump PMP42144."},
+    )
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.mode_key_match == 0.0
+    assert score.missing_keys == ["answer.clarification"]
+    assert score.extra_keys == ["answer.response"]
+
+
+def test_mode_abstain_requires_lately_dataset_date_time_terms():
+    score = evaluate_static_json(
+        {
+            "abstain": (
+                "Cannot determine what has been giving trouble 'lately' because "
+                "the dataset does not contain date or time information."
+            )
+        },
+        {
+            "abstain": (
+                "Cannot determine the lately-troublesome asset because the "
+                "dataset has no date or time information."
+            )
+        },
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.mode_required_terms == [
+        "lately",
+        "cannot determine",
+        "date",
+        "dataset",
+        "time",
+    ]
+    assert score.mode_term_coverage == 1.0
+
+
+def test_mode_response_checks_asset_id_and_domain_terms():
+    score = evaluate_static_json(
+        {
+            "response": (
+                "No - the 'PMP' tag is unreliable. Tag PMP42144's work orders "
+                "describe an air conditioner, steering/stick cylinders, a "
+                "cracked handrail, tyres, a pressure vessel and an exhaust leak, "
+                "none of which is pump work, so the tag does not indicate a pump."
+            )
+        },
+        {
+            "response": (
+                "No. PMP42144 should not be treated as a pump; the tag is "
+                "unreliable because the history points to air conditioner, "
+                "steering, handrail, pressure vessel, and exhaust leak work."
+            )
+        },
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert "pmp42144" in score.mode_required_terms
+    assert "pump" in score.mode_required_terms
+    assert "unreliable" in score.mode_required_terms
+    assert score.mode_term_coverage == 1.0
+
+
+def test_mode_requires_exactly_one_top_level_key():
+    score = evaluate_static_json(
+        {"clarification": "Which asset do you mean by 'the main unit'?"},
+        {
+            "clarification": "Which asset do you mean by the main unit?",
+            "response": "I can also answer once you clarify.",
+        },
+    )
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.mode_key_match == 0.0
+    assert score.mode_exactly_one_key == 0.0
+    assert score.extra_keys == ["answer.clarification", "answer.response"]
 
 
 def test_count_only_exact_match():

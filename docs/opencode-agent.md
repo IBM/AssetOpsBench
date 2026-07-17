@@ -103,7 +103,7 @@ uv run opencode-agent --show-trajectory \
 ```
 
 In the `--show-trajectory` output, look for domain tool calls such as
-`iot_sites`, `iot_registry_assets`, or `wo_list_workorders`. That confirms
+`iot_sites`, `iot_asset_ids`, `iot_assets`, or `wo_list_workorders`. That confirms
 OpenCode discovered and called the AssetOpsBench MCP tools.
 
 > **Quiet runs.** `opencode-agent` runs OpenCode as a subprocess. During long
@@ -164,9 +164,11 @@ For scenario `401`, this creates a workspace such as:
 traces/opencode_workspaces/opencode_agent_401
 ```
 
-OpenCode is instructed to use the current working directory as the run workspace
-when file or bash access is enabled. It should write scripts, temporary files,
-intermediate data, and final artifacts there.
+Each scenario run starts with an empty per-run workspace directory. The
+benchmark loader fills CouchDB from the scenario repository, but the OpenCode
+process itself does not get the scenario's raw `shared/` files staged into the
+workspace. This keeps the CLI run focused on MCP/CouchDB access instead of
+reading the source files directly.
 
 > **Safety note.** `--opencode-allow-bash` is not a hard OS-level sandbox. A
 > shell or Python process can still attempt to access files outside the workspace.
@@ -198,6 +200,18 @@ litellm_proxy/azure/gpt-5.4 -> litellm-proxy/azure/gpt-5.4
 The custom provider route is important because OpenCode's built-in `openai/*`
 provider validates model names against its own model registry. Router-hosted
 models such as `MiniMax-M3` must be registered explicitly.
+
+### FMSR tool model
+
+FMSR tools take `asset_class`. `--model-id` controls OpenCode; LLM-backed FMSR
+tools use `FMSR_MODEL_ID`.
+
+```bash
+MODEL_ID=tokenrouter/MiniMax-M3
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
+  "Use generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor']."
+```
 
 ---
 
@@ -339,7 +353,7 @@ Scenario-suite OpenCode flags:
 
 | Flag | Description |
 | ---- | ----------- |
-| `--opencode-workspace-root PATH` | Root directory for per-run OpenCode workspaces. |
+| `--opencode-workspace-root PATH` | Root directory for empty per-run OpenCode workspaces. |
 | `--opencode-allow-files` | Pass `--allow-files` to `opencode-agent`. |
 | `--opencode-allow-bash` | Pass `--allow-bash` to `opencode-agent`. |
 | `--opencode-allow-edit` | Pass `--allow-edit` to `opencode-agent`. |
@@ -383,7 +397,31 @@ uv run opencode-agent --run-id opencode-smoke --scenario-id smoke \
   --model-id tokenrouter/MiniMax-M3 \
   "What sites are available?"
 
-# 5. benchmark-suite dry run
+# 5. FMSR get_failure_modes smoke test
+uv run opencode-agent --show-trajectory \
+  --model-id tokenrouter/MiniMax-M3 \
+  "Use the FMSR get_failure_modes tool for asset_class pump. Return only the failure_modes list."
+
+# 6. FMSR generate_failure_modes smoke test
+MODEL_ID=tokenrouter/MiniMax-M3
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --show-trajectory \
+  --model-id "$MODEL_ID" \
+  "Use generate_failure_modes for asset_class pump with max_modes 3. Return known, generated, and message."
+
+# 7. FMSR add_failure_modes smoke test
+uv run opencode-agent --show-trajectory \
+  --model-id tokenrouter/MiniMax-M3 \
+  "Use add_failure_modes for asset_class pump with failure_modes ['bearing wear'], exhaustive false, and source 'manual smoke test'. Return added, total, source, and message."
+
+# 8. FMSR mapping smoke test
+MODEL_ID=tokenrouter/MiniMax-M3
+FMSR_MODEL_ID="$MODEL_ID" \
+uv run opencode-agent --show-trajectory \
+  --model-id "$MODEL_ID" \
+  "Use generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor', 'Vibration sensor']."
+
+# 9. benchmark-suite dry run
 uv run python -m benchmark.scenario_suite_runner \
   --scenario-ids benchmarks/scenario_suite/scenarios.txt \
   --scenario-root /path/to/scenarios_data \
@@ -391,7 +429,7 @@ uv run python -m benchmark.scenario_suite_runner \
   --model-id tokenrouter/MiniMax-M3 \
   --dry-run
 
-# 6. benchmark-suite CLI workspace dry run
+# 10. benchmark-suite CLI workspace dry run
 uv run python -m benchmark.scenario_suite_runner \
   --scenario-ids benchmarks/scenario_suite/scenarios.txt \
   --scenario-root /path/to/scenarios_data \

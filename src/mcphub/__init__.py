@@ -11,8 +11,8 @@ dependency on any external ``tooluniverse`` package.
     tu = ToolUniverse()                                   # 1. init
     tu.load_tools()                                       # 2. load (connect + discover)
     tu.run({                                              # 3. run
-        "name": "iot.sensors",
-        "arguments": {"site_name": "MAIN", "asset_id": "Chiller 6"},
+        "name": "iot.asset_ids",
+        "arguments": {"site_name": "MAIN"},
     })
 
 Tools are namespaced ``<server>.<tool>``; a bare tool name also works when it is
@@ -202,8 +202,8 @@ class ToolUniverse:
     def run(self, query, arguments: Optional[dict] = None) -> Any:
         """Execute a tool or workflow.
 
-        ToolUniverse form:  run({"name": "iot.sensors", "arguments": {...}})
-        Shorthand:          run("iot.sensors", {...})
+        ToolUniverse form:  run({"name": "iot.asset_ids", "arguments": {...}})
+        Shorthand:          run("iot.asset_ids", {...})
         """
         if isinstance(query, dict):
             name = query["name"]

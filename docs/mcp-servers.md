@@ -4,46 +4,45 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 
 ## Contents
 
-- [iot — IoT Sensor Data](#iot--iot-sensor-data)
+- [iot — IoT Asset Registry](#iot--iot-asset-registry)
 - [utilities — Utilities](#utilities--utilities)
 - [fmsr — Failure Mode and Sensor Relations](#fmsr--failure-mode-and-sensor-relations)
 - [wo — Work Order](#wo--work-order)
 - [tsfm — Time Series Foundation Model](#tsfm--time-series-foundation-model)
 - [vibration — Vibration Diagnostics](#vibration--vibration-diagnostics)
 
-## iot — IoT Sensor Data
+## iot — IoT Asset Registry and Telemetry Records
 
-The IoT server reads from **two** databases: telemetry readings (`IOT_DBNAME`, default `iot`) and an
-asset **registry** (`ASSET_DBNAME`, default `asset`, loaded from `asset_profile_sample.json`). The
-two answer different questions: `assets()`/`sensors()` reflect TELEMETRY — what actually streams (the
-**measured** set); `get_asset()`/`asset_sensors()`/`registry_assets()` reflect the REGISTRY — the
-asset nameplate and the **installed** sensor inventory (by name). Comparing `asset_sensors()` against
-`sensors()` surfaces sensors that are installed but not streaming. The registry also reconciles ids
-across systems (Maximo `assetnum`, telemetry `iot_asset_id`, work-order `wo_assetnum`), so an asset
-can be looked up by any of its ids.
+Read-only tools for browsing the asset registry and querying IoT telemetry.
 
 **Path:** `src/servers/iot/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `IOT_DBNAME`, `ASSET_DBNAME`)
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `ASSET_DBNAME`, `IOT_DBNAME`)
+**Sample assets:** `Chiller 6`, `mp_1`, and `hyd_1` from `asset_profile_sample.json`
 
-**Sample assets shipped in the `iot` database** (loaded by `src/couchdb/couchdb_setup.sh`):
+### Registry and discovery tools
 
-| `asset_id`  | Asset class      | Source file                                       |
-| ----------- | ---------------- | ------------------------------------------------- |
-| `Chiller 6` | Chiller          | `src/couchdb/sample_data/iot/chiller_6.json`         |
-| `mp_1`      | Metro pump       | `src/couchdb/sample_data/iot/metro_pump_1.json`      |
-| `hyd_1`     | Hydraulic pump   | `src/couchdb/sample_data/iot/hydraulic_pump_1.json`  |
+| Tool | Arguments | Description |
+| ---- | --------- | ----------- |
+| `sites` | - | List sorted site identifiers, with `MAIN` as the fallback |
+| `asset_ids` | `site_name` | List asset identifiers registered at a site |
+| `assets` | `site_name`, `assettype?` | List assets with compact metadata and optional exact type filtering |
+| `asset_detail` | `site_name`, `asset_id` | Return registry details and installed-sensor count for one asset |
+| `installed_sensors` | `site_name`, `asset_id` | List sensor names assigned in the registry |
+| `measured_sensors` | `site_name`, `asset_id` | List measurement fields observed across the telemetry stream |
+| `find_assets_by_sensors` | `site_name`, `sensors`, `match?`, `substring?`, `source?` | Find site assets by installed or measured sensor names |
 
-Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ships in a separate `vibration` database for the vibration MCP server.
+### Telemetry tools
 
-| Tool              | Arguments                                  | Description                                                                                                  |
-| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `sites`           | —                                          | List all sites, discovered dynamically from the asset registry (`siteid`)                                    |
-| `assets`          | `site_name`                                | List asset ids registered at a site (telemetry id where present, else `assetnum`)                            |
-| `sensors`         | `site_name`, `asset_id`                    | List **measured** sensor names for an asset (union of keys across its telemetry docs)                        |
-| `history`         | `site_name`, `asset_id`, `start`, `final?` | Fetch historical sensor readings for a time range (ISO 8601 timestamps)                                      |
-| `get_asset`       | `site_name`, `asset_id`                    | Registry/nameplate detail for one asset (description, assettype, status, location, vintage, installed count) |
-| `asset_sensors`   | `site_name`, `asset_id`                    | List the **installed** sensors for an asset, by name (registry inventory)                                    |
-| `registry_assets` | `site_name`, `assettype?`                  | List registry assets with metadata (assettype, vintage, sensor count), optionally filtered by assettype     |
+| Tool | Arguments | Description |
+| ---- | --------- | ----------- |
+| `stream_extent` | `site_name`, `asset_id`, `sensor?`, `start?`, `end?` | Count matching records and return their earliest and latest timestamps |
+| `latest_reading` | `site_name`, `asset_id`, `sensor?` | Return the newest record, or the newest non-null value for one sensor |
+| `history` | `site_name`, `asset_id`, `start?`, `end?`, `sensors?`, `limit?`, `cursor?` | Return chronological, projected observations with cursor paging |
+| `sensor_coverage` | `site_name`, `asset_id` | Scan the full stream for per-sensor non-null counts and time coverage |
+| `sensor_stats` | `site_name`, `asset_id`, `sensor?`, `start?`, `end?` | Compute per-sensor numeric counts, range, mean, and population standard deviation |
+
+Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based paging with up to
+1000 observations per page.
 
 ## utilities — Utilities
 
@@ -59,21 +58,23 @@ Synthetic motor vibration data (`asset_id: Motor_01`, from `motor_01.json`) ship
 ## fmsr — Failure Mode and Sensor Relations
 
 **Path:** `src/servers/fmsr/main.py`
-**Requires:** `WATSONX_APIKEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` for unknown assets; curated lists for `chiller` and `ahu` work without credentials.
-**Failure-mode data:** `src/servers/fmsr/failure_modes.yaml` (edit to add/change asset entries)
+**Requires:** LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`; `get_failure_modes` reads the database.
+**Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection.
 
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_failure_modes`               | read, LLM-use | `asset_name`                             | Return known failure modes for an asset. Uses a curated YAML list for chillers and AHUs; falls back to the LLM for other types.                         |
-| `get_failure_mode_sensor_mapping` | read, LLM-use | `asset_name`, `failure_modes`, `sensors` | For each (failure mode, sensor) pair, determine relevancy via LLM. Returns bidirectional `fm→sensors` and `sensor→fms` maps plus full per-pair details. |
+| `get_failure_modes`               | read          | `asset_class`                            | Return known failure modes for an asset class from the database. Returns `asset_class`, `failure_modes`, `exhaustive`, and `source`.                    |
+| `generate_failure_modes`          | read, LLM-use | `asset_class`, `max_modes?`              | Generate or extend a failure-mode list without writing the database. |
+| `add_failure_modes`               | write         | `asset_class`, `failure_modes`, `exhaustive?`, `source?` | Persist failure modes for an asset class. |
+| `generate_failure_mode_sensor_mapping` | read, LLM-use | `asset_class`, `failure_modes`, `sensors` | Score failure-mode/sensor relevancy via LLM and return bidirectional mappings. |
 
 ## wo — Work Order
 
 **Path:** `src/servers/wo/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`)
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`, `FAILURE_CODE_DBNAME`)
 **Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on every start — database is dropped and reloaded each time)
 
-Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-centric**. Tools are registered centrally in `main.py`; set `AOB_READONLY=1` to expose only the read tools (8). The default exposes all 14 (8 read + 6 write).
+Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-centric**. Tools are registered centrally in `main.py`; set `AOB_READONLY=1` to expose only the read tools (9). The default exposes all 15 (9 read + 6 write).
 
 ### Read tools
 
@@ -87,6 +88,7 @@ Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-
 | `get_workorder_kpis`                | read     | `site_id`, `period_months?`                                                          | Site KPIs: totals, backlog, overdue, avg completion, priority/asset splits |
 | `get_schedule_calendar`             | read     | `site_id`, `date_from?`, `date_to?`, `group_by?`                                     | Scheduled (non-terminal) work orders in a date window, bucketed by day     |
 | `get_my_assigned_workorders`        | read     | `labor_code`, `site_id?`, `open_only?`                                               | Work orders assigned to a given technician (labor code)                    |
+| `get_failure_codes`                 | read     | `code?`                                                                               | List FCC failure-code references or fetch one exact code from CouchDB      |
 
 ### Write tools
 

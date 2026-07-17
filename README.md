@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ibm-assetopsbench-badge.png)](https://mseep.ai/app/ibm-assetopsbench)
+
 <div align="center">
 
 # AssetOpsBench
@@ -82,8 +84,8 @@ AssetOpsBench is a **unified framework for developing, orchestrating, and evalua
 
 | MCP Servers | Important tools |
 |---|---|
-| **IoT** | `get_sites`, `get_history`, `get_assets`, `get_sensors` |
-| **FMSR** | `get_sensors`, `get_failure_modes`, `get_failure_sensor_mapping` |
+| **IoT** | `sites`, `asset_ids`, `asset_detail`, `assets`, `find_assets_by_sensors`, `installed_sensors`, `measured_sensors` |
+| **FMSR** | `get_failure_modes`, `generate_failure_modes`, `add_failure_modes`, `generate_failure_mode_sensor_mapping` |
 | **TSFM** | `forecasting`, `timeseries_anomaly_detection` |
 | **WO** | `get_work_order_distribution`, `predict_next_work_order`, ... |
 | **Vibration** | `compute_fft_spectrum`, `compute_envelope_spectrum`, ... |
@@ -108,8 +110,8 @@ The `src/` directory contains MCP servers and a plan-execute runner built on the
 
 | Domain | Example Task |
 |---|---|
-| **IoT** | "List all sensors of Chiller 6 in MAIN site" |
-| **FMSR** | "Identify failure modes detected by Chiller 6 Supply Temperature" |
+| **IoT** | "List all assets in MAIN site" |
+| **FMSR** | "List known failure modes for asset class pump" |
 | **TSFM** | "Forecast Chiller 9 Condenser Water Flow for the week of 2020-04-27" |
 | **WO** | "Generate a work order for Chiller 6 anomaly detection" |
 

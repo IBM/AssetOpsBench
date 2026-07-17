@@ -1,29 +1,16 @@
-"""FMSR (Failure Mode and Sensor Reasoning) MCP Server.
-
-Exposes two tools:
-  get_failure_modes               – lists failure modes for an asset
-  get_failure_mode_sensor_mapping – returns bidirectional FM↔sensor relevancy mapping
-
-For chillers and AHUs get_failure_modes returns a curated hardcoded list.
-For any other asset type the LLM is queried as a fallback.
-The mapping tool always calls the LLM to determine per-pair relevancy.
-
-LLM backend is configured via the FMSR_MODEL_ID environment variable
-(default: ``watsonx/meta-llama/llama-3-3-70b-instruct``).  Any model string
-supported by litellm works — the provider is encoded in the prefix.
-"""
+"""Failure mode and sensor reasoning for industrial asset classes."""
 
 from __future__ import annotations
 
 import logging
 import os
 import re
-from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import yaml
+import couchdb3
+from couchdb3.exceptions import NotFoundError
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -37,46 +24,113 @@ logging.basicConfig(level=_log_level)
 logger = logging.getLogger("fmsr-mcp-server")
 
 
-# ── Hardcoded asset data ──────────────────────────────────────────────────────
+# ── Database stores ───────────────────────────────────────────────────────────
+# Under AssetOpsBench's loader, database name == collection key. Failure modes
+# live in the 'failure_mode' database; generic catalog lookups live in the
+# utilities MCP server.
 
-_FAILURE_MODES_FILE = Path(__file__).parent / "failure_modes.yaml"
-with _FAILURE_MODES_FILE.open() as _f:
-    _ASSET_FAILURE_MODES: dict[str, list[str]] = yaml.safe_load(_f)
+COUCHDB_URL = os.environ.get("COUCHDB_URL", "http://localhost:5984")
+COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME", "admin")
+COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD", "password")
+FAILURE_MODE_DBNAME = os.environ.get("FAILURE_MODE_DBNAME", "failure_mode")
+
+
+def _connect(dbname):
+    try:
+        h = couchdb3.Database(
+            dbname,
+            url=COUCHDB_URL,
+            user=COUCHDB_USERNAME,
+            password=COUCHDB_PASSWORD,
+        )
+        logger.info("Connected to database: %s", dbname)
+        return h
+    except Exception as e:  # noqa: BLE001
+        logger.error("Failed to connect to database '%s': %s", dbname, e)
+        return None
+
+
+fm_db = _connect(FAILURE_MODE_DBNAME)
+
+
+def _asset_class_key(asset_class: str) -> str:
+    """Normalise an asset class to the database key format ('Hydraulic_Pump' -> 'hydraulic pump')."""
+    key = re.sub(r"\d+", "", asset_class or "")
+    key = re.sub(r"[_\-]+", " ", key)
+    return re.sub(r"\s+", " ", key).strip().lower()
+
+
+def _known_asset_classes(limit: int = 10) -> List[str]:
+    """Return known asset classes from the failure_mode collection for error guidance."""
+    if not fm_db:
+        return []
+    try:
+        res = fm_db.find({}, fields=["asset_class"], limit=limit)
+    except Exception:  # noqa: BLE001
+        return []
+    classes = [
+        doc.get("asset_class")
+        for doc in res.get("docs", [])
+        if isinstance(doc.get("asset_class"), str) and doc.get("asset_class")
+    ]
+    return sorted(dict.fromkeys(classes))
+
+
+def _missing_asset_class_error(original: str, normalized: str) -> ErrorResult:
+    message = (
+        f"no failure_mode record for asset_class '{normalized}' in database. "
+        f"Input was normalized from {original!r}; check that asset_class matches a stored class."
+    )
+    known = _known_asset_classes()
+    if known:
+        message += f" Available asset_class values include: {', '.join(known)}."
+    return ErrorResult(error=message)
+
+
+def _is_not_found_error(exc: Exception) -> bool:
+    if isinstance(exc, (KeyError, NotFoundError)):
+        return True
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None) or getattr(
+        exc, "status_code", None
+    )
+    return status_code == 404
 
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
 
-_ASSET2FM_PROMPT = (
-    "What are different failure modes for asset {asset_name}?\n"
-    "Your response should be a numbered list with each failure mode on a new line. "
-    "Please only list the failure mode name.\n"
-    "For example: \n\n1. foo\n\n2. bar\n\n3. baz"
-)
-
 _RELEVANCY_PROMPT = (
-    "For the asset {asset_name}, if the failure {failure_mode} occurs, "
-    "can sensor {sensor} help monitor or detect the failure for {asset_name}?\n"
-    "Provide the answer in the first line and reason in the second line. "
-    "If the answer is Yes, provide the temporal behaviour of the sensor "
-    "when the failure occurs in the third line."
+    "For asset class {asset_class}, if the failure {failure_mode} occurs, "
+    "can sensor {sensor} help monitor or detect the failure for assets of class {asset_class}?\n"
+    "Provide the answer in the first line and reason in the second line."
+)
+
+_FAILURE_MODE_PROMPT = (
+    "List up to {max_modes} common failure modes for asset class {asset_class}.\n"
+    "Return only failure mode names, one per line."
+)
+
+_FAILURE_MODE_EXTEND_PROMPT = (
+    "Asset class {asset_class} already has these stored failure modes:\n{stored_modes}\n\n"
+    "List up to {max_modes} additional failure modes for asset class {asset_class} "
+    "that are not already in the stored list.\n"
+    "Return only failure mode names, one per line."
 )
 
 
-# ── Output parsers ────────────────────────────────────────────────────────────
-
-
-def _parse_numbered_list(text: str) -> list[str]:
-    """Parse a numbered list response into a plain list of strings."""
-    items = []
+def _parse_failure_mode_list(text: str) -> List[str]:
+    items: List[str] = []
     for line in text.splitlines():
-        m = re.match(r"^\d+[\.\)]\s*(.+)", line.strip())
-        if m:
-            items.append(m.group(1).strip())
+        item = line.strip()
+        if not item:
+            continue
+        item = re.sub(r"^\s*(?:[-*•]|\d+[\.\)])\s*", "", item).strip()
+        if item:
+            items.append(item)
     return items
 
 
 def _parse_relevancy(text: str) -> dict:
-    """Parse a 3-line relevancy response into {answer, reason, temporal_behavior}."""
     lines = [ln for ln in text.strip().splitlines() if ln.strip()]
     if lines and lines[0].lower().startswith("yes"):
         answer = "Yes"
@@ -85,27 +139,26 @@ def _parse_relevancy(text: str) -> dict:
     else:
         answer = "Unknown"
     reason = lines[1] if len(lines) >= 2 else "Unknown"
-    temporal = lines[2] if (answer == "Yes" and len(lines) >= 3) else "Unknown"
-    return {"answer": answer, "reason": reason, "temporal_behavior": temporal}
+    return {"answer": answer, "reason": reason}
 
 
 # ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
 
 _DEFAULT_MODEL_ID = "watsonx/meta-llama/llama-3-3-70b-instruct"
 _MAX_RETRIES = 3
+_MODEL_ID = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
 
 
 def _build_llm():
     from llm import make_backend
 
-    model_id = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
-    if model_id.startswith("watsonx/"):
+    if _MODEL_ID.startswith("watsonx/"):
         missing = [
             v for v in ("WATSONX_APIKEY", "WATSONX_PROJECT_ID") if not os.environ.get(v)
         ]
         if missing:
             raise RuntimeError(f"Missing env vars for WatsonX: {missing}")
-    elif model_id.startswith("tokenrouter/"):
+    elif _MODEL_ID.startswith("tokenrouter/"):
         missing = [
             v
             for v in ("TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL")
@@ -119,51 +172,48 @@ def _build_llm():
         ]
         if missing:
             raise RuntimeError(f"Missing env vars for LiteLLM: {missing}")
-    return make_backend(model_id)
+    return make_backend(_MODEL_ID)
 
 
 try:
     _llm = _build_llm()
     _llm_available = True
-except Exception as _e:
-    logger.warning("LLM unavailable (FMSR will use curated data only): %s", _e)
+except Exception as _e:  # noqa: BLE001
+    logger.warning("LLM unavailable (generate_* tools disabled): %s", _e)
     _llm = None
     _llm_available = False
 
 
-# ── LLM call helpers with retry ───────────────────────────────────────────────
-
-_asset2fm_cache: dict[str, list[str]] = {}
-
-
-def _call_asset2fm(asset_name: str) -> list[str]:
-    """Query the LLM for failure modes of an asset. Retries up to _MAX_RETRIES times.
-    Results are cached to avoid redundant LLM calls for the same asset."""
-    if asset_name in _asset2fm_cache:
-        return _asset2fm_cache[asset_name]
-
-    prompt = _ASSET2FM_PROMPT.format(asset_name=asset_name)
-    last_exc: Exception | None = None
-    for _ in range(_MAX_RETRIES):
-        try:
-            result = _parse_numbered_list(_llm.generate(prompt))
-            _asset2fm_cache[asset_name] = result
-            return result
-        except Exception as exc:
-            last_exc = exc
-    raise last_exc
-
-
-def _call_relevancy(asset_name: str, failure_mode: str, sensor: str) -> dict:
-    """Query the LLM for FM↔sensor relevancy. Retries up to _MAX_RETRIES times."""
+def _call_relevancy(asset_class: str, failure_mode: str, sensor: str) -> dict:
     prompt = _RELEVANCY_PROMPT.format(
-        asset_name=asset_name, failure_mode=failure_mode, sensor=sensor
+        asset_class=asset_class, failure_mode=failure_mode, sensor=sensor
     )
     last_exc: Exception | None = None
     for _ in range(_MAX_RETRIES):
         try:
             return _parse_relevancy(_llm.generate(prompt))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+    raise last_exc
+
+
+def _call_failure_mode_generation(
+    asset_class: str, known: List[str], max_modes: int
+) -> List[str]:
+    prompt = (
+        _FAILURE_MODE_EXTEND_PROMPT.format(
+            asset_class=asset_class,
+            stored_modes="\n".join(f"- {mode}" for mode in known),
+            max_modes=max_modes,
+        )
+        if known
+        else _FAILURE_MODE_PROMPT.format(asset_class=asset_class, max_modes=max_modes)
+    )
+    last_exc: Exception | None = None
+    for _ in range(_MAX_RETRIES):
+        try:
+            return _parse_failure_mode_list(_llm.generate(prompt))
+        except Exception as exc:  # noqa: BLE001
             last_exc = exc
     raise last_exc
 
@@ -176,21 +226,41 @@ class ErrorResult(BaseModel):
 
 
 class FailureModesResult(BaseModel):
-    asset_name: str
+    asset_class: str
     failure_modes: List[str]
+    exhaustive: bool = False  # the stored list is not claimed to be complete
+    source: Optional[str] = None  # provenance: ISO / curated / LLM:<model>
+
+
+class GenerateFailureModesResult(BaseModel):
+    asset_class: str
+    known: List[str]
+    generated: List[str]
+    failure_modes: List[str]
+    source: str
+    message: str
+
+
+class AddFailureModesResult(BaseModel):
+    asset_class: str
+    added: List[str]
+    failure_modes: List[str]
+    total: int
+    exhaustive: bool
+    source: Optional[str] = None
+    message: str
 
 
 class RelevancyEntry(BaseModel):
-    asset_name: str
+    asset_class: str
     failure_mode: str
     sensor: str
     relevancy_answer: str
     relevancy_reason: str
-    temporal_behavior: str
 
 
 class MappingMetadata(BaseModel):
-    asset_name: str
+    asset_class: str
     failure_modes: List[str]
     sensors: List[str]
 
@@ -206,51 +276,238 @@ class FailureModeSensorMappingResult(BaseModel):
 
 mcp = FastMCP(
     "fmsr",
-    instructions="Failure mode and sensor reasoning: get failure modes for assets and determine which sensors can detect each failure.",
+    instructions="Failure mode and sensor reasoning for industrial asset classes.",
 )
 
 
 @mcp.tool(title="Get Failure Modes")
-def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]:
-    """Returns a list of known failure modes for the given asset.
-    For chillers and AHUs returns a curated list. For other assets queries the LLM."""
-    asset_key = re.sub(r"\d+", "", asset_name).strip().lower()
-    if not asset_key or asset_key == "none":
-        return ErrorResult(error="asset_name is required")
+def get_failure_modes(asset_class: str) -> Union[FailureModesResult, ErrorResult]:
+    """READ the known failure modes for an asset class.
 
-    if asset_key in _ASSET_FAILURE_MODES:
-        return FailureModesResult(
-            asset_name=asset_name,
-            failure_modes=_ASSET_FAILURE_MODES[asset_key],
-        )
-
-    if not _llm_available:
-        return ErrorResult(error="LLM unavailable and asset not in local database")
-
+    Args:
+        asset_class: Asset class to look up, such as "pump". Case, whitespace,
+            digits, underscores, and hyphens are normalized before querying.
+    """
+    raw_asset_class = asset_class
+    key = _asset_class_key(asset_class)
+    if not key or key == "none":
+        return ErrorResult(error="asset_class is required")
     try:
-        result = _call_asset2fm(asset_name)
-        return FailureModesResult(asset_name=asset_name, failure_modes=result)
-    except Exception as exc:
-        logger.error("_call_asset2fm failed: %s", exc)
+        d = _find_failure_mode_doc(key)
+        if d is None:
+            return _missing_asset_class_error(raw_asset_class, key)
+        return FailureModesResult(
+            asset_class=d.get("asset_class", key),
+            failure_modes=d.get("failure_modes", []),
+            exhaustive=d.get("exhaustive", False),
+            source=d.get("source"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("get_failure_modes failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
-@mcp.tool(title="Get Failure Mode Sensor Mapping")
-def get_failure_mode_sensor_mapping(
-    asset_name: str,
+def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
+    """Return the stored failure-mode doc for an asset class, or None."""
+    if not fm_db:
+        raise RuntimeError("database not connected")
+    key = _asset_class_key(asset_class)
+    try:
+        d = fm_db.get(f"fm:{key}", check=True)
+    except Exception as exc:  # noqa: BLE001
+        if _is_not_found_error(exc):
+            d = None
+        else:
+            raise RuntimeError(
+                f"database lookup failed for asset_class '{key}': {exc}"
+            ) from exc
+    try:
+        if d is None:
+            res = fm_db.find({"asset_class": key}, limit=1)
+            docs = res["docs"]
+            if docs:
+                d = docs[0]
+        return d
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"database lookup failed for asset_class '{key}': {exc}"
+        ) from exc
+
+
+def _known_failure_modes(asset_class: str) -> List[str]:
+    """Return stored failure modes for an asset class, or [] if none are available."""
+    d = _find_failure_mode_doc(asset_class)
+    if d is None:
+        return []
+    return [
+        mode.strip()
+        for mode in d.get("failure_modes", [])
+        if isinstance(mode, str) and mode.strip()
+    ]
+
+
+@mcp.tool(title="Generate Failure Modes")
+def generate_failure_modes(
+    asset_class: str,
+    max_modes: int = 10,
+) -> Union[GenerateFailureModesResult, ErrorResult]:
+    """GENERATE a new or extended failure-mode list for an asset class.
+
+    This tool does not write to the database. If the normalized `asset_class`
+    exists in the database, the current stored failure modes are used as context
+    and the LLM generates additional modes. If no stored modes exist, the LLM
+    generates a new list from scratch.
+
+    Args:
+        asset_class: Asset class to reason about, such as "pump". Case,
+            whitespace, digits, underscores, and hyphens are normalized before
+            prompting the LLM.
+        max_modes: Maximum number of new failure modes to request from the LLM.
+    """
+    key = _asset_class_key(asset_class)
+    if not key or key == "none":
+        return ErrorResult(error="asset_class is required")
+    if max_modes <= 0:
+        return ErrorResult(error="max_modes must be greater than 0")
+    if not _llm_available:
+        return ErrorResult(error="LLM unavailable")
+
+    try:
+        base = _known_failure_modes(key)
+        base = [mode.strip() for mode in base if mode and mode.strip()]
+        raw = _call_failure_mode_generation(key, base, max_modes)
+        seen = {mode.lower() for mode in base}
+        generated: List[str] = []
+        for mode in raw:
+            candidate = mode.strip()
+            normalized = candidate.lower()
+            if candidate and normalized not in seen:
+                seen.add(normalized)
+                generated.append(candidate)
+        if len(generated) > max_modes:
+            generated = generated[:max_modes]
+        return GenerateFailureModesResult(
+            asset_class=key,
+            known=base,
+            generated=generated,
+            failure_modes=base + generated,
+            source=f"LLM:{_MODEL_ID}",
+            message=(
+                f"generated {len(generated)} new failure mode(s) for asset_class '{key}' "
+                f"using {len(base)} stored mode(s) as context; nothing was persisted."
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("generate_failure_modes failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Add Failure Modes")
+def add_failure_modes(
+    asset_class: str,
+    failure_modes: List[str],
+    exhaustive: Optional[bool] = None,
+    source: Optional[str] = None,
+) -> Union[AddFailureModesResult, ErrorResult]:
+    """WRITE failure modes for an asset class to the database.
+
+    Existing modes are preserved, incoming modes are merged case-insensitively,
+    and only newly added modes are reported. Use this after curated or generated
+    modes should become available to future `get_failure_modes` calls.
+
+    Args:
+        asset_class: Asset class to update, such as "pump". Case, whitespace,
+            digits, underscores, and hyphens are normalized before writing.
+        failure_modes: Failure modes to add for the asset class.
+        exhaustive: Set true only when the stored list is believed complete. If
+            omitted, the existing value is preserved; new records default false.
+        source: Optional provenance for the stored list.
+    """
+    key = _asset_class_key(asset_class)
+    if not key or key == "none":
+        return ErrorResult(error="asset_class is required")
+    incoming = [
+        mode.strip()
+        for mode in (failure_modes or [])
+        if isinstance(mode, str) and mode.strip()
+    ]
+    if not incoming:
+        return ErrorResult(error="failure_modes list is required")
+    if not fm_db:
+        return ErrorResult(error="database not connected")
+
+    try:
+        doc_id = f"fm:{key}"
+        doc = _find_failure_mode_doc(key)
+        existing = [
+            mode.strip()
+            for mode in (doc or {}).get("failure_modes", [])
+            if isinstance(mode, str) and mode.strip()
+        ]
+        seen = set()
+        merged: List[str] = []
+        for mode in existing:
+            normalized = mode.lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                merged.append(mode)
+
+        added: List[str] = []
+        for mode in incoming:
+            normalized = mode.lower()
+            if normalized not in seen:
+                seen.add(normalized)
+                merged.append(mode)
+                added.append(mode)
+
+        if doc is None:
+            doc = {"_id": doc_id, "asset_class": key}
+            stored_exhaustive = False
+        else:
+            doc.setdefault("_id", doc_id)
+            doc["asset_class"] = key
+            stored_exhaustive = bool(doc.get("exhaustive", False))
+        doc["failure_modes"] = merged
+        doc["exhaustive"] = stored_exhaustive if exhaustive is None else exhaustive
+        doc["source"] = source or doc.get("source") or "user"
+        fm_db.save(doc)
+
+        return AddFailureModesResult(
+            asset_class=key,
+            added=added,
+            failure_modes=merged,
+            total=len(merged),
+            exhaustive=doc["exhaustive"],
+            source=doc.get("source"),
+            message=(
+                f"added {len(added)} new failure mode(s) to asset_class '{key}' "
+                f"({len(merged)} total)."
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("add_failure_modes failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Generate Failure Mode Sensor Mapping")
+def generate_failure_mode_sensor_mapping(
+    asset_class: str,
     failure_modes: List[str],
     sensors: List[str],
 ) -> Union[FailureModeSensorMappingResult, ErrorResult]:
-    """For each (failure_mode, sensor) pair determines whether the sensor can detect
-    the failure. Returns a bidirectional mapping (fm→sensors, sensor→fms) plus
-    the full per-pair relevancy details.
+    """GENERATE, for each (failure_mode, sensor) pair, whether the sensor can detect the failure
+    (one LLM call per pair). Returns a bidirectional mapping (fm→sensors, sensor→fms) plus per-pair
+    relevancy details. Keep both lists small (e.g. ≤5 failure modes, ≤10 sensors) to bound runtime.
 
-    Note: one LLM call is made per (failure_mode, sensor) pair sequentially.
-    Keep both lists small (e.g. ≤5 failure modes, ≤10 sensors) to avoid long
-    runtimes. For a chiller with 7 failure modes and 20+ sensors the call will
-    take several minutes."""
-    if not asset_name:
-        return ErrorResult(error="asset_name is required")
+    Args:
+        asset_class: Asset class to reason about, such as "pump". Case, whitespace,
+            digits, underscores, and hyphens are normalized before prompting the LLM.
+        failure_modes: Failure modes for the asset class.
+        sensors: Sensor names to evaluate for detection relevance.
+    """
+    key = _asset_class_key(asset_class)
+    if not key or key == "none":
+        return ErrorResult(error="asset_class is required")
     if not failure_modes:
         return ErrorResult(error="failure_modes list is required")
     if not sensors:
@@ -261,38 +518,35 @@ def get_failure_mode_sensor_mapping(
     full_relevancy: List[RelevancyEntry] = []
     fm2sensor: Dict[str, List[str]] = {}
     sensor2fm: Dict[str, List[str]] = {}
-
     try:
         pairs = [(s, fm) for s in sensors for fm in failure_modes]
         with ThreadPoolExecutor() as executor:
             futures = {
-                executor.submit(_call_relevancy, asset_name, fm, s): (s, fm)
+                executor.submit(_call_relevancy, key, fm, s): (s, fm)
                 for s, fm in pairs
             }
             for future in as_completed(futures):
                 s, fm = futures[future]
                 gen = future.result()
-                entry = RelevancyEntry(
-                    asset_name=asset_name,
-                    failure_mode=fm,
-                    sensor=s,
-                    relevancy_answer=gen["answer"],
-                    relevancy_reason=gen["reason"],
-                    temporal_behavior=gen["temporal_behavior"],
+                full_relevancy.append(
+                    RelevancyEntry(
+                        asset_class=key,
+                        failure_mode=fm,
+                        sensor=s,
+                        relevancy_answer=gen["answer"],
+                        relevancy_reason=gen["reason"],
+                    )
                 )
-                full_relevancy.append(entry)
                 if "yes" in gen["answer"].lower():
                     fm2sensor.setdefault(fm, []).append(s)
                     sensor2fm.setdefault(s, []).append(fm)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.error("_call_relevancy failed: %s", exc)
         return ErrorResult(error=str(exc))
 
     return FailureModeSensorMappingResult(
         metadata=MappingMetadata(
-            asset_name=asset_name,
-            failure_modes=failure_modes,
-            sensors=sensors,
+            asset_class=key, failure_modes=failure_modes, sensors=sensors
         ),
         fm2sensor=fm2sensor,
         sensor2fm=sensor2fm,
