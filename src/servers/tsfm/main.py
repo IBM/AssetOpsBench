@@ -16,12 +16,15 @@ import logging
 import os
 from typing import List, Optional, Union
 
+import pandas as pd
 from mcp.server.fastmcp import FastMCP
 
 from .core import tasks as task_spec
 from .core.results_models import (
     CandidatesResult,
+    CharacterizeResult,
     CardResult,
+    DataQualityResult,
     DescribeModelsResult,
     DomainsResult,
     ErrorResult,
@@ -30,10 +33,15 @@ from .core.results_models import (
     ModelDescription,
     ModelsResult,
     ModelTemplateResult,
+    ProfileResult,
     RegisterResult,
     ResolveResult,
+    TasksResult,
 )
 from .core.store import make_store
+from .io import refs
+from .reasoning import dataquality as _dq
+from .reasoning import patterns, profile
 from .stores import model_store
 
 _log_level = getattr(
@@ -67,6 +75,127 @@ def _check_task(task_id: str) -> Optional[str]:
     if task_id not in task_spec.TASKS:
         return f"unknown task '{task_id}'. Valid tasks: {list(task_spec.TASKS)}"
     return None
+
+
+# =============================================================================
+# Tasks & discovery
+# =============================================================================
+
+
+@mcp.tool(title="List Tasks")
+def list_tasks() -> Union[TasksResult, ErrorResult]:
+    """List the 8 standardized TS-AI TASKS (forecasting, regression, classification, anomaly,
+    imputation, evaluation, similarity_search, clustering). Each entry has a plain `description`
+    plus its contract (required inputs, output, eval protocol). Start here, then profile_series.
+    """
+    try:
+        return TasksResult(tasks=task_spec.list_tasks())
+    except Exception as exc:
+        logger.error("list_tasks failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+# =============================================================================
+# Data & evidence (file pointers in)
+# =============================================================================
+
+
+@mcp.tool(title="Profile Series")
+def profile_series(
+    dataset_path: str,
+    timestamp_column: Optional[str] = None,
+    channels: Optional[List[str]] = None,
+) -> Union[ProfileResult, ErrorResult]:
+    """EVIDENCE about the data behind a file pointer (dataset_path): seasonality, stationarity,
+    channels, length. Facts only, no recommendations: you reason the recipe from these. This is
+    the data the param_schema hints depend on (e.g. context_length ≥ 2× dominant_period).
+    """
+    if not dataset_path.strip():
+        return ErrorResult(error="dataset_path is required")
+    try:
+        ev = profile.profile_ref(
+            dataset_path, timestamp_column=timestamp_column, channels=channels
+        )
+        return ProfileResult(**ev)
+    except Exception as exc:
+        logger.error("profile_series failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Characterize Series (pattern evidence)")
+def characterize_series(
+    dataset_path: str,
+    timestamp_column: Optional[str] = None,
+    channels: Optional[List[str]] = None,
+    groups: Optional[dict] = None,
+    group_rules: Optional[str] = None,
+) -> Union[CharacterizeResult, ErrorResult]:
+    """Describe the SHAPE of a series as structured EVIDENCE for an LLM to reason over (fault,
+    cause, RUL, work-order, …): it never names a fault. Generic: any signals, any count, any
+    names. Per channel-group it labels a state (stable / rise / decline / spike / level_shift /
+    cessation / oscillation) + rate over changepoint phases, plus the bivariate relation
+    (decoupled / co_move / lead_lag) between groups. Grouping is optional and yours to choose:
+    pass groups={group:[channels]}, or group_rules (a preset name like 'vibration_temperature');
+    default is one group per channel. Reference-free (reads the series' own median/MAD scale).
+    """
+    if not dataset_path.strip():
+        return ErrorResult(error="dataset_path is required")
+    try:
+        obj = refs.load_series(
+            dataset_path, time_col=timestamp_column, channels=channels
+        )
+        frame = (
+            obj
+            if isinstance(obj, pd.DataFrame)
+            else obj.to_frame(name=(channels[0] if channels else "value"))
+        )
+        ev = patterns.describe_series(frame, groups=groups, group_rules=group_rules)
+        evidence_file = refs.write_json(ev, name="pattern_evidence")
+        return CharacterizeResult(
+            status="success",
+            summary=ev["summary"],
+            n_observations=ev["n_observations"],
+            evidence_file=evidence_file,
+            groups=ev["groups"],
+            phases=ev["phases"],
+            message=f"Pattern evidence ({len(ev['phases'])} phase(s)). Full object at {evidence_file}.",
+        )
+    except Exception as exc:
+        logger.error("characterize_series failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Data Quality")
+def data_quality(
+    dataset_path: str,
+    timestamp_column: str = "timestamp",
+) -> Union[DataQualityResult, ErrorResult]:
+    """Clean a series from a file pointer (NaN removal) + report a data-quality summary; returns a
+    cleaned file pointer to feed forecasting / anomaly. (The continuous-segment IoT filter lives
+    in reasoning/dataquality for the forecasting-context path.)"""
+    if not dataset_path.strip():
+        return ErrorResult(error="dataset_path is required")
+    try:
+        df = pd.read_csv(refs._path(dataset_path))
+        nan = _dq._df_nan_stats(df)
+        out = _dq._efficient_nan_removal(df)
+        cleaned = out["df_filter"]
+        cleaned_file = refs.write_series(cleaned, name="cleaned")
+        nan_per_col = {
+            str(k): float(v) for k, v in (nan.get("%NaN_per_column") or {}).items()
+        }
+        return DataQualityResult(
+            status="success",
+            cleaned_file=cleaned_file,
+            rows_in=int(len(df)),
+            rows_out=int(len(cleaned)),
+            nan_per_column=nan_per_col,
+            removed_cost=int(out.get("cost_total", 0)),
+            message=f"Cleaned {len(df)}→{len(cleaned)} rows. Cleaned series at {cleaned_file}.",
+        )
+    except Exception as exc:
+        logger.error("data_quality failed: %s", exc)
+        return ErrorResult(error=str(exc))
 
 
 # =============================================================================
