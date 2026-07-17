@@ -85,17 +85,18 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 
 ## Environment Variables
 
-**CouchDB** — `iot` and `wo` servers
+**Database-backed servers** — shared database connection and per-server database names
 
-| Variable           | Default                 | Description              |
-| ------------------ | ----------------------- | ------------------------ |
-| `COUCHDB_URL`      | `http://localhost:5984` | CouchDB connection URL   |
-| `COUCHDB_USERNAME` | `admin`                 | CouchDB admin username   |
-| `COUCHDB_PASSWORD` | `password`              | CouchDB admin password   |
-| `IOT_DBNAME`         | `iot`                   | IoT sensor database name      |
-| `WO_DBNAME`          | `workorder`             | Work order database name      |
-| `FAILURE_CODE_DBNAME` | `failure_code`          | FCC failure-code database name |
-| `VIBRATION_DBNAME`   | `vibration`             | Vibration sensor database name |
+| Variable                   | Default                 | Description                        |
+| -------------------------- | ----------------------- | ---------------------------------- |
+| `COUCHDB_URL`              | `http://localhost:5984` | CouchDB connection URL             |
+| `COUCHDB_USERNAME`         | `admin`                 | CouchDB admin username             |
+| `COUCHDB_PASSWORD`         | `password`              | CouchDB admin password             |
+| `IOT_DBNAME`               | `iot`                   | IoT sensor database name           |
+| `WO_DBNAME`                | `workorder`             | Work order database name           |
+| `FAILURE_CODE_DBNAME`      | `failure_code`          | FCC failure-code database name     |
+| `VIBRATION_DBNAME`         | `vibration`             | Vibration sensor database name     |
+| `FEATURE_CATALOG_DBNAME`   | `feature_catalog`       | TSFM feature catalog database name |
 
 **WatsonX** — plan-execute runner and WatsonX-backed agent routes
 
@@ -137,7 +138,7 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 
 ## MCP Servers
 
-Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagnostics, failure-mode reasoning, and utility tools. They speak MCP over stdio and are spawned on-demand by the agent runners — no manual startup needed.
+Six FastMCP servers cover IoT data, time-series feature catalogs, work orders, vibration diagnostics, failure-mode reasoning, and utility tools. They speak MCP over stdio and are spawned on-demand by the agent runners — no manual startup needed.
 
 | Server      | Tools | Categories               | Backing service                        |
 | ----------- | ----- | ------------------------ | -------------------------------------- |
@@ -145,7 +146,7 @@ Six FastMCP servers cover IoT data, time-series ML, work orders, vibration diagn
 | `utilities` | 3     | read                     | none                                   |
 | `fmsr`      | 2     | read, LLM-use            | LiteLLM + `failure_modes.yaml`         |
 | `wo`        | 15    | read, write              | CouchDB                                |
-| `tsfm`      | 6     | read, write, cpu-centric | IBM Granite TinyTimeMixer (torch)      |
+| `tsfm`      | 8     | read, write              | feature catalog database               |
 | `vibration` | 8     | read, cpu-centric        | CouchDB + numpy/scipy DSP              |
 
 Tool signatures, required env vars, and how to launch a server directly: **[docs/mcp-servers.md](docs/mcp-servers.md)**.
@@ -413,7 +414,7 @@ Each integration suite is gated by a `skipif` mark; missing service ⇒ silently
 | ------------------ | ---------------------------------------------------------------------------- |
 | iot, wo, vibration | CouchDB reachable — `docker compose -f src/couchdb/docker-compose.yaml up -d` |
 | fmsr               | `WATSONX_APIKEY`, `WATSONX_PROJECT_ID` set in `.env`                          |
-| tsfm               | `PATH_TO_MODELS_DIR`, `PATH_TO_DATASETS_DIR` set in `.env`                    |
+| tsfm               | Feature catalog database loaded, or `TSFM_STORE=memory` for hermetic tests    |
 
 Narrow scope by path or name pattern:
 
