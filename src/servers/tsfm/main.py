@@ -43,6 +43,21 @@ def _validate_feature_kind(kind: Optional[str]) -> Optional[ErrorResult]:
     return None
 
 
+def _feature_count_message(count: int, kind: Optional[str] = None) -> str:
+    label = f"{kind} feature" if kind else "feature"
+    if count != 1:
+        label = f"{label}s"
+    return f"{count} {label}"
+
+
+def _status_message(status: Optional[str]) -> str:
+    return f"with status {status}" if status else "across all statuses"
+
+
+def _card_with_message(card: dict, message: str) -> CardResult:
+    return CardResult(**{**card, "message": message})
+
+
 @mcp.tool(title="List Feature Catalog")
 def list_features(
     kind: Optional[str] = None,
@@ -69,10 +84,13 @@ def list_features(
     if err:
         return err
     try:
+        features = feature_store.find_features(_FEATURE_STORE, kind=kind, status=status)
         return FeaturesResult(
-            features=feature_store.find_features(
-                _FEATURE_STORE, kind=kind, status=status
-            )
+            features=features,
+            message=(
+                f"listed {_feature_count_message(len(features), kind)} "
+                f"{_status_message(status)}."
+            ),
         )
     except Exception as exc:
         logger.error("list_features failed: %s", exc)
@@ -103,10 +121,23 @@ def search_features(
         cards satisfy the filters.
     """
     try:
+        features = feature_store.search(
+            _FEATURE_STORE, text=text, tags=tags, status=status
+        )
+        criteria = []
+        if text:
+            criteria.append(f"text '{text}'")
+        if tags:
+            criteria.append(f"tags {', '.join(tags)}")
+        criteria_message = (
+            f" matching {' and '.join(criteria)}" if criteria else ""
+        )
         return FeaturesResult(
-            features=feature_store.search(
-                _FEATURE_STORE, text=text, tags=tags, status=status
-            )
+            features=features,
+            message=(
+                f"found {_feature_count_message(len(features))}{criteria_message} "
+                f"{_status_message(status)}."
+            ),
         )
     except Exception as exc:
         logger.error("search_features failed: %s", exc)
@@ -135,7 +166,12 @@ def get_feature(feature_id: str) -> Union[CardResult, ErrorResult]:
         card = feature_store.get_feature(_FEATURE_STORE, feature_id)
         if not card:
             return ErrorResult(error=f"feature '{feature_id}' not found")
-        return CardResult(**card)
+        kind = card.get("kind", "feature")
+        status = card.get("status", "unknown")
+        return _card_with_message(
+            card,
+            f"found {kind} feature {feature_id} with status {status}.",
+        )
     except Exception as exc:
         logger.error("get_feature failed: %s", exc)
         return ErrorResult(error=str(exc))
@@ -173,7 +209,10 @@ def register_feature(
             _FEATURE_STORE, feature, overwrite=overwrite
         )
         return RegisterResult(
-            status="registered", id=rec.get("feature_id", ""), card=rec
+            status="registered",
+            id=rec.get("feature_id", ""),
+            card=rec,
+            message=f"registered feature {rec.get('feature_id', '')}.",
         )
     except Exception as exc:
         logger.error("register_feature failed: %s", exc)
@@ -201,8 +240,13 @@ def update_feature(feature_id: str, fields: dict) -> Union[CardResult, ErrorResu
     if not feature_id.strip() or not fields:
         return ErrorResult(error="feature_id and fields are required")
     try:
-        return CardResult(
-            **feature_store.update_feature(_FEATURE_STORE, feature_id, fields)
+        card = feature_store.update_feature(_FEATURE_STORE, feature_id, fields)
+        return _card_with_message(
+            card,
+            (
+                f"updated feature {feature_id} with {len(fields)} "
+                f"field{'s' if len(fields) != 1 else ''}."
+            ),
         )
     except Exception as exc:
         logger.error("update_feature failed: %s", exc)
@@ -231,10 +275,13 @@ def deprecate_feature(
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
     try:
-        return CardResult(
-            **feature_store.deprecate_feature(
-                _FEATURE_STORE, feature_id, reason=reason
-            )
+        card = feature_store.deprecate_feature(
+            _FEATURE_STORE, feature_id, reason=reason
+        )
+        reason_message = f" Reason: {reason}." if reason else ""
+        return _card_with_message(
+            card,
+            f"deprecated feature {feature_id}.{reason_message}",
         )
     except Exception as exc:
         logger.error("deprecate_feature failed: %s", exc)
@@ -268,13 +315,15 @@ def new_feature_version(
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
     try:
-        return CardResult(
-            **feature_store.new_version(
-                _FEATURE_STORE,
-                feature_id,
-                fields or {},
-                new_feature_id=new_feature_id,
-            )
+        card = feature_store.new_version(
+            _FEATURE_STORE,
+            feature_id,
+            fields or {},
+            new_feature_id=new_feature_id,
+        )
+        return _card_with_message(
+            card,
+            f"created feature version {card.get('feature_id')} from {feature_id}.",
         )
     except Exception as exc:
         logger.error("new_feature_version failed: %s", exc)
@@ -301,7 +350,21 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
     if not feature_id.strip():
         return ErrorResult(error="feature_id is required")
     try:
-        return LineageResult(**feature_store.get_lineage(_FEATURE_STORE, feature_id))
+        lineage = feature_store.get_lineage(_FEATURE_STORE, feature_id)
+        ancestors = lineage.get("ancestors", [])
+        descendants = lineage.get("descendants", [])
+        return LineageResult(
+            **{
+                **lineage,
+                "message": (
+                    f"lineage for feature {feature_id} has {len(ancestors)} "
+                    f"ancestor{'s' if len(ancestors) != 1 else ''} and "
+                    f"{len(descendants)} descendant"
+                    f"{'s' if len(descendants) != 1 else ''}; "
+                    f"root is {lineage.get('root', feature_id)}."
+                ),
+            }
+        )
     except Exception as exc:
         logger.error("get_feature_lineage failed: %s", exc)
         return ErrorResult(error=str(exc))

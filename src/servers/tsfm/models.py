@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import Any, Dict, List
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +13,7 @@ class ErrorResult(BaseModel):
 
 class FeaturesResult(BaseModel):
     features: List[dict]
+    message: str
 
 
 class RegisterResult(BaseModel):
@@ -20,11 +21,17 @@ class RegisterResult(BaseModel):
 
     status: str
     id: str
+    card: Dict[str, Any]
+    message: str
 
 
 class CardResult(BaseModel):
     model_config = ConfigDict(extra="allow")
 
+    message: str
+
 
 class LineageResult(BaseModel):
     model_config = ConfigDict(extra="allow")
+
+    message: str

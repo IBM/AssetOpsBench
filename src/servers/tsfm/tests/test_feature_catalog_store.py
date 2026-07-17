@@ -110,16 +110,92 @@ async def test_feature_catalog_mcp_tools(monkeypatch):
     listed = await call_tool(
         tsfm_main.mcp, "list_features", {"kind": "transform"}
     )
+    assert listed["message"] == "listed 1 transform feature with status active."
     assert listed["features"][0]["feature_id"] == "efe_time_robust_norm_v1"
 
     found = await call_tool(
         tsfm_main.mcp, "search_features", {"text": "second difference"}
     )
+    assert (
+        found["message"]
+        == "found 1 feature matching text 'second difference' with status active."
+    )
     assert found["features"][0]["feature_id"] == "abs_2nd_diff_mean"
+
+    card = await call_tool(
+        tsfm_main.mcp,
+        "get_feature",
+        {"feature_id": "efe_time_robust_norm_v1"},
+    )
+    assert (
+        card["message"]
+        == "found transform feature efe_time_robust_norm_v1 with status active."
+    )
 
     lineage = await call_tool(
         tsfm_main.mcp,
         "get_feature_lineage",
         {"feature_id": "efe_time_robust_norm_v1"},
     )
+    assert (
+        lineage["message"]
+        == "lineage for feature efe_time_robust_norm_v1 has 0 ancestors and "
+        "0 descendants; root is efe_time_robust_norm_v1."
+    )
     assert lineage["feature_id"] == "efe_time_robust_norm_v1"
+
+    feature = {
+        "feature_id": "smoke_identity",
+        "interface": "fit_transform",
+        "code": (
+            "class Transformation:\n"
+            "    def fit(self, X, metadata):\n"
+            "        return {}\n"
+            "    def transform(self, X, state):\n"
+            "        return X.copy()\n"
+        ),
+    }
+    registered = await call_tool(
+        tsfm_main.mcp,
+        "register_feature",
+        {"feature": feature},
+    )
+    assert registered["message"] == "registered feature smoke_identity."
+    assert registered["card"]["feature_id"] == "smoke_identity"
+
+    updated = await call_tool(
+        tsfm_main.mcp,
+        "update_feature",
+        {
+            "feature_id": "smoke_identity",
+            "fields": {"description": "updated identity transform"},
+        },
+    )
+    assert updated["message"] == "updated feature smoke_identity with 1 field."
+    assert updated["description"] == "updated identity transform"
+
+    versioned = await call_tool(
+        tsfm_main.mcp,
+        "new_feature_version",
+        {
+            "feature_id": "smoke_identity",
+            "fields": {"description": "successor identity transform"},
+            "new_feature_id": "smoke_identity_v2",
+        },
+    )
+    assert (
+        versioned["message"]
+        == "created feature version smoke_identity_v2 from smoke_identity."
+    )
+    assert versioned["feature_id"] == "smoke_identity_v2"
+
+    deprecated = await call_tool(
+        tsfm_main.mcp,
+        "deprecate_feature",
+        {"feature_id": "smoke_identity_v2", "reason": "covered by successor"},
+    )
+    assert (
+        deprecated["message"]
+        == "deprecated feature smoke_identity_v2. Reason: covered by successor."
+    )
+    assert deprecated["status"] == "deprecated"
