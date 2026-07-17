@@ -265,7 +265,14 @@ def run_recipe(
             else 0.9
         )
         try:
-            intervals = fc.predict_interval(coverage=cov).round(4).head(3).to_dict()
+            pi = fc.predict_interval(coverage=cov).round(4).head(3)
+            # sktime returns MultiIndex columns, so to_dict() would key by TUPLES - which json
+            # cannot serialise, and every result here is written to a JSON file pointer.
+            pi.columns = [
+                "_".join(str(p) for p in c) if isinstance(c, tuple) else str(c)
+                for c in pi.columns
+            ]
+            intervals = pi.to_dict()
         except Exception as e:
             intervals = {"error": str(e)[:80]}
 

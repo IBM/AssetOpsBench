@@ -144,3 +144,81 @@ def test_list_results_reads_the_ledger():
     r = call("list_results", {"task_type": "tsfm_forecasting"})
     assert "results" in r
     assert "error" in call("get_result", {"task_type": "tsfm_forecasting", "result_id": "nope"})
+
+
+# ---- recipe_template: the contract must be TRUE, so every example is executed ----
+def test_recipe_template_returns_the_contract():
+    t = call("recipe_template", {})
+    assert t["task_choices"] and t["estimator_spec"] and t["optional_blocks"]
+    assert t["rules"] and t["examples"]
+
+
+def test_every_forecast_example_actually_runs():
+    """A template that lies is worse than none: run each example as-is."""
+    t = call("recipe_template", {})
+    ref = _series(n=240, asset="tmpl")
+    for name in ["forecast_inline_estimator", "anomaly_detection"]:
+        r = call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
+                                "target_columns": ["value"], "recipe": t["examples"][name]})
+        assert "error" not in r, f"{name} -> {r.get('error')}"
+        assert r["status"] == "success"
+
+
+def test_catalog_model_example_has_the_right_shape():
+    """The catalog example points at ttm_96_28, a real foundation card that needs transformers -
+    so run its SHAPE against a classical card instead of pulling torch into the test suite."""
+    t = call("recipe_template", {})
+    ex = t["examples"]["forecast_with_a_catalog_model"]
+    assert set(ex) == {"estimator", "fh"} and set(ex["estimator"]) == {"model_id"}
+
+    call("register_model", {"model": {
+        "model_id": "tmpl_classical", "description": "classical stand-in for the shape check",
+        "task_ids": ["tsfm_forecasting"], "sktime_class": NAIVE,
+        "params": {"strategy": "drift"}}})
+    recipe = {**ex, "estimator": {"model_id": "tmpl_classical"}}
+    r = call("run_recipe", {"dataset_path": _series(asset="tmpl_cat"),
+                            "timestamp_column": "timestamp", "target_columns": ["value"],
+                            "recipe": recipe})
+    assert "error" not in r, r.get("error")
+    assert r["status"] == "success"
+
+
+def test_unknown_model_id_in_a_recipe_errors():
+    r = call("run_recipe", {"dataset_path": _series(asset="ghost"),
+                            "timestamp_column": "timestamp", "target_columns": ["value"],
+                            "recipe": {"estimator": {"model_id": "no_such_card"}, "fh": [1]}})
+    assert "error" in r and "not in catalog" in r["error"]
+
+
+def test_ensemble_with_conformal_example_runs():
+    """Regression: the conformal block used to crash on serialisation - sktime returns MultiIndex
+    columns, so prediction_interval was keyed by tuples, which json.dump cannot write."""
+    t = call("recipe_template", {})
+    ref = _series(n=60, asset="tmpl_cf")           # short: conformal refits repeatedly
+    r = call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
+                            "target_columns": ["value"],
+                            "recipe": t["examples"]["forecast_ensemble_with_intervals"]})
+    assert "error" not in r, r.get("error")
+    assert r["status"] == "success"
+
+
+def test_tabular_example_actually_runs():
+    t = call("recipe_template", {})
+    r = call("run_tabular_recipe", {"dataset_path": _panel(), "label_column": "label",
+                                    "recipe": t["examples"]["tabular_classification"]})
+    assert "error" not in r, r.get("error")
+    assert r["status"] == "success" and r["task"] == "tsfm_classification"
+
+
+def test_conformal_intervals_are_json_serialisable():
+    """The whole result is written to a JSON file pointer, so every value must survive json.dump."""
+    ref = _series(n=60, asset="cf_json")
+    r = call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
+                            "target_columns": ["value"],
+                            "recipe": {"estimator": {"sktime_class": NAIVE,
+                                                     "params": {"strategy": "drift"}},
+                                       "fh": [1, 2], "conformal": {"coverage": 0.9}}})
+    assert "error" not in r, r.get("error")
+    payload = json.load(open(refs._path(r["results_file"])))
+    pi = payload.get("prediction_interval") or {}
+    assert all(isinstance(k, str) for k in pi), f"non-string keys reach json: {list(pi)[:3]}"
