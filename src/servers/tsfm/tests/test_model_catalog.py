@@ -24,12 +24,13 @@ def _card(model_id, **over):
     return card
 
 
-def test_surface_is_the_model_catalog():
+def test_model_catalog_surface_present():
+    """The 15 model-catalog tools (4-18). Other groups may add to the surface alongside them."""
     names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert names == {"list_models", "search_models", "find_models", "describe_candidates",
-                     "describe_models", "count_models", "list_domains", "get_model_lineage",
-                     "register_model", "model_template", "register_finetuned", "update_model",
-                     "deprecate_model", "new_model_version", "resolve_model"}
+    assert {"list_models", "search_models", "find_models", "describe_candidates",
+            "describe_models", "count_models", "list_domains", "get_model_lineage",
+            "register_model", "model_template", "register_finetuned", "update_model",
+            "deprecate_model", "new_model_version", "resolve_model"} <= names
 
 
 # ---- discovery / read (tools 4-11) ----
