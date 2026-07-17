@@ -271,7 +271,25 @@ Returns:
 def list_models(
     task_id: Optional[str] = None, domain: Optional[str] = None, status: str = "active"
 ) -> Union[ModelsResult, ErrorResult]:
-    """List model cards in the catalog (optionally filtered by task / domain)."""
+    """List model cards in the catalog, optionally filtered by task / domain.
+
+    The broad browse entry point for the model catalog: returns full cards, unranked, with no
+    filtering by default. Pair it with `describe_models` for a by-id detail lookup, or use
+    `find_models` / `search_models` when you need task ranking or text matching. Only `active`
+    cards are returned unless another status is requested.
+
+    Args:
+        task_id: Restrict to cards whose `task_ids` include this task, e.g. `tsfm_forecasting`.
+            Validated against the known tasks. None returns every task.
+        domain: Restrict to a single domain (exact match), e.g. `energy`. Use `list_domains` to
+            see valid values. None returns every domain.
+        status: Lifecycle status to include; defaults to `active` (deprecated cards are hidden
+            unless you pass `deprecated`).
+
+    Returns:
+        ModelsResult: `models`, a list of full card dicts matching the filters. ErrorResult if
+        `task_id` is not a known task.
+    """
     if task_id:
         bad = _check_task(task_id)
         if bad:
@@ -291,8 +309,22 @@ def list_models(
 def search_models(
     text: str, tags: Optional[List[str]] = None, status: str = "active"
 ) -> Union[ModelsResult, ErrorResult]:
-    """Substring (case-insensitive) search over the model catalog (id / description / model_family
-    / tags). `text` (required) is the substring to match; use list_models to browse all."""
+    """Substring (case-insensitive) search over the model catalog.
+
+    Matches `text` case-insensitively against each card's `model_id`, `description`,
+    `model_family` and `tags`. Use this when you have a keyword in mind (a family name, vendor,
+    or capability such as `anomaly`); use `list_models` to browse everything, or `find_models`
+    for a task-ranked shortlist.
+
+    Args:
+        text: Required. The substring to match against id / description / family / tags.
+        tags: Optional list of tags; when given, a card must also carry these tags to be returned.
+        status: Lifecycle status to include; defaults to `active`.
+
+    Returns:
+        ModelsResult: `models`, a list of full card dicts whose fields contain `text`. ErrorResult
+        if `text` is empty.
+    """
     if not text.strip():
         return ErrorResult(
             error="text is required: a substring to search for (use list_models to browse all)"
@@ -314,9 +346,28 @@ def find_models(
     domain: Optional[str] = None,
     top_k: int = 5,
 ) -> Union[ModelsResult, ErrorResult]:
-    """Filter the MODEL catalog for a task, ranked shortlist. Filters: `domain` (exact),
-    `min_context_length` / `prediction_length` (models lacking that field are excluded, e.g.
-    classical models have no context_length). A model is an estimator card."""
+    """Filter the model catalog for a task and return a ranked shortlist.
+
+    The task-aware selector: narrows to cards that support `task_id`, applies the optional
+    capability filters, and returns at most `top_k` cards. A card lacking a filtered field is
+    excluded (e.g. classical models have no `context_length`, so `min_context_length` drops
+    them). Use `describe_candidates` for an unranked shortlist, or `list_models` for the unranked
+    full list. A model is an estimator card.
+
+    Args:
+        task_id: Required. Only cards whose `task_ids` include this task are considered. Validated
+            against the known tasks.
+        min_context_length: Keep only models whose `context_length` is at least this value; cards
+            without the field are excluded.
+        prediction_length: Keep only models whose `prediction_length` covers this horizon; cards
+            without the field are excluded.
+        domain: Exact-match domain filter, e.g. `energy`. Use `list_domains` for valid values.
+        top_k: Maximum number of cards to return; clamped to the range 1..50 (default 5).
+
+    Returns:
+        ModelsResult: `models`, the ranked shortlist of full card dicts (up to `top_k`).
+        ErrorResult if `task_id` is not a known task.
+    """
     bad = _check_task(task_id)
     if bad:
         return ErrorResult(error=bad)
@@ -341,9 +392,23 @@ def find_models(
 def describe_candidates(
     task_id: str, top_k: int = 5, domain: Optional[str] = None
 ) -> Union[CandidatesResult, ErrorResult]:
-    """CANDIDATE models for a task (HuggingGPT-style shortlist, CATALOG ORDER (no ranking)). A
-    candidate is a shortlisted MODEL; you decide which to use; top_k caps the list. Use hf_stats /
-    gift_status to judge popularity / quality yourself."""
+    """Return a shortlist of candidate models for a task, in catalog order.
+
+    A HuggingGPT-style candidate list: the cards that support `task_id`, capped at `top_k` and
+    presented in CATALOG ORDER (no ranking or scoring is applied — you decide which to use). To
+    judge popularity or quality yourself, follow up with `hf_stats` / `gift_status`. Use
+    `find_models` instead when you want capability filters and ranking.
+
+    Args:
+        task_id: Required. Only cards whose `task_ids` include this task are shortlisted.
+            Validated against the known tasks.
+        top_k: Maximum number of candidates to return; clamped to the range 1..50 (default 5).
+        domain: Optional exact-match domain filter, e.g. `energy`.
+
+    Returns:
+        CandidatesResult: `task_id` (echoed) and `candidates`, the list of candidate card dicts in
+        catalog order. ErrorResult if `task_id` is not a known task.
+    """
     bad = _check_task(task_id)
     if bad:
         return ErrorResult(error=bad)
@@ -362,9 +427,21 @@ def describe_candidates(
 
 @mcp.tool(title="Describe Models")
 def describe_models(model_ids: List[str]) -> Union[DescribeModelsResult, ErrorResult]:
-    """Return a compact record (description + family + sktime_class + context_length + domain + tags)
-    for ONLY the given model_ids. The by-ids detail lookup that pairs with list_models / find_models
-    (mirrors describe_features on the feature side)."""
+    """Return a compact record for each of the given model ids.
+
+    The by-id detail lookup that pairs with `list_models` / `find_models` (the model-side mirror
+    of `describe_features`). For each id it returns a trimmed view — description, family,
+    `sktime_class`, `context_length`, domain and tags — rather than the full card. Ids not in the
+    catalog are reported separately rather than raising an error.
+
+    Args:
+        model_ids: The model ids to describe. Discover valid ids with `list_models` /
+            `find_models`. At least one id is required.
+
+    Returns:
+        DescribeModelsResult: `models` (a compact record per found id), `unknown` (ids not in the
+        catalog), and a summary `message`. ErrorResult if `model_ids` is empty.
+    """
     if not model_ids:
         return ErrorResult(error="provide at least one model_id (see list_models / find_models)")
     try:
@@ -401,7 +478,15 @@ def describe_models(model_ids: List[str]) -> Union[DescribeModelsResult, ErrorRe
 
 @mcp.tool(title="Count Models")
 def count_models() -> Union[ModelCountResult, ErrorResult]:
-    """How many models are in the catalog. Returns the total active models and a per-task breakdown."""
+    """Count the models in the catalog.
+
+    A quick catalog-size summary over active cards: the total, plus how many support each task (a
+    card that lists several `task_ids` is counted under each). Read-only; takes no arguments.
+
+    Returns:
+        ModelCountResult: `total`, the number of active models, and `by_task`, a task_id → count
+        breakdown (sorted by task id).
+    """
     try:
         models = model_store.list_models(_STORE)
         by_task: dict = {}
@@ -416,9 +501,20 @@ def count_models() -> Union[ModelCountResult, ErrorResult]:
 
 @mcp.tool(title="List Domains")
 def list_domains(task_id: Optional[str] = None) -> Union[DomainsResult, ErrorResult]:
-    """The distinct domains present in the model catalog (the valid values for the `domain` filter
-    of list_models / find_models / describe_candidates), each with its model count. Optionally
-    scoped to a task."""
+    """List the distinct domains present in the model catalog, with counts.
+
+    Enumerates the values you can pass to the `domain` filter of `list_models` / `find_models` /
+    `describe_candidates`, each with the number of models in it (cards without a domain are
+    grouped under `unspecified`). Optionally scope the tally to a single task.
+
+    Args:
+        task_id: Optional. Restrict the tally to cards whose `task_ids` include this task.
+            Validated against the known tasks. None counts across every task.
+
+    Returns:
+        DomainsResult: `domains`, a domain → model-count mapping (sorted by domain name).
+        ErrorResult if `task_id` is not a known task.
+    """
     if task_id:
         bad = _check_task(task_id)
         if bad:
@@ -436,8 +532,20 @@ def list_domains(task_id: Optional[str] = None) -> Union[DomainsResult, ErrorRes
 
 @mcp.tool(title="Get Model Lineage")
 def get_model_lineage(model_id: str) -> Union[LineageResult, ErrorResult]:
-    """A model's lineage: the fine-tune chain (base-model ancestors + fine-tune descendants) plus
-    its version links (supersedes / superseded_by)."""
+    """Return a model card's lineage.
+
+    Traces two relationships for the card: its fine-tune chain (base-model ancestors and
+    fine-tuned descendants, as recorded by `register_finetuned`) and its version links
+    (`supersedes` / `superseded_by`, as set by `new_model_version`). Use it to see where a card
+    came from and what replaced it.
+
+    Args:
+        model_id: Required. The card whose lineage to trace. Discover valid ids with `list_models`.
+
+    Returns:
+        LineageResult: the lineage graph for the card — its ancestors, descendants and supersede
+        links. ErrorResult if `model_id` is empty.
+    """
     if not model_id.strip():
         return ErrorResult(error="model_id is required")
     try:
