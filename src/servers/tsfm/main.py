@@ -26,6 +26,7 @@ from .core.results_models import (
     CandidatesResult,
     CharacterizeResult,
     CardResult,
+    EvaluateResult,
     DataQualityResult,
     DescribeModelsResult,
     DomainsResult,
@@ -35,10 +36,17 @@ from .core.results_models import (
     ModelCountResult,
     ModelDescription,
     ModelsResult,
+    PlanResult,
     ModelTemplateResult,
     ProfileResult,
+    RecipeResult,
     RegisterResult,
     ResolveResult,
+    ResultRecord,
+    ResultsListResult,
+    RunRecord,
+    RunsResult,
+    TabularResult,
     TasksResult,
     FeaturesResult,
 )
@@ -49,7 +57,10 @@ from .reasoning import patterns, profile
 from .stores import model_store
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-from .stores import feature_store
+from .config import PLANS_COLLECTION, RUNS_COLLECTION
+from .engine import composition, plan
+from .eval import forecast_eval
+from .stores import feature_store, results
 
 load_dotenv()
 
@@ -75,6 +86,25 @@ mcp = FastMCP(
 # The catalog is an ordinary AssetOpsBench CouchDB collection (model_catalog), loaded by
 # src/couchdb/init_data.py. The server reads it; it does not seed.
 _STORE = make_store()
+
+
+def _load_target(
+    dataset_path: str, timestamp_column: Optional[str], target_columns: List[str]
+):
+    """Resolve a file pointer to the (univariate) target series for forecasting."""
+    obj = refs.load_series(
+        dataset_path, time_col=timestamp_column, channels=target_columns
+    )
+    return obj.iloc[:, 0] if isinstance(obj, pd.DataFrame) else obj
+
+
+def _check_recipe(recipe) -> Optional[str]:
+    """Validate the shape of a recipe before the engine touches it."""
+    if not isinstance(recipe, dict) or not recipe:
+        return "recipe must be a non-empty object"
+    if "estimator" not in recipe and "ensemble" not in recipe:
+        return "recipe must include an 'estimator' or an 'ensemble'"
+    return None
 
 
 def _check_task(task_id: str) -> Optional[str]:
@@ -1206,6 +1236,202 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
     except Exception as exc:
         logger.error("get_feature_lineage failed: %s", exc)
         return ErrorResult(error=str(exc))
+
+
+# =============================================================================
+# Compose and run (file pointers in/out)
+# =============================================================================
+
+
+@mcp.tool(title="Run Recipe")
+def run_recipe(
+    dataset_path: str,
+    timestamp_column: str,
+    target_columns: List[str],
+    recipe: dict,
+    asset_id: str = "asset",
+    parent_run_id: Optional[str] = None,
+) -> Union[RecipeResult, ErrorResult]:
+    """Run a recipe on a series from a file pointer. Dispatches by recipe['task']:
+    'tsfm_anomaly_detection' → detector path (e.g. tspulse_ad zero-shot, sublof) producing dense
+    anomaly labels; otherwise FORECASTING (transforms + single/ensemble + conformal). Writes the
+    run record to a results_file pointer."""
+    if not dataset_path.strip():
+        return ErrorResult(error="dataset_path is required")
+    if not target_columns:
+        return ErrorResult(error="target_columns must not be empty")
+    bad = _check_recipe(recipe)
+    if bad:
+        return ErrorResult(error=bad)
+    try:
+        series = _load_target(dataset_path, timestamp_column, target_columns)
+        res = composition.run_recipe(
+            _STORE, series, recipe, asset_id=asset_id, parent_run_id=parent_run_id
+        )
+        if res.get("task") == "tsfm_anomaly_detection":  # detector path
+            results_file = refs.write_json(
+                {
+                    "anomaly_label": res.pop("labels"),
+                    "n_anomalies": res["n_anomalies"],
+                    "anomaly_indices": res["anomaly_indices_head"],
+                },
+                name="anomaly",
+            )
+            return RecipeResult(
+                status="success",
+                run_id=res["run_id"],
+                results_file=results_file,
+                training_regime=res["training_regime"],
+                n_anomalies=res["n_anomalies"],
+                n_observations=res["n_observations"],
+                message=f"Anomaly run complete ({res['training_regime']}): "
+                f"{res['n_anomalies']}/{res['n_observations']} flagged. Labels at {results_file}.",
+            )
+        results_file = refs.write_json(res, name="recipe_run")  # forecasting path
+        return RecipeResult(
+            status="success",
+            run_id=res["run_id"],
+            results_file=results_file,
+            metric=res["metric"],
+            backtest_score=res["backtest_score"],
+            training_regime=res["training_regime"],
+            message=f"Recipe run complete ({res['training_regime']}). Record at {results_file}.",
+        )
+    except Exception as exc:
+        logger.error("run_recipe failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Run Tabular Recipe")
+def run_tabular_recipe(
+    dataset_path: str,
+    recipe: dict,
+    label_column: Optional[str] = None,
+    asset_id: str = "asset",
+) -> Union[TabularResult, ErrorResult]:
+    """Series→tabular run (regression/classification/clustering): each row of the CSV file
+    pointer is an instance; ``label_column`` (if supervised) holds y. FeatureUnion → estimator.
+    """
+    if not dataset_path.strip():
+        return ErrorResult(error="dataset_path is required")
+    bad = _check_recipe(recipe)
+    if bad:
+        return ErrorResult(error=bad)
+    try:
+        df = pd.read_csv(refs._path(dataset_path))
+        y = None
+        if label_column:
+            if label_column not in df.columns:
+                return ErrorResult(
+                    error=f"label_column '{label_column}' not in dataset"
+                )
+            y = df[label_column].to_numpy()
+            df = df.drop(columns=[label_column])
+        X = df.apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy()
+        res = composition.run_tabular_recipe(_STORE, X, recipe, y=y, asset_id=asset_id)
+        results_file = refs.write_json(res, name="tabular_run")
+        return TabularResult(
+            status="success",
+            run_id=res["run_id"],
+            results_file=results_file,
+            task=res["task"],
+            metric=res["metric"],
+            cv_score=res["cv_score"],
+            n_features=res["n_features"],
+            message=f"Tabular run complete ({res['task']}). Record at {results_file}.",
+        )
+    except Exception as exc:
+        logger.error("run_tabular_recipe failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Run Plan")
+def run_plan(
+    plan_spec: dict, asset_id: str = "asset", scenario_id: Optional[str] = None
+) -> Union[PlanResult, ErrorResult]:
+    """Execute a recipe DAG (file-pointer chaining; HuggingGPT task-list)."""
+    if not plan_spec:
+        return ErrorResult(error="plan_spec is required")
+    try:
+        res = plan.run_plan(
+            _STORE, plan_spec, asset_id=asset_id, scenario_id=scenario_id
+        )
+        results_file = refs.write_json(res, name="plan_run")
+        return PlanResult(
+            status="success",
+            results_file=results_file,
+            message=f"Plan complete. Record at {results_file}.",
+            **res,
+        )
+    except Exception as exc:
+        logger.error("run_plan failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Evaluate (GIFT-Eval)")
+def evaluate(recipe: dict, configs: List[dict]) -> Union[EvaluateResult, ErrorResult]:
+    """GIFT-Eval: seasonal-naive-normalized MASE+CRPS, geo-mean over configs."""
+    bad = _check_recipe(recipe)
+    if bad:
+        return ErrorResult(error=bad)
+    if not configs:
+        return ErrorResult(error="configs must not be empty")
+    try:
+        res = forecast_eval.evaluate_recipe(_STORE, recipe, configs)
+        results_file = refs.write_json(res, name="gifteval")
+        return EvaluateResult(
+            status="success",
+            results_file=results_file,
+            message=f"Evaluation complete. Scores at {results_file}.",
+            **res,
+        )
+    except Exception as exc:
+        logger.error("evaluate failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+# =============================================================================
+# Results and runs (the ledger)
+# =============================================================================
+
+
+@mcp.tool(title="Get Result")
+def get_result(task_type: str, result_id: str) -> Union[ResultRecord, ErrorResult]:
+    """Fetch one persisted result by task_type + result_id (the record a run produced and stored).
+    Returns the stored result or an error if no such id exists for that task_type."""
+    rec = results.get_result(_STORE, task_type, result_id)
+    return ResultRecord(**rec) if rec else ErrorResult(error="not found")
+
+
+@mcp.tool(title="List Results")
+def list_results(
+    task_type: str, asset_id: Optional[str] = None, scenario_id: Optional[str] = None
+) -> ResultsListResult:
+    """List persisted results for a task_type, optionally narrowed by asset_id / scenario_id.
+    Compact records; use get_result for the full stored payload of one id."""
+    return ResultsListResult(
+        results=results.list_results(
+            _STORE, task_type, asset_id=asset_id, scenario_id=scenario_id
+        )
+    )
+
+
+@mcp.tool(title="Get Run")
+def get_run(run_id: str) -> Union[RunRecord, ErrorResult]:
+    """Fetch one run record by run_id: a single recipe/plan execution with its config and outcome.
+    Returns the stored run or an error if the id is unknown."""
+    rec = _STORE.get(RUNS_COLLECTION, run_id)
+    return RunRecord(**rec) if rec else ErrorResult(error="not found")
+
+
+@mcp.tool(title="List Runs")
+def list_runs(asset_id: Optional[str] = None) -> RunsResult:
+    """List run records and plans, optionally filtered by asset_id. Runs are individual executions;
+    plans are multi-step sequences. Use get_run for one run's full detail."""
+    sel = {"asset_id": asset_id} if asset_id else {}
+    return RunsResult(
+        runs=_STORE.find(RUNS_COLLECTION, sel), plans=_STORE.find(PLANS_COLLECTION, sel)
+    )
 
 
 def main() -> None:

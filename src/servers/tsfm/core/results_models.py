@@ -30,6 +30,7 @@ class ModelsResult(BaseModel):
 
 class FeaturesResult(BaseModel):
     features: List[dict]
+    message: str = ""
 
 
 class ComponentResult(BaseModel):
