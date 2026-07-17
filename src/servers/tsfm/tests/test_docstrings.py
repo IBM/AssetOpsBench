@@ -55,24 +55,27 @@ def test_every_parameter_is_documented(name):
 
 
 # ---- the caveats must be TRUE, not aspirational ----
-def test_register_model_really_does_overwrite():
-    """Its docstring warns the card is overwritten without warning."""
-    assert "OVERWRITTEN" in _descriptions()["register_model"]
+def test_register_model_really_rejects_duplicates():
+    """Its docstring says a duplicate model_id is rejected, not overwritten."""
+    assert "REJECTED" in _descriptions()["register_model"]
     card = {"model_id": "ovw", "description": "first version", "task_ids": ["tsfm_forecasting"],
             "sktime_class": NAIVE}
     M.register_model(card)
-    M.register_model({**card, "description": "second version"})
-    assert model_store.get_model(M._STORE, "ovw")["description"] == "second version"
+    again = M.register_model({**card, "description": "second version"}).model_dump()
+    assert "error" in again and "exists" in again["error"]
+    assert model_store.get_model(M._STORE, "ovw")["description"] == "first version"  # untouched
 
 
-def test_register_finetuned_really_falls_back_to_ttm():
-    """Its docstring warns an unknown base_model_id silently defaults sktime_class to TTM."""
+def test_register_finetuned_really_rejects_an_unknown_base():
+    """Its docstring says an unknown base_model_id errors rather than guessing a wrapper class."""
     d = _descriptions()["register_finetuned"]
-    assert "not checked for existence" in d.lower() and "tinytimemixer" in d.lower()
+    assert "must already be in the catalog" in d
     r = M.register_finetuned(model_id="ghost_ft", checkpoint_path="/ckpt/g",
                              base_model_id="no_such_base", context_length=96,
                              prediction_length=28, description="finetune of a ghost")
-    assert r.model_dump()["sktime_class"].endswith("TinyTimeMixerForecaster")
+    d = r.model_dump()
+    assert "error" in d and "not in the catalog" in d["error"]
+    assert model_store.get_model(M._STORE, "ghost_ft") is None      # nothing was written
 
 
 def test_register_finetuned_really_inherits_from_the_base():
@@ -132,4 +135,5 @@ def test_model_template_is_static_and_its_example_registers():
     assert "reads nothing from the catalog" in d
     t = M.model_template()
     assert set(t.required_fields) == {"model_id", "description", "task_ids"}
-    assert "error" not in M.register_model(t.example).model_dump()
+    example = {**t.example, "model_id": "tmpl_example_ds"}   # unique: duplicates are rejected
+    assert "error" not in M.register_model(example).model_dump()

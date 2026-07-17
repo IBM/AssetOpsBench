@@ -79,6 +79,9 @@ class ModelCard(BaseModel):
     created_by: str = "seed"
     created_at: str = Field(default_factory=_now)
 
+    # computed by _resolvable below; declared so it persists into the stored card
+    resolvable: bool = True
+
     @field_validator("context_length", "prediction_length")
     @classmethod
     def _non_negative(cls, v):
@@ -88,14 +91,20 @@ class ModelCard(BaseModel):
 
     @model_validator(mode="after")
     def _resolvable(self):
-        # must be loadable somewhere (else it's a catalog-only stub, allowed but flagged)
+        # Must be loadable somewhere, else it is a catalog-only stub (allowed, but flagged).
+        # sktime_class + params is the operative loader (resolver.resolve -> Est(**params)), so it
+        # counts as a pointer just like the artifact locations do.
         refs = [
+            self.sktime_class,
             self.artifact_path,
             self.hf_repo,
             self.remote_endpoint,
             self.model_checkpoint,
         ]
-        object.__setattr__(self, "resolvable", any(refs) or self.source == "toolkit")
+        # `resolvable` is a declared field, so it survives model_dump() into the stored card.
+        # (It used to be set via object.__setattr__, which pydantic drops on serialization -
+        # the flag was computed and then silently thrown away.)
+        self.resolvable = any(refs) or self.source == "toolkit"
         if self.provenance == Provenance.finetuned and not self.base_model_id:
             raise ValueError("finetuned model requires base_model_id (lineage)")
         return self

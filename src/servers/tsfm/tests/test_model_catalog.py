@@ -99,7 +99,9 @@ def test_list_models_and_task_validation():
 def test_model_template_example_registers():
     t = call("model_template", {})
     assert t["required_fields"] == ["model_id", "description", "task_ids"]
-    assert call("register_model", {"model": t["example"]})["status"] == "registered"
+    # unique id: duplicates are rejected, so tests must not share the example's model_id
+    example = {**t["example"], "model_id": "tmpl_example_mc"}
+    assert call("register_model", {"model": example})["status"] == "registered"
 
 
 def test_register_validates():
