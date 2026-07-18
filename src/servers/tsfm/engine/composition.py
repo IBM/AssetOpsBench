@@ -88,6 +88,20 @@ def _resolve_estimator(spec: dict, store=None):
     return name, R.resolve(spec)
 
 
+def _with_finetune(spec: dict, recipe: dict) -> dict:
+    """Merge recipe['finetune'] into an estimator spec's params.
+
+    Without this the block is decorative: _recipe_regime reads it and switches to the expensive
+    refit backtest, but the training params never reach the constructor, so nothing is actually
+    fine-tuned. Run-level finetune params override the card's, because the block is the more
+    specific instruction.
+    """
+    ft = recipe.get("finetune")
+    if not ft or not isinstance(ft, dict):
+        return spec
+    return {**spec, "params": {**(spec.get("params") or {}), **ft}}
+
+
 def build_forecaster(recipe: dict, store=None):
     """Compile a recipe into a single sktime forecaster (ensemble/transform-aware)."""
     from sktime.forecasting.compose import EnsembleForecaster
@@ -95,7 +109,7 @@ def build_forecaster(recipe: dict, store=None):
     # 1) the core forecaster: single or ensemble
     if "ensemble" in recipe:
         ens = recipe["ensemble"]
-        members = [_resolve_estimator(m, store) for m in ens["members"]]
+        members = [_resolve_estimator(_with_finetune(m, recipe), store) for m in ens["members"]]
         combine = ens.get("combine", "mean")
         if combine == "weighted":
             base = EnsembleForecaster(members, weights=ens.get("weights"))
@@ -106,7 +120,7 @@ def build_forecaster(recipe: dict, store=None):
         else:  # mean | median | min | max
             base = EnsembleForecaster(members, aggfunc=combine)
     else:
-        _, base = _resolve_estimator(recipe["estimator"], store)
+        _, base = _resolve_estimator(_with_finetune(recipe["estimator"], recipe), store)
 
     # 2) optional transforms with automatic inverse (AutoAI-TS reverse-order, via sktime)
     transforms = recipe.get("transforms") or []
@@ -139,6 +153,9 @@ def _backtest(forecaster, y, recipe):
     step = ev.get("step", max(len(fh), 1))
     metric = _metric((ev.get("metrics") or ["smape"])[0])
     cv = ExpandingWindowSplitter(initial_window=iw, step_length=step, fh=fh)
+    # error_score defaults to np.nan, which SWALLOWS the real exception (e.g. a missing optional
+    # dependency) and then dies casting NA to int inside sktime's own error path - surfacing as
+    # "int() argument ... not 'NAType'". Raise instead so the true cause reaches the agent.
     res = evaluate(forecaster=forecaster, y=y, cv=cv, scoring=metric, error_score="raise")
     col = [c for c in res.columns if c.startswith("test_")][0]
     return float(res[col].mean()), metric.__class__.__name__, len(res)
@@ -163,19 +180,48 @@ def _backtest_zero_shot(forecaster, y, recipe):
     return score, metric.__class__.__name__, 1
 
 
+def _save_checkpoint(fc, path: str) -> str:
+    """Persist a fitted forecaster as a checkpoint a CARD can point at.
+
+    A card is `sktime_class` + `params`, so the checkpoint has to be loadable by the CONSTRUCTOR
+    (via params.model_path), not by a bespoke loader. For the HuggingFace-backed estimators that is
+    `save_pretrained` -> a directory of config + weights, which is exactly what
+    `TinyTimeMixerForPrediction.from_pretrained(model_path)` reads back.
+
+    sktime's own `est.save()` writes a pickled estimator, which no card field can reference, so it
+    is deliberately NOT used here: it would produce a file that register_finetuned could name and
+    resolve() could never load.
+
+    Raises with a usable message when the fitted estimator has no such checkpoint format.
+    """
+    import os
+
+    model = getattr(fc, "model", None)
+    if model is None or not hasattr(model, "save_pretrained"):
+        raise ValueError(
+            f"recipe['save_to'] needs an estimator with a HuggingFace-style checkpoint "
+            f"(a .model exposing save_pretrained, e.g. TinyTimeMixerForecaster); "
+            f"{type(fc).__name__} has none. A card can only point at weights via "
+            f"params.model_path, so there is no card-loadable way to store this estimator."
+        )
+    path = os.path.abspath(os.path.expanduser(path))
+    os.makedirs(path, exist_ok=True)
+    model.save_pretrained(path)
+    return path
+
+
 def _recipe_regime(recipe, store) -> str:
     """Cheapest regime that covers the whole recipe: zero_shot only if every estimator is
     pretrained-zero-shot and no fine-tune is requested; else fit_on_series (or fine_tune).
     """
     from ..substrate import resolver as R
 
-    if recipe.get("finetune"):
-        return "fine_tune"
     specs = (
         recipe["ensemble"]["members"] if "ensemble" in recipe else [recipe["estimator"]]
     )
     regimes = set()
     for s in specs:
+        s = _with_finetune(s, recipe)  # the block configures training; judge the MERGED params
         card = s
         if s.get("model_id") and store is not None:
             from ..stores import model_store
@@ -257,6 +303,12 @@ def run_recipe(
     fh = recipe.get("fh", [1, 2, 3, 4, 5])
     fc.fit(y, fh=fh)
     forecast = fc.predict().round(4).tolist()
+
+    # recipe['save_to'] closes the fine-tune loop: without it run_recipe trains a model and then
+    # drops it, and nothing produces the checkpoint_path register_finetuned requires.
+    checkpoint_path = None
+    if recipe.get("save_to"):
+        checkpoint_path = _save_checkpoint(fc, recipe["save_to"])
     intervals = None
     if recipe.get("conformal"):
         cov = (
@@ -293,6 +345,7 @@ def run_recipe(
         "per_member_score": per_member,
         "forecast_head": forecast[:5],
         "prediction_interval": intervals,
+        "checkpoint_path": checkpoint_path,
         "created_at": _now(),
     }
     if store is not None:
@@ -302,12 +355,18 @@ def run_recipe(
         "task": "tsfm_forecasting",
         "backtest_score": round(score, 4),
         "metric": metric_name,
+        # folds is what makes backtest_score interpretable: zero_shot scores ONE holdout of len(fh)
+        # points, fit_on_series averages ~20 expanding folds. Both come back as "backtest_score"
+        # under the same metric name, so without the fold count the caller cannot tell whether two
+        # rows are comparable. It was computed and stored, but never surfaced.
+        "folds": folds,
         "training_regime": regime,
         "trained": regime != "zero_shot",
         "block_audit": block_audit,
         "per_member_score": per_member,
         "forecast_head": forecast[:5],
         "prediction_interval": intervals,
+        "checkpoint_path": checkpoint_path,
         "parent_run_id": parent_run_id,
         "improved": (
             parent_run_id is not None
