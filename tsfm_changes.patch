@@ -1,0 +1,213 @@
+diff --git a/docs/mcp-servers.md b/docs/mcp-servers.md
+index 65c786e..814664a 100644
+--- a/docs/mcp-servers.md
++++ b/docs/mcp-servers.md
+@@ -145,7 +145,7 @@ the full output. The server supplies evidence; the agent makes the decisions.
+ | `count_models` | read | — | Total active models plus a per-task breakdown. |
+ | `list_domains` | read | `task_id?` | The distinct domains present, with counts — the valid values for the `domain` filter. |
+ | `get_model_lineage` | read | `model_id` | Fine-tune ancestors and descendants, plus `supersedes` / `superseded_by` links. |
+-| `resolve_model` | read | `model_id` | Preflight: confirm a card can be loaded and report where its weights come from. Does not download or fit. |
++| `resolve_model` | read | `model_id` | Preflight: confirm a card is loadable — the `sktime_class` imports **and** its declared soft dependencies and Python-version floor are satisfied — and report where its weights come from. Does not download or fit. |
+ | `hf_stats` | read | `model_id?`, `hf_repo?` | HuggingFace downloads and likes for a card's repo. Read-only; needs network to huggingface.co. |
+ 
+ ### Model catalog — authoring and lifecycle
+@@ -154,7 +154,7 @@ the full output. The server supplies evidence; the agent makes the decisions.
+ | ---- | -------- | --------- | ----------- |
+ | `model_template` | read | — | The card contract: required and optional fields, the pointer choices, and a worked example. Static. |
+ | `register_model` | write | `model` | Register a schema-validated model card. A duplicate `model_id` is rejected, not overwritten. |
+-| `register_finetuned` | write | `model_id`, `checkpoint_path`, `base_model_id`, `context_length`, `prediction_length`, `description`, `domain?` | Point a card at a fine-tune checkpoint; inherits the base's `sktime_class` and records lineage. |
++| `register_finetuned` | write | `model_id`, `checkpoint_path`, `base_model_id`, `context_length`, `prediction_length`, `description`, `domain?` | Card a fine-tune checkpoint: inherits the base's `sktime_class`, points `params.model_path` at the checkpoint, records lineage, and pins the **serving** regime to `zero_shot` (serving loads and predicts, it does not re-train). Rejects a base whose wrapper takes no `model_path`. |
+ | `update_model` | write | `model_id`, `fields` | Patch fields, stamp `updated_at`, and re-validate against the schema. |
+ | `deprecate_model` | write | `model_id`, `reason?` | Soft delete: `status=deprecated`, dropping the card from active listings. |
+ | `new_model_version` | write | `model_id`, `fields`, `new_model_id?` | Register a successor and mark the predecessor superseded, cross-linked. |
+@@ -172,6 +172,42 @@ the full output. The server supplies evidence; the agent makes the decisions.
+ | `deprecate_feature` | write | `feature_id`, `reason?` | Mark a card deprecated while keeping it for audit and lineage. |
+ | `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and supersede the predecessor. |
+ 
++### Compose and run
++
++The catalog describes models; these tools **run** them. A recipe names an estimator (a `model_id`
++from the catalog, or an inline `sktime_class` + `params`) plus optional blocks, and `run_recipe`
++compiles it, backtests it, produces a forecast, and persists a run record. `recipe_template` returns
++the contract so an agent does not have to guess the shape.
++
++| Tool | Category | Arguments | Description |
++| ---- | -------- | --------- | ----------- |
++| `recipe_template` | read | — | The recipe contract: `estimator_spec`, `optional_blocks` (`fh`, `transforms`, `ensemble`, `conformal`, `finetune`, `save_to`, `anomaly`, `impute`, `eval`), `rules`, and executable `examples`. Static. |
++| `run_recipe` | write, cpu-centric | `dataset_path`, `timestamp_column`, `target_columns`, `recipe`, `asset_id?`, `parent_run_id?` | Run a forecasting or anomaly recipe on a series file pointer. Chooses the backtest by regime (`zero_shot` = one holdout; `fit_on_series`/`fine_tune` = expanding folds); returns `backtest_score`, `folds`, a results-file pointer, and — when the recipe carries `save_to` — the `checkpoint_path` of the persisted weights. |
++| `run_tabular_recipe` | write, cpu-centric | `dataset_path`, `recipe`, `label_column?`, `asset_id?` | Series→tabular run (regression / classification / clustering): each CSV row is an instance; FLOps features are extracted, then the estimator fits. Omit `label_column` for clustering. |
++| `run_plan` | write, cpu-centric | `plan_spec`, `asset_id?`, `scenario_id?` | Execute a recipe DAG: file-pointer chaining across a HuggingGPT-style task list. |
++| `list_runs` | read | `asset_id?` | List run records and plans, optionally filtered by asset. |
++| `get_run` | read | `run_id` | One run record: its recipe config and outcome. |
++| `list_results` | read | `task_type`, `asset_id?`, `scenario_id?` | List persisted results for a task type. |
++| `get_result` | read | `task_type`, `result_id` | One persisted result — the record a run produced and stored. |
++
++**How a run's output reaches the agent.** Every execution returns a `results_file` - a `file://`
++pointer to a JSON document in `TSFM_WORKDIR` (default `/tmp/tsfm_work`, override with the env var)
++holding the full payload (forecast head, prediction intervals, or anomaly labels). The tool response
++carries the pointer plus the headline numbers (`backtest_score`, `folds`, `n_anomalies`); the agent
++opens the pointer only when it needs the detail. The same run is persisted three ways: the response
++pointer, a **run record** in `tsfm_runs` (read by `list_runs` / `get_run`), and a **typed result**
++in the task's result collection - `forecast_result`, `anomaly_result`, ... - read by `list_results`
++/ `get_result`, so a later agent can find a run by `task_type` + `asset_id` without knowing its
++`run_id`. The run record and the result index live in CouchDB (durable) under the default backend;
++the payload file lives on the local filesystem of whichever host ran the recipe, so on ephemeral or
++multi-host deployments treat `results_file` as host-local and rely on the CouchDB record for the
++durable summary.
++
++**The fine-tune lifecycle is entirely on this surface.** `run_recipe` with a `finetune` block trains
++the estimator and, with `save_to`, writes an HF-format checkpoint and returns its path;
++`register_finetuned` cards that checkpoint with lineage and a pinned serving regime; a further
++`run_recipe` on the new card loads those weights and forecasts. No dropping to raw sktime.
++
+ Successful TSFM tool responses include a top-level `message` string. List and search responses also
+ include `features` or `models`; registration returns `status`, `id`, and `card`; card operations
+ return the card fields plus `message`; lineage returns `feature_id` / `model_id`, `ancestors`,
+diff --git a/src/servers/tsfm/main.py b/src/servers/tsfm/main.py
+index 725b9bc..4802b46 100644
+--- a/src/servers/tsfm/main.py
++++ b/src/servers/tsfm/main.py
+@@ -1349,6 +1349,8 @@ def recipe_template() -> RecipeTemplateResult:
+             '"mean|median|min|max|weighted|stack", "weights": [...]} - use INSTEAD of estimator',
+             'conformal  - {"coverage": 0.9} for calibrated prediction intervals',
+             'finetune   - training block; see param_hints (lr, epochs, batch_size, ...)',
++            'save_to    - directory path; after a fine-tune, persist the fitted weights there and '
++            'return checkpoint_path in the result (feed it to register_finetuned)',
+             'anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)',
+             'impute     - fill gaps before fitting',
+             'eval       - {"metrics": ["smape", ...]} - the first metric scores the backtest',
+@@ -1400,6 +1402,26 @@ def recipe_template() -> RecipeTemplateResult:
+     )
+ 
+ 
++def _index_result(task_type, *, asset_id, results_file, model_id=None,
++                  summary=None, metrics=None, scenario_id=None):
++    """Record a produced result in its typed collection so list_results / get_result can find it.
++
++    run_recipe already returns the results_file pointer AND persists the run record to tsfm_runs.
++    This is the third leg: the per-task result index (forecast_result, anomaly_result, ...) that
++    get_result / list_results read. Without it those two tools return nothing. Best-effort: a run
++    that succeeded must not fail because its result could not be indexed, so failures are logged,
++    not raised.
++    """
++    try:
++        results.write_result(
++            _STORE, task_type, asset_id=asset_id, results_file=results_file,
++            model_id=model_id, summary=summary or {}, metrics=metrics or [],
++            scenario_id=scenario_id,
++        )
++    except Exception as exc:  # never let indexing sink a good run
++        logger.warning("result indexing skipped for %s: %s", task_type, exc)
++
++
+ @mcp.tool(title="Run Recipe")
+ def run_recipe(
+     dataset_path: str,
+@@ -1434,6 +1456,12 @@ def run_recipe(
+                 },
+                 name="anomaly",
+             )
++            _index_result(
++                "tsfm_anomaly_detection", asset_id=asset_id, results_file=results_file,
++                model_id=(recipe.get("estimator") or {}).get("model_id"),
++                summary={"total_records": res["n_observations"],
++                         "anomaly_count": res["n_anomalies"]},
++            )
+             return RecipeResult(
+                 status="success",
+                 run_id=res["run_id"],
+@@ -1445,6 +1473,13 @@ def run_recipe(
+                 f"{res['n_anomalies']}/{res['n_observations']} flagged. Labels at {results_file}.",
+             )
+         results_file = refs.write_json(res, name="recipe_run")  # forecasting path
++        _index_result(
++            "tsfm_forecasting", asset_id=asset_id, results_file=results_file,
++            model_id=(recipe.get("estimator") or {}).get("model_id"),
++            summary={"horizon": len(recipe.get("fh") or [1, 2, 3, 4, 5])},
++            metrics=[{"metric": res.get("metric"), "score": res.get("backtest_score"),
++                      "folds": res.get("folds")}],
++        )
+         extra = {}
+         if res.get("checkpoint_path"):
+             extra["checkpoint_path"] = res["checkpoint_path"]
+@@ -1499,6 +1534,12 @@ def run_tabular_recipe(
+         X = df.apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy()
+         res = composition.run_tabular_recipe(_STORE, X, recipe, y=y, asset_id=asset_id)
+         results_file = refs.write_json(res, name="tabular_run")
++        _index_result(
++            res["task"], asset_id=asset_id, results_file=results_file,
++            summary={"num_classes": int(len(set(y)))} if (res["task"] == "tsfm_classification"
++                                                          and y is not None) else {},
++            metrics=[{"metric": res.get("metric"), "score": res.get("cv_score")}],
++        )
+         return TabularResult(
+             status="success",
+             run_id=res["run_id"],
+diff --git a/src/servers/tsfm/tests/test_run_tools.py b/src/servers/tsfm/tests/test_run_tools.py
+index 4623eff..cf66922 100644
+--- a/src/servers/tsfm/tests/test_run_tools.py
++++ b/src/servers/tsfm/tests/test_run_tools.py
+@@ -153,6 +153,15 @@ def test_recipe_template_returns_the_contract():
+     assert t["rules"] and t["examples"]
+ 
+ 
++def test_recipe_template_documents_the_finetune_persistence_pair():
++    """save_to is what feeds register_finetuned. An agent reads only recipe_template, so if the
++    template omits save_to the persistence step is undiscoverable even though run_recipe supports
++    it. finetune and save_to must both be advertised."""
++    blocks = call("recipe_template", {})["optional_blocks"]
++    assert any(b.startswith("finetune") for b in blocks)
++    assert any(b.startswith("save_to") for b in blocks)
++
++
+ def test_every_forecast_example_actually_runs():
+     """A template that lies is worse than none: run each example as-is."""
+     t = call("recipe_template", {})
+@@ -222,3 +231,47 @@ def test_conformal_intervals_are_json_serialisable():
+     payload = json.load(open(refs._path(r["results_file"])))
+     pi = payload.get("prediction_interval") or {}
+     assert all(isinstance(k, str) for k in pi), f"non-string keys reach json: {list(pi)[:3]}"
++
++
++# ---- the result index: run_recipe must make its result findable via list_results/get_result ----
++def test_run_recipe_indexes_its_result_for_get_result():
++    """Every execution returns a results_file AND registers the result in its typed collection, so
++    an agent can find it later by task_type without knowing the run_id. Before this was wired,
++    list_results returned nothing because no run tool called results.write_result."""
++    ref = _series(n=240, asset="idx_fc")
++    call("register_model", {"model": {
++        "model_id": "idx_nn", "description": "seasonal naive for the result-index test",
++        "task_ids": ["tsfm_forecasting"], "provenance": "trained",
++        "sktime_class": "sktime.forecasting.naive.NaiveForecaster",
++        "params": {"strategy": "last", "sp": 24}}})
++    run = call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
++                              "target_columns": ["value"], "asset_id": "idx_fc",
++                              "recipe": {"estimator": {"model_id": "idx_nn"}, "fh": [1, 2, 3]}})
++    assert run["status"] == "success" and run["results_file"]
++
++    listed = call("list_results", {"task_type": "tsfm_forecasting", "asset_id": "idx_fc"})["results"]
++    assert listed, "run_recipe did not index its result"
++    got = call("get_result", {"task_type": "tsfm_forecasting", "result_id": listed[0]["result_id"]})
++    assert got["results_file"] == run["results_file"]      # points at the same payload
++    assert got["summary"]["horizon"] == 3
++
++
++def test_anomaly_run_indexes_its_result():
++    ref = _series(n=300, asset="idx_ad")
++    call("register_model", {"model": {
++        "model_id": "idx_sublof", "description": "sublof for the anomaly result-index test",
++        "task_ids": ["tsfm_anomaly_detection"], "provenance": "trained",
++        "sktime_class": "sktime.detection.lof.SubLOF",
++        "params": {"window_size": 24, "n_neighbors": 5, "novelty": True}}})
++    run = call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
++                              "target_columns": ["value"], "asset_id": "idx_ad",
++                              "recipe": {"task": "tsfm_anomaly_detection",
++                                         "estimator": {"model_id": "idx_sublof"}}})
++    assert run["status"] == "success"
++    listed = call("list_results", {"task_type": "tsfm_anomaly_detection",
++                                   "asset_id": "idx_ad"})["results"]
++    assert listed
++    got = call("get_result", {"task_type": "tsfm_anomaly_detection",
++                              "result_id": listed[0]["result_id"]})
++    assert got["results_file"] == run["results_file"]
++    assert "anomaly_count" in got["summary"]
