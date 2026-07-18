@@ -19,6 +19,8 @@ from ..core.store import MemoryStore, _match
 from ..stores import model_store
 
 NAIVE = "sktime.forecasting.naive.NaiveForecaster"
+# a finetune base must accept params.model_path; NaiveForecaster does not
+FAKE_TTM = "servers.tsfm.tests.fake_hf_forecaster.FakeTTMForecaster"
 
 
 class _SpySt(MemoryStore):
@@ -98,21 +100,22 @@ def test_finetuned_rejects_a_base_with_no_sktime_class():
 
 def test_finetuned_still_inherits_from_a_real_base():
     s = MemoryStore()
-    model_store.register_model(s, {"model_id": "base", "description": "naive base",
-                                   "task_ids": ["tsfm_forecasting"], "sktime_class": NAIVE,
-                                   "params": {"strategy": "drift"}})
+    model_store.register_model(s, {"model_id": "base", "description": "checkpoint-backed base",
+                                   "task_ids": ["tsfm_forecasting"], "sktime_class": FAKE_TTM,
+                                   "params": {"model_path": "fake-hub/ttm", "sp": 24}})
     card = model_store.register_finetuned(
         s, model_id="ft3", checkpoint_path="/ckpt/x", base_model_id="base",
-        context_length=96, prediction_length=28, description="finetune of the naive base")
-    assert card["sktime_class"] == NAIVE                      # inherited, not invented
+        context_length=96, prediction_length=28, description="finetune of the base")
+    assert card["sktime_class"] == FAKE_TTM                   # inherited, not invented
     assert card["params"]["model_path"] == "/ckpt/x"
-    assert card["params"]["strategy"] == "drift"
+    assert card["training_regime"] == "zero_shot"             # serving loads, does not train
+    assert card["params"]["sp"] == 24            # other base params inherited too
 
 
 def test_register_model_rejects_a_duplicate_id():
     s = MemoryStore()
     card = {"model_id": "dup", "description": "first version",
-            "task_ids": ["tsfm_forecasting"], "sktime_class": NAIVE}
+            "task_ids": ["tsfm_forecasting"], "sktime_class": FAKE_TTM}
     model_store.register_model(s, card)
     with pytest.raises(ValueError, match="already exists"):
         model_store.register_model(s, {**card, "description": "second version"})

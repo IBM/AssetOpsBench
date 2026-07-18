@@ -21,6 +21,8 @@ from ..stores import model_store
 WRITE_TOOLS = ["register_model", "model_template", "register_finetuned", "update_model",
                "deprecate_model", "new_model_version", "resolve_model"]
 NAIVE = "sktime.forecasting.naive.NaiveForecaster"
+# a finetune base must accept params.model_path; NaiveForecaster does not
+FAKE_TTM = "servers.tsfm.tests.fake_hf_forecaster.FakeTTMForecaster"
 
 
 def _descriptions():
@@ -79,16 +81,16 @@ def test_register_finetuned_really_rejects_an_unknown_base():
 
 
 def test_register_finetuned_really_inherits_from_the_base():
-    M.register_model({"model_id": "inh_base", "description": "naive base",
-                      "task_ids": ["tsfm_forecasting"], "sktime_class": NAIVE,
-                      "params": {"strategy": "drift"}})
+    M.register_model({"model_id": "inh_base", "description": "checkpoint-backed base",
+                      "task_ids": ["tsfm_forecasting"], "sktime_class": FAKE_TTM,
+                      "params": {"model_path": "fake-hub/ttm", "sp": 24}})
     r = M.register_finetuned(model_id="inh_ft", checkpoint_path="/ckpt/i",
                              base_model_id="inh_base", context_length=96,
-                             prediction_length=28, description="finetune of naive")
+                             prediction_length=28, description="finetune of the base")
     card = r.model_dump()
-    assert card["sktime_class"] == NAIVE                    # inherited
+    assert card["sktime_class"] == FAKE_TTM                 # inherited
     assert card["params"]["model_path"] == "/ckpt/i"        # checkpoint wired in
-    assert card["params"]["strategy"] == "drift"            # base params kept
+    assert card["params"]["sp"] == 24                       # base params kept
 
 
 def test_card_returning_tools_really_are_flat():
