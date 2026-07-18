@@ -106,15 +106,25 @@ _FM_KEYS = (
     "tspulse",
 )
 
-# params that signal an *opt-in* fine-tune on a foundation model
+# Params that signal an *opt-in* fine-tune on a foundation model. NOTE these are matched by
+# PRESENCE, so they must only list keys whose mere presence means "train" regardless of value.
+# `fit_strategy` is deliberately NOT here: it is tri-valued (zero-shot|minimal|full) and is handled
+# by value in _regime_from_params below.
 _FT_KEYS = (
     "num_train_epochs",
-    "fit_strategy",
     "trainer",
     "fine_tune",
     "finetune",
     "lr",
 )
+
+# fit_strategy values (and equivalents) that mean "use the weights as they are, do not train"
+_ZERO_SHOT_VALUES = {"zero-shot", "zero_shot", "zeroshot", "none", "no", "off"}
+
+# Estimator constructor params whose presence means a training loop was configured. Estimators are
+# not consistent here: sktime's TTM/PatchTST use `fit_strategy` + HF `training_args`, while the
+# MomentFM family uses `epochs` / `max_lr`. Matching only the TTM spelling silently misses the rest.
+_TRAIN_CONFIG_KEYS = ("training_args", "epochs", "max_lr", "max_epochs", "learning_rate")
 
 
 def foundation_forecasters() -> List[str]:
@@ -126,19 +136,89 @@ def is_foundation(card: dict) -> bool:
     return any(k in cls for k in _FM_KEYS)
 
 
+def _estimator_default_regime(sktime_class: str) -> str:
+    """What a foundation estimator does on fit() when the card configures nothing.
+
+    "Pretrained" does NOT imply "zero-shot on fit". sktime's defaults vary and several of them
+    TRAIN:
+
+        TinyTimeMixerForecaster   fit_strategy="minimal"  -> fine-tunes a parameter subset
+        PatchTSTForecaster        fit_strategy="full"     -> full fine-tune
+        MomentFMForecaster        epochs=1, freeze_head=False -> trains a head
+        ChronosForecaster         (no training params)    -> genuinely zero-shot
+
+    So the default regime has to be read off the estimator, not assumed. Falls back to zero_shot
+    only when the class exposes no training knob at all, or cannot be inspected.
+    """
+    import inspect
+
+    try:
+        target = _import_target(sktime_class)
+        sig = inspect.signature(target.__init__).parameters
+    except Exception:
+        return "zero_shot"  # uninspectable: keep the old optimistic assumption
+
+    if "fit_strategy" in sig:
+        default = sig["fit_strategy"].default
+        if default is inspect.Parameter.empty or default is None:
+            return "zero_shot"
+        return (
+            "zero_shot"
+            if str(default).lower() in _ZERO_SHOT_VALUES
+            else "fine_tune"  # e.g. TTM "minimal", PatchTST "full"
+        )
+
+    # MomentFM-style: an epochs default > 0 with a trainable head means fit() trains.
+    epochs = sig["epochs"].default if "epochs" in sig else None
+    if isinstance(epochs, int) and epochs > 0:
+        frozen = sig["freeze_head"].default if "freeze_head" in sig else True
+        if frozen is False:
+            return "fine_tune"
+
+    return "zero_shot"
+
+
+def _regime_from_params(params: dict, sktime_class: str) -> str:
+    """Regime implied by a foundation card's params, honouring VALUES and estimator defaults."""
+    # 1. An explicit fit_strategy is the estimator's own switch. Read its value.
+    if "fit_strategy" in params:
+        return (
+            "zero_shot"
+            if str(params["fit_strategy"]).lower() in _ZERO_SHOT_VALUES
+            else "fine_tune"
+        )
+    # 2. A training config was supplied (HF training_args, epochs, lr, ...) -> training.
+    if any(params.get(k) for k in _TRAIN_CONFIG_KEYS):
+        return "fine_tune"
+    if any(k in params for k in _FT_KEYS):
+        return "fine_tune"
+    # 3. Nothing configured: whatever the estimator does by default.
+    return _estimator_default_regime(sktime_class)
+
+
 def training_regime(card: dict) -> str:
     """How much training a card needs: zero_shot | fit_on_series | fine_tune.
 
-    The agent reads this to pick the cheapest viable option. A pretrained foundation model is
-    zero_shot by default (fit() only loads weights + sets context; it does NOT train on the
-    target) unless the recipe passes fine-tune params, which makes it fine_tune. Everything
-    else (AutoARIMA/ETS/Theta/reduction) is fit_on_series: cheap parameter estimation on the
-    series' own history, no separate training set. An explicit card `training_regime` wins.
+    The agent reads this to pick the cheapest viable option, and `run_recipe` uses it to choose
+    between a single zero-shot holdout and the expanding-window refit loop. So it has to be right.
+
+    Rules, in order:
+      1. An explicit card `training_regime` wins. Always. It is the only fully reliable signal and
+         foundation cards should set it.
+      2. Non-foundation cards are fit_on_series: cheap parameter estimation on the series' own
+         history (AutoARIMA/ETS/Theta/reduction).
+      3. Foundation cards: an explicit `fit_strategy` is read BY VALUE ("zero-shot" -> zero_shot,
+         "minimal"/"full" -> fine_tune); a supplied training config (`training_args`, `epochs`,
+         `max_lr`, ...) means fine_tune; otherwise the ESTIMATOR'S OWN DEFAULT decides, because
+         several pretrained estimators fine-tune when handed nothing (TTM "minimal",
+         PatchTST "full", MomentFM epochs=1).
+
+    Note `provenance` is history and does not enter into this: a finetuned checkpoint being SERVED
+    is zero_shot (load the weights, predict), which is why register_finetuned pins the regime.
     """
     explicit = card.get("training_regime")
     if explicit:
         return explicit
-    if is_foundation(card):
-        params = card.get("params") or {}
-        return "fine_tune" if any(k in params for k in _FT_KEYS) else "zero_shot"
-    return "fit_on_series"
+    if not is_foundation(card):
+        return "fit_on_series"
+    return _regime_from_params(card.get("params") or {}, card.get("sktime_class") or "")

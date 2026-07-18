@@ -15,6 +15,7 @@ actually be loaded.
 from __future__ import annotations
 
 import logging
+import sys
 import os
 from typing import List, Optional, Union
 
@@ -57,6 +58,7 @@ from .reasoning import dataquality as _dq
 from .reasoning import patterns, profile
 from .stores import model_store
 from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
 from .config import PLANS_COLLECTION, RUNS_COLLECTION
 from .engine import composition, plan
 from .eval import forecast_eval
@@ -1003,6 +1005,7 @@ def resolve_model(model_id: str) -> Union[ResolveResult, ErrorResult]:
         reason="importable sktime_class + params, soft deps satisfied; weights load lazily at fit",
     )
 
+
 # =============================================================================
 # Model stats (read-only external lookups)
 # =============================================================================
@@ -1442,14 +1445,26 @@ def run_recipe(
                 f"{res['n_anomalies']}/{res['n_observations']} flagged. Labels at {results_file}.",
             )
         results_file = refs.write_json(res, name="recipe_run")  # forecasting path
+        extra = {}
+        if res.get("checkpoint_path"):
+            extra["checkpoint_path"] = res["checkpoint_path"]
+        saved = (
+            f" Checkpoint saved to {res['checkpoint_path']} "
+            f"(register it with register_finetuned)."
+            if res.get("checkpoint_path")
+            else ""
+        )
         return RecipeResult(
             status="success",
             run_id=res["run_id"],
             results_file=results_file,
             metric=res["metric"],
             backtest_score=res["backtest_score"],
+            folds=res.get("folds"),
             training_regime=res["training_regime"],
-            message=f"Recipe run complete ({res['training_regime']}). Record at {results_file}.",
+            message=f"Recipe run complete ({res['training_regime']}, "
+            f"{res.get('folds')} fold(s)). Record at {results_file}.{saved}",
+            **extra,
         )
     except Exception as exc:
         logger.error("run_recipe failed: %s", exc)
