@@ -139,7 +139,7 @@ def _backtest(forecaster, y, recipe):
     step = ev.get("step", max(len(fh), 1))
     metric = _metric((ev.get("metrics") or ["smape"])[0])
     cv = ExpandingWindowSplitter(initial_window=iw, step_length=step, fh=fh)
-    res = evaluate(forecaster=forecaster, y=y, cv=cv, scoring=metric)
+    res = evaluate(forecaster=forecaster, y=y, cv=cv, scoring=metric, error_score="raise")
     col = [c for c in res.columns if c.startswith("test_")][0]
     return float(res[col].mean()), metric.__class__.__name__, len(res)
 
