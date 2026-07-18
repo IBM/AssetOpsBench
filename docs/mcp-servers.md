@@ -128,10 +128,10 @@ the full output. The server supplies evidence; the agent makes the decisions.
 
 | Tool | Category | Arguments | Description |
 | ---- | -------- | --------- | ----------- |
-| `list_tasks` | read | — | List the standardized TSFM tasks and their contracts. |
-| `profile_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?` | Structured facts about a series: dominant period, trend, gaps, channel count. |
-| `characterize_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?`, `groups?`, `group_rules?` | Pattern evidence for a dataset; returns an evidence file pointer. |
-| `data_quality` | read, write, cpu-centric | `dataset_path`, `timestamp_column?` | NaN stats + removal; emits a cleaned file pointer for downstream tools. |
+| `list_tasks` | read | — | List the standardized TSFM tasks and their contracts. Use this first when you need the canonical task definitions. |
+| `profile_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?` | Summarize a file-pointer-backed series with factual evidence such as series length, channel count, dominant period, and other basic temporal characteristics. |
+| `characterize_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?`, `groups?`, `group_rules?` | Produce pattern evidence for a dataset, including grouped states, changepoint phases, relations, and a file pointer to the full evidence payload. |
+| `data_quality` | read, write, cpu-centric | `dataset_path`, `timestamp_column?` | Report NaN / cleaning statistics and emit a cleaned file pointer for downstream tools. |
 
 ### Model catalog — discovery
 
@@ -146,7 +146,7 @@ the full output. The server supplies evidence; the agent makes the decisions.
 | `list_domains` | read | `task_id?` | The distinct domains present, with counts — the valid values for the `domain` filter. |
 | `get_model_lineage` | read | `model_id` | Fine-tune ancestors and descendants, plus `supersedes` / `superseded_by` links. |
 | `resolve_model` | read | `model_id` | Preflight: confirm a card can be loaded and report where its weights come from. Does not download or fit. |
-| `hf_stats` | read | `model_id?`, `hf_repo?` | HuggingFace downloads and likes for a card's repo. Read-only; needs network to huggingface.co. |
+| `hf_stats` | read | `model_id?`, `hf_repo?` | Read-only HuggingFace popularity lookup for a model card or repo. Returns downloads and likes; needs network to huggingface.co. |
 
 ### Model catalog — authoring and lifecycle
 
