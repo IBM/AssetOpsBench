@@ -880,6 +880,54 @@ def new_model_version(
         return ErrorResult(error=str(exc))
 
 
+def _unsatisfied_requirements(target) -> List[str]:
+    """Requirements an sktime estimator declares but this environment does not satisfy.
+
+    Two separate class tags matter, and BOTH are load-bearing:
+
+      * `python_dependencies` - third-party packages, str or list, possibly with version specs
+        ("numpy<2", "transformers[torch]>=4.52.0").
+      * `python_version` - an interpreter floor, e.g. TSPulseAnomalyDetector declares ">=3.11".
+        This one cannot be fixed by pip installing anything, so reporting only the packages sends
+        the caller off to install things that will not help.
+
+    Returns human-readable unsatisfied requirements, or [] when everything is satisfied or the
+    class declares nothing. Never raises: a preflight must not be the thing that fails.
+    """
+    out: List[str] = []
+
+    try:
+        from sktime.utils.dependencies import _check_python_version, _check_soft_dependencies
+    except Exception:
+        return []
+
+    try:
+        pyver = target.get_class_tag("python_version", None)
+    except Exception:
+        pyver = None
+    if pyver:
+        try:
+            if not _check_python_version(target, severity="none"):
+                out.append(f"python{pyver} (running {sys.version.split()[0]})")
+        except Exception:
+            pass
+
+    try:
+        deps = target.get_class_tag("python_dependencies", None)
+    except Exception:
+        deps = None
+    if deps:
+        if isinstance(deps, str):
+            deps = [deps]
+        for d in deps:
+            try:
+                if not _check_soft_dependencies(d, severity="none"):
+                    out.append(str(d))
+            except Exception:
+                pass
+    return out
+
+
 @mcp.tool(title="Resolve Model")
 def resolve_model(model_id: str) -> Union[ResolveResult, ErrorResult]:
     """Preflight a model card: check that it can actually be loaded.
@@ -920,19 +968,40 @@ def resolve_model(model_id: str) -> Union[ResolveResult, ErrorResult]:
             reason="no sktime_class (toolkit/checkpoint model; not sktime-resolvable)",
         )
     try:
-        R._import_target(sk)  # import only; no instantiation / no weight download
+        target = R._import_target(sk)  # import only; no instantiation / no weight download
     except Exception as e:
         return ResolveResult(
             model_id=model_id, resolvable=False, sktime_class=sk,
             training_regime=regime, weights_from=weights_from,
             reason=f"sktime_class not importable: {type(e).__name__}: {e}"[:140],
         )
+
+    # Importing the class is NOT enough. sktime estimators wrap third-party libraries and defer the
+    # check to fit(), so e.g. ARIMA imports and even CONSTRUCTS without pmdarima installed and only
+    # blows up inside the backtest. Every sktime estimator declares its soft deps in the
+    # `python_dependencies` class tag, so we can preflight them here for free - which is the whole
+    # point of this tool.
+    missing = _unsatisfied_requirements(target)
+    if missing:
+        pipable = [m for m in missing if not m.startswith("python>")]
+        hint = ""
+        if pipable:
+            hint = (" Install with: pip install "
+                    + " ".join(f"'{m}'" for m in pipable))
+        if len(pipable) < len(missing):
+            hint += " (the python version floor cannot be pip-installed)"
+        return ResolveResult(
+            model_id=model_id, resolvable=False, sktime_class=sk,
+            training_regime=regime, weights_from=weights_from,
+            reason=(f"sktime_class imports, but requirement(s) not satisfied: "
+                    f"{', '.join(missing)}.{hint}")[:300],
+        )
+
     return ResolveResult(
         model_id=model_id, resolvable=True, sktime_class=sk,
         training_regime=regime, weights_from=weights_from or "none (classical; fit from series)",
-        reason="importable sktime_class + params; weights load lazily at fit",
+        reason="importable sktime_class + params, soft deps satisfied; weights load lazily at fit",
     )
-
 
 # =============================================================================
 # Model stats (read-only external lookups)

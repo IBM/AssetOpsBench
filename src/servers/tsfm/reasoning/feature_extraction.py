@@ -29,11 +29,12 @@ LOGGER = logging.getLogger(__name__)
 
 try:
     from statsmodels.tsa import stattools
-    #from statsmodels.tsa.ar_model import AR
     from statsmodels.tsa.stattools import acf, adfuller, pacf
     from statsmodels.tools.sm_exceptions import MissingDataError
-except ImportError:
-    LOGGER.error("ImportError in function.py : statsmodels is not installed ")
+except ImportError as e:
+    raise ImportError(
+        "feature_extraction requires statsmodels: pip install statsmodels"
+    ) from e
 
 try:
     from pywt import wavedec
