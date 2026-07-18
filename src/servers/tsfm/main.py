@@ -1349,6 +1349,8 @@ def recipe_template() -> RecipeTemplateResult:
             '"mean|median|min|max|weighted|stack", "weights": [...]} - use INSTEAD of estimator',
             'conformal  - {"coverage": 0.9} for calibrated prediction intervals',
             'finetune   - training block; see param_hints (lr, epochs, batch_size, ...)',
+            'save_to    - directory path; after a fine-tune, persist the fitted weights there and '
+            'return checkpoint_path in the result (feed it to register_finetuned)',
             'anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)',
             'impute     - fill gaps before fitting',
             'eval       - {"metrics": ["smape", ...]} - the first metric scores the backtest',
@@ -1400,6 +1402,26 @@ def recipe_template() -> RecipeTemplateResult:
     )
 
 
+def _index_result(task_type, *, asset_id, results_file, model_id=None,
+                  summary=None, metrics=None, scenario_id=None):
+    """Record a produced result in its typed collection so list_results / get_result can find it.
+
+    run_recipe already returns the results_file pointer AND persists the run record to tsfm_runs.
+    This is the third leg: the per-task result index (forecast_result, anomaly_result, ...) that
+    get_result / list_results read. Without it those two tools return nothing. Best-effort: a run
+    that succeeded must not fail because its result could not be indexed, so failures are logged,
+    not raised.
+    """
+    try:
+        results.write_result(
+            _STORE, task_type, asset_id=asset_id, results_file=results_file,
+            model_id=model_id, summary=summary or {}, metrics=metrics or [],
+            scenario_id=scenario_id,
+        )
+    except Exception as exc:  # never let indexing sink a good run
+        logger.warning("result indexing skipped for %s: %s", task_type, exc)
+
+
 @mcp.tool(title="Run Recipe")
 def run_recipe(
     dataset_path: str,
@@ -1434,6 +1456,12 @@ def run_recipe(
                 },
                 name="anomaly",
             )
+            _index_result(
+                "tsfm_anomaly_detection", asset_id=asset_id, results_file=results_file,
+                model_id=(recipe.get("estimator") or {}).get("model_id"),
+                summary={"total_records": res["n_observations"],
+                         "anomaly_count": res["n_anomalies"]},
+            )
             return RecipeResult(
                 status="success",
                 run_id=res["run_id"],
@@ -1445,6 +1473,13 @@ def run_recipe(
                 f"{res['n_anomalies']}/{res['n_observations']} flagged. Labels at {results_file}.",
             )
         results_file = refs.write_json(res, name="recipe_run")  # forecasting path
+        _index_result(
+            "tsfm_forecasting", asset_id=asset_id, results_file=results_file,
+            model_id=(recipe.get("estimator") or {}).get("model_id"),
+            summary={"horizon": len(recipe.get("fh") or [1, 2, 3, 4, 5])},
+            metrics=[{"metric": res.get("metric"), "score": res.get("backtest_score"),
+                      "folds": res.get("folds")}],
+        )
         extra = {}
         if res.get("checkpoint_path"):
             extra["checkpoint_path"] = res["checkpoint_path"]
@@ -1499,6 +1534,12 @@ def run_tabular_recipe(
         X = df.apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy()
         res = composition.run_tabular_recipe(_STORE, X, recipe, y=y, asset_id=asset_id)
         results_file = refs.write_json(res, name="tabular_run")
+        _index_result(
+            res["task"], asset_id=asset_id, results_file=results_file,
+            summary={"num_classes": int(len(set(y)))} if (res["task"] == "tsfm_classification"
+                                                          and y is not None) else {},
+            metrics=[{"metric": res.get("metric"), "score": res.get("cv_score")}],
+        )
         return TabularResult(
             status="success",
             run_id=res["run_id"],

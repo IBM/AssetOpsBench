@@ -153,6 +153,15 @@ def test_recipe_template_returns_the_contract():
     assert t["rules"] and t["examples"]
 
 
+def test_recipe_template_documents_the_finetune_persistence_pair():
+    """save_to is what feeds register_finetuned. An agent reads only recipe_template, so if the
+    template omits save_to the persistence step is undiscoverable even though run_recipe supports
+    it. finetune and save_to must both be advertised."""
+    blocks = call("recipe_template", {})["optional_blocks"]
+    assert any(b.startswith("finetune") for b in blocks)
+    assert any(b.startswith("save_to") for b in blocks)
+
+
 def test_every_forecast_example_actually_runs():
     """A template that lies is worse than none: run each example as-is."""
     t = call("recipe_template", {})
@@ -222,3 +231,47 @@ def test_conformal_intervals_are_json_serialisable():
     payload = json.load(open(refs._path(r["results_file"])))
     pi = payload.get("prediction_interval") or {}
     assert all(isinstance(k, str) for k in pi), f"non-string keys reach json: {list(pi)[:3]}"
+
+
+# ---- the result index: run_recipe must make its result findable via list_results/get_result ----
+def test_run_recipe_indexes_its_result_for_get_result():
+    """Every execution returns a results_file AND registers the result in its typed collection, so
+    an agent can find it later by task_type without knowing the run_id. Before this was wired,
+    list_results returned nothing because no run tool called results.write_result."""
+    ref = _series(n=240, asset="idx_fc")
+    call("register_model", {"model": {
+        "model_id": "idx_nn", "description": "seasonal naive for the result-index test",
+        "task_ids": ["tsfm_forecasting"], "provenance": "trained",
+        "sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+        "params": {"strategy": "last", "sp": 24}}})
+    run = call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
+                              "target_columns": ["value"], "asset_id": "idx_fc",
+                              "recipe": {"estimator": {"model_id": "idx_nn"}, "fh": [1, 2, 3]}})
+    assert run["status"] == "success" and run["results_file"]
+
+    listed = call("list_results", {"task_type": "tsfm_forecasting", "asset_id": "idx_fc"})["results"]
+    assert listed, "run_recipe did not index its result"
+    got = call("get_result", {"task_type": "tsfm_forecasting", "result_id": listed[0]["result_id"]})
+    assert got["results_file"] == run["results_file"]      # points at the same payload
+    assert got["summary"]["horizon"] == 3
+
+
+def test_anomaly_run_indexes_its_result():
+    ref = _series(n=300, asset="idx_ad")
+    call("register_model", {"model": {
+        "model_id": "idx_sublof", "description": "sublof for the anomaly result-index test",
+        "task_ids": ["tsfm_anomaly_detection"], "provenance": "trained",
+        "sktime_class": "sktime.detection.lof.SubLOF",
+        "params": {"window_size": 24, "n_neighbors": 5, "novelty": True}}})
+    run = call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
+                              "target_columns": ["value"], "asset_id": "idx_ad",
+                              "recipe": {"task": "tsfm_anomaly_detection",
+                                         "estimator": {"model_id": "idx_sublof"}}})
+    assert run["status"] == "success"
+    listed = call("list_results", {"task_type": "tsfm_anomaly_detection",
+                                   "asset_id": "idx_ad"})["results"]
+    assert listed
+    got = call("get_result", {"task_type": "tsfm_anomaly_detection",
+                              "result_id": listed[0]["result_id"]})
+    assert got["results_file"] == run["results_file"]
+    assert "anomaly_count" in got["summary"]
