@@ -1,22 +1,8 @@
-"""Dynamic feature-transform runner — execute a stored EFE-style program.
+"""Execute and validate stored EFE-style feature transforms.
 
-Inspired by Evolutionary Feature Engineering (EFE, NeurIPS'26): a feature transform is a
-Python program with a standardized interface, inserted before a fixed downstream model.
-EFE's contract (from the paper's Fig. 1):
-
-    class Transformation:
-        def fit(self, X, metadata): ...          # learn state from training data
-        def transform(self, X, state): return X_new
-        def inverse_transform(self, X_new, state): return X   # for invertible TS norms
-
-This is the *feature-store* analog of the model runner: the program lives as CODE in the
-catalog (written dynamically — by an LLM evolver or a human), and is loaded, validated, and
-executed on demand. So a feature transform need not be a pre-installed library function any
-more than a model needs to be pre-downloaded.
-
-EFE-style validity checks are enforced before use: required entry points, output is a NEW
-object (no in-place mutation), schema consistency, and — when declared invertible — a
-round-trip check.
+Feature cards carry code defining a `Transformation` with `fit` and `transform`, plus optional
+`inverse_transform` for invertible transforms. Before registration/use, the runner checks required
+entry points, no in-place mutation, schema consistency, and invertible round trips when declared.
 """
 
 from __future__ import annotations

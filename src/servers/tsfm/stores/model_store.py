@@ -8,6 +8,7 @@ Pointer index: weights live at artifact_path / hf_repo / remote_endpoint / model
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -15,6 +16,12 @@ from typing import Dict, List, Optional
 from ..core import schemas
 
 COLLECTION = "model_catalog"
+COLLECTION_ENV_VAR = "MODEL_CATALOG_DBNAME"
+
+
+def collection_name() -> str:
+    """Runtime model catalog database name, defaulting to model_catalog."""
+    return os.environ.get(COLLECTION_ENV_VAR, COLLECTION)
 
 
 def _now():
@@ -36,7 +43,7 @@ def _next_version(v) -> str:
 # read
 # --------------------------------------------------------------------------- #
 def get_model(store, model_id: str) -> Optional[dict]:
-    return store.get(COLLECTION, _id(model_id))
+    return store.get(collection_name(), _id(model_id))
 
 
 def list_models(
@@ -62,7 +69,7 @@ def list_models(
         sel["task_ids"] = {"$elemMatch": {"$eq": task_id}}
     if usage_mode:
         sel["usage_modes"] = {"$elemMatch": {"$eq": usage_mode}}
-    return store.find(COLLECTION, sel)
+    return store.find(collection_name(), sel)
 
 
 def find_models(
@@ -162,7 +169,8 @@ def get_lineage(store, model_id: str) -> dict:
         ancestors.append(parent["model_id"])
         cur = parent
     descendants = [
-        m["model_id"] for m in store.find(COLLECTION, {"base_model_id": model_id})
+        m["model_id"]
+        for m in store.find(collection_name(), {"base_model_id": model_id})
     ]
     return {
         "model_id": model_id,
@@ -213,13 +221,14 @@ def _leaderboard_stats(url: str) -> dict:
 # --------------------------------------------------------------------------- #
 def register_model(store, model: dict, *, overwrite: bool = False) -> dict:
     doc = schemas.validate_model(model)  # raises on invalid
-    if store.get(COLLECTION, doc["_id"]) and not overwrite:
+    collection = collection_name()
+    if store.get(collection, doc["_id"]) and not overwrite:
         raise ValueError(
             f"model '{doc['model_id']}' already exists; use new_model_version to supersede it, "
             "or update_model to patch it"
         )
     doc.setdefault("created_at", _now())
-    return store.put(COLLECTION, doc)
+    return store.put(collection, doc)
 
 
 def update_model(store, model_id: str, fields: dict) -> dict:
@@ -228,7 +237,7 @@ def update_model(store, model_id: str, fields: dict) -> dict:
         raise ValueError(f"no model {model_id}")
     doc.update(fields)
     doc["updated_at"] = _now()
-    return store.put(COLLECTION, schemas.validate_model(doc))
+    return store.put(collection_name(), schemas.validate_model(doc))
 
 
 def deprecate_model(store, model_id: str, reason: Optional[str] = None) -> dict:

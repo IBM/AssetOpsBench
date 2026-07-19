@@ -1,26 +1,8 @@
-"""resolver.py: the model/feature store on top of sktime (the substrate).
+"""Resolve catalog model cards into sktime estimators.
 
-Key decision: do NOT hand-roll an estimator/transform contract. Adopt sktime's scitype +
-tag + registry system. A catalog card is just a *pointer* to an sktime estimator class + its
-constructor params + tags; resolving a card = import & instantiate; running it = the scitype's
-verb (forecaster.predict / classifier.predict / detector.predict / transformer.transform /
-clusterer.predict). Heterogeneous foundation-model code paths disappear: every TSFM (TTM,
-Chronos, MOIRAI, TimesFM, MOMENT, TimeMoE, PatchTST, …) is a `BaseForecaster` in sktime.
-
-Our catalog (CouchDB) is a *superset* of sktime's in-memory registry: it also holds
-not-installed / remote / fine-tuned models with provenance, lineage, metrics, and is
-agent-queryable and state-exportable (#394). sktime supplies fit/predict/pipeline/splitter/
-metric; we supply catalog + selection (T-Daub) + reasoning + persistence + MCP.
-
-Nested estimators (#pyod_iforest): some sktime estimators take *another estimator instance*
-as a constructor arg (e.g. the PyOD adapter's `estimator=IsolationForest()`). JSON can't hold a
-live object, so a param value may instead be a nested spec dict:
-
-    {"_target_": "pyod.models.iforest.IForest", "params": {"contamination": 0.1}}
-
-`_build` recursively turns any such spec into `Class(**params)` before the outer estimator is
-instantiated. Plain params (and dicts without `_target_`) pass through unchanged, so this is
-fully backward-compatible with existing cards.
+Cards point at `sktime_class` plus JSON params; `_build` also realizes nested estimator specs using
+`{"_target_": "...", "params": {...}}`. The CouchDB catalog extends sktime's registry with remote,
+fine-tuned, lineage, and benchmark metadata.
 """
 
 from __future__ import annotations
@@ -219,6 +201,7 @@ def training_regime(card: dict) -> str:
     explicit = card.get("training_regime")
     if explicit:
         return explicit
-    if not is_foundation(card):
-        return "fit_on_series"
-    return _regime_from_params(card.get("params") or {}, card.get("sktime_class") or "")
+    if is_foundation(card):
+        params = card.get("params") or {}
+        return "fine_tune" if any(k in params for k in _FT_KEYS) else "zero_shot"
+    return "fit_on_series"
