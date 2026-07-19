@@ -387,6 +387,10 @@ def find_models(
 ) -> Union[ModelsResult, ErrorResult]:
     """Filter the model catalog for a task and return a ranked shortlist.
 
+    Returns at most `top_k` cards (default 5) - this is a SHORTLIST tool. To enumerate every
+    card for a task (e.g. to build a leaderboard or map model ids to their params), use
+    `list_models`, which applies no `top_k` limit.
+
     Cards lacking filtered fields are excluded from the shortlist.
 
     Args:
