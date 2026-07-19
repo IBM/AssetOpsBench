@@ -1543,10 +1543,32 @@ def run_recipe(
     asset_id: str = "asset",
     parent_run_id: Optional[str] = None,
 ) -> Union[RecipeResult, ErrorResult]:
-    """Run a recipe on a series from a file pointer. Dispatches by recipe['task']:
-    'tsfm_anomaly_detection' → detector path (e.g. tspulse_ad zero-shot, sublof) producing dense
-    anomaly labels; otherwise FORECASTING (transforms + single/ensemble + conformal). Writes the
-    run record to a results_file pointer."""
+    """Run a forecasting or anomaly recipe on a series from a file pointer.
+
+    Dispatches by `recipe['task']`: `tsfm_anomaly_detection` takes the detector path
+    (e.g. tspulse zero-shot, sublof) and produces dense anomaly labels; anything else is
+    forecasting (transforms + single/ensemble + optional conformal intervals). Use
+    `recipe_template()` for the recipe contract. The result is also findable later via
+    `list_runs()` / `get_run()` and `list_results()` / `get_result()`.
+
+    Args:
+        dataset_path: File pointer to the input series (from the evidence tools or
+            `materialize_iot`).
+        timestamp_column: Name of the time column used to order the series.
+        target_columns: The column(s) to forecast or screen. Must not be empty.
+        recipe: The recipe dict: an `estimator` (a catalog `model_id`, or an inline
+            `sktime_class` + `params`) or an `ensemble`, plus optional blocks (`fh`,
+            `transforms`, `conformal`, `finetune`, `save_to`, `eval`, ...). See
+            `recipe_template()`.
+        asset_id: Asset this run belongs to; used to group runs and results.
+        parent_run_id: Optional id of a parent run, for chaining within a plan.
+
+    Returns:
+        RecipeResult: `status`, `run_id`, a `results_file` pointer to the full payload,
+        `training_regime`, `folds`, and either `backtest_score`/`metric` (forecasting) or
+        `n_anomalies`/`n_observations` (anomaly). Carries `checkpoint_path` when the
+        recipe used `save_to`. Returns ErrorResult on empty inputs or a run failure.
+    """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not target_columns:
@@ -1625,8 +1647,23 @@ def run_tabular_recipe(
     label_column: Optional[str] = None,
     asset_id: str = "asset",
 ) -> Union[TabularResult, ErrorResult]:
-    """Series→tabular run (regression/classification/clustering): each row of the CSV file
-    pointer is an instance; ``label_column`` (if supervised) holds y. FeatureUnion → estimator.
+    """Run a series-to-tabular recipe: regression, classification, or clustering.
+
+    Each row of the CSV file pointer is one instance; features are extracted (FeatureUnion)
+    and passed to the estimator. Omit `label_column` for unsupervised clustering.
+
+    Args:
+        dataset_path: File pointer to the tabular CSV (one instance per row).
+        recipe: The recipe dict naming the `estimator` and any feature blocks. See
+            `recipe_template()`.
+        label_column: Name of the target column for supervised tasks (regression /
+            classification). Omit for clustering. Returns ErrorResult if named but absent.
+        asset_id: Asset this run belongs to; used to group runs and results.
+
+    Returns:
+        TabularResult: `status`, `run_id`, a `results_file` pointer, the `task`, `metric`,
+        `cv_score`, and `n_features`. Returns ErrorResult on a bad recipe, a missing
+        `label_column`, or a run failure.
     """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
@@ -1671,7 +1708,23 @@ def run_tabular_recipe(
 def run_plan(
     plan_spec: dict, asset_id: str = "asset", scenario_id: Optional[str] = None
 ) -> Union[PlanResult, ErrorResult]:
-    """Execute a recipe DAG (file-pointer chaining; HuggingGPT task-list)."""
+    """Execute a plan: a DAG of recipes chained by file pointers.
+
+    A plan is a HuggingGPT-style task list where each step's output file pointer can feed
+    the next step's input, so multi-stage workflows (e.g. clean -> extract -> forecast)
+    run as one call. Individual steps are recorded like any other run.
+
+    Args:
+        plan_spec: The plan definition: the ordered steps and how their file pointers
+            chain. Must not be empty.
+        asset_id: Asset this plan belongs to; used to group runs and results.
+        scenario_id: Optional scenario tag carried onto the produced results.
+
+    Returns:
+        PlanResult: `status`, a `results_file` pointer to the plan record, and the plan's
+        per-step outcome fields. Returns ErrorResult on an empty `plan_spec` or a step
+        failure.
+    """
     if not plan_spec:
         return ErrorResult(error="plan_spec is required")
     try:
@@ -1719,8 +1772,19 @@ def evaluate(recipe: dict, configs: List[dict]) -> Union[EvaluateResult, ErrorRe
 
 @mcp.tool(title="Get Result")
 def get_result(task_type: str, result_id: str) -> Union[ResultRecord, ErrorResult]:
-    """Fetch one persisted result by task_type + result_id (the record a run produced and stored).
-    Returns the stored result or an error if no such id exists for that task_type."""
+    """Fetch one persisted result by task type and result id.
+
+    A result record is what a run produced and stored: its `results_file` pointer, model
+    id, and task summary. Discover ids with `list_results()`.
+
+    Args:
+        task_type: The task the result belongs to, e.g. `tsfm_forecasting`.
+        result_id: The result id from `list_results()`.
+
+    Returns:
+        ResultRecord: The stored result. Returns ErrorResult if no such id exists for that
+        task type.
+    """
     rec = results.get_result(_STORE, task_type, result_id)
     return ResultRecord(**rec) if rec else ErrorResult(error="not found")
 
@@ -1729,8 +1793,20 @@ def get_result(task_type: str, result_id: str) -> Union[ResultRecord, ErrorResul
 def list_results(
     task_type: str, asset_id: Optional[str] = None, scenario_id: Optional[str] = None
 ) -> ResultsListResult:
-    """List persisted results for a task_type, optionally narrowed by asset_id / scenario_id.
-    Compact records; use get_result for the full stored payload of one id."""
+    """List persisted results for a task type, optionally narrowed by asset or scenario.
+
+    Returns compact records; use `get_result()` for the full stored payload of one id.
+
+    Args:
+        task_type: The task whose result collection to list, e.g. `tsfm_forecasting` or
+            `tsfm_anomaly_detection`. Unknown task types return ErrorResult.
+        asset_id: Optional asset filter.
+        scenario_id: Optional scenario filter.
+
+    Returns:
+        ResultsListResult: `results`, a list of compact result records (each with a
+        `result_id`, `results_file` pointer, and summary).
+    """
     return ResultsListResult(
         results=results.list_results(
             _STORE, task_type, asset_id=asset_id, scenario_id=scenario_id
@@ -1740,16 +1816,34 @@ def list_results(
 
 @mcp.tool(title="Get Run")
 def get_run(run_id: str) -> Union[RunRecord, ErrorResult]:
-    """Fetch one run record by run_id: a single recipe/plan execution with its config and outcome.
-    Returns the stored run or an error if the id is unknown."""
+    """Fetch one run record by id.
+
+    A run record is a single recipe or plan execution with its config and outcome.
+
+    Args:
+        run_id: The run id returned by `run_recipe()` / `run_plan()` (e.g. `run:ab12...`).
+
+    Returns:
+        RunRecord: The stored run. Returns ErrorResult if the id is unknown.
+    """
     rec = _STORE.get(RUNS_COLLECTION, run_id)
     return RunRecord(**rec) if rec else ErrorResult(error="not found")
 
 
 @mcp.tool(title="List Runs")
 def list_runs(asset_id: Optional[str] = None) -> RunsResult:
-    """List run records and plans, optionally filtered by asset_id. Runs are individual executions;
-    plans are multi-step sequences. Use get_run for one run's full detail."""
+    """List run records and plans, optionally filtered by asset.
+
+    Runs are individual executions; plans are multi-step sequences. Use `get_run()` for
+    one run's full detail.
+
+    Args:
+        asset_id: Optional asset filter. Omit to list runs and plans for every asset.
+
+    Returns:
+        RunsResult: `runs` (individual executions) and `plans` (multi-step sequences),
+        each a list of stored records.
+    """
     sel = {"asset_id": asset_id} if asset_id else {}
     return RunsResult(
         runs=_STORE.find(RUNS_COLLECTION, sel), plans=_STORE.find(PLANS_COLLECTION, sel)
