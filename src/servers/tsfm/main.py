@@ -1044,7 +1044,15 @@ def hf_stats(
 
 @mcp.tool(title="Count Features")
 def count_features() -> Union[FeatureCountResult, ErrorResult]:
-    """How many features are in the catalog. Returns extractor / transform / total counts."""
+    """Count the feature catalog cards by kind.
+
+    Use this for a quick sense of catalog size before browsing with `list_features()`
+    or `search_features()`.
+
+    Returns:
+        FeatureCountResult: The number of `extractor` cards, `transform` cards, and
+        their `total`. Returns ErrorResult if the backing database query fails.
+    """
     try:
         ex = len(feature_store.find_features(_STORE, kind="extractor"))
         tr = len(feature_store.find_features(_STORE, kind="transform"))
@@ -1056,7 +1064,21 @@ def count_features() -> Union[FeatureCountResult, ErrorResult]:
 
 @mcp.tool(title="Describe Features")
 def describe_features(names: List[str]) -> Union[DescribeFeaturesResult, ErrorResult]:
-    """Return kind + name + description for ONLY the given feature names (extractors OR transforms)."""
+    """Describe specific feature cards by name.
+
+    Use this after `list_features()` or `search_features()` to get a compact record
+    for a chosen subset, without pulling each full card. Names that are not extractor
+    or transform cards are reported separately rather than raising.
+
+    Args:
+        names: Feature ids to describe (extractors or transforms). Discover valid
+            names with `list_features()`. At least one name is required.
+
+    Returns:
+        DescribeFeaturesResult: `features` (a compact record per found id: `feature_id`,
+        `kind`, `name`, `description`), `unknown` (ids not found as a feature card), and
+        a summary `message`. Returns ErrorResult if `names` is empty.
+    """
     if not names:
         return ErrorResult(error="provide at least one feature name (see list_features)")
     try:
@@ -1096,12 +1118,29 @@ def extract_features(
     timestamp_column: Optional[str] = None,
     window: Optional[int] = None,
 ) -> Union[ExtractResult, ErrorResult]:
-    """Apply the chosen extractors to a series and RETURN the extracted feature values, raw feature
-    extraction, no model. Pick `extractors` by name from list_features(kind="extractor").
-    window=None -> one feature vector for the whole series; window=W -> non-overlapping W-length
-    tiles -> a (windows x features) matrix. Multivariate: each target column yields its own
-    '<column>.<extractor>' feature columns. `target_columns` (required) names the column(s) to
-    extract from - no default is assumed."""
+    """Compute scalar feature values from a series with the named extractors.
+
+    Use this for raw feature extraction with no model attached, e.g. to inspect what a
+    set of extractors produces before feeding the values into `run_tabular_recipe`.
+
+    Args:
+        dataset_path: File pointer to the input series (as returned by the evidence
+            tools or `materialize_iot`).
+        extractors: Extractor names to apply. Discover valid names with
+            `list_features(kind="extractor")`; an unknown name returns ErrorResult.
+        target_columns: The column(s) to extract from. Required; no default column is
+            assumed. Each column yields its own `<column>.<extractor>` feature columns.
+        timestamp_column: Optional name of the time column, used to order the series.
+        window: Windowing. `None` yields one feature vector for the whole series;
+            an integer `W` yields a (windows x features) matrix over non-overlapping
+            `W`-length tiles.
+
+    Returns:
+        ExtractResult: `columns` (the feature-column names), `features` (the value
+        matrix, one row per window), `n_windows`, `window`, and a `message`. Returns
+        ErrorResult for empty `target_columns`/`extractors`, an unknown extractor, or a
+        load failure.
+    """
     import numpy as np
 
     from .reasoning import feature_selection as FS
@@ -1151,14 +1190,32 @@ def select_features(
     reference_feature: str = "mean",
     cd_margin: float = 0.05,
 ) -> Union[FeatureSelectionResult, ErrorResult]:
-    """Rank a CANDIDATE set of extractors on one series and return the shortlist worth keeping.
-    Method: self-supervised one-step-ahead forecasting - slide a window over the series and score
-    each candidate by how well the window's features predict the NEXT value (no labels needed),
-    combining several criteria (correlation, F-test, mutual information, model importance) by mean
-    rank, then keep those that beat `reference_feature` by at least `cd_margin`.
+    """Rank candidate extractors on one series and return the shortlist worth keeping.
 
-    `channel` (required) names the column to analyze - no default column is assumed. `extractors`
-    (required) is the list of extractor names to score. Returns names only."""
+    Use this to narrow a large candidate set to the few extractors that carry signal for
+    a given series, before computing them with `extract_features()`. The method is
+    self-supervised one-step-ahead forecasting: slide a window over the series and score
+    each candidate by how well the window's features predict the next value (no labels
+    needed), combining correlation, F-test, mutual information, and model importance by
+    mean rank, then keep those that beat `reference_feature` by at least `cd_margin`.
+
+    Args:
+        dataset_path: File pointer to the input series.
+        channel: The column to analyze. Required; no default column is assumed.
+        extractors: Candidate extractor names to score. Discover valid names with
+            `list_features(kind="extractor")`; an unknown name returns ErrorResult.
+        timestamp_column: Optional name of the time column, used to order the series.
+        reference_feature: The baseline extractor a candidate must beat to be kept.
+            Defaults to `mean`.
+        cd_margin: The minimum margin over `reference_feature` required to keep a
+            candidate. Defaults to 0.05.
+
+    Returns:
+        FeatureSelectionResult: `selected` (the shortlist, names only), `lookback`,
+        `reference`, `scorers`, and a `detail_file` pointer to the full scoring record.
+        Returns ErrorResult for a blank `dataset_path`/`channel`, empty `extractors`, or
+        an unknown extractor.
+    """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not channel:
