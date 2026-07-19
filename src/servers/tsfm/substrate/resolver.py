@@ -201,7 +201,6 @@ def training_regime(card: dict) -> str:
     explicit = card.get("training_regime")
     if explicit:
         return explicit
-    if is_foundation(card):
-        params = card.get("params") or {}
-        return "fine_tune" if any(k in params for k in _FT_KEYS) else "zero_shot"
-    return "fit_on_series"
+    if not is_foundation(card):
+        return "fit_on_series"
+    return _regime_from_params(card.get("params") or {}, card.get("sktime_class") or "")
