@@ -1745,7 +1745,22 @@ def run_plan(
 
 @mcp.tool(title="Evaluate (GIFT-Eval)")
 def evaluate(recipe: dict, configs: List[dict]) -> Union[EvaluateResult, ErrorResult]:
-    """GIFT-Eval: seasonal-naive-normalized MASE+CRPS, geo-mean over configs."""
+    """Evaluate a recipe GIFT-Eval style across several dataset configs.
+
+    Scores the recipe with seasonal-naive-normalized MASE and CRPS on each config, then
+    reports the geometric mean across configs - a leaderboard-comparable summary of how a
+    recipe generalizes beyond a single series.
+
+    Args:
+        recipe: The recipe to evaluate (same shape as `run_recipe`; see `recipe_template()`).
+        configs: The dataset configs to score against. Must not be empty; each names the
+            series/horizon/settings for one evaluation.
+
+    Returns:
+        EvaluateResult: `status`, a `results_file` pointer to the full scores, a `message`,
+        and the per-config plus geo-mean MASE/CRPS (extra fields). Returns ErrorResult on a
+        bad recipe, empty `configs`, or an evaluation failure.
+    """
     bad = _check_recipe(recipe)
     if bad:
         return ErrorResult(error=bad)

@@ -195,6 +195,7 @@ the contract so an agent does not have to guess the shape.
 | `run_recipe` | write, cpu-centric | `dataset_path`, `timestamp_column`, `target_columns`, `recipe`, `asset_id?`, `parent_run_id?` | Run a forecasting or anomaly recipe on a series file pointer. Chooses the backtest by regime (`zero_shot` = one holdout; `fit_on_series`/`fine_tune` = expanding folds); returns `backtest_score`, `folds`, a results-file pointer, and — when the recipe carries `save_to` — the `checkpoint_path` of the persisted weights. |
 | `run_tabular_recipe` | write, cpu-centric | `dataset_path`, `recipe`, `label_column?`, `asset_id?` | Series→tabular run (regression / classification / clustering): each CSV row is an instance; FLOps features are extracted, then the estimator fits. Omit `label_column` for clustering. |
 | `run_plan` | write, cpu-centric | `plan_spec`, `asset_id?`, `scenario_id?` | Execute a recipe DAG: file-pointer chaining across a HuggingGPT-style task list. |
+| `evaluate` | write, cpu-centric | `recipe`, `configs` | GIFT-Eval-style scoring of a recipe across several dataset configs: seasonal-naive-normalized MASE + CRPS, geometric mean over configs. |
 | `list_runs` | read | `asset_id?` | List run records and plans, optionally filtered by asset. |
 | `get_run` | read | `run_id` | One run record: its recipe config and outcome. |
 | `list_results` | read | `task_type`, `asset_id?`, `scenario_id?` | List persisted results for a task type. |
