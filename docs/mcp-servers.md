@@ -171,6 +171,16 @@ the full output. The server supplies evidence; the agent makes the decisions.
 | `update_feature` | write | `feature_id`, `fields` | Patch metadata fields without rerunning executable validation. |
 | `deprecate_feature` | write | `feature_id`, `reason?` | Mark a card deprecated while keeping it for audit and lineage. |
 | `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and supersede the predecessor. |
+| `count_features` | read | — | Extractor / transform / total counts in the catalog. |
+| `describe_features` | read | `names` | kind + name + description for the named features (extractors or transforms). |
+| `extract_features` | read, cpu-centric | `dataset_path`, `extractors`, `target_columns`, `timestamp_column?`, `window?` | Apply the named scalar extractors to a series and return the raw feature values - no model. `window=None` -> one vector for the whole series; `window=W` -> a (windows x features) matrix over non-overlapping W-length tiles. |
+| `select_features` | read, cpu-centric | `dataset_path`, `channel`, `extractors`, `timestamp_column?`, `reference_feature?`, `cd_margin?` | Rank a candidate extractor set on one series by self-supervised one-step-ahead forecasting and return the shortlist that beats `reference_feature` by `cd_margin`. No labels needed. |
+
+The extractor library backing `extract_features` / `select_features` is
+`reasoning.feature_selection.EXTRACTORS` (228 scalar extractors); pick names from
+`list_features(kind="extractor")`. These are the inspectable feature-engineering half of the
+workflow: `select_features` narrows the library to what matters for a series, `extract_features`
+computes the survivors, and the values feed `run_tabular_recipe`.
 
 ### Compose and run
 

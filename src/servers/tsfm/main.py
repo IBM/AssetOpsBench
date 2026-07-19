@@ -51,6 +51,11 @@ from .core.results_models import (
     TabularResult,
     TasksResult,
     FeaturesResult,
+    FeatureCountResult,
+    DescribeFeaturesResult,
+    FeatureDescription,
+    ExtractResult,
+    FeatureSelectionResult,
 )
 from .core.store import make_store
 from .io import refs
@@ -1034,6 +1039,167 @@ def hf_stats(
         )
     except Exception as exc:
         logger.error("hf_stats failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Count Features")
+def count_features() -> Union[FeatureCountResult, ErrorResult]:
+    """How many features are in the catalog. Returns extractor / transform / total counts."""
+    try:
+        ex = len(feature_store.find_features(_STORE, kind="extractor"))
+        tr = len(feature_store.find_features(_STORE, kind="transform"))
+        return FeatureCountResult(extractors=ex, transforms=tr, total=ex + tr)
+    except Exception as exc:
+        logger.error("count_features failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Describe Features")
+def describe_features(names: List[str]) -> Union[DescribeFeaturesResult, ErrorResult]:
+    """Return kind + name + description for ONLY the given feature names (extractors OR transforms)."""
+    if not names:
+        return ErrorResult(error="provide at least one feature name (see list_features)")
+    try:
+        found, unknown = [], []
+        for n in names:
+            card = feature_store.get_feature(_STORE, n)
+            if card and card.get("kind") in ("extractor", "transform"):
+                found.append(
+                    FeatureDescription(
+                        feature_id=n,
+                        kind=card.get("kind"),
+                        name=card.get("name"),
+                        description=card.get("description"),
+                    )
+                )
+            else:
+                unknown.append(n)
+        return DescribeFeaturesResult(
+            features=found,
+            unknown=unknown,
+            message=(
+                f"described {len(found)} feature(s)"
+                + (f"; unknown: {unknown}" if unknown else "")
+                + "."
+            ),
+        )
+    except Exception as exc:
+        logger.error("describe_features failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+
+@mcp.tool(title="Extract Features")
+def extract_features(
+    dataset_path: str,
+    extractors: List[str],
+    target_columns: List[str],
+    timestamp_column: Optional[str] = None,
+    window: Optional[int] = None,
+) -> Union[ExtractResult, ErrorResult]:
+    """Apply the chosen extractors to a series and RETURN the extracted feature values, raw feature
+    extraction, no model. Pick `extractors` by name from list_features(kind="extractor").
+    window=None -> one feature vector for the whole series; window=W -> non-overlapping W-length
+    tiles -> a (windows x features) matrix. Multivariate: each target column yields its own
+    '<column>.<extractor>' feature columns. `target_columns` (required) names the column(s) to
+    extract from - no default is assumed."""
+    import numpy as np
+
+    from .reasoning import feature_selection as FS
+
+    if not target_columns:
+        return ErrorResult(error="target_columns is required: name the column(s) to extract from")
+    if not extractors:
+        return ErrorResult(
+            error="provide at least one extractor name (see list_features(kind='extractor'))"
+        )
+    unknown = [e for e in extractors if e not in FS.EXTRACTORS]
+    if unknown:
+        return ErrorResult(
+            error=f"unknown extractor(s): {unknown}. See list_features(kind='extractor')."
+        )
+    try:
+        obj = refs.load_series(dataset_path, time_col=timestamp_column, channels=target_columns)
+    except Exception as exc:
+        logger.error("extract_features load failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+    if isinstance(obj, pd.Series):
+        name = obj.name or (target_columns[0] if target_columns else "value")
+        channels = {str(name): np.asarray(obj, dtype=float)}
+    else:
+        channels = {str(c): np.asarray(obj[c], dtype=float) for c in obj.columns}
+
+    cols, F = composition.extract_features(channels, extractors, window=window)
+    return ExtractResult(
+        n_windows=int(F.shape[0]),
+        window=window,
+        columns=cols,
+        features=[[round(float(v), 6) for v in row] for row in F.tolist()],
+        message=(
+            f"extracted {len(cols)} feature column(s) over {F.shape[0]} window(s) "
+            f"from {len(channels)} channel(s)."
+        ),
+    )
+
+
+@mcp.tool(title="Select Features")
+def select_features(
+    dataset_path: str,
+    channel: str,
+    extractors: List[str],
+    timestamp_column: Optional[str] = None,
+    reference_feature: str = "mean",
+    cd_margin: float = 0.05,
+) -> Union[FeatureSelectionResult, ErrorResult]:
+    """Rank a CANDIDATE set of extractors on one series and return the shortlist worth keeping.
+    Method: self-supervised one-step-ahead forecasting - slide a window over the series and score
+    each candidate by how well the window's features predict the NEXT value (no labels needed),
+    combining several criteria (correlation, F-test, mutual information, model importance) by mean
+    rank, then keep those that beat `reference_feature` by at least `cd_margin`.
+
+    `channel` (required) names the column to analyze - no default column is assumed. `extractors`
+    (required) is the list of extractor names to score. Returns names only."""
+    if not dataset_path.strip():
+        return ErrorResult(error="dataset_path is required")
+    if not channel:
+        return ErrorResult(error="channel is required (name the column to analyze)")
+    if not extractors:
+        return ErrorResult(
+            error="extractors is required: a list of extractor names to score (see list_features)"
+        )
+    from .reasoning import feature_selection as FS
+
+    unknown = [c for c in extractors if c not in FS.EXTRACTORS]
+    if unknown:
+        return ErrorResult(
+            error=f"unknown extractor(s): {unknown}. See list_features(kind='extractor')."
+        )
+    try:
+        obj = refs.load_series(dataset_path, time_col=timestamp_column, channels=[channel])
+        series = (obj.iloc[:, 0] if isinstance(obj, pd.DataFrame) else obj).to_numpy()
+        names = list(
+            dict.fromkeys(
+                list(extractors)
+                + ([reference_feature] if reference_feature in FS.EXTRACTORS else [])
+            )
+        )
+        subset = {n: FS.EXTRACTORS[n] for n in names}
+        res = feature_store.select_features(
+            series,
+            reference_feature=reference_feature,
+            cd_margin=cd_margin,
+            extractors=subset,
+        )
+        detail = refs.write_json(res, name="feature_select")
+        return FeatureSelectionResult(
+            selected=res["selected"],
+            lookback=res["lookback"],
+            reference=res["reference"],
+            scorers=res["scorers"],
+            detail_file=detail,
+        )
+    except Exception as exc:
+        logger.error("select_features failed: %s", exc)
         return ErrorResult(error=str(exc))
 
 
