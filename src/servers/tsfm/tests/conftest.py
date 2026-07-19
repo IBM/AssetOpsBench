@@ -1,8 +1,8 @@
 """Test config — keep the suite hermetic.
 
-Production reads the catalog from CouchDB (the `model_catalog` collection, loaded by
-src/couchdb/init_data.py). Tests force the in-memory backend and seed it from the same shipped
-seed file, so they need no running service.
+Production reads the catalog from CouchDB (the `MODEL_CATALOG_DBNAME` collection, defaulting to
+`model_catalog`, loaded by src/couchdb/init_data.py). Tests force the in-memory backend and seed it
+from the same shipped seed file, so they need no running service.
 """
 
 import json
@@ -41,7 +41,7 @@ def _seed_into(store):
 
     for doc in json.load(open(os.path.join(_SEEDS, "model_catalog.json"))):
         doc.setdefault("_id", f"model:{doc['model_id']}")
-        store.put(model_store.COLLECTION, doc)
+        store.put(model_store.collection_name(), doc)
     return store
 
 

@@ -113,7 +113,7 @@ _None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `
 
 **Path:** `src/servers/tsfm/main.py`
 **Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`); `numpy`, `pandas`. Set `TSFM_STORE=memory` for the in-memory backend the test suite uses.
-**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/{model,feature}_catalog.json`, loaded by `src/couchdb/init_data.py` into the `model_catalog` and `feature_catalog` collections like every other AssetOpsBench collection. `FEATURE_CATALOG_DBNAME` overrides the feature database name.
+**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/{model,feature}_catalog.json`, loaded by `src/couchdb/init_data.py` into the `model_catalog` and `feature_catalog` collections like every other AssetOpsBench collection. `MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` override the model and feature database names.
 
 Models and features are catalog **data, not tools**. A model card is a *pointer*: it records how to
 construct or load a model — `sktime_class` + `params`, and/or `hf_repo` / `artifact_path` /
@@ -128,10 +128,10 @@ the full output. The server supplies evidence; the agent makes the decisions.
 
 | Tool | Category | Arguments | Description |
 | ---- | -------- | --------- | ----------- |
-| `list_tasks` | read | — | List the standardized TSFM tasks and their contracts. |
-| `profile_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?` | Structured facts about a series: dominant period, trend, gaps, channel count. |
-| `characterize_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?`, `groups?`, `group_rules?` | Pattern evidence for a dataset; returns an evidence file pointer. |
-| `data_quality` | read, write, cpu-centric | `dataset_path`, `timestamp_column?` | NaN stats + removal; emits a cleaned file pointer for downstream tools. |
+| `list_tasks` | read | — | List the standardized TSFM tasks and their contracts. Use this first when you need the canonical task definitions. |
+| `profile_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?` | Summarize a file-pointer-backed series with factual evidence such as series length, channel count, dominant period, and other basic temporal characteristics. |
+| `characterize_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?`, `groups?`, `group_rules?` | Produce pattern evidence for a dataset, including grouped states, changepoint phases, relations, and a file pointer to the full evidence payload. |
+| `data_quality` | read, write, cpu-centric | `dataset_path`, `timestamp_column?` | Report NaN / cleaning statistics and emit a cleaned file pointer for downstream tools. |
 
 ### Model catalog — discovery
 
@@ -145,8 +145,8 @@ the full output. The server supplies evidence; the agent makes the decisions.
 | `count_models` | read | — | Total active models plus a per-task breakdown. |
 | `list_domains` | read | `task_id?` | The distinct domains present, with counts — the valid values for the `domain` filter. |
 | `get_model_lineage` | read | `model_id` | Fine-tune ancestors and descendants, plus `supersedes` / `superseded_by` links. |
-| `resolve_model` | read | `model_id` | Preflight: confirm a card is loadable — the `sktime_class` imports **and** its declared soft dependencies and Python-version floor are satisfied — and report where its weights come from. Does not download or fit. |
-| `hf_stats` | read | `model_id?`, `hf_repo?` | HuggingFace downloads and likes for a card's repo. Read-only; needs network to huggingface.co. |
+| `resolve_model` | read | `model_id` | Preflight: confirm a card can be loaded and report where its weights come from. Does not download or fit. |
+| `hf_stats` | read | `model_id?`, `hf_repo?` | Read-only HuggingFace popularity lookup for a model card or repo. Returns downloads and likes; needs network to huggingface.co. |
 
 ### Model catalog — authoring and lifecycle
 

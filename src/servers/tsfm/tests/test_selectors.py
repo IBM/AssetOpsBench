@@ -50,6 +50,24 @@ def test_usage_mode_filter_emits_a_condition_object():
     assert s.selectors[-1]["usage_modes"] == {"$elemMatch": {"$eq": "zero_shot"}}
 
 
+def test_model_store_reads_collection_name_from_env(monkeypatch):
+    monkeypatch.setenv("MODEL_CATALOG_DBNAME", "custom_model_catalog")
+    s = MemoryStore()
+    card = {
+        "model_id": "env_model",
+        "description": "model in custom collection",
+        "task_ids": ["tsfm_forecasting"],
+        "sktime_class": NAIVE,
+    }
+
+    model_store.register_model(s, card)
+
+    assert model_store.collection_name() == "custom_model_catalog"
+    assert model_store.get_model(s, "env_model")["model_id"] == "env_model"
+    assert s.get(model_store.COLLECTION, "model:env_model") is None
+    assert s.get("custom_model_catalog", "model:env_model")["model_id"] == "env_model"
+
+
 def test_memorystore_rejects_a_scalar_elemmatch_like_couchdb():
     """The leniency that hid the bug must stay gone."""
     with pytest.raises(ValueError, match="selector object"):

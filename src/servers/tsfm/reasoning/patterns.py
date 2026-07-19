@@ -1,22 +1,8 @@
-"""patterns.py - the pattern-evidence engine (P1: univariate state + rate, grouped).
+"""Pattern-evidence engine for grouped time-series shape descriptions.
 
-Given a (standardized) multivariate series, DESCRIBE its shape as structured evidence the LLM can
-reason over - never name a fault. This is the server's half of the SenTSR-style split: the server
-says "vibration shows a sharp rise; temperature stable"; the LLM says "alignment drift".
-
-Design notes
-------------
-* Reference-free. SenTSR standardizes each channel by median/MAD, so the baseline is the series
-  itself. We robust-standardize internally too (median/MAD) so the same logic works on any input
-  and reads in robust-z units - no external "normal" window is needed.
-* Channel grouping. The benchmark reasons about "vibration" (= Acceleration + Velocity) vs
-  "temperature", so we aggregate member channels into a group before describing (configurable).
-* P1 is single-phase (whole-series) state labeling. Phases (changepoints) + bivariate relations
-  come in P2/P3; the output dict already nests under a single phase so it extends cleanly.
-
-States: STABLE · RISE · DECLINE · SPIKE · LEVEL_SHIFT · CESSATION · OSCILLATION
-Each carries a rate (gradual|sharp where meaningful) and SPIKE carries persistence
-(transient|sustained). All purely descriptive.
+The server describes robust-z, reference-free signal shape as evidence only; it never names a
+fault. It supports grouped channels, single-phase state labels, and output that can later grow to
+changepoint phases and bivariate relations.
 """
 
 from __future__ import annotations
