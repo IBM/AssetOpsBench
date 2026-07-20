@@ -24,6 +24,14 @@ def _match(doc: dict, selector: dict) -> bool:
                 elif op == "$in" and not (val in operand):
                     return False
                 elif op == "$elemMatch":
+                    # CouchDB requires a condition object: {"$elemMatch": {"$eq": value}}.
+                    # Reject a bare scalar rather than quietly accepting it - being lenient here
+                    # lets an invalid selector pass the tests and then 400 against real CouchDB.
+                    if not isinstance(operand, dict):
+                        raise ValueError(
+                            "$elemMatch expects a selector object such as {'$eq': value}, got "
+                            f"{type(operand).__name__} {operand!r}"
+                        )
                     if not isinstance(val, list) or not any(
                         _match({"_": v}, {"_": operand}) for v in val
                     ):
