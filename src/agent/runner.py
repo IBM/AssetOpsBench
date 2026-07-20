@@ -39,8 +39,13 @@ class AgentRunner(ABC):
     ) -> None:
         self._llm = llm
         self._server_paths: dict[str, Path | str] = (
-            dict(DEFAULT_SERVER_PATHS) if server_paths is None else server_paths
+            dict(DEFAULT_SERVER_PATHS) if server_paths is None else dict(server_paths)
         )
+        # The `record_final_answer` tool lives on the utilities server and is how every runner reads
+        # the final answer uniformly, so utilities must be attached even when a caller passes a
+        # domain subset that omits it. Inject it if missing.
+        if "utilities" not in self._server_paths and "utilities" in DEFAULT_SERVER_PATHS:
+            self._server_paths["utilities"] = DEFAULT_SERVER_PATHS["utilities"]
 
     @abstractmethod
     async def run(self, question: str) -> AgentResult:

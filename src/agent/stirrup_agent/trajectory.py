@@ -149,12 +149,58 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
     return trajectory
 
 
+# Assistant text that is finish-narration, not an answer. Stirrup's own docs show the last
+# assistant message before a finish call is often exactly this ("All files are ready. Let me finish
+# the task."), so a naive "last assistant text" grabs chatter instead of the answer.
+_FINISH_CHATTER = (
+    "let me finish",
+    "let's finish",
+    "i'll finish",
+    "i will finish",
+    "all files are ready",
+    "finishing the task",
+    "finishing up",
+    "task complete",
+    "task is complete",
+    "i'm done",
+    "i am done",
+    "let me wrap up",
+)
+
+
+def _is_finish_chatter(text: str) -> bool:
+    t = text.strip().lower().rstrip(".!")
+    return any(t == c or t.startswith(c) for c in _FINISH_CHATTER)
+
+
 def final_answer(history: Iterable[Any], finish_params: Any) -> str:
-    """Final answer: last non-empty assistant text, else the finish reason."""
+    """Extract the agent's final answer, robustly, in priority order.
+
+    Stirrup's default finish tool exposes only ``reason`` (a description of what was accomplished)
+    and ``paths`` (output files) - neither is reliably "the answer", which is why a naive read gives
+    empty or verbose results. This prefers an explicit ``answer`` field (set by the custom finish
+    tool in ``finish.py``) and only falls back when it is absent:
+
+      1. the last SUBSTANTIVE assistant text, skipping finish-narration chatter
+         ("Let me finish the task", "All files are ready", ...).
+      2. ``finish_params.reason`` - the default finish tool's completion note.
+      3. ``finish_params.paths`` - name the produced files, so a file deliverable is never empty.
+
+    Order 2-before-3 preserves the historical behaviour for default-finish-tool runs (assistant text
+    wins over a terse reason); order 1-first makes the structured answer authoritative once the
+    custom finish tool is in use.
+    """
     for msg in reversed(_flatten(history)):
         if getattr(msg, "role", None) == "assistant":
             text = _content_text(getattr(msg, "content", "")).strip()
-            if text:
+            if text and not _is_finish_chatter(text):
                 return text
+
     reason = getattr(finish_params, "reason", None)
-    return reason if isinstance(reason, str) else ""
+    if isinstance(reason, str) and reason.strip():
+        return reason.strip()
+
+    paths = [str(p) for p in (getattr(finish_params, "paths", None) or [])]
+    if paths:
+        return "Produced files: " + ", ".join(paths)
+    return ""
