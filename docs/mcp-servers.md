@@ -154,7 +154,7 @@ the full output. The server supplies evidence; the agent makes the decisions.
 | ---- | -------- | --------- | ----------- |
 | `model_template` | read | — | The card contract: required and optional fields, the pointer choices, and a worked example. Static. |
 | `register_model` | write | `model` | Register a schema-validated model card. A duplicate `model_id` is rejected, not overwritten. |
-| `register_finetuned` | write | `model_id`, `checkpoint_path`, `base_model_id`, `context_length`, `prediction_length`, `description`, `domain?` | Point a card at a fine-tune checkpoint; inherits the base's `sktime_class` and records lineage. |
+| `register_finetuned` | write | `model_id`, `checkpoint_path`, `base_model_id`, `context_length`, `prediction_length`, `description`, `domain?` | Card a fine-tune checkpoint: inherits the base's `sktime_class`, points `params.model_path` at the checkpoint, records lineage, and pins the **serving** regime to `zero_shot` (serving loads and predicts, it does not re-train). Rejects a base whose wrapper takes no `model_path`. |
 | `update_model` | write | `model_id`, `fields` | Patch fields, stamp `updated_at`, and re-validate against the schema. |
 | `deprecate_model` | write | `model_id`, `reason?` | Soft delete: `status=deprecated`, dropping the card from active listings. |
 | `new_model_version` | write | `model_id`, `fields`, `new_model_id?` | Register a successor and mark the predecessor superseded, cross-linked. |
@@ -171,6 +171,53 @@ the full output. The server supplies evidence; the agent makes the decisions.
 | `update_feature` | write | `feature_id`, `fields` | Patch metadata fields without rerunning executable validation. |
 | `deprecate_feature` | write | `feature_id`, `reason?` | Mark a card deprecated while keeping it for audit and lineage. |
 | `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and supersede the predecessor. |
+| `count_features` | read | — | Extractor / transform / total counts in the catalog. |
+| `describe_features` | read | `names` | kind + name + description for the named features (extractors or transforms). |
+| `extract_features` | read, cpu-centric | `dataset_path`, `extractors`, `target_columns`, `timestamp_column?`, `window?` | Apply the named scalar extractors to a series and return the raw feature values - no model. `window=None` -> one vector for the whole series; `window=W` -> a (windows x features) matrix over non-overlapping W-length tiles. |
+| `select_features` | read, cpu-centric | `dataset_path`, `channel`, `extractors`, `timestamp_column?`, `reference_feature?`, `cd_margin?` | Rank a candidate extractor set on one series by self-supervised one-step-ahead forecasting and return the shortlist that beats `reference_feature` by `cd_margin`. No labels needed. |
+
+The extractor library backing `extract_features` / `select_features` is
+`reasoning.feature_selection.EXTRACTORS` (228 scalar extractors); pick names from
+`list_features(kind="extractor")`. These are the inspectable feature-engineering half of the
+workflow: `select_features` narrows the library to what matters for a series, `extract_features`
+computes the survivors, and the values feed `run_tabular_recipe`.
+
+### Compose and run
+
+The catalog describes models; these tools **run** them. A recipe names an estimator (a `model_id`
+from the catalog, or an inline `sktime_class` + `params`) plus optional blocks, and `run_recipe`
+compiles it, backtests it, produces a forecast, and persists a run record. `recipe_template` returns
+the contract so an agent does not have to guess the shape.
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `recipe_template` | read | — | The recipe contract: `estimator_spec`, `optional_blocks` (`fh`, `transforms`, `ensemble`, `conformal`, `finetune`, `save_to`, `anomaly`, `impute`, `eval`), `rules`, and executable `examples`. Static. |
+| `run_recipe` | write, cpu-centric | `dataset_path`, `timestamp_column`, `target_columns`, `recipe`, `asset_id?`, `parent_run_id?` | Run a forecasting or anomaly recipe on a series file pointer. Chooses the backtest by regime (`zero_shot` = one holdout; `fit_on_series`/`fine_tune` = expanding folds); returns `backtest_score`, `folds`, a results-file pointer, and — when the recipe carries `save_to` — the `checkpoint_path` of the persisted weights. |
+| `run_tabular_recipe` | write, cpu-centric | `dataset_path`, `recipe`, `label_column?`, `asset_id?` | Series→tabular run (regression / classification / clustering): each CSV row is an instance; FLOps features are extracted, then the estimator fits. Omit `label_column` for clustering. |
+| `run_plan` | write, cpu-centric | `plan_spec`, `asset_id?`, `scenario_id?` | Execute a recipe DAG: file-pointer chaining across a HuggingGPT-style task list. |
+| `evaluate` | write, cpu-centric | `recipe`, `configs` | GIFT-Eval-style scoring of a recipe across several dataset configs: seasonal-naive-normalized MASE + CRPS, geometric mean over configs. |
+| `list_runs` | read | `asset_id?` | List run records and plans, optionally filtered by asset. |
+| `get_run` | read | `run_id` | One run record: its recipe config and outcome. |
+| `list_results` | read | `task_type`, `asset_id?`, `scenario_id?` | List persisted results for a task type. |
+| `get_result` | read | `task_type`, `result_id` | One persisted result — the record a run produced and stored. |
+
+**How a run's output reaches the agent.** Every execution returns a `results_file` - a `file://`
+pointer to a JSON document in `TSFM_WORKDIR` (default `/tmp/tsfm_work`, override with the env var)
+holding the full payload (forecast head, prediction intervals, or anomaly labels). The tool response
+carries the pointer plus the headline numbers (`backtest_score`, `folds`, `n_anomalies`); the agent
+opens the pointer only when it needs the detail. The same run is persisted three ways: the response
+pointer, a **run record** in `tsfm_runs` (read by `list_runs` / `get_run`), and a **typed result**
+in the task's result collection - `forecast_result`, `anomaly_result`, ... - read by `list_results`
+/ `get_result`, so a later agent can find a run by `task_type` + `asset_id` without knowing its
+`run_id`. The run record and the result index live in CouchDB (durable) under the default backend;
+the payload file lives on the local filesystem of whichever host ran the recipe, so on ephemeral or
+multi-host deployments treat `results_file` as host-local and rely on the CouchDB record for the
+durable summary.
+
+**The fine-tune lifecycle is entirely on this surface.** `run_recipe` with a `finetune` block trains
+the estimator and, with `save_to`, writes an HF-format checkpoint and returns its path;
+`register_finetuned` cards that checkpoint with lineage and a pinned serving regime; a further
+`run_recipe` on the new card loads those weights and forecasts. No dropping to raw sktime.
 
 Successful TSFM tool responses include a top-level `message` string. List and search responses also
 include `features` or `models`; registration returns `status`, `id`, and `card`; card operations
