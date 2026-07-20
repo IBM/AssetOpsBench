@@ -263,6 +263,14 @@ class DescribeModelsResult(BaseModel):
     message: str
 
 
+class RecipeTemplateResult(BaseModel):
+    task_choices: List[str]
+    estimator_spec: List[str]
+    optional_blocks: List[str]
+    rules: List[str]
+    examples: dict
+
+
 class ModelTemplateResult(BaseModel):
     required_fields: List[str]
     pointer_choices: List[str]

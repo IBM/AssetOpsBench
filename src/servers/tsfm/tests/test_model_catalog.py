@@ -1,3 +1,4 @@
+import pytest
 """Model-catalog tool surface: template -> register -> resolve -> update/deprecate/version."""
 
 import asyncio
@@ -9,6 +10,10 @@ warnings.filterwarnings("ignore")
 from ..main import mcp
 
 NAIVE = "sktime.forecasting.naive.NaiveForecaster"
+# register_finetuned points a card at a checkpoint via params.model_path, so its base must be a
+# wrapper that TAKES a model_path. NaiveForecaster does not: such a card raises TypeError at
+# resolve(). This double satisfies the same contract as TTM with no torch.
+FAKE_TTM = "servers.tsfm.tests.fake_hf_forecaster.FakeTTMForecaster"
 
 
 def call(name, args):
@@ -81,7 +86,9 @@ def test_list_domains():
 
 
 def test_get_model_lineage():
-    call("register_model", {"model": _card("lin_base")})
+    # the base of a finetune must accept params.model_path (see register_finetuned)
+    call("register_model", {"model": _card("lin_base", sktime_class=FAKE_TTM,
+                                           params={"model_path": "fake-hub/ttm"})})
     call("register_finetuned", {"model_id": "lin_ft", "checkpoint_path": "/ckpt/x",
                                 "base_model_id": "lin_base", "context_length": 96,
                                 "prediction_length": 28, "description": "ft of base"})
@@ -137,11 +144,67 @@ def test_new_version_links_predecessor():
 
 
 def test_register_finetuned_inherits_and_links():
-    call("register_model", {"model": _card("base_ttm")})
+    call("register_model", {"model": _card("base_ttm", sktime_class=FAKE_TTM,
+                                           params={"model_path": "fake-hub/ttm"})})
     out = call("register_finetuned", {"model_id": "ft_ttm", "checkpoint_path": "/ckpt/ft",
                                       "base_model_id": "base_ttm", "context_length": 96,
                                       "prediction_length": 28, "description": "fine-tuned ttm"})
     card = out
     assert card["base_model_id"] == "base_ttm" and card["provenance"] == "finetuned"
-    assert card["sktime_class"] == NAIVE                 # inherited from the base
+    assert card["sktime_class"] == FAKE_TTM              # inherited from the base
     assert card["params"]["model_path"] == "/ckpt/ft"    # points at the checkpoint
+    # serving a checkpoint LOADS and predicts; it must not train again. provenance is history,
+    # training_regime is what happens on the next fit().
+    assert card["training_regime"] == "zero_shot"
+    assert card["params"]["fit_strategy"] == "zero-shot"
+
+
+def test_register_finetuned_rejects_a_base_that_cannot_take_a_checkpoint():
+    """A finetune card loads weights via params.model_path, so the base wrapper must accept one.
+
+    Previously this emitted a card that raised TypeError at resolve():
+        ThetaForecaster.__init__() got an unexpected keyword argument 'model_path'
+    """
+    call("register_model", {"model": _card("classical_base", sktime_class=NAIVE)})
+    out = call("register_finetuned", {"model_id": "bad_ft", "checkpoint_path": "/ckpt/x",
+                                      "base_model_id": "classical_base", "context_length": 96,
+                                      "prediction_length": 28, "description": "should be rejected"})
+    assert "error" in out
+    assert "model_path" in out["error"]
+
+def test_resolve_model_flags_missing_soft_dependency():
+    """resolve_model must preflight an estimator's third-party deps, not just its import.
+
+    sktime wraps third-party libraries and defers the dependency check to fit(), so ARIMA imports
+    AND constructs without pmdarima and only fails inside the backtest. The preflight has to read
+    the `python_dependencies` class tag to catch that.
+    """
+    import importlib.util
+
+    from servers.tsfm import main as M
+
+    if importlib.util.find_spec("pmdarima") is not None:
+        pytest.skip("pmdarima installed; nothing to flag")
+
+    M.register_model({
+        "model_id": "arima_missing_dep", "description": "ARIMA card for preflight test",
+        "task_ids": ["tsfm_forecasting"], "provenance": "trained",
+        "sktime_class": "sktime.forecasting.arima.ARIMA", "params": {"order": (1, 1, 1)},
+    })
+    d = M.resolve_model("arima_missing_dep").model_dump()
+
+    assert d["resolvable"] is False
+    assert "pmdarima" in d["reason"]
+
+
+def test_resolve_model_allows_satisfied_soft_dependency():
+    """The dep check must not produce false negatives for estimators whose deps ARE present."""
+    from servers.tsfm import main as M
+
+    M.register_model({
+        "model_id": "naive_ok", "description": "NaiveForecaster card for preflight test",
+        "task_ids": ["tsfm_forecasting"], "provenance": "trained",
+        "sktime_class": "sktime.forecasting.naive.NaiveForecaster", "params": {"strategy": "last"},
+    })
+    d = M.resolve_model("naive_ok").model_dump()
+    assert d["resolvable"] is True

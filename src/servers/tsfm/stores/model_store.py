@@ -266,6 +266,42 @@ def new_version(
     return out
 
 
+def _has_param(sktime_class: str, param: str) -> bool:
+    """Does this sktime class's constructor accept `param`? False if it cannot be inspected."""
+    import inspect
+
+    try:
+        from ..substrate import resolver as R
+
+        target = R._import_target(sktime_class)
+        return param in inspect.signature(target.__init__).parameters
+    except Exception:
+        return False
+
+
+def _require_model_path_param(sktime_class: str, base_model_id: str) -> None:
+    """A checkpoint card is served via params.model_path, so the wrapper must accept one."""
+    import inspect
+
+    try:
+        from ..substrate import resolver as R
+
+        target = R._import_target(sktime_class)
+        sig = inspect.signature(target.__init__).parameters
+    except Exception:
+        return  # uninspectable (e.g. optional dep absent): do not block on a check we cannot run
+    if "model_path" in sig or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.values()
+    ):
+        return
+    raise ValueError(
+        f"base model '{base_model_id}' uses {sktime_class}, whose constructor takes no "
+        f"'model_path'. A fine-tuned card loads its weights via params.model_path, so this card "
+        f"would raise TypeError at resolve(). register_finetuned is for checkpoint-backed wrappers "
+        f"(TinyTimeMixerForecaster, PatchTSTForecaster, ChronosForecaster, ...)."
+    )
+
+
 def register_finetuned(
     store,
     *,
@@ -294,7 +330,18 @@ def register_finetuned(
             f"base model '{base_model_id}' has no sktime_class to inherit; the fine-tuned card "
             "would not be resolvable"
         )
+
+    # The card loads weights through params.model_path, so the base's wrapper must actually TAKE a
+    # model_path. Without this check we happily emit a card that raises TypeError at resolve():
+    #   ThetaForecaster.__init__() got an unexpected keyword argument 'model_path'
+    _require_model_path_param(sktime_class, base_model_id)
+
     params = {**(base.get("params") or {}), "model_path": checkpoint_path}
+    # A checkpoint card SERVES: load the fine-tuned weights and predict. It must not train again.
+    # sktime's TTM defaults to fit_strategy="minimal", which fine-tunes - so an unpinned checkpoint
+    # card would fine-tune the already-fine-tuned weights on every fit.
+    if _has_param(sktime_class, "fit_strategy"):
+        params["fit_strategy"] = "zero-shot"
     return register_model(
         store,
         {
@@ -307,6 +354,11 @@ def register_finetuned(
             "framework": base.get("framework", "tinytimemixer"),
             "modality": "timeseries",
             "provenance": "finetuned",
+            # provenance is HISTORY (where these weights came from); training_regime is what
+            # happens on the NEXT fit(). Serving a checkpoint is load-and-predict = zero_shot.
+            # Leaving this unset let the card infer to fine_tune, which sent run_recipe down the
+            # ~20-fold refit path to serve a model that does not train.
+            "training_regime": "zero_shot",
             "base_model_id": base_model_id,
             "task_ids": ["tsfm_forecasting"],
             "context_length": context_length,
