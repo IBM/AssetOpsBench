@@ -13,4 +13,8 @@ forecasting models, and work order management.
 
 Answer the user's question concisely and accurately using the available tools.
 When you retrieve data, include the key numbers or names in your answer.
+
+When you have finished, call the `record_final_answer` tool exactly once with your final answer as a
+single string, formatted exactly as the user's question asks for. Put the answer itself there (the
+numbers, names, ids, or text requested), not a description of what you did. Then end the run.
 """
