@@ -8,7 +8,7 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 - [utilities — Utilities](#utilities--utilities)
 - [fmsr — Failure Mode and Sensor Relations](#fmsr--failure-mode-and-sensor-relations)
 - [wo — Work Order](#wo--work-order)
-- [tsfm — Time Series Feature Catalog](#tsfm--time-series-feature-catalog)
+- [tsfm — Time Series Model and Feature Catalogs](#tsfm--time-series-model-and-feature-catalogs)
 - [vibration — Vibration Diagnostics](#vibration--vibration-diagnostics)
 
 ## iot — IoT Asset Registry and Telemetry Records
@@ -47,19 +47,22 @@ Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based
 ## utilities — Utilities
 
 **Path:** `src/servers/utilities/main.py`
-**Requires:** nothing (no external services)
+**Requires:** CouchDB for the catalog lookup tools (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `CATALOG_DBNAME`); `json_reader` and the time tools do not need external services.
 
 | Tool                   | Category | Arguments   | Description                                            |
 | ---------------------- | -------- | ----------- | ------------------------------------------------------ |
 | `json_reader`          | read     | `file_name` | Read and parse a JSON file from disk                   |
+| `get_sensor_catalog`   | read     | `sensor?`   | List sensor catalog entries, or fetch an exact sensor  |
+| `get_asset_catalog`    | read     | `asset?`, `category?` | List asset catalog entries, optionally filtered by asset or category |
+| `get_failure_mode_catalog` | read | `failure_mode?`, `category?` | List failure-mode catalog entries, optionally filtered by failure mode or category |
 | `current_date_time`    | read     | —           | Return the current UTC date and time as JSON           |
 | `current_time_english` | read     | —           | Return the current UTC time as a human-readable string |
 
 ## fmsr — Failure Mode and Sensor Relations
 
 **Path:** `src/servers/fmsr/main.py`
-**Requires:** LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`; `get_failure_modes` reads the database.
-**Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection.
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `FAILURE_MODE_DBNAME`) for stored modes; LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`.
+**Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection by default.
 
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -109,17 +112,20 @@ _None — the WO server makes no LLM calls; all tools are direct CouchDB operati
 
 _None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `GET` / `PUT`), with no heavy computation._
 
-## tsfm — Time Series Model & Feature Catalogs
+## tsfm — Time Series Model and Feature Catalogs
 
 **Path:** `src/servers/tsfm/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`); `numpy`, `pandas`. Set `TSFM_STORE=memory` for the in-memory backend the test suite uses.
-**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/{model,feature}_catalog.json`, loaded by `src/couchdb/init_data.py` into the `model_catalog` and `feature_catalog` collections like every other AssetOpsBench collection. `MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` override the model and feature database names.
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`); `numpy`, `pandas`, `sktime`, `scipy`, and the model-specific soft dependencies required by the cards you run. Set `TSFM_STORE=memory` for the in-memory backend the test suite uses.
+**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/{model,feature}_catalog.json`, loaded by `src/couchdb/init_data.py` into the `model_catalog` and `feature_catalog` collections like every other AssetOpsBench collection. `MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` override the model and feature database names. Runs are stored in `tsfm_runs`, plans in `tsfm_plans`, and typed outputs in each task's result collection.
 
 Models and features are catalog **data, not tools**. A model card is a *pointer*: it records how to
 construct or load a model — `sktime_class` + `params`, and/or `hf_repo` / `artifact_path` /
 `remote_endpoint` / `model_checkpoint` — never the weights themselves. Feature transform cards store
 executable EFE-style `fit` / `transform` programs; extractor cards store searchable metadata for
 scalar feature extractors. The server reads both catalogs from CouchDB; it does not seed them.
+
+The TSFM server currently exposes 41 MCP tools across task/evidence discovery, model catalog
+management, feature catalog management, recipe execution, evaluation, and the run/result ledger.
 
 ### Tasks and evidence tools
 
@@ -154,7 +160,7 @@ the full output. The server supplies evidence; the agent makes the decisions.
 | ---- | -------- | --------- | ----------- |
 | `model_template` | read | — | The card contract: required and optional fields, the pointer choices, and a worked example. Static. |
 | `register_model` | write | `model` | Register a schema-validated model card. A duplicate `model_id` is rejected, not overwritten. |
-| `register_finetuned` | write | `model_id`, `checkpoint_path`, `base_model_id`, `context_length`, `prediction_length`, `description`, `domain?` | Card a fine-tune checkpoint: inherits the base's `sktime_class`, points `params.model_path` at the checkpoint, records lineage, and pins the **serving** regime to `zero_shot` (serving loads and predicts, it does not re-train). Rejects a base whose wrapper takes no `model_path`. |
+| `register_finetuned` | write | `model_id`, `checkpoint_path`, `base_model_id`, `context_length`, `prediction_length`, `description`, `domain?` | Card a fine-tune checkpoint: inherits the base's `sktime_class`, points `params.model_path` at the checkpoint, records lineage, and pins the **serving** regime to `zero_shot` (serving loads and predicts, it does not re-train). Rejects inspectable base wrappers that cannot accept `model_path`. |
 | `update_model` | write | `model_id`, `fields` | Patch fields, stamp `updated_at`, and re-validate against the schema. |
 | `deprecate_model` | write | `model_id`, `reason?` | Soft delete: `status=deprecated`, dropping the card from active listings. |
 | `new_model_version` | write | `model_id`, `fields`, `new_model_id?` | Register a successor and mark the predecessor superseded, cross-linked. |
@@ -185,9 +191,9 @@ computes the survivors, and the values feed `run_tabular_recipe`.
 ### Compose and run
 
 The catalog describes models; these tools **run** them. A recipe names an estimator (a `model_id`
-from the catalog, or an inline `sktime_class` + `params`) plus optional blocks, and `run_recipe`
-compiles it, backtests it, produces a forecast, and persists a run record. `recipe_template` returns
-the contract so an agent does not have to guess the shape.
+from the catalog, or an inline `sktime_class` + `params`) plus optional blocks. `run_recipe`
+compiles it, backtests it, produces a forecast or anomaly output, and persists a run record.
+`recipe_template` returns the contract so an agent does not have to guess the shape.
 
 | Tool | Category | Arguments | Description |
 | ---- | -------- | --------- | ----------- |
