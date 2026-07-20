@@ -455,7 +455,7 @@ uv run python -m benchmark.scenario_suite_runner \
 | `--opencode-workspace-root is required when enabling OpenCode files, bash, or edits` | Scenario-suite runs require a workspace root when any OpenCode CLI capability is enabled. |
 | Workspace folders are empty | Normal if OpenCode did not need to write scripts or intermediate files. The workspace is available as scratch space, but files are created only if the model/tooling writes them. |
 | Run appears stuck after `Command: uv run opencode-agent ...` | Normal for long scenarios: `scenario_suite_runner` is quiet while OpenCode works. Check `traces/trajectories/scenario_suite/opencode_agent/` after completion. |
-| Evaluator fails even though the answer text contains the right label | The answer may be too verbose for `static_json` extraction. Prefer concise answers such as `C` or JSON like `{"answer": "C"}` for strict structured tasks. |
+| Evaluator fails even though the answer text contains the right label | The answer may be too verbose for `static_json` extraction. Prefer concise answers such as `C` or JSON like `{"answer": "C"}` for strict structured tasks. The harness also reads the answer from the agent's `record_final_answer` tool call when present (see mcp-servers.md), which sidesteps transcript verbosity. |
 | Web access concern | Web is denied by default. Do not pass `--allow-web` for benchmark runs. |
 | Bash isolation concern | `--allow-bash` is not a hard OS sandbox. Use Docker or another sandbox for strict filesystem isolation. |
 | OpenCode prompts for permissions in a batch run | Do not pass `--ask-permissions`; the default auto-approves allowed tools and still denies explicitly denied tools. |
