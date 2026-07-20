@@ -22,7 +22,7 @@ async def test_direct_llm_agent_returns_model_answer():
 
     result = await runner.run('Return only JSON: {"test": 1}')
 
-    assert result.answer == '{"test": 1}'
+    assert result.answer == '{"test":1}'
     assert result.question == 'Return only JSON: {"test": 1}'
     assert result.trajectory.total_input_tokens == 10
     assert result.trajectory.total_output_tokens == 5
