@@ -40,7 +40,7 @@ from observability import agent_run_span, persist_trajectory
 
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
-from ..models import AgentResult, Trajectory
+from ..models import AgentResult, Trajectory, final_answer_from_trajectory
 from ..runner import AgentRunner
 from .trajectory import build_trajectory, classify_tool, final_answer
 
@@ -257,6 +257,12 @@ class StirrupAgentRunner(AgentRunner):
                 answer=answer,
                 trajectory=trajectory,
             )
+            # Uniform final answer: prefer the record_final_answer tool call if the agent
+
+            # made one, else the framework-native answer.
+
+            answer = final_answer_from_trajectory(trajectory) or answer
+
             return AgentResult(question=question, answer=answer, trajectory=trajectory)
 
     def _annotate_span(
