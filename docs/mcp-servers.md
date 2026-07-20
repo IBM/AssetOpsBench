@@ -54,6 +54,16 @@ Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based
 | `json_reader`          | read     | `file_name` | Read and parse a JSON file from disk                   |
 | `current_date_time`    | read     | —           | Return the current UTC date and time as JSON           |
 | `current_time_english` | read     | —           | Return the current UTC time as a human-readable string |
+| `record_final_answer`  | write    | `answer`    | Record the agent's final answer to the user's question, formatted as the question requests. The agent calls this once, just before finishing; the benchmark reads the answer back from this tool call in the trajectory (see "Final-answer extraction" below). |
+
+**Final-answer extraction.** `record_final_answer` is how the harness gets a clean final answer
+uniformly across every agent runner (Stirrup, OpenCode, OpenAI, DeepAgent, Claude). Because each
+framework signals completion differently, relying on their native finish payloads gave empty or
+verbose answers. Instead, the agent is prompted to call `record_final_answer(answer=...)` right
+before finishing, and `agent.models.final_answer_from_trajectory()` reads the last such call from the
+trajectory. If the agent does not call it, each runner falls back to its framework-native answer. The
+utilities server is always attached (even when a scenario selects a domain subset) so the tool is
+always available.
 
 ## fmsr — Failure Mode and Sensor Relations
 
