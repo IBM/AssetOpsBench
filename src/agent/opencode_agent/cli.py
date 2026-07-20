@@ -107,7 +107,7 @@ examples:
         "--allow-files",
         action="store_true",
         help=(
-            "Allow OpenCode read/glob/grep/lsp tools inside --workspace-dir. "
+            "Allow OpenCode read/glob/grep/lsp/list tools inside --workspace-dir. "
             "Disabled by default for tools-only benchmark runs."
         ),
     )
