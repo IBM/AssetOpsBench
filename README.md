@@ -86,10 +86,12 @@ AssetOpsBench is a **unified framework for developing, orchestrating, and evalua
 |---|---|
 | **IoT** | `sites`, `asset_ids`, `asset_detail`, `assets`, `find_assets_by_sensors`, `installed_sensors`, `measured_sensors` |
 | **FMSR** | `get_failure_modes`, `generate_failure_modes`, `add_failure_modes`, `generate_failure_mode_sensor_mapping` |
-| **TSFM** | `list_features`, `search_features`, `get_feature`, `register_feature`, `new_feature_version` |
+| **TSFM** | Tasks/evidence: `list_tasks`, `profile_series`, `characterize_series`, `data_quality`; model catalog: `list_models`, `search_models`, `find_models`, `resolve_model`, `model_template`, `register_model`, `register_finetuned`, `hf_stats`; feature catalog: `list_features`, `search_features`, `extract_features`, `select_features`; run/eval ledger: `recipe_template`, `run_recipe`, `run_tabular_recipe`, `run_plan`, `evaluate`, `list_runs`, `list_results` |
 | **WO** | `get_work_order_distribution`, `predict_next_work_order`, ... |
 | **Vibration** | `compute_fft_spectrum`, `compute_envelope_spectrum`, ... |
 | **...** | **...** |
+
+The full TSFM MCP surface currently contains 41 tools covering model cards, feature cards, recipe execution, evaluation, and result/run lookup. See [docs/mcp-servers.md](./docs/mcp-servers.md#tsfm--time-series-model-and-feature-catalogs) for the complete reference.
 
 ### Agent Frameworks
 
@@ -112,7 +114,7 @@ The `src/` directory contains MCP servers and a plan-execute runner built on the
 |---|---|
 | **IoT** | "List all assets in MAIN site" |
 | **FMSR** | "List known failure modes for asset class pump" |
-| **TSFM** | "Find active time-series normalization features in the feature catalog" |
+| **TSFM** | "Find a forecasting model for Chiller 6 and check it can be loaded" |
 | **WO** | "Generate a work order for Chiller 6 anomaly detection" |
 
 Some tasks focus on a single domain, others are multi-step end-to-end workflows. Explore all scenarios on [Hugging Face](https://huggingface.co/datasets/ibm-research/AssetOpsBench).
