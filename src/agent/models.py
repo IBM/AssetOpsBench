@@ -72,3 +72,28 @@ class AgentResult:
     question: str
     answer: str
     trajectory: Any
+
+
+# ---------------------------------------------------------------------------
+# Uniform final-result extraction (framework-agnostic).
+#
+# Every runner records tool calls the same way (Trajectory.all_tool_calls), so the most reliable,
+# framework-independent way to get the final answer is to have the agent call the utilities
+# `record_final_answer` tool with the formatted answer just before finishing, and read it back from
+# the trajectory. MCP tools arrive server-prefixed (e.g. `utilities__record_final_answer`), so match
+# on the suffix. Returns None when the agent did not call it, so callers can fall back to their
+# framework-native extraction.
+# ---------------------------------------------------------------------------
+FINAL_ANSWER_TOOL = "record_final_answer"
+
+
+def final_answer_from_trajectory(trajectory: "Trajectory") -> str | None:
+    """The last `record_final_answer` tool-call argument, or None if the agent never called it."""
+    for tc in reversed(trajectory.all_tool_calls):
+        name = tc.name or ""
+        if name == FINAL_ANSWER_TOOL or name.endswith("__" + FINAL_ANSWER_TOOL):
+            arg = tc.input
+            value = arg.get("answer") if isinstance(arg, dict) else None
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None

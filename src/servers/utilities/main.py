@@ -143,6 +143,18 @@ def _find_catalog(
 # --- JSON Tools ---
 
 
+@mcp.tool(title="Record Final Answer")
+def record_final_answer(answer: str) -> str:
+    """Record the final answer to the user's question, formatted exactly as the question requests.
+
+    Call this ONCE, immediately before finishing, with the complete final answer as a single
+    string. The benchmark reads the answer from this call, so it must contain the answer itself
+    (the numbers, names, ids, or text the question asks for) in the requested format - not a
+    description of what you did. This is framework-agnostic: every agent records it the same way.
+    """
+    return "final answer recorded"
+
+
 @mcp.tool(title="Read JSON File")
 def json_reader(file_name: str) -> str:
     """Reads a JSON file, parses its content, and returns the parsed data."""

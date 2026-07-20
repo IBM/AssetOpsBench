@@ -58,7 +58,8 @@ class _Tool:
 
 @dataclass
 class _Finish:
-    reason: str
+    reason: str = ""
+    paths: list | None = None
 
 
 def test_classify_tool():
@@ -117,6 +118,25 @@ def test_final_answer_falls_back_to_finish_reason():
         final_answer(history, _Finish("computed RUL = 142 days"))
         == "computed RUL = 142 days"
     )
+
+
+
+def test_final_answer_skips_finish_narration_chatter():
+    """Without a structured answer, the last SUBSTANTIVE assistant text wins - not the
+    'let me finish' narration Stirrup emits right before the finish call."""
+    history = [[_Assistant(content="There are 7 open work orders on CWC04013.")],
+               [_Assistant(content="All files are ready. Let me finish the task.")]]
+    assert (
+        final_answer(history, _Finish(reason=""))
+        == "There are 7 open work orders on CWC04013."
+    )
+
+
+def test_final_answer_names_output_files_when_no_text():
+    """A file deliverable must never surface as an empty answer."""
+    history = [[_Assistant(content="")]]
+    fp = _Finish(reason="", paths=["chiller_8_leaderboard.csv"])
+    assert final_answer(history, fp) == "Produced files: chiller_8_leaderboard.csv"
 
 
 def test_arguments_parsed_when_already_dict():
