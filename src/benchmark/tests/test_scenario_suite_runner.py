@@ -151,6 +151,7 @@ def test_method_output_paths_nest_by_agent_and_model(tmp_path: Path) -> None:
 def test_build_methods_uses_cli_defaults() -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
+        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=False,
@@ -177,7 +178,7 @@ def test_build_methods_uses_cli_defaults() -> None:
     assert methods["direct_llm"].model_id == "tokenrouter/MiniMax-M3"
     assert methods["stirrup_agent"].command == "stirrup-agent"
     assert methods["stirrup_agent"].model_id == "tokenrouter/MiniMax-M3"
-    assert methods["stirrup_agent"].extra_args == ()
+    assert methods["stirrup_agent"].extra_args == ("--max-tokens", "4096")
     assert methods["stirrup_agent"].workspace_root is None
     assert methods["opencode_agent"].command == "opencode-agent"
     assert methods["opencode_agent"].extra_args == ()
@@ -198,6 +199,7 @@ def test_build_methods_uses_cli_defaults() -> None:
 def test_build_methods_stirrup_workspace_options(tmp_path: Path) -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
+        stirrup_max_tokens=4096,
         stirrup_workspace_root=tmp_path / "stirrup-workspaces",
         preserve_workspaces=True,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
@@ -223,13 +225,14 @@ def test_build_methods_stirrup_workspace_options(tmp_path: Path) -> None:
     methods = mr.build_methods(args)
     stirrup = methods["stirrup_agent"]
 
-    assert stirrup.extra_args == ("--preserve-workspace",)
+    assert stirrup.extra_args == ("--max-tokens", "4096", "--preserve-workspace")
     assert stirrup.workspace_root == tmp_path / "stirrup-workspaces"
 
 
 def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
+        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=True,
@@ -260,6 +263,7 @@ def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
 def test_build_methods_opencode_thinking_and_variant() -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
+        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=False,
@@ -294,6 +298,7 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
 def test_build_methods_gemini_workspace_options(tmp_path: Path) -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
+        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=False,
@@ -329,6 +334,7 @@ def test_build_methods_gemini_workspace_options(tmp_path: Path) -> None:
 def test_build_methods_openclaw_workspace_options(tmp_path: Path) -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
+        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=False,
