@@ -99,9 +99,9 @@ asyncio.run(main())
 PY
 ```
 
-Expected counts: `iot` 4, `utilities` 4, `fmsr` 2, `tsfm` 6, `wo` 15, `vibration` 8
-(39 MCP tools total, including `utilities__record_final_answer`; the agent additionally has
-Stirrup's own `finish` tool).
+Expected default counts: `iot` 12, `utilities` 6, `fmsr` 4, `tsfm` 41, `wo` 15, `vibration` 8
+(86 MCP tools total; the agent additionally has Stirrup's own `finish` tool). If `AOB_READONLY=1`
+is set, `wo` exposes 9 read tools instead of 15.
 
 ---
 

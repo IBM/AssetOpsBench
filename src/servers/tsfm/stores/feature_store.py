@@ -183,3 +183,19 @@ def new_version(
         store, feature_id, {"status": "superseded", "superseded_by": out["feature_id"]}
     )
     return out
+
+
+def select_features(
+    series, *, reference_feature: str = "mean", lookback=None, cd_margin=0.05, extractors=None
+):
+    """Multi-config feature selection on a series (self-supervised, one-step-ahead). `extractors`
+    optionally restricts scoring to a candidate subset; None scores the full library."""
+    from ..reasoning import feature_selection as fsel
+
+    return fsel.select_features(
+        series,
+        reference_feature=reference_feature,
+        lookback=lookback,
+        cd_margin=cd_margin,
+        extractors=extractors,
+    )

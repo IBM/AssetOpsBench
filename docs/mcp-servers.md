@@ -8,7 +8,7 @@ Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone 
 - [utilities — Utilities](#utilities--utilities)
 - [fmsr — Failure Mode and Sensor Relations](#fmsr--failure-mode-and-sensor-relations)
 - [wo — Work Order](#wo--work-order)
-- [tsfm — Time Series Feature Catalog](#tsfm--time-series-feature-catalog)
+- [tsfm — Time Series Model and Feature Catalogs](#tsfm--time-series-model-and-feature-catalogs)
 - [vibration — Vibration Diagnostics](#vibration--vibration-diagnostics)
 
 ## iot — IoT Asset Registry and Telemetry Records
@@ -47,11 +47,14 @@ Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based
 ## utilities — Utilities
 
 **Path:** `src/servers/utilities/main.py`
-**Requires:** nothing (no external services)
+**Requires:** CouchDB for the catalog lookup tools (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `CATALOG_DBNAME`); `json_reader` and the time tools do not need external services.
 
 | Tool                   | Category | Arguments   | Description                                            |
 | ---------------------- | -------- | ----------- | ------------------------------------------------------ |
 | `json_reader`          | read     | `file_name` | Read and parse a JSON file from disk                   |
+| `get_sensor_catalog`   | read     | `sensor?`   | List sensor catalog entries, or fetch an exact sensor  |
+| `get_asset_catalog`    | read     | `asset?`, `category?` | List asset catalog entries, optionally filtered by asset or category |
+| `get_failure_mode_catalog` | read | `failure_mode?`, `category?` | List failure-mode catalog entries, optionally filtered by failure mode or category |
 | `current_date_time`    | read     | —           | Return the current UTC date and time as JSON           |
 | `current_time_english` | read     | —           | Return the current UTC time as a human-readable string |
 | `record_final_answer`  | write    | `answer`    | Record the agent's final answer to the user's question, formatted as the question requests. The agent calls this once, just before finishing; the benchmark reads the answer back from this tool call in the trajectory (see "Final-answer extraction" below). |
@@ -68,8 +71,8 @@ always available.
 ## fmsr — Failure Mode and Sensor Relations
 
 **Path:** `src/servers/fmsr/main.py`
-**Requires:** LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`; `get_failure_modes` reads the database.
-**Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection.
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `FAILURE_MODE_DBNAME`) for stored modes; LLM credentials for `generate_failure_modes` and `generate_failure_mode_sensor_mapping`.
+**Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection by default.
 
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -119,32 +122,123 @@ _None — the WO server makes no LLM calls; all tools are direct CouchDB operati
 
 _None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `GET` / `PUT`), with no heavy computation._
 
-## tsfm — Time Series Feature Catalog
+## tsfm — Time Series Model and Feature Catalogs
 
 **Path:** `src/servers/tsfm/main.py`
-**Requires:** configured catalog database; `FEATURE_CATALOG_DBNAME` selects the database name (default: `feature_catalog`).
-**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/feature_catalog.json`
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`); `numpy`, `pandas`, `sktime`, `scipy`, and the model-specific soft dependencies required by the cards you run. Set `TSFM_STORE=memory` for the in-memory backend the test suite uses.
+**Catalog data:** `src/couchdb/scenarios_data/shared/tsfm/{model,feature}_catalog.json`, loaded by `src/couchdb/init_data.py` into the `model_catalog` and `feature_catalog` collections like every other AssetOpsBench collection. `MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` override the model and feature database names. Runs are stored in `tsfm_runs`, plans in `tsfm_plans`, and typed outputs in each task's result collection.
 
-The TSFM server manages feature catalog cards. Transform cards store executable
-EFE-style `fit` / `transform` programs; extractor cards store searchable metadata
-for scalar feature extractors.
+Models and features are catalog **data, not tools**. A model card is a *pointer*: it records how to
+construct or load a model — `sktime_class` + `params`, and/or `hf_repo` / `artifact_path` /
+`remote_endpoint` / `model_checkpoint` — never the weights themselves. Feature transform cards store
+executable EFE-style `fit` / `transform` programs; extractor cards store searchable metadata for
+scalar feature extractors. The server reads both catalogs from CouchDB; it does not seed them.
+
+The TSFM server currently exposes 41 MCP tools across task/evidence discovery, model catalog
+management, feature catalog management, recipe execution, evaluation, and the run/result ledger.
+
+### Tasks and evidence tools
+
+Evidence tools take **file pointers** (`dataset_path`) and return typed results plus a pointer to
+the full output. The server supplies evidence; the agent makes the decisions.
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `list_tasks` | read | — | List the standardized TSFM tasks and their contracts. Use this first when you need the canonical task definitions. |
+| `profile_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?` | Summarize a file-pointer-backed series with factual evidence such as series length, channel count, dominant period, and other basic temporal characteristics. |
+| `characterize_series` | read, cpu-centric | `dataset_path`, `timestamp_column?`, `channels?`, `groups?`, `group_rules?` | Produce pattern evidence for a dataset, including grouped states, changepoint phases, relations, and a file pointer to the full evidence payload. |
+| `data_quality` | read, write, cpu-centric | `dataset_path`, `timestamp_column?` | Report NaN / cleaning statistics and emit a cleaned file pointer for downstream tools. |
+
+### Model catalog — discovery
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `list_models` | read | `task_id?`, `domain?`, `status?` | List model cards, optionally filtered by task or domain. |
+| `search_models` | read | `text`, `tags?`, `status?` | Case-insensitive substring search over id, description, family, and tags. |
+| `find_models` | read | `task_id`, `min_context_length?`, `prediction_length?`, `domain?`, `top_k?` | Filter by task plus structured constraints and return a shortlist. |
+| `describe_candidates` | read | `task_id`, `top_k?`, `domain?` | Compact candidate shortlist for a task, for an agent to reason over. |
+| `describe_models` | read | `model_ids` | Compact record per id: description, family, `sktime_class`, context length, domain, tags. |
+| `count_models` | read | — | Total active models plus a per-task breakdown. |
+| `list_domains` | read | `task_id?` | The distinct domains present, with counts — the valid values for the `domain` filter. |
+| `get_model_lineage` | read | `model_id` | Fine-tune ancestors and descendants, plus `supersedes` / `superseded_by` links. |
+| `resolve_model` | read | `model_id` | Preflight: confirm a card can be loaded and report where its weights come from. Does not download or fit. |
+| `hf_stats` | read | `model_id?`, `hf_repo?` | Read-only HuggingFace popularity lookup for a model card or repo. Returns downloads and likes; needs network to huggingface.co. |
+
+### Model catalog — authoring and lifecycle
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `model_template` | read | — | The card contract: required and optional fields, the pointer choices, and a worked example. Static. |
+| `register_model` | write | `model` | Register a schema-validated model card. A duplicate `model_id` is rejected, not overwritten. |
+| `register_finetuned` | write | `model_id`, `checkpoint_path`, `base_model_id`, `context_length`, `prediction_length`, `description`, `domain?` | Card a fine-tune checkpoint: inherits the base's `sktime_class`, points `params.model_path` at the checkpoint, records lineage, and pins the **serving** regime to `zero_shot` (serving loads and predicts, it does not re-train). Rejects inspectable base wrappers that cannot accept `model_path`. |
+| `update_model` | write | `model_id`, `fields` | Patch fields, stamp `updated_at`, and re-validate against the schema. |
+| `deprecate_model` | write | `model_id`, `reason?` | Soft delete: `status=deprecated`, dropping the card from active listings. |
+| `new_model_version` | write | `model_id`, `fields`, `new_model_id?` | Register a successor and mark the predecessor superseded, cross-linked. |
+
+### Feature catalog
 
 | Tool | Category | Arguments | Description |
 | ---- | -------- | --------- | ----------- |
 | `list_features` | read | `kind?`, `status?` | List transform and/or extractor cards. `kind` may be `transform`, `extractor`, or omitted. |
 | `search_features` | read | `text?`, `tags?`, `status?` | Search cards by feature id, name, description, or tags. |
 | `get_feature` | read | `feature_id` | Return one stored feature card by id. |
+| `get_feature_lineage` | read | `feature_id` | Parent and direct-descendant ids for a feature card. |
 | `register_feature` | write | `feature`, `overwrite?` | Register a transform card after schema and executable-code validation. |
-| `update_feature` | write | `feature_id`, `fields` | Patch metadata fields on an existing card without rerunning executable validation. |
-| `deprecate_feature` | write | `feature_id`, `reason?` | Mark a card deprecated while keeping it available for audit and lineage. |
-| `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and mark the predecessor superseded. |
-| `get_feature_lineage` | read | `feature_id` | Return parent and direct-descendant ids for a feature card. |
+| `update_feature` | write | `feature_id`, `fields` | Patch metadata fields without rerunning executable validation. |
+| `deprecate_feature` | write | `feature_id`, `reason?` | Mark a card deprecated while keeping it for audit and lineage. |
+| `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and supersede the predecessor. |
+| `count_features` | read | — | Extractor / transform / total counts in the catalog. |
+| `describe_features` | read | `names` | kind + name + description for the named features (extractors or transforms). |
+| `extract_features` | read, cpu-centric | `dataset_path`, `extractors`, `target_columns`, `timestamp_column?`, `window?` | Apply the named scalar extractors to a series and return the raw feature values - no model. `window=None` -> one vector for the whole series; `window=W` -> a (windows x features) matrix over non-overlapping W-length tiles. |
+| `select_features` | read, cpu-centric | `dataset_path`, `channel`, `extractors`, `timestamp_column?`, `reference_feature?`, `cd_margin?` | Rank a candidate extractor set on one series by self-supervised one-step-ahead forecasting and return the shortlist that beats `reference_feature` by `cd_margin`. No labels needed. |
 
-Successful TSFM tool responses include a top-level `message` string. List and
-search responses also include `features`; registration returns `status`, `id`,
-and `card`; card operations return the card fields plus `message`; lineage
-returns `feature_id`, `ancestors`, `root`, `descendants`, and `message`. Errors
-return `ErrorResult` with an `error` field.
+The extractor library backing `extract_features` / `select_features` is
+`reasoning.feature_selection.EXTRACTORS` (228 scalar extractors); pick names from
+`list_features(kind="extractor")`. These are the inspectable feature-engineering half of the
+workflow: `select_features` narrows the library to what matters for a series, `extract_features`
+computes the survivors, and the values feed `run_tabular_recipe`.
+
+### Compose and run
+
+The catalog describes models; these tools **run** them. A recipe names an estimator (a `model_id`
+from the catalog, or an inline `sktime_class` + `params`) plus optional blocks. `run_recipe`
+compiles it, backtests it, produces a forecast or anomaly output, and persists a run record.
+`recipe_template` returns the contract so an agent does not have to guess the shape.
+
+| Tool | Category | Arguments | Description |
+| ---- | -------- | --------- | ----------- |
+| `recipe_template` | read | — | The recipe contract: `estimator_spec`, `optional_blocks` (`fh`, `transforms`, `ensemble`, `conformal`, `finetune`, `save_to`, `anomaly`, `impute`, `eval`), `rules`, and executable `examples`. Static. |
+| `run_recipe` | write, cpu-centric | `dataset_path`, `timestamp_column`, `target_columns`, `recipe`, `asset_id?`, `parent_run_id?` | Run a forecasting or anomaly recipe on a series file pointer. Chooses the backtest by regime (`zero_shot` = one holdout; `fit_on_series`/`fine_tune` = expanding folds); returns `backtest_score`, `folds`, a results-file pointer, and — when the recipe carries `save_to` — the `checkpoint_path` of the persisted weights. |
+| `run_tabular_recipe` | write, cpu-centric | `dataset_path`, `recipe`, `label_column?`, `asset_id?` | Series→tabular run (regression / classification / clustering): each CSV row is an instance; FLOps features are extracted, then the estimator fits. Omit `label_column` for clustering. |
+| `run_plan` | write, cpu-centric | `plan_spec`, `asset_id?`, `scenario_id?` | Execute a recipe DAG: file-pointer chaining across a HuggingGPT-style task list. |
+| `evaluate` | write, cpu-centric | `recipe`, `configs` | GIFT-Eval-style scoring of a recipe across several dataset configs: seasonal-naive-normalized MASE + CRPS, geometric mean over configs. |
+| `list_runs` | read | `asset_id?` | List run records and plans, optionally filtered by asset. |
+| `get_run` | read | `run_id` | One run record: its recipe config and outcome. |
+| `list_results` | read | `task_type`, `asset_id?`, `scenario_id?` | List persisted results for a task type. |
+| `get_result` | read | `task_type`, `result_id` | One persisted result — the record a run produced and stored. |
+
+**How a run's output reaches the agent.** Every execution returns a `results_file` - a `file://`
+pointer to a JSON document in `TSFM_WORKDIR` (default `/tmp/tsfm_work`, override with the env var)
+holding the full payload (forecast head, prediction intervals, or anomaly labels). The tool response
+carries the pointer plus the headline numbers (`backtest_score`, `folds`, `n_anomalies`); the agent
+opens the pointer only when it needs the detail. The same run is persisted three ways: the response
+pointer, a **run record** in `tsfm_runs` (read by `list_runs` / `get_run`), and a **typed result**
+in the task's result collection - `forecast_result`, `anomaly_result`, ... - read by `list_results`
+/ `get_result`, so a later agent can find a run by `task_type` + `asset_id` without knowing its
+`run_id`. The run record and the result index live in CouchDB (durable) under the default backend;
+the payload file lives on the local filesystem of whichever host ran the recipe, so on ephemeral or
+multi-host deployments treat `results_file` as host-local and rely on the CouchDB record for the
+durable summary.
+
+**The fine-tune lifecycle is entirely on this surface.** `run_recipe` with a `finetune` block trains
+the estimator and, with `save_to`, writes an HF-format checkpoint and returns its path;
+`register_finetuned` cards that checkpoint with lineage and a pinned serving regime; a further
+`run_recipe` on the new card loads those weights and forecasts. No dropping to raw sktime.
+
+Successful TSFM tool responses include a top-level `message` string. List and search responses also
+include `features` or `models`; registration returns `status`, `id`, and `card`; card operations
+return the card fields plus `message`; lineage returns `feature_id` / `model_id`, `ancestors`,
+`root`, `descendants`, and `message`. Errors return `ErrorResult` with an `error` field.
 
 ## vibration — Vibration Diagnostics
 
