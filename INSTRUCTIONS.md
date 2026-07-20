@@ -329,7 +329,7 @@ uv run python -m benchmark.scenario_suite_runner \
   --scenario-root /path/to/scenarios_data \
   --agent_name opencode_agent \
   --model-id tokenrouter/MiniMax-M3 \
-  --opencode-workspace-root traces/opencode_workspaces \
+  --opencode-workspace-root /tmp/assetopsbench-opencode/workspaces \
   --opencode-allow-files \
   --opencode-allow-bash
 ```
@@ -337,12 +337,12 @@ uv run python -m benchmark.scenario_suite_runner \
 For scenario `401`, this creates a workspace like:
 
 ```text
-traces/opencode_workspaces/opencode_agent_401
+/tmp/assetopsbench-opencode/workspaces/opencode_agent/tokenrouter-MiniMax-M3/opencode_agent_401
 ```
 
 `--opencode-allow-files`, `--opencode-allow-bash`, and
 `--opencode-allow-edit` are opt-in. If any of them are enabled,
-`--opencode-workspace-root` is required.
+`--opencode-workspace-root` is required and must be outside the repository.
 
 > `--opencode-allow-bash` is not a hard OS-level sandbox. For strict filesystem
 > isolation, run the benchmark inside Docker or another sandbox.
