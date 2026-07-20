@@ -249,6 +249,10 @@ class StirrupAgentRunner(AgentRunner):
             trajectory.started_at = started_at
             answer = final_answer(history, finish_params)
 
+            # Prefer the record_final_answer tool call (if the agent made one) as the final
+            # answer, BEFORE persisting/annotating, so the saved trajectory JSON and the eval
+            # report use it too - not just the in-memory AgentResult.
+            answer = final_answer_from_trajectory(trajectory) or answer
             self._annotate_span(span, trajectory, answer, run_started)
             persist_trajectory(
                 runner_name="stirrup-agent",
@@ -257,12 +261,6 @@ class StirrupAgentRunner(AgentRunner):
                 answer=answer,
                 trajectory=trajectory,
             )
-            # Uniform final answer: prefer the record_final_answer tool call if the agent
-
-            # made one, else the framework-native answer.
-
-            answer = final_answer_from_trajectory(trajectory) or answer
-
             return AgentResult(question=question, answer=answer, trajectory=trajectory)
 
     def _annotate_span(

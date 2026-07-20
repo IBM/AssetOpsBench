@@ -250,6 +250,10 @@ class DeepAgentRunner(AgentRunner):
             span.set_attribute(
                 "agent.duration_ms", (time.perf_counter() - run_started) * 1000
             )
+            # Prefer the record_final_answer tool call (if the agent made one) as the final
+            # answer, BEFORE persisting/annotating, so the saved trajectory JSON and the eval
+            # report use it too - not just the in-memory AgentResult.
+            answer = final_answer_from_trajectory(trajectory) or answer
             persist_trajectory(
                 runner_name="deep-agent",
                 model=self._model_id,
@@ -257,10 +261,4 @@ class DeepAgentRunner(AgentRunner):
                 answer=answer,
                 trajectory=trajectory,
             )
-            # Uniform final answer: prefer the record_final_answer tool call if the agent
-
-            # made one, else the framework-native answer.
-
-            answer = final_answer_from_trajectory(trajectory) or answer
-
             return AgentResult(question=question, answer=answer, trajectory=trajectory)
