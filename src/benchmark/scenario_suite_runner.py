@@ -296,6 +296,9 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     opencode_variant = getattr(args, "opencode_variant", None)
     if opencode_variant:
         opencode_extra_args.extend(["--variant", opencode_variant])
+    opencode_temperature = getattr(args, "opencode_temperature", None)
+    if opencode_temperature is not None:
+        opencode_extra_args.extend(["--temperature", str(opencode_temperature)])
 
     gemini_extra_args: list[str] = []
     if args.gemini_allow_files:
@@ -488,6 +491,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "OpenCode model variant / reasoning effort for opencode_agent, "
             "e.g. minimal, low, medium, high, or max. Omitted by default."
+        ),
+    )
+    parser.add_argument(
+        "--opencode-temperature",
+        type=float,
+        default=None,
+        help=(
+            "OpenCode model temperature for opencode_agent. When omitted, "
+            "opencode-agent uses its default temperature."
         ),
     )
     parser.add_argument(

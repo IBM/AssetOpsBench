@@ -224,6 +224,7 @@ def _build_opencode_config(
     model: str,
     agent_name: str,
     max_steps: int,
+    temperature: float = 0.1,
     server_paths: dict[str, Path | str],
     allow_bash: bool = False,
     allow_edit: bool = False,
@@ -252,7 +253,7 @@ def _build_opencode_config(
                 "prompt": _OPENCODE_SYSTEM_PROMPT,
                 "permission": permission,
                 "steps": max_steps,
-                "temperature": 0.1,
+                "temperature": temperature,
             }
         },
     }
@@ -681,6 +682,7 @@ class OpenCodeAgentRunner(AgentRunner):
         timeout_s: float | None = 900,
         thinking: bool = False,
         variant: str | None = None,
+        temperature: float = 0.1,
         allow_bash: bool = False,
         allow_edit: bool = False,
         allow_web: bool = False,
@@ -709,6 +711,7 @@ class OpenCodeAgentRunner(AgentRunner):
                 model=model,
                 agent_name=agent_name,
                 max_steps=max_steps,
+                temperature=temperature,
                 server_paths=self._server_paths,
                 allow_bash=allow_bash,
                 allow_edit=allow_edit,
