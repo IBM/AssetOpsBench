@@ -92,6 +92,37 @@ def test_stirrup_runner_requires_workspace_when_preserving():
         StirrupAgentRunner(preserve_workspace=True)
 
 
+def test_stirrup_runner_forwards_temperature_to_litellm_client():
+    runner = StirrupAgentRunner(
+        model="watsonx/ibm/granite-4-h-small",
+        temperature=0.2,
+        max_tokens=1234,
+    )
+
+    client = runner._build_client()
+
+    assert client._kwargs == {"temperature": 0.2}
+    assert client._max_tokens == 1234
+
+
+def test_stirrup_runner_forwards_temperature_to_router_client(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://api.tokenrouter.example/v1")
+
+    runner = StirrupAgentRunner(
+        model="tokenrouter/MiniMax-M3",
+        temperature=0.2,
+        max_tokens=1234,
+    )
+
+    client = runner._build_client()
+
+    assert client._kwargs == {"temperature": 0.2}
+    assert client._max_tokens == 1234
+
+
 def test_build_trajectory_maps_turns_calls_and_outputs():
     # history is list[list[ChatMessage]] (per-turn grouping)
     history = [
