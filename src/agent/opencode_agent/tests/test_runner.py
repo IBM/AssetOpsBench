@@ -182,9 +182,22 @@ def test_build_opencode_config_includes_agent_and_mcp():
     assert env == {}
     assert opencode_model == "opencode/gpt-5"
     assert config["agent"]["assetops"]["steps"] == 7
+    assert config["agent"]["assetops"]["temperature"] == 0.1
     assert config["agent"]["assetops"]["permission"]["iot_*"] == "allow"
     assert config["agent"]["assetops"]["permission"]["read"] == "deny"
     assert config["mcp"]["iot"]["command"] == ["uv", "run", "iot-mcp-server"]
+
+
+def test_build_opencode_config_uses_requested_temperature():
+    config, _, _ = _build_opencode_config(
+        model="opencode/gpt-5",
+        agent_name="assetops",
+        max_steps=7,
+        temperature=0.0,
+        server_paths={"iot": "iot-mcp-server"},
+    )
+
+    assert config["agent"]["assetops"]["temperature"] == 0.0
 
 
 def test_json_events_parses_ndjson_and_plain_lines():
