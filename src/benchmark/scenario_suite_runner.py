@@ -479,7 +479,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--opencode-allow-files",
         action="store_true",
-        help="Allow opencode-agent read/glob/grep/lsp tools inside its per-run workspace.",
+        help="Allow opencode-agent read/glob/grep/lsp/list tools inside its per-run workspace.",
     )
     parser.add_argument(
         "--opencode-allow-bash",
