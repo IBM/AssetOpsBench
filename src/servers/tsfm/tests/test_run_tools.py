@@ -55,23 +55,22 @@ def test_mcp_guidance_advertises_anomaly_run_recipe_path():
     assert "search_models" in instructions
     assert "run_recipe" in instructions
     assert "tsfm_anomaly_detection" in instructions
-    assert "\"estimator\": {\"model_id\": \"<selected_model_id>\"}" in instructions
-    assert "flagged outputs" in instructions
+    assert "\"estimator\": {\"model_id\": \"<model_id>\"}" in instructions
+    assert "returned labels, indices" in instructions
 
     descriptions = {t.name: (t.description or "") for t in asyncio.run(mcp.list_tools())}
     search_models_doc = descriptions["search_models"]
-    assert "model-catalog discovery tool" in search_models_doc
+    assert "text/tag discovery" in search_models_doc
     assert "task_ids" in search_models_doc
 
     find_models_doc = descriptions["find_models"]
-    assert "find_models(task_id=\"tsfm_anomaly_detection\")" in find_models_doc
+    assert "task_id=\"tsfm_anomaly_detection\"" in find_models_doc
 
     run_recipe_doc = descriptions["run_recipe"]
-    assert "time-series anomaly detection" in run_recipe_doc
-    assert "model-catalog tools" in run_recipe_doc
+    assert "For anomaly detection" in run_recipe_doc
     assert "tsfm_anomaly_detection" in run_recipe_doc
-    assert "\"estimator\": {\"model_id\": \"<selected>\"}" in run_recipe_doc
-    assert "final anomaly segment/JSON answer" in run_recipe_doc
+    assert "\"estimator\": {\"model_id\": \"<model_id>\"}" in run_recipe_doc
+    assert "ground final segment/JSON answers" in run_recipe_doc
 
 
 # ---- run_recipe: a real fit + backtest ----
