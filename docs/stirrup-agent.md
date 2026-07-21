@@ -99,8 +99,9 @@ asyncio.run(main())
 PY
 ```
 
-Expected counts: `iot` 4, `utilities` 3, `fmsr` 2, `tsfm` 6, `wo` 14, `vibration` 8
-(37 MCP tools total; the agent additionally has Stirrup's own `finish` tool).
+Expected default counts: `iot` 12, `utilities` 6, `fmsr` 4, `tsfm` 41, `wo` 15, `vibration` 8
+(86 MCP tools total; the agent additionally has Stirrup's own `finish` tool). If `AOB_READONLY=1`
+is set, `wo` exposes 9 read tools instead of 15.
 
 ---
 
@@ -186,6 +187,8 @@ export DOCKER_HOST=unix:///Users/<you>/.rd/docker.sock
 export STIRRUP_CODE_IMAGE=assetops-code
 
 uv run stirrup-agent --code-backend docker --show-trajectory \
+  --workspace-dir /tmp/assetopsbench-stirrup/smoke \
+  --preserve-workspace \
   --model-id watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 \
   "Run python to compute the factorial of 12 and tell me the result"
 ```
@@ -195,25 +198,28 @@ call and the right answer (479001600).
 
 ---
 
-## Reading tool-produced files
+## Preserving code workspaces
 
-The Docker sandbox has its own filesystem: it can only see what is mounted, which
-is a private working directory — **not** wherever a tool downloaded a file on the
-host. So if a tool (e.g. `iot__history`) writes a file on the host and returns its
-path, code running in the Docker backend cannot open that path.
+By default, Stirrup creates a temporary execution directory for `code_exec` and
+removes it when the agent session exits. Pass `--workspace-dir` to choose the host
+base directory for that sandbox, and pass `--preserve-workspace` to copy the final
+code-execution files back into that directory before cleanup.
 
-Current guidance:
+For scenario-suite runs, use a root outside the repo:
 
-- For code scenarios that must read a tool-produced **host file**, use
-  `--code-backend local`. Local execution runs on the host, so the returned path
-  resolves directly.
-- Use the `docker` backend for computation that does not need to open a
-  tool-produced host file (the data the code needs is in the conversation), where
-  isolation matters more than direct file access.
+```bash
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name stirrup_agent \
+  --stirrup-workspace-root /tmp/assetopsbench-stirrup-workspaces \
+  --preserve-workspaces
+```
 
-> Mounting a host directory into the Docker sandbox is not currently supported by
-> Stirrup's stock `DockerCodeExecToolProvider`. If that lands upstream
-> (an `extra_mounts` option), the Docker backend can read host files directly.
+For scenario `401`, the preserved files are available under a nested path such as:
+
+```text
+/tmp/assetopsbench-stirrup-workspaces/stirrup_agent/tokenrouter-MiniMax-M3/stirrup_agent_401/
+```
 
 ---
 
@@ -229,6 +235,8 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--code-backend`      | `docker` (default), `local`, or `e2b`.                                               |
 | `--max-turns N`       | Max agent turns (default: 30).                                                       |
 | `--max-tokens N`      | Max output tokens per model call; keep under the provider limit (default: 16384).    |
+| `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
+| `--preserve-workspace` | Copy final code-execution files into `--workspace-dir` before cleanup.              |
 
 Environment variable: `STIRRUP_CODE_IMAGE` (Docker image; default `python:3.12-slim`).
 

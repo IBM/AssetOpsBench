@@ -278,9 +278,7 @@ def run_evaluation(
 def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     """Build available method configs from CLI args."""
     stirrup_extra_args: list[str] = []
-    stirrup_extra_args.extend(
-        ["--max-tokens", str(getattr(args, "stirrup_max_tokens", 4096))]
-    )
+    stirrup_extra_args.extend(["--max-tokens", str(args.stirrup_max_tokens)])
     if getattr(args, "preserve_workspaces", False) and getattr(
         args, "stirrup_workspace_root", None
     ) is not None:
@@ -470,7 +468,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--opencode-allow-files",
         action="store_true",
-        help="Allow opencode-agent read/glob/grep/lsp tools inside its per-run workspace.",
+        help="Allow opencode-agent read/glob/grep/lsp/list tools inside its per-run workspace.",
     )
     parser.add_argument(
         "--opencode-allow-bash",

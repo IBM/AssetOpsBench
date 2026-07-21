@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from agent.models import ToolCall
@@ -12,11 +13,16 @@ from agent.opencode_agent.runner import (
     _build_opencode_config,
     _build_permissions,
     _build_trajectory_from_events,
+    _command_for_log,
+    _event_type_counts,
     _json_events,
     _needs_reasoning_effort_none,
     _opencode_error_message,
+    _permission_log_summary,
     _resolve_run_dir,
     _resolve_opencode_model_and_provider,
+    _stream_stats,
+    _stream_tail,
 )
 
 
@@ -38,16 +44,20 @@ def test_build_mcp_config_path():
 
 def test_build_permissions_default_safe():
     permission = _build_permissions(["iot", "wo"])
+    assert permission["*"] == "deny"
     assert permission["iot_*"] == "allow"
     assert permission["wo_*"] == "allow"
     assert permission["read"] == "deny"
     assert permission["glob"] == "deny"
     assert permission["grep"] == "deny"
     assert permission["lsp"] == "deny"
+    assert permission["list"] == "deny"
     assert permission["bash"] == "deny"
     assert permission["edit"] == "deny"
+    assert permission["todowrite"] == "deny"
     assert permission["webfetch"] == "deny"
     assert permission["websearch"] == "deny"
+    assert permission["codesearch"] == "deny"
     assert permission["external_directory"] == "deny"
     assert permission["question"] == "deny"
 
@@ -64,11 +74,37 @@ def test_build_permissions_allows_opt_in_tools():
     assert permission["glob"] == "allow"
     assert permission["grep"] == "allow"
     assert permission["lsp"] == "allow"
+    assert permission["list"] == "allow"
     assert permission["bash"] == "allow"
     assert permission["edit"] == "allow"
+    assert permission["todowrite"] == "deny"
     assert permission["webfetch"] == "allow"
     assert permission["websearch"] == "allow"
+    assert permission["codesearch"] == "deny"
     assert permission["external_directory"] == "deny"
+
+
+def test_permission_log_summary_excludes_mcp_tool_rules():
+    permission = _build_permissions(["iot"], allow_bash=True, allow_files=True)
+    summary = _permission_log_summary(permission)
+
+    assert summary == {
+        "*": "deny",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "lsp": "allow",
+        "list": "allow",
+        "edit": "deny",
+        "bash": "allow",
+        "todowrite": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "codesearch": "deny",
+        "external_directory": "deny",
+        "question": "deny",
+    }
+    assert "iot_*" not in summary
 
 
 def test_resolve_run_dir_defaults_to_repo_root():
@@ -206,6 +242,56 @@ def test_json_events_parses_ndjson_and_plain_lines():
     assert plain == ["not-json"]
 
 
+def test_command_for_log_omits_question():
+    question = "question with sensitive context"
+    cmd = [
+        "opencode",
+        "run",
+        "--format",
+        "json",
+        "--model",
+        "opencode/gpt-5",
+        question,
+    ]
+
+    logged = _command_for_log(cmd)
+
+    assert logged == [
+        "opencode",
+        "run",
+        "--format",
+        "json",
+        "--model",
+        "opencode/gpt-5",
+        "<question omitted>",
+    ]
+    assert question not in repr(logged)
+    assert cmd[-1] == question
+
+
+def test_stream_tail_truncates_long_streams():
+    assert _stream_tail("short", limit=10) == "short"
+    assert _stream_tail("0123456789", limit=4) == "<truncated 6 chars>\n6789"
+
+
+def test_stream_stats_counts_decoded_chars_and_lines():
+    assert _stream_stats("one\ntwo\n") == (8, 2)
+    assert _stream_stats("") == (0, 0)
+
+
+def test_event_type_counts_summarizes_events_without_payloads():
+    events = [
+        {"type": "message.part.updated", "payload": {"text": "secret"}},
+        {"type": "message.part.updated"},
+        {"payload": {"type": "not-counted"}},
+    ]
+
+    assert _event_type_counts(events) == {
+        "message.part.updated": 2,
+        "<missing>": 1,
+    }
+
+
 def test_opencode_error_message_extracts_api_error():
     message = _opencode_error_message(
         [
@@ -323,6 +409,55 @@ def test_runner_workspace_mode(tmp_path):
     )
     assert runner._run_dir == workspace.resolve()
     assert runner._config["agent"]["assetops"]["permission"]["read"] == "allow"
+
+
+async def test_runner_run_parses_fake_opencode_subprocess(tmp_path, monkeypatch):
+    capture_dir = tmp_path / "capture"
+    capture_dir.mkdir()
+    workspace = tmp_path / "workspace"
+    fake_opencode = tmp_path / "fake-opencode"
+    fake_opencode.write_text(
+        """#!/bin/sh
+printf '%s\n' "$*" > "$FAKE_CAPTURE_DIR/argv.txt"
+printf '%s\n' "$PWD" > "$FAKE_CAPTURE_DIR/cwd.txt"
+printf '%s\n' "$OPENCODE_CONFIG_CONTENT" > "$FAKE_CAPTURE_DIR/config.json"
+printf '%s\n' "$AGENT_TRAJECTORY_DIR" > "$FAKE_CAPTURE_DIR/trajectory-env.txt"
+printf '%s\n' "$SCENARIOS_DATA_DIR" > "$FAKE_CAPTURE_DIR/scenarios-env.txt"
+printf '%s\n' '{"type":"message.part.updated","properties":{"part":{"id":"t1","type":"text","text":"done"}}}'
+printf '%s\n' '{"type":"step_finish","part":{"type":"step-finish","tokens":{"input":3,"output":2}}}'
+printf '%s\n' 'diagnostic stderr' >&2
+""",
+        encoding="utf-8",
+    )
+    fake_opencode.chmod(0o755)
+    monkeypatch.setenv("FAKE_CAPTURE_DIR", str(capture_dir))
+    monkeypatch.setenv("AGENT_TRAJECTORY_DIR", str(tmp_path / "parent-trajectories"))
+    monkeypatch.setenv("SCENARIOS_DATA_DIR", str(tmp_path / "parent-scenarios"))
+
+    runner = OpenCodeAgentRunner(
+        server_paths={"iot": "iot-mcp-server"},
+        model="opencode/gpt-5",
+        opencode_bin=str(fake_opencode),
+        allow_files=True,
+        workspace_dir=workspace,
+    )
+
+    result = await runner.run("question with private details")
+    argv = (capture_dir / "argv.txt").read_text(encoding="utf-8")
+    config = (capture_dir / "config.json").read_text(encoding="utf-8")
+
+    assert result.answer == "done"
+    assert result.trajectory.started_at is not None
+    assert result.trajectory.stderr == "diagnostic stderr\n"
+    assert result.trajectory.total_input_tokens == 3
+    assert result.trajectory.total_output_tokens == 2
+    assert "question with private details" in argv
+    assert (capture_dir / "cwd.txt").read_text(encoding="utf-8").strip() == str(
+        workspace.resolve()
+    )
+    assert (capture_dir / "trajectory-env.txt").read_text(encoding="utf-8") == "\n"
+    assert (capture_dir / "scenarios-env.txt").read_text(encoding="utf-8") == "\n"
+    assert json.loads(config)["agent"]["assetops"]["permission"]["*"] == "deny"
 
 
 def _text_part(part_id, text, *, message_id=None, part_type="text"):
