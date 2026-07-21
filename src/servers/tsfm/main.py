@@ -80,11 +80,11 @@ mcp = FastMCP(
     instructions=(
         "The TSFM server provides task discovery, file-pointer evidence tools, recipe execution, "
         "and CouchDB-backed model and feature catalog tools for forecasting and anomaly detection. "
-        "Use `recipe_template` before `run_recipe`. For anomaly detection, select a detector with "
-        "`find_models(task_id=\"tsfm_anomaly_detection\")` or `search_models`; call "
-        "`run_recipe` with `recipe={\"task\": \"tsfm_anomaly_detection\", \"estimator\": {\"model_id\": "
-        "\"<model_id>\"}}`; ground final segment/JSON answers in returned labels, indices, or "
-        "`results_file`."
+        "For anomaly detection, follow this workflow: 1) call `recipe_template` to confirm the "
+        "recipe shape; 2) choose a detector with `find_models(task_id=\"tsfm_anomaly_detection\")` "
+        "or `search_models`; 3) call `run_recipe` with `recipe={\"task\": "
+        "\"tsfm_anomaly_detection\", \"estimator\": {\"model_id\": \"<model_id>\"}}`; "
+        "4) report the anomalous segment from returned labels, indices, or `results_file`."
     ),
 )
 

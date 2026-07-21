@@ -51,12 +51,15 @@ def test_run_surface_present():
 def test_mcp_guidance_advertises_anomaly_run_recipe_path():
     instructions = mcp.instructions
     assert "anomaly detection" in instructions
+    assert "For anomaly detection, follow this workflow" in instructions
+    assert "recipe_template" in instructions
     assert "find_models(task_id=\"tsfm_anomaly_detection\")" in instructions
     assert "search_models" in instructions
     assert "run_recipe" in instructions
     assert "tsfm_anomaly_detection" in instructions
     assert "\"estimator\": {\"model_id\": \"<model_id>\"}" in instructions
     assert "returned labels, indices" in instructions
+    assert "report the anomalous segment" in instructions
 
     descriptions = {t.name: (t.description or "") for t in asyncio.run(mcp.list_tools())}
     search_models_doc = descriptions["search_models"]
