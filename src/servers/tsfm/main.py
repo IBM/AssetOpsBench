@@ -84,8 +84,7 @@ mcp = FastMCP(
         "`find_models(task_id=\"tsfm_anomaly_detection\")` or `search_models`; call "
         "`run_recipe` with `recipe={\"task\": \"tsfm_anomaly_detection\", \"estimator\": {\"model_id\": "
         "\"<model_id>\"}}`; ground final segment/JSON answers in returned labels, indices, or "
-        "`results_file`. Catalog cards are pointers, not weights; `MODEL_CATALOG_DBNAME` and "
-        "`FEATURE_CATALOG_DBNAME` select the backing collections."
+        "`results_file`."
     ),
 )
 
