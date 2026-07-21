@@ -148,6 +148,7 @@ def _build_permissions(
     allow_files: bool = False,
 ) -> dict[str, Any]:
     """Build non-interactive permissions for benchmark-safe OpenCode runs."""
+    allow_workspace_writes = allow_edit or allow_bash
     permission: dict[str, Any] = {
         "*": "deny",
         "read": "allow" if allow_files else "deny",
@@ -155,7 +156,7 @@ def _build_permissions(
         "grep": "allow" if allow_files else "deny",
         "lsp": "allow" if allow_files else "deny",
         "list": "allow" if allow_files else "deny",
-        "edit": "allow" if allow_edit else "deny",
+        "edit": "allow" if allow_workspace_writes else "deny",
         "bash": "allow" if allow_bash else "deny",
         "todowrite": "deny",
         "task": "deny",

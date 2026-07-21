@@ -84,6 +84,20 @@ def test_build_permissions_allows_opt_in_tools():
     assert permission["external_directory"] == "deny"
 
 
+def test_build_permissions_allows_writes_with_bash_workspace_mode():
+    permission = _build_permissions(["iot"], allow_bash=True)
+
+    assert permission["bash"] == "allow"
+    assert permission["edit"] == "allow"
+
+
+def test_build_permissions_allows_edits_without_bash():
+    permission = _build_permissions(["iot"], allow_edit=True)
+
+    assert permission["edit"] == "allow"
+    assert permission["bash"] == "deny"
+
+
 def test_permission_log_summary_excludes_mcp_tool_rules():
     permission = _build_permissions(["iot"], allow_bash=True, allow_files=True)
     summary = _permission_log_summary(permission)
@@ -95,7 +109,7 @@ def test_permission_log_summary_excludes_mcp_tool_rules():
         "grep": "allow",
         "lsp": "allow",
         "list": "allow",
-        "edit": "deny",
+        "edit": "allow",
         "bash": "allow",
         "todowrite": "deny",
         "webfetch": "deny",
