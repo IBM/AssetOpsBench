@@ -91,7 +91,10 @@ examples:
     parser.add_argument(
         "--allow-bash",
         action="store_true",
-        help="Allow OpenCode's bash tool. Disabled by default for benchmark runs.",
+        help=(
+            "Allow OpenCode's bash tool and workspace file writes. "
+            "Disabled by default for benchmark runs."
+        ),
     )
     parser.add_argument(
         "--allow-edit",

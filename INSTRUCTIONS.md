@@ -275,7 +275,7 @@ uv run direct-llm-agent "$query"
 | `--max-steps N`                | opencode-agent | Max OpenCode agentic iterations (default: 30)                      |
 | `--attach URL`                 | opencode-agent | Attach to a running `opencode serve` instance                      |
 | `--allow-files` / `--workspace-dir PATH` | opencode-agent | Enable local file inspection in a dedicated workspace              |
-| `--allow-bash` / `--allow-edit` / `--allow-web` | opencode-agent | Opt into shell, file edits, or web access; all denied by default |
+| `--allow-bash` / `--allow-edit` / `--allow-web` | opencode-agent | Opt into shell plus workspace writes, workspace writes without shell, or web access; all denied by default |
 
 ### Examples
 
@@ -304,7 +304,7 @@ STIRRUP_CODE_IMAGE=assetops-code \
 # OpenCode MCP-only CLI-backed agent, using TokenRouter
 uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory "$query"
 
-# OpenCode CLI workspace mode, allowing file inspection and bash in a run workspace
+# OpenCode CLI workspace mode, allowing file inspection, workspace writes, and bash
 uv run opencode-agent \
   --model-id tokenrouter/MiniMax-M3 \
   --workspace-dir /tmp/assetopsbench-opencode/smoke \
@@ -341,7 +341,8 @@ For scenario `401`, this creates a workspace like:
 ```
 
 `--opencode-allow-files`, `--opencode-allow-bash`, and
-`--opencode-allow-edit` are opt-in. If any of them are enabled,
+`--opencode-allow-edit` are opt-in. `--opencode-allow-bash` also permits
+workspace file writes so agents can save output artifacts. If any of them are enabled,
 `--opencode-workspace-root` is required and must be outside the repository.
 
 > `--opencode-allow-bash` is not a hard OS-level sandbox. For strict filesystem

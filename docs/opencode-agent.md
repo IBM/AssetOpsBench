@@ -13,7 +13,8 @@ explicitly enabled.
 
 The runner also supports an optional **CLI workspace mode**. In that mode, each
 benchmark run gets a dedicated workspace directory and OpenCode can be allowed
-to inspect files and/or run shell commands inside that run workspace.
+to inspect files, create output files, and/or run shell commands inside that run
+workspace.
 
 ## Contents
 
@@ -144,7 +145,7 @@ uv run python -m benchmark.scenario_suite_runner \
 ### CLI workspace mode
 
 CLI workspace mode is opt-in. It gives each OpenCode run a dedicated workspace
-directory and can allow file inspection and/or shell execution.
+directory and can allow file inspection, file writes, and/or shell execution.
 
 This mode is useful when evaluating CLI-style agents that can write small Python
 scripts, run local analysis, and use intermediate artifacts while still using
@@ -227,7 +228,7 @@ The runner configures OpenCode permissions for benchmark use:
 | AssetOpsBench MCP tools | allowed | always enabled |
 | `read`, `glob`, `grep`, `lsp`, `list` | denied | `--allow-files` |
 | shell commands | denied | `--allow-bash` |
-| file edits | denied | `--allow-edit` |
+| workspace file writes | denied | `--allow-edit` or `--allow-bash` |
 | web fetch/search | denied | `--allow-web` |
 | external directory access | denied | not exposed |
 | follow-up questions | denied | not exposed |
@@ -292,8 +293,8 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--attach URL` | Attach to a running `opencode serve` instance. |
 | `--timeout-s N` | Wall-clock timeout for `opencode run` (default: 900). |
 | `--allow-files` | Allow file inspection tools (`read`, `glob`, `grep`, `lsp`, `list`). Disabled by default. |
-| `--allow-bash` | Allow shell commands. Disabled by default. |
-| `--allow-edit` | Allow file edits. Disabled by default. |
+| `--allow-bash` | Allow shell commands and workspace file writes. Disabled by default. |
+| `--allow-edit` | Allow workspace file writes without shell commands. Disabled by default. |
 | `--allow-web` | Allow web fetch/search. Disabled by default. |
 | `--workspace-dir PATH` | Workspace directory required when files, bash, or edits are enabled. |
 | `--ask-permissions` | Do not auto-approve allowed permissions. Not suitable for batch runs. |
