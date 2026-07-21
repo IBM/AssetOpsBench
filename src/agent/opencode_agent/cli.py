@@ -40,6 +40,7 @@ environment variables:
 examples:
   opencode-agent "What assets are at site MAIN?"
   opencode-agent --model-id tokenrouter/MiniMax-M3 "List sensors on Chiller 6"
+  opencode-agent --model-id tokenrouter/MiniMax-M3 --temperature 0 "List sensors on Chiller 6"
   opencode-agent --attach http://localhost:4096 "What is the current time?"
   opencode-agent --show-trajectory "What sensors are on Chiller 6?"
 """,
@@ -87,6 +88,13 @@ examples:
             "OpenCode model variant / reasoning effort, e.g. minimal, low, "
             "medium, high, or max. Omitted by default."
         ),
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.1,
+        metavar="VALUE",
+        help="OpenCode model temperature to write into the generated config (default: 0.1).",
     )
     parser.add_argument(
         "--allow-bash",
@@ -141,6 +149,7 @@ async def _run(args: argparse.Namespace) -> None:
         timeout_s=args.timeout_s,
         thinking=args.thinking,
         variant=args.variant,
+        temperature=args.temperature,
         allow_bash=args.allow_bash,
         allow_edit=args.allow_edit,
         allow_web=args.allow_web,

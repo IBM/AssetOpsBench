@@ -271,6 +271,7 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
         opencode_allow_edit=False,
         opencode_thinking=True,
         opencode_variant="high",
+        opencode_temperature=0.0,
         opencode_workspace_root=None,
         gemini_allow_files=False,
         gemini_allow_bash=False,
@@ -292,6 +293,8 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
         "--thinking",
         "--variant",
         "high",
+        "--temperature",
+        "0.0",
     )
 
 
