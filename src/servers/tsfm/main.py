@@ -80,13 +80,11 @@ mcp = FastMCP(
     instructions=(
         "The TSFM server provides task discovery, file-pointer evidence tools, recipe execution, "
         "and CouchDB-backed model and feature catalog tools for forecasting and anomaly detection. "
-        "Use `recipe_template` before `run_recipe`; call `run_recipe` for anomaly detection by "
-        "setting recipe['task'] to `tsfm_anomaly_detection` and providing a detector estimator. "
-        "Anomaly runs screen the target series and return dense anomaly labels, anomaly counts, "
-        "run records, and results-file pointers. Use the model tools to browse, resolve, register, "
-        "fine-tune, version, or deprecate model cards; use the feature tools to browse, register, "
-        "version, or deprecate transform/extractor cards. Catalog cards are data, not weights; "
-        "`MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` select the backing collections."
+        "For anomaly detection, follow this workflow: 1) call `recipe_template` to confirm the "
+        "recipe shape; 2) choose a detector with `find_models(task_id=\"tsfm_anomaly_detection\")` "
+        "or `search_models`; 3) call `run_recipe` with `recipe={\"task\": "
+        "\"tsfm_anomaly_detection\", \"estimator\": {\"model_id\": \"<model_id>\"}}`; "
+        "4) report the anomalous segment from returned labels, indices, or `results_file`."
     ),
 )
 
@@ -365,6 +363,9 @@ def search_models(
 ) -> Union[ModelsResult, ErrorResult]:
     """Substring (case-insensitive) search over the model catalog.
 
+    Use this for text/tag discovery. For anomaly detection, select a card whose `task_ids`
+    include `tsfm_anomaly_detection`, then pass its `model_id` as the `run_recipe` estimator.
+
     Args:
         text: Required substring to match against id, description, family, or tags.
         tags: Optional required tag set.
@@ -399,6 +400,9 @@ def find_models(
     Returns at most `top_k` cards (default 5) - this is a SHORTLIST tool. To enumerate every
     card for a task (e.g. to build a leaderboard or map model ids to their params), use
     `list_models`, which applies no `top_k` limit.
+
+    For anomaly detection, use `task_id="tsfm_anomaly_detection"` and pass the selected
+    `model_id` as the `run_recipe` estimator.
 
     Cards lacking filtered fields are excluded from the shortlist.
 
@@ -1560,11 +1564,11 @@ def run_recipe(
 ) -> Union[RecipeResult, ErrorResult]:
     """Run a forecasting or anomaly-detection recipe on a target series from a file pointer.
 
-    Use this as the execution tool for time-series anomaly detection: set `recipe["task"]` to
-    `tsfm_anomaly_detection` and provide a detector `estimator` (`model_id` or inline
-    `sktime_class` + `params`). The anomaly path fits or resolves the detector, screens the target
-    series, and returns dense anomaly labels, anomaly counts, indexed run/result records, and a
-    `results_file` pointer. Recipes without that task are forecasting
+    For anomaly detection, first select a detector with
+    `find_models(task_id="tsfm_anomaly_detection")` or `search_models`; call `run_recipe` with
+    `recipe={"task": "tsfm_anomaly_detection", "estimator": {"model_id": "<model_id>"}}`.
+    The anomaly path returns dense labels, counts, indexed records, and a `results_file` pointer;
+    ground final segment/JSON answers in those outputs. Recipes without that task are forecasting
     (transforms + single/ensemble + optional conformal intervals). Use `recipe_template()` for the
     recipe contract. The result is also findable later via `list_runs()` / `get_run()` and
     `list_results()` / `get_result()`.
