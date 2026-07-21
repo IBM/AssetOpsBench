@@ -85,6 +85,16 @@ examples:
         "limit (watsonx caps new tokens at 100k). Default: 16384.",
     )
     parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        metavar="T",
+        help=(
+            "Sampling temperature forwarded to the Stirrup model client. "
+            "Omitted by default, so the provider/client default is used."
+        ),
+    )
+    parser.add_argument(
         "--workspace-dir",
         type=Path,
         default=None,
@@ -116,6 +126,7 @@ async def _run(args: argparse.Namespace) -> None:
         preserve_workspace=args.preserve_workspace,
         max_turns=args.max_turns,
         max_tokens=args.max_tokens,
+        temperature=args.temperature,
     )
     result = await runner.run(args.question)
     print_result(

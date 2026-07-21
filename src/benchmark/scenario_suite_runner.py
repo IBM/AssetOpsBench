@@ -278,7 +278,12 @@ def run_evaluation(
 def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     """Build available method configs from CLI args."""
     stirrup_extra_args: list[str] = []
-    stirrup_extra_args.extend(["--max-tokens", str(args.stirrup_max_tokens)])
+    stirrup_extra_args.extend(
+        ["--max-tokens", str(getattr(args, "stirrup_max_tokens", 4096))]
+    )
+    temperature = getattr(args, "temperature", None)
+    if temperature is not None:
+        stirrup_extra_args.extend(["--temperature", str(temperature)])
     if getattr(args, "preserve_workspaces", False) and getattr(
         args, "stirrup_workspace_root", None
     ) is not None:
@@ -296,6 +301,9 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     opencode_variant = getattr(args, "opencode_variant", None)
     if opencode_variant:
         opencode_extra_args.extend(["--variant", opencode_variant])
+    opencode_temperature = getattr(args, "opencode_temperature", None)
+    if opencode_temperature is not None:
+        opencode_extra_args.extend(["--temperature", str(opencode_temperature)])
 
     gemini_extra_args: list[str] = []
     if args.gemini_allow_files:
@@ -380,10 +388,19 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Run benchmark scenarios sequentially.",
     )
     parser.add_argument(
-    "--stirrup-max-tokens",
-    type=int,
-    default=4096,
-    help="Max output tokens per Stirrup model call.",
+        "--stirrup-max-tokens",
+        type=int,
+        default=4096,
+        help="Max output tokens per Stirrup model call.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help=(
+            "Sampling temperature for stirrup_agent model calls. Omitted by "
+            "default, so the provider/client default is used."
+        ),
     )
     parser.add_argument(
         "--scenario-ids",
@@ -458,8 +475,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Root directory for per-run OpenCode workspaces. Required when "
-            "using --opencode-allow-files, --opencode-allow-bash, or "
-            "--opencode-allow-edit. Workspaces are nested by agent/model/run_id."
+            "using --opencode-allow-files, --opencode-allow-bash "
+            "(bash plus workspace writes), or --opencode-allow-edit. "
+            "Workspaces are nested by agent/model/run_id."
         ),
     )
     parser.add_argument(
@@ -470,7 +488,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--opencode-allow-bash",
         action="store_true",
-        help="Allow opencode-agent bash in its per-run workspace.",
+        help=(
+            "Allow opencode-agent bash and workspace file writes in its "
+            "per-run workspace."
+        ),
     )
     parser.add_argument(
         "--opencode-allow-edit",
@@ -488,6 +509,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "OpenCode model variant / reasoning effort for opencode_agent, "
             "e.g. minimal, low, medium, high, or max. Omitted by default."
+        ),
+    )
+    parser.add_argument(
+        "--opencode-temperature",
+        type=float,
+        default=None,
+        help=(
+            "OpenCode model temperature for opencode_agent. When omitted, "
+            "opencode-agent uses its default temperature."
         ),
     )
     parser.add_argument(
@@ -604,7 +634,7 @@ def main() -> None:
     if opencode_workspace_required and args.opencode_workspace_root is None:
         parser.error(
             "--opencode-workspace-root is required when enabling OpenCode "
-            "files, bash, or edits"
+            "files, bash/workspace writes, or edits"
         )
     if opencode_workspace_required:
         try:
