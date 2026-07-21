@@ -154,6 +154,11 @@ the full output. The server supplies evidence; the agent makes the decisions.
 | `resolve_model` | read | `model_id` | Preflight: confirm a card can be loaded and report where its weights come from. Does not download or fit. |
 | `hf_stats` | read | `model_id?`, `hf_repo?` | Read-only HuggingFace popularity lookup for a model card or repo. Returns downloads and likes; needs network to huggingface.co. |
 
+For anomaly-detection tasks, choose the estimator from this catalog before executing a run:
+`find_models(task_id="tsfm_anomaly_detection")` is the direct path, while `search_models` is useful
+when the request names a detector family or tag. The selected card must include
+`tsfm_anomaly_detection` in `task_ids`; pass its `model_id` to `run_recipe` in the recipe estimator.
+
 ### Model catalog — authoring and lifecycle
 
 | Tool | Category | Arguments | Description |
@@ -194,6 +199,12 @@ The catalog describes models; these tools **run** them. A recipe names an estima
 from the catalog, or an inline `sktime_class` + `params`) plus optional blocks. `run_recipe`
 compiles it, backtests it, produces a forecast or anomaly output, and persists a run record.
 `recipe_template` returns the contract so an agent does not have to guess the shape.
+
+For time-series anomaly detection, use the model-catalog tools first, then execute:
+`find_models(task_id="tsfm_anomaly_detection")` or `search_models` -> select a model card ->
+`run_recipe` with `recipe={"task": "tsfm_anomaly_detection", "estimator": {"model_id":
+"<selected_model_id>"}}`. Base the final anomaly segment/JSON answer on the returned anomaly count,
+indices, labels, and `results_file` payload.
 
 | Tool | Category | Arguments | Description |
 | ---- | -------- | --------- | ----------- |
