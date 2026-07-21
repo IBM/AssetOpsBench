@@ -169,6 +169,8 @@ def test_build_methods_uses_cli_defaults() -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
@@ -177,7 +179,7 @@ def test_build_methods_uses_cli_defaults() -> None:
     assert methods["direct_llm"].model_id == "tokenrouter/MiniMax-M3"
     assert methods["stirrup_agent"].command == "stirrup-agent"
     assert methods["stirrup_agent"].model_id == "tokenrouter/MiniMax-M3"
-    assert methods["stirrup_agent"].extra_args == ()
+    assert methods["stirrup_agent"].extra_args == ("--max-tokens", "4096")
     assert methods["stirrup_agent"].workspace_root is None
     assert methods["opencode_agent"].command == "opencode-agent"
     assert methods["opencode_agent"].extra_args == ()
@@ -218,12 +220,20 @@ def test_build_methods_stirrup_workspace_options(tmp_path: Path) -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=0.2,
     )
 
     methods = mr.build_methods(args)
     stirrup = methods["stirrup_agent"]
 
-    assert stirrup.extra_args == ("--preserve-workspace",)
+    assert stirrup.extra_args == (
+        "--max-tokens",
+        "4096",
+        "--temperature",
+        "0.2",
+        "--preserve-workspace",
+    )
     assert stirrup.workspace_root == tmp_path / "stirrup-workspaces"
 
 
@@ -248,6 +258,8 @@ def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
@@ -280,6 +292,8 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
@@ -312,6 +326,8 @@ def test_build_methods_gemini_workspace_options(tmp_path: Path) -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
@@ -347,6 +363,8 @@ def test_build_methods_openclaw_workspace_options(tmp_path: Path) -> None:
         openclaw_allow_web=True,
         openclaw_thinking="medium",
         openclaw_workspace_root=tmp_path / "openclaw-workspaces",
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
