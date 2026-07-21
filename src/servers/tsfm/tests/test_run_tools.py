@@ -48,6 +48,18 @@ def test_run_surface_present():
             "get_result", "list_results", "get_run", "list_runs"} <= names
 
 
+def test_mcp_guidance_advertises_anomaly_run_recipe_path():
+    instructions = mcp.instructions
+    assert "anomaly detection" in instructions
+    assert "run_recipe" in instructions
+    assert "tsfm_anomaly_detection" in instructions
+
+    descriptions = {t.name: (t.description or "") for t in asyncio.run(mcp.list_tools())}
+    run_recipe_doc = descriptions["run_recipe"]
+    assert "time-series anomaly detection" in run_recipe_doc
+    assert "tsfm_anomaly_detection" in run_recipe_doc
+
+
 # ---- run_recipe: a real fit + backtest ----
 def test_run_recipe_fits_and_backtests():
     r = call("run_recipe", {"dataset_path": _series(), "timestamp_column": "timestamp",
