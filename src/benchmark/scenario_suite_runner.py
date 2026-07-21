@@ -475,8 +475,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Root directory for per-run OpenCode workspaces. Required when "
-            "using --opencode-allow-files, --opencode-allow-bash, or "
-            "--opencode-allow-edit. Workspaces are nested by agent/model/run_id."
+            "using --opencode-allow-files, --opencode-allow-bash "
+            "(bash plus workspace writes), or --opencode-allow-edit. "
+            "Workspaces are nested by agent/model/run_id."
         ),
     )
     parser.add_argument(
@@ -487,7 +488,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--opencode-allow-bash",
         action="store_true",
-        help="Allow opencode-agent bash in its per-run workspace.",
+        help=(
+            "Allow opencode-agent bash and workspace file writes in its "
+            "per-run workspace."
+        ),
     )
     parser.add_argument(
         "--opencode-allow-edit",
@@ -630,7 +634,7 @@ def main() -> None:
     if opencode_workspace_required and args.opencode_workspace_root is None:
         parser.error(
             "--opencode-workspace-root is required when enabling OpenCode "
-            "files, bash, or edits"
+            "files, bash/workspace writes, or edits"
         )
     if opencode_workspace_required:
         try:
