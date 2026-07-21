@@ -177,6 +177,8 @@ def test_build_methods_uses_cli_defaults() -> None:
     assert methods["direct_llm"].model_id == "tokenrouter/MiniMax-M3"
     assert methods["stirrup_agent"].command == "stirrup-agent"
     assert methods["stirrup_agent"].model_id == "tokenrouter/MiniMax-M3"
+    assert methods["stirrup_agent"].extra_args == ("--max-tokens", "4096")
+    assert methods["stirrup_agent"].workspace_root is None
     assert methods["opencode_agent"].command == "opencode-agent"
     assert methods["opencode_agent"].extra_args == ()
     assert methods["opencode_agent"].workspace_root is None
@@ -191,6 +193,38 @@ def test_build_methods_uses_cli_defaults() -> None:
     assert methods["openclaw_cli_agent"].model_id == "tokenrouter/MiniMax-M3"
     assert methods["openclaw_cli_agent"].extra_args == ("--thinking", "off")
     assert methods["openclaw_cli_agent"].workspace_root is None
+
+
+def test_build_methods_stirrup_workspace_options(tmp_path: Path) -> None:
+    args = Namespace(
+        model_id="tokenrouter/MiniMax-M3",
+        stirrup_workspace_root=tmp_path / "stirrup-workspaces",
+        preserve_workspaces=True,
+        gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
+        openclaw_model_id="tokenrouter/MiniMax-M3",
+        opencode_allow_files=False,
+        opencode_allow_bash=False,
+        opencode_allow_edit=False,
+        opencode_workspace_root=None,
+        gemini_allow_files=False,
+        gemini_allow_bash=False,
+        gemini_allow_edit=False,
+        gemini_allow_web=False,
+        gemini_sandbox=False,
+        gemini_workspace_root=None,
+        openclaw_allow_files=False,
+        openclaw_allow_bash=False,
+        openclaw_allow_edit=False,
+        openclaw_allow_web=False,
+        openclaw_thinking="off",
+        openclaw_workspace_root=None,
+    )
+
+    methods = mr.build_methods(args)
+    stirrup = methods["stirrup_agent"]
+
+    assert stirrup.extra_args == ("--max-tokens", "4096", "--preserve-workspace")
+    assert stirrup.workspace_root == tmp_path / "stirrup-workspaces"
 
 
 def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
@@ -233,6 +267,7 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
         opencode_allow_edit=False,
         opencode_thinking=True,
         opencode_variant="high",
+        opencode_temperature=0.0,
         opencode_workspace_root=None,
         gemini_allow_files=False,
         gemini_allow_bash=False,
@@ -254,6 +289,8 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
         "--thinking",
         "--variant",
         "high",
+        "--temperature",
+        "0.0",
     )
 
 
@@ -474,6 +511,58 @@ def test_run_agent_for_scenario_recreates_empty_opencode_workspace(
     assert expected_workspace.exists()
     assert list(expected_workspace.iterdir()) == []
     assert "--workspace-dir" in captured["cmd"]
+
+
+def test_run_agent_for_scenario_can_keep_existing_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(mr.subprocess, "run", fake_run)
+
+    workspace_root = tmp_path / "workspaces"
+    expected_workspace = workspace_root / "stirrup_agent_1001"
+    expected_workspace.mkdir(parents=True)
+    stale_file = expected_workspace / "keep-me.txt"
+    stale_file.write_text("debug artifact", encoding="utf-8")
+
+    method = mr.MethodConfig(
+        agent_name="stirrup_agent",
+        command="stirrup-agent",
+        model_id="tokenrouter/MiniMax-M3",
+        extra_args=("--preserve-workspace",),
+        workspace_root=workspace_root,
+        reset_workspace=False,
+    )
+
+    mr.run_agent_for_scenario(
+        method=method,
+        scenario_id="1001",
+        question="Find anomaly.",
+        trajectory_dir=tmp_path / "traj",
+        dry_run=False,
+    )
+
+    assert stale_file.exists()
+    assert captured["cmd"] == [
+        "uv",
+        "run",
+        "stirrup-agent",
+        "--model-id",
+        "tokenrouter/MiniMax-M3",
+        "--preserve-workspace",
+        "--workspace-dir",
+        str(expected_workspace),
+        "--scenario-id",
+        "1001",
+        "--run-id",
+        "stirrup_agent_1001",
+        "Find anomaly.",
+    ]
 
 
 def test_run_agent_for_scenario_adds_gemini_workspace(
