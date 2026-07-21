@@ -1,4 +1,9 @@
-"""TSFM MCP server for task evidence, model cards, and feature cards.
+"""TSFM MCP server for time-series evidence, catalogs, and recipe execution.
+
+The MCP-facing tools help agents profile asset time series, choose catalog cards, and run
+forecasting or anomaly-detection recipes. In particular, `run_recipe` dispatches
+`recipe["task"] == "tsfm_anomaly_detection"` to the detector path and returns anomaly labels,
+counts, run records, and results-file pointers.
 
 Catalogs are CouchDB data loaded by src/couchdb/init_data.py; `MODEL_CATALOG_DBNAME` and
 `FEATURE_CATALOG_DBNAME` select the collections. Model cards are pointers to loadable models,
@@ -73,8 +78,12 @@ logger = logging.getLogger("tsfm-mcp-server")
 mcp = FastMCP(
     "tsfm",
     instructions=(
-        "The TSFM server provides task discovery, file-pointer evidence tools, and CouchDB-backed "
-        "model and feature catalog tools. Use the model tools to browse, resolve, register, "
+        "The TSFM server provides task discovery, file-pointer evidence tools, recipe execution, "
+        "and CouchDB-backed model and feature catalog tools for forecasting and anomaly detection. "
+        "Use `recipe_template` before `run_recipe`; call `run_recipe` for anomaly detection by "
+        "setting recipe['task'] to `tsfm_anomaly_detection` and providing a detector estimator. "
+        "Anomaly runs screen the target series and return dense anomaly labels, anomaly counts, "
+        "run records, and results-file pointers. Use the model tools to browse, resolve, register, "
         "fine-tune, version, or deprecate model cards; use the feature tools to browse, register, "
         "version, or deprecate transform/extractor cards. Catalog cards are data, not weights; "
         "`MODEL_CATALOG_DBNAME` and `FEATURE_CATALOG_DBNAME` select the backing collections."
@@ -1438,7 +1447,9 @@ def recipe_template() -> RecipeTemplateResult:
     Read this before run_recipe. A recipe is the agent's decision surface: it names the model and
     every choice around it, and the server executes exactly what it says. Static - it reads nothing
     from the catalog. Pair it with find_models / describe_candidates to choose a `model_id`, and
-    resolve_model to preflight that the card loads.
+    resolve_model to preflight that the card loads. For anomaly detection, set
+    `recipe["task"] == "tsfm_anomaly_detection"` and provide a detector estimator; `run_recipe`
+    will route that recipe to the anomaly detector path.
 
     Returns:
         RecipeTemplateResult: `task_choices` (what recipe["task"] dispatches on), `estimator_spec`
@@ -1547,22 +1558,26 @@ def run_recipe(
     asset_id: str = "asset",
     parent_run_id: Optional[str] = None,
 ) -> Union[RecipeResult, ErrorResult]:
-    """Run a forecasting or anomaly recipe on a series from a file pointer.
+    """Run a forecasting or anomaly-detection recipe on a target series from a file pointer.
 
-    Dispatches by `recipe['task']`: `tsfm_anomaly_detection` takes the detector path
-    (e.g. tspulse zero-shot, sublof) and produces dense anomaly labels; anything else is
-    forecasting (transforms + single/ensemble + optional conformal intervals). Use
-    `recipe_template()` for the recipe contract. The result is also findable later via
-    `list_runs()` / `get_run()` and `list_results()` / `get_result()`.
+    Use this as the execution tool for time-series anomaly detection: set `recipe["task"]` to
+    `tsfm_anomaly_detection` and provide a detector `estimator` (`model_id` or inline
+    `sktime_class` + `params`). The anomaly path fits or resolves the detector, screens the target
+    series, and returns dense anomaly labels, anomaly counts, indexed run/result records, and a
+    `results_file` pointer. Recipes without that task are forecasting
+    (transforms + single/ensemble + optional conformal intervals). Use `recipe_template()` for the
+    recipe contract. The result is also findable later via `list_runs()` / `get_run()` and
+    `list_results()` / `get_result()`.
 
     Args:
         dataset_path: File pointer to the input series (from the evidence tools or
             `materialize_iot`).
         timestamp_column: Name of the time column used to order the series.
-        target_columns: The column(s) to forecast or screen. Must not be empty.
+        target_columns: The column(s) to forecast or screen for anomalies. Must not be empty.
         recipe: The recipe dict: an `estimator` (a catalog `model_id`, or an inline
             `sktime_class` + `params`) or an `ensemble`, plus optional blocks (`fh`,
-            `transforms`, `conformal`, `finetune`, `save_to`, `eval`, ...). See
+            `transforms`, `conformal`, `finetune`, `save_to`, `eval`, ...). For anomaly detection,
+            include `task: "tsfm_anomaly_detection"` and a detector estimator. See
             `recipe_template()`.
         asset_id: Asset this run belongs to; used to group runs and results.
         parent_run_id: Optional id of a parent run, for chaining within a plan.
