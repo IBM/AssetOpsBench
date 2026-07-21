@@ -269,7 +269,7 @@ folder's parent); data unique to a private scenario goes in that scenario's fold
 ## Gotchas
 
 - **Database name = manifest key.** Consumers must match: the WO MCP server reads
-  `WO_DBNAME=workorder`.
+  `WO_DBNAME=workorder` and `FAILURE_CODE_DBNAME=failure_code`.
 - **Shared paths resolve via the scenario folder's parent.** `shared/...` works because
   `shared/` sits beside the scenario folders under `scenarios_data/`. If you relocate the
   corpus, update the manifests (or use an explicit relative path).

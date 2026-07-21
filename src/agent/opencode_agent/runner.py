@@ -32,6 +32,8 @@ _log = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MODEL = "opencode/gpt-5.1-codex"
 _DEFAULT_AGENT_NAME = "assetops"
+_LOG_STREAM_TAIL_CHARS = 1000
+_ERROR_STREAM_TAIL_CHARS = 4000
 
 _OPENCODE_SYSTEM_PROMPT = (
     AGENT_SYSTEM_PROMPT
@@ -58,6 +60,58 @@ class OpenCodeTrajectory(Trajectory):
 
     raw_events: list[dict[str, Any]] = field(default_factory=list)
     stderr: str = ""
+
+
+def _command_for_log(cmd: list[str]) -> list[str]:
+    """Return a log-safe OpenCode argv with the user question omitted."""
+    if not cmd:
+        return []
+    logged = list(cmd)
+    logged[-1] = "<question omitted>"
+    return logged
+
+
+def _stream_tail(text: str, *, limit: int = _LOG_STREAM_TAIL_CHARS) -> str:
+    """Return a bounded stream tail for diagnostic logs/errors."""
+    if len(text) <= limit:
+        return text
+    omitted = len(text) - limit
+    return f"<truncated {omitted} chars>\n{text[-limit:]}"
+
+
+def _stream_stats(text: str) -> tuple[int, int]:
+    """Return decoded character and line counts for a captured stream."""
+    return len(text), len(text.splitlines())
+
+
+def _event_type_counts(events: list[dict[str, Any]]) -> dict[str, int]:
+    """Summarize OpenCode event types without logging raw event payloads."""
+    counts: dict[str, int] = {}
+    for event in events:
+        event_type = str(event.get("type") or "<missing>")
+        counts[event_type] = counts.get(event_type, 0) + 1
+    return counts
+
+
+def _permission_log_summary(permission: dict[str, Any]) -> dict[str, str]:
+    """Return the non-MCP permission summary most useful in run logs."""
+    keys = (
+        "*",
+        "read",
+        "glob",
+        "grep",
+        "lsp",
+        "list",
+        "edit",
+        "bash",
+        "todowrite",
+        "webfetch",
+        "websearch",
+        "codesearch",
+        "external_directory",
+        "question",
+    )
+    return {key: str(permission.get(key, "<unset>")) for key in keys}
 
 
 def _needs_reasoning_effort_none(provider_id: str, model_name: str) -> bool:
@@ -95,17 +149,21 @@ def _build_permissions(
 ) -> dict[str, Any]:
     """Build non-interactive permissions for benchmark-safe OpenCode runs."""
     permission: dict[str, Any] = {
+        "*": "deny",
         "read": "allow" if allow_files else "deny",
         "glob": "allow" if allow_files else "deny",
         "grep": "allow" if allow_files else "deny",
         "lsp": "allow" if allow_files else "deny",
+        "list": "allow" if allow_files else "deny",
         "edit": "allow" if allow_edit else "deny",
         "bash": "allow" if allow_bash else "deny",
+        "todowrite": "deny",
         "task": "deny",
         "skill": "deny",
         "question": "deny",
         "webfetch": "allow" if allow_web else "deny",
         "websearch": "allow" if allow_web else "deny",
+        "codesearch": "deny",
         "external_directory": "deny",
         "doom_loop": "deny",
     }
@@ -706,10 +764,27 @@ class OpenCodeAgentRunner(AgentRunner):
             env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
             env.setdefault("NO_COLOR", "1")
 
+            permission = self._config["agent"][self._agent_name]["permission"]
             _log.info(
-                "OpenCodeAgentRunner: starting query (model=%s, opencode_model=%s)",
+                "OpenCodeAgentRunner: starting query "
+                "(model=%s, opencode_model=%s, agent=%s, max_steps=%d, "
+                "timeout_s=%s, run_dir=%s, mcp_servers=%s, permissions=%s, "
+                "attach=%s, variant=%s, thinking=%s)",
                 self._model_id,
                 self._opencode_model,
+                self._agent_name,
+                self._max_steps,
+                self._timeout_s,
+                self._run_dir,
+                sorted(self._server_paths),
+                _permission_log_summary(permission),
+                bool(self._attach),
+                self._variant or "<default>",
+                self._thinking,
+            )
+            _log.debug(
+                "OpenCodeAgentRunner: launching subprocess argv=%s",
+                _command_for_log(cmd),
             )
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -723,24 +798,100 @@ class OpenCodeAgentRunner(AgentRunner):
                     proc.communicate(), timeout=self._timeout_s
                 )
             except TimeoutError:
+                duration_ms = (time.perf_counter() - run_started) * 1000
+                _log.error(
+                    "OpenCodeAgentRunner: subprocess timed out "
+                    "(timeout_s=%s, duration_ms=%.0f, run_dir=%s)",
+                    self._timeout_s,
+                    duration_ms,
+                    self._run_dir,
+                )
                 proc.kill()
-                await proc.communicate()
+                _, killed_stderr_b = await proc.communicate()
+                killed_stderr = killed_stderr_b.decode("utf-8", errors="replace")
+                if killed_stderr:
+                    _log.debug(
+                        "OpenCodeAgentRunner: stderr after timeout kill: %r",
+                        _stream_tail(killed_stderr),
+                    )
                 raise TimeoutError(
                     f"opencode run timed out after {self._timeout_s} seconds"
                 ) from None
 
             stdout = stdout_b.decode("utf-8", errors="replace")
             stderr = stderr_b.decode("utf-8", errors="replace")
+            duration_ms = (time.perf_counter() - run_started) * 1000
+            stdout_chars, stdout_lines = _stream_stats(stdout)
+            stderr_chars, stderr_lines = _stream_stats(stderr)
             if proc.returncode != 0:
+                _log.error(
+                    "OpenCodeAgentRunner: subprocess failed "
+                    "(exit_code=%s, duration_ms=%.0f, stdout_chars=%d, "
+                    "stdout_lines=%d, stderr_chars=%d, stderr_lines=%d)",
+                    proc.returncode,
+                    duration_ms,
+                    stdout_chars,
+                    stdout_lines,
+                    stderr_chars,
+                    stderr_lines,
+                )
+                if stderr:
+                    _log.error(
+                        "OpenCodeAgentRunner: stderr tail after failure: %r",
+                        _stream_tail(stderr),
+                    )
+                if stdout:
+                    _log.debug(
+                        "OpenCodeAgentRunner: stdout tail after failure: %r",
+                        _stream_tail(stdout),
+                    )
                 raise RuntimeError(
                     "opencode run failed with exit code "
-                    f"{proc.returncode}\nSTDERR:\n{stderr[-4000:]}\nSTDOUT:\n{stdout[-4000:]}"
+                    f"{proc.returncode}\nSTDERR:\n"
+                    f"{_stream_tail(stderr, limit=_ERROR_STREAM_TAIL_CHARS)}\n"
+                    f"STDOUT:\n"
+                    f"{_stream_tail(stdout, limit=_ERROR_STREAM_TAIL_CHARS)}"
                 )
 
-            duration_ms = (time.perf_counter() - run_started) * 1000
             events, plain_lines = _json_events(stdout)
+            _log.info(
+                "OpenCodeAgentRunner: parsed subprocess output "
+                "(duration_ms=%.0f, events=%d, plain_stdout_lines=%d, "
+                "stdout_chars=%d, stdout_lines=%d, stderr_chars=%d, "
+                "stderr_lines=%d)",
+                duration_ms,
+                len(events),
+                len(plain_lines),
+                stdout_chars,
+                stdout_lines,
+                stderr_chars,
+                stderr_lines,
+            )
+            _log.debug(
+                "OpenCodeAgentRunner: event type counts=%s",
+                _event_type_counts(events),
+            )
+            if plain_lines:
+                _log.warning(
+                    "OpenCodeAgentRunner: ignored %d non-JSON stdout line(s); "
+                    "first=%r",
+                    len(plain_lines),
+                    plain_lines[0][:200],
+                )
+            if stderr:
+                _log.debug(
+                    "OpenCodeAgentRunner: stderr tail after success: %r",
+                    _stream_tail(stderr),
+                )
+
             error_message = _opencode_error_message(events)
             if error_message:
+                _log.error(
+                    "OpenCodeAgentRunner: OpenCode reported an error event "
+                    "(duration_ms=%.0f, message=%s)",
+                    duration_ms,
+                    error_message,
+                )
                 raise RuntimeError(error_message)
             answer, trajectory = _build_trajectory_from_events(
                 events,
@@ -751,6 +902,9 @@ class OpenCodeAgentRunner(AgentRunner):
             trajectory.started_at = started_at
 
             span.set_attribute("agent.answer.length", len(answer))
+            span.set_attribute("opencode.events", len(events))
+            span.set_attribute("opencode.plain_stdout_lines", len(plain_lines))
+            span.set_attribute("opencode.stderr_chars", stderr_chars)
             span.set_attribute(
                 "gen_ai.usage.input_tokens", trajectory.total_input_tokens
             )
@@ -760,6 +914,18 @@ class OpenCodeAgentRunner(AgentRunner):
             span.set_attribute("agent.turns", len(trajectory.turns))
             span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
             span.set_attribute("agent.duration_ms", duration_ms)
+            _log.info(
+                "OpenCodeAgentRunner: completed query "
+                "(duration_ms=%.0f, events=%d, turns=%d, tool_calls=%d, "
+                "input_tokens=%d, output_tokens=%d, answer_chars=%d)",
+                duration_ms,
+                len(events),
+                len(trajectory.turns),
+                len(trajectory.all_tool_calls),
+                trajectory.total_input_tokens,
+                trajectory.total_output_tokens,
+                len(answer),
+            )
             persist_trajectory(
                 runner_name="opencode-agent",
                 model=self._model_id,

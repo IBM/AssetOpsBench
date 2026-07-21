@@ -25,15 +25,14 @@ def main():
              [s["name"] for s in tu.find_tools("failure mode")])
 
         # 3. run a single tool (ToolUniverse dict form)
-        show("iot.sensors", tu.run({
-            "name": "iot.sensors",
-            "arguments": {"site_name": "MAIN", "asset_id": "Chiller 6"},
+        show("iot.asset_ids", tu.run({
+            "name": "iot.asset_ids",
+            "arguments": {"site_name": "MAIN"},
         }))
 
-        # A workflow runs through the same entrypoint
-        show("chiller_triage", tu.run({
-            "name": "chiller_triage",
-            "arguments": {"asset_id": "Chiller 6", "raise_work_order": False},
+        show("iot.assets", tu.run({
+            "name": "iot.assets",
+            "arguments": {"site_name": "MAIN", "assettype": "CHILLER"},
         }))
     finally:
         tu.close()

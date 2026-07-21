@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from .._cli_common import add_common_args, print_result, run_sdk_cli
 
@@ -83,6 +84,24 @@ examples:
         help="Max output tokens per model call; must stay under the provider "
         "limit (watsonx caps new tokens at 100k). Default: 16384.",
     )
+    parser.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Host directory used as the Stirrup code-execution workspace base. "
+            "Docker/local backends create their execution directory under this path."
+        ),
+    )
+    parser.add_argument(
+        "--preserve-workspace",
+        action="store_true",
+        help=(
+            "Copy final code-execution files into --workspace-dir before cleanup. "
+            "Supported with docker/local backends."
+        ),
+    )
     return parser
 
 
@@ -93,6 +112,8 @@ async def _run(args: argparse.Namespace) -> None:
         model=args.model_id,
         code_enabled=args.code_enabled,
         code_backend=args.code_backend,
+        workspace_dir=args.workspace_dir,
+        preserve_workspace=args.preserve_workspace,
         max_turns=args.max_turns,
         max_tokens=args.max_tokens,
     )

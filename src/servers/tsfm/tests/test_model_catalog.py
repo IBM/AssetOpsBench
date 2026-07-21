@@ -1,0 +1,210 @@
+import pytest
+"""Model-catalog tool surface: template -> register -> resolve -> update/deprecate/version."""
+
+import asyncio
+import json
+import warnings
+
+warnings.filterwarnings("ignore")
+
+from ..main import mcp
+
+NAIVE = "sktime.forecasting.naive.NaiveForecaster"
+# register_finetuned points a card at a checkpoint via params.model_path, so its base must be a
+# wrapper that TAKES a model_path. NaiveForecaster does not: such a card raises TypeError at
+# resolve(). This double satisfies the same contract as TTM with no torch.
+FAKE_TTM = "servers.tsfm.tests.fake_hf_forecaster.FakeTTMForecaster"
+
+
+def call(name, args):
+    content, _ = asyncio.run(mcp.call_tool(name, args))
+    return json.loads(content[0].text)
+
+
+def _card(model_id, **over):
+    card = {"model_id": model_id, "description": "a test forecaster",
+            "task_ids": ["tsfm_forecasting"], "sktime_class": NAIVE,
+            "params": {"strategy": "drift"}}
+    card.update(over)
+    return card
+
+
+def test_model_catalog_surface_present():
+    """The 15 model-catalog tools (4-18). Other groups may add to the surface alongside them."""
+    names = {t.name for t in asyncio.run(mcp.list_tools())}
+    assert {"list_models", "search_models", "find_models", "describe_candidates",
+            "describe_models", "count_models", "list_domains", "get_model_lineage",
+            "register_model", "model_template", "register_finetuned", "update_model",
+            "deprecate_model", "new_model_version", "resolve_model"} <= names
+
+
+# ---- discovery / read (tools 4-11) ----
+def test_search_models():
+    call("register_model", {"model": _card("srch_ttm", model_family="TinyTimeMixer",
+                                           tags=["zero-shot"])})
+    r = call("search_models", {"text": "tinytimemixer"})
+    assert any(m["model_id"] == "srch_ttm" for m in r["models"])
+    assert call("search_models", {"text": "no_such_model_xyz"})["models"] == []
+
+
+def test_find_models_filters_by_task_and_domain():
+    call("register_model", {"model": _card("fm_energy", domain="energy", context_length=512)})
+    r = call("find_models", {"task_id": "tsfm_forecasting", "domain": "energy"})
+    assert all(m["domain"] == "energy" for m in r["models"])
+    assert "error" in call("find_models", {"task_id": "tsfm_made_up"})
+    # min_context_length excludes shorter cards
+    r = call("find_models", {"task_id": "tsfm_forecasting", "min_context_length": 100000})
+    assert r["models"] == []
+
+
+def test_describe_candidates_shortlist():
+    r = call("describe_candidates", {"task_id": "tsfm_forecasting", "top_k": 2})
+    assert len(r["candidates"]) <= 2
+    assert all("model_id" in c and "description" in c for c in r["candidates"])
+    assert "error" in call("describe_candidates", {"task_id": ""})
+
+
+def test_describe_models_by_ids():
+    call("register_model", {"model": _card("dm_a", model_family="naive", domain="energy")})
+    r = call("describe_models", {"model_ids": ["dm_a", "ghost"]})
+    assert r["models"][0]["model_id"] == "dm_a"
+    assert r["models"][0]["family"] == "naive" and r["models"][0]["domain"] == "energy"
+    assert r["unknown"] == ["ghost"]
+    assert "error" in call("describe_models", {"model_ids": []})
+
+
+def test_count_models():
+    r = call("count_models", {})
+    assert r["total"] >= 1 and "tsfm_forecasting" in r["by_task"]
+
+
+def test_list_domains():
+    call("register_model", {"model": _card("ld_x", domain="energy")})
+    r = call("list_domains", {})
+    assert "energy" in r["domains"]
+    assert "error" in call("list_domains", {"task_id": "tsfm_made_up"})
+
+
+def test_get_model_lineage():
+    # the base of a finetune must accept params.model_path (see register_finetuned)
+    call("register_model", {"model": _card("lin_base", sktime_class=FAKE_TTM,
+                                           params={"model_path": "fake-hub/ttm"})})
+    call("register_finetuned", {"model_id": "lin_ft", "checkpoint_path": "/ckpt/x",
+                                "base_model_id": "lin_base", "context_length": 96,
+                                "prediction_length": 28, "description": "ft of base"})
+    lin = call("get_model_lineage", {"model_id": "lin_ft"})
+    assert "lin_base" in lin["ancestors"]
+    assert call("get_model_lineage", {"model_id": "lin_base"})["descendants"] == ["lin_ft"]
+    assert "error" in call("get_model_lineage", {"model_id": ""})
+
+
+def test_list_models_and_task_validation():
+    assert call("list_models", {})["models"]                      # seeded catalog
+    assert "error" in call("list_models", {"task_id": "tsfm_made_up"})
+
+
+def test_model_template_example_registers():
+    t = call("model_template", {})
+    assert t["required_fields"] == ["model_id", "description", "task_ids"]
+    # unique id: duplicates are rejected, so tests must not share the example's model_id
+    example = {**t["example"], "model_id": "tmpl_example_mc"}
+    assert call("register_model", {"model": example})["status"] == "registered"
+
+
+def test_register_validates():
+    assert call("register_model", {"model": {}})["error"]
+    assert "error" in call("register_model", {"model": {"model_id": "x", "description": "ab",
+                                                        "task_ids": ["tsfm_forecasting"]}})
+    assert "error" in call("register_model", {"model": _card("x", provenance="finetuned")})
+
+
+def test_register_then_resolve():
+    call("register_model", {"model": _card("rt_naive")})
+    r = call("resolve_model", {"model_id": "rt_naive"})
+    assert r["sktime_class"].endswith("NaiveForecaster")
+    assert "error" in call("resolve_model", {"model_id": "nope"})
+    assert "error" in call("resolve_model", {"model_id": ""})
+
+
+def test_update_and_deprecate():
+    # NOTE: CardResult declares no fields (extra=allow), so the card comes back FLAT here,
+    # unlike register_model which nests it under "card".
+    call("register_model", {"model": _card("lc_naive")})
+    assert call("update_model", {"model_id": "lc_naive",
+                                 "fields": {"domain": "energy"}})["domain"] == "energy"
+    assert call("deprecate_model", {"model_id": "lc_naive",
+                                    "reason": "superseded"})["status"] == "deprecated"
+    assert "error" in call("update_model", {"model_id": "ghost", "fields": {"domain": "x"}})
+
+
+def test_new_version_links_predecessor():
+    call("register_model", {"model": _card("ver_naive")})
+    out = call("new_model_version", {"model_id": "ver_naive", "fields": {"context_length": 128}})
+    assert out["supersedes"] == "ver_naive"
+
+
+def test_register_finetuned_inherits_and_links():
+    call("register_model", {"model": _card("base_ttm", sktime_class=FAKE_TTM,
+                                           params={"model_path": "fake-hub/ttm"})})
+    out = call("register_finetuned", {"model_id": "ft_ttm", "checkpoint_path": "/ckpt/ft",
+                                      "base_model_id": "base_ttm", "context_length": 96,
+                                      "prediction_length": 28, "description": "fine-tuned ttm"})
+    card = out
+    assert card["base_model_id"] == "base_ttm" and card["provenance"] == "finetuned"
+    assert card["sktime_class"] == FAKE_TTM              # inherited from the base
+    assert card["params"]["model_path"] == "/ckpt/ft"    # points at the checkpoint
+    # serving a checkpoint LOADS and predicts; it must not train again. provenance is history,
+    # training_regime is what happens on the next fit().
+    assert card["training_regime"] == "zero_shot"
+    assert card["params"]["fit_strategy"] == "zero-shot"
+
+
+def test_register_finetuned_rejects_a_base_that_cannot_take_a_checkpoint():
+    """A finetune card loads weights via params.model_path, so the base wrapper must accept one.
+
+    Previously this emitted a card that raised TypeError at resolve():
+        ThetaForecaster.__init__() got an unexpected keyword argument 'model_path'
+    """
+    call("register_model", {"model": _card("classical_base", sktime_class=NAIVE)})
+    out = call("register_finetuned", {"model_id": "bad_ft", "checkpoint_path": "/ckpt/x",
+                                      "base_model_id": "classical_base", "context_length": 96,
+                                      "prediction_length": 28, "description": "should be rejected"})
+    assert "error" in out
+    assert "model_path" in out["error"]
+
+def test_resolve_model_flags_missing_soft_dependency():
+    """resolve_model must preflight an estimator's third-party deps, not just its import.
+
+    sktime wraps third-party libraries and defers the dependency check to fit(), so ARIMA imports
+    AND constructs without pmdarima and only fails inside the backtest. The preflight has to read
+    the `python_dependencies` class tag to catch that.
+    """
+    import importlib.util
+
+    from servers.tsfm import main as M
+
+    if importlib.util.find_spec("pmdarima") is not None:
+        pytest.skip("pmdarima installed; nothing to flag")
+
+    M.register_model({
+        "model_id": "arima_missing_dep", "description": "ARIMA card for preflight test",
+        "task_ids": ["tsfm_forecasting"], "provenance": "trained",
+        "sktime_class": "sktime.forecasting.arima.ARIMA", "params": {"order": (1, 1, 1)},
+    })
+    d = M.resolve_model("arima_missing_dep").model_dump()
+
+    assert d["resolvable"] is False
+    assert "pmdarima" in d["reason"]
+
+
+def test_resolve_model_allows_satisfied_soft_dependency():
+    """The dep check must not produce false negatives for estimators whose deps ARE present."""
+    from servers.tsfm import main as M
+
+    M.register_model({
+        "model_id": "naive_ok", "description": "NaiveForecaster card for preflight test",
+        "task_ids": ["tsfm_forecasting"], "provenance": "trained",
+        "sktime_class": "sktime.forecasting.naive.NaiveForecaster", "params": {"strategy": "last"},
+    })
+    d = M.resolve_model("naive_ok").model_dump()
+    assert d["resolvable"] is True

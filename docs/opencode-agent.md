@@ -103,12 +103,14 @@ uv run opencode-agent --show-trajectory \
 ```
 
 In the `--show-trajectory` output, look for domain tool calls such as
-`iot_sites`, `iot_registry_assets`, or `wo_list_workorders`. That confirms
+`iot_sites`, `iot_asset_ids`, `iot_assets`, or `wo_list_workorders`. That confirms
 OpenCode discovered and called the AssetOpsBench MCP tools.
 
 > **Quiet runs.** `opencode-agent` runs OpenCode as a subprocess. During long
 > questions, the terminal may look quiet until OpenCode finishes. The persisted
-> trajectory is written only after the run completes.
+> trajectory is written only after the run completes. Add `--verbose` to emit
+> lifecycle logs for subprocess launch, output parsing, runtime, token totals,
+> and tool-call counts without logging the full user question.
 
 ---
 
@@ -126,6 +128,7 @@ The following capabilities are denied by default:
 - web fetch/search
 - external directory access
 - follow-up questions
+- other non-MCP OpenCode built-in tools
 
 This is the recommended mode for normal benchmark runs where answers should come
 from the configured MCP tools.
@@ -153,7 +156,7 @@ uv run python -m benchmark.scenario_suite_runner \
   --scenario-root /path/to/scenarios_data \
   --agent_name opencode_agent \
   --model-id tokenrouter/MiniMax-M3 \
-  --opencode-workspace-root traces/opencode_workspaces \
+  --opencode-workspace-root /tmp/assetopsbench-opencode/workspaces \
   --opencode-allow-files \
   --opencode-allow-bash
 ```
@@ -161,7 +164,7 @@ uv run python -m benchmark.scenario_suite_runner \
 For scenario `401`, this creates a workspace such as:
 
 ```text
-traces/opencode_workspaces/opencode_agent_401
+/tmp/assetopsbench-opencode/workspaces/opencode_agent/tokenrouter-MiniMax-M3/opencode_agent_401
 ```
 
 Each scenario run starts with an empty per-run workspace directory. The
@@ -222,12 +225,13 @@ The runner configures OpenCode permissions for benchmark use:
 | Capability | Default | Flag to allow |
 | ---------- | ------- | ------------- |
 | AssetOpsBench MCP tools | allowed | always enabled |
-| `read`, `glob`, `grep`, `lsp` | denied | `--allow-files` |
+| `read`, `glob`, `grep`, `lsp`, `list` | denied | `--allow-files` |
 | shell commands | denied | `--allow-bash` |
 | file edits | denied | `--allow-edit` |
 | web fetch/search | denied | `--allow-web` |
 | external directory access | denied | not exposed |
 | follow-up questions | denied | not exposed |
+| other OpenCode built-in tools | denied | not exposed |
 
 Benchmark runs should not pass `--allow-web`. Without that flag, OpenCode's
 `webfetch` and `websearch` permissions are explicitly set to `deny`.
@@ -287,7 +291,7 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--opencode-bin PATH` | OpenCode executable path (default: `opencode`). |
 | `--attach URL` | Attach to a running `opencode serve` instance. |
 | `--timeout-s N` | Wall-clock timeout for `opencode run` (default: 900). |
-| `--allow-files` | Allow file inspection tools (`read`, `glob`, `grep`, `lsp`). Disabled by default. |
+| `--allow-files` | Allow file inspection tools (`read`, `glob`, `grep`, `lsp`, `list`). Disabled by default. |
 | `--allow-bash` | Allow shell commands. Disabled by default. |
 | `--allow-edit` | Allow file edits. Disabled by default. |
 | `--allow-web` | Allow web fetch/search. Disabled by default. |
@@ -344,7 +348,7 @@ uv run python -m benchmark.scenario_suite_runner \
   --scenario-root /path/to/scenarios_data \
   --agent_name opencode_agent \
   --model-id tokenrouter/MiniMax-M3 \
-  --opencode-workspace-root traces/opencode_workspaces \
+  --opencode-workspace-root /tmp/assetopsbench-opencode/workspaces \
   --opencode-allow-files \
   --opencode-allow-bash
 ```
@@ -359,7 +363,9 @@ Scenario-suite OpenCode flags:
 | `--opencode-allow-edit` | Pass `--allow-edit` to `opencode-agent`. |
 
 If any OpenCode file, bash, or edit capability is enabled, then
-`--opencode-workspace-root` is required.
+`--opencode-workspace-root` is required and must be outside the repository so the
+agent cannot inspect benchmark reports, traces, or raw scenario files through the
+workspace.
 
 ---
 
@@ -435,7 +441,7 @@ uv run python -m benchmark.scenario_suite_runner \
   --scenario-root /path/to/scenarios_data \
   --agent_name opencode_agent \
   --model-id tokenrouter/MiniMax-M3 \
-  --opencode-workspace-root traces/opencode_workspaces \
+  --opencode-workspace-root /tmp/assetopsbench-opencode/workspaces \
   --opencode-allow-files \
   --opencode-allow-bash \
   --dry-run
