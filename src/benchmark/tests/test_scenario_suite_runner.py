@@ -151,7 +151,6 @@ def test_method_output_paths_nest_by_agent_and_model(tmp_path: Path) -> None:
 def test_build_methods_uses_cli_defaults() -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
-        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=False,
@@ -170,6 +169,8 @@ def test_build_methods_uses_cli_defaults() -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
@@ -199,7 +200,6 @@ def test_build_methods_uses_cli_defaults() -> None:
 def test_build_methods_stirrup_workspace_options(tmp_path: Path) -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
-        stirrup_max_tokens=4096,
         stirrup_workspace_root=tmp_path / "stirrup-workspaces",
         preserve_workspaces=True,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
@@ -220,19 +220,26 @@ def test_build_methods_stirrup_workspace_options(tmp_path: Path) -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=0.2,
     )
 
     methods = mr.build_methods(args)
     stirrup = methods["stirrup_agent"]
 
-    assert stirrup.extra_args == ("--max-tokens", "4096", "--preserve-workspace")
+    assert stirrup.extra_args == (
+        "--max-tokens",
+        "4096",
+        "--temperature",
+        "0.2",
+        "--preserve-workspace",
+    )
     assert stirrup.workspace_root == tmp_path / "stirrup-workspaces"
 
 
 def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
-        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=True,
@@ -251,6 +258,8 @@ def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
@@ -263,7 +272,6 @@ def test_build_methods_opencode_workspace_options(tmp_path: Path) -> None:
 def test_build_methods_opencode_thinking_and_variant() -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
-        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=False,
@@ -285,6 +293,8 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
@@ -301,7 +311,6 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
 def test_build_methods_gemini_workspace_options(tmp_path: Path) -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
-        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=False,
@@ -320,6 +329,8 @@ def test_build_methods_gemini_workspace_options(tmp_path: Path) -> None:
         openclaw_allow_web=False,
         openclaw_thinking="off",
         openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)
@@ -337,7 +348,6 @@ def test_build_methods_gemini_workspace_options(tmp_path: Path) -> None:
 def test_build_methods_openclaw_workspace_options(tmp_path: Path) -> None:
     args = Namespace(
         model_id="tokenrouter/MiniMax-M3",
-        stirrup_max_tokens=4096,
         gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
         openclaw_model_id="tokenrouter/MiniMax-M3",
         opencode_allow_files=False,
@@ -356,6 +366,8 @@ def test_build_methods_openclaw_workspace_options(tmp_path: Path) -> None:
         openclaw_allow_web=True,
         openclaw_thinking="medium",
         openclaw_workspace_root=tmp_path / "openclaw-workspaces",
+        stirrup_max_tokens=4096,
+        temperature=None,
     )
 
     methods = mr.build_methods(args)

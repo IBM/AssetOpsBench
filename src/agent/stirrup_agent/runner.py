@@ -107,6 +107,7 @@ class StirrupAgentRunner(AgentRunner):
         preserve_workspace: Copy final code-execution files back into ``workspace_dir``.
         max_turns: Stirrup agent loop bound.
         max_tokens: Context window hint passed to the client.
+        temperature: Optional sampling temperature passed to the Stirrup client.
     """
 
     def __init__(
@@ -120,6 +121,7 @@ class StirrupAgentRunner(AgentRunner):
         preserve_workspace: bool = False,
         max_turns: int = 30,
         max_tokens: int = 16_384,
+        temperature: float | None = None,
     ) -> None:
         super().__init__(llm, server_paths)
         self._model_id = model
@@ -139,11 +141,17 @@ class StirrupAgentRunner(AgentRunner):
         self._preserve_workspace = preserve_workspace
         self._max_turns = max_turns
         self._max_tokens = max_tokens
+        self._temperature = temperature
 
     # -- client / tools ----------------------------------------------------
 
     def _build_client(self):
         """Build a Stirrup LLM client for the configured model id."""
+        client_kwargs = (
+            {"temperature": self._temperature}
+            if self._temperature is not None
+            else None
+        )
         creds = resolve_router_creds(self._model_id)
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
@@ -153,10 +161,15 @@ class StirrupAgentRunner(AgentRunner):
                 base_url=creds.base_url.rstrip("/"),
                 api_key=creds.api_key,
                 max_tokens=self._max_tokens,
+                kwargs=client_kwargs,
             )
         from stirrup.clients.litellm_client import LiteLLMClient
 
-        return LiteLLMClient(model=self._model_id, max_tokens=self._max_tokens)
+        return LiteLLMClient(
+            model=self._model_id,
+            max_tokens=self._max_tokens,
+            kwargs=client_kwargs,
+        )
 
     def _build_mcp_provider(self):
         """Build a Stirrup ``MCPToolProvider`` for the AssetOpsBench servers.
