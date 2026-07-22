@@ -198,6 +198,68 @@ def _extract_count_from_text(content: str) -> int | float | None:
     return None
 
 
+_CHOICE_LETTER_RE = re.compile(r"^[A-Za-z]$")
+_CHOICE_LINE_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:final\s+answer|answer|option|choice)\s*(?:is|:)?\s*)?"
+    r"[\(\[]?([A-Za-z])[\)\].:]?"
+    r"\s*$",
+    flags=re.IGNORECASE,
+)
+_CHOICE_PHRASE_RE = re.compile(
+    r"(?:final\s+answer|answer|option|choice)\s*(?:is|:)?\s*"
+    r"[\(\[]?([A-Za-z])[\)\].:]?\s*$",
+    flags=re.IGNORECASE,
+)
+_TRAILING_CHOICE_RE = re.compile(
+    r"(?:^|[\s,;:])[\(\[]?([A-Za-z])[\)\].:]?\s*$"
+)
+
+
+def _is_choice_scalar(value: Any) -> bool:
+    """Return true for ground-truth answers like ``C``."""
+    parsed = parse_structured_answer(value)
+    return isinstance(parsed, str) and bool(
+        _CHOICE_LETTER_RE.fullmatch(parsed.strip())
+    )
+
+
+def _extract_final_choice_from_text(value: Any) -> str | None:
+    """Extract a final multiple-choice letter from noisy scalar answers."""
+    if not isinstance(value, str):
+        return None
+
+    content = _strip_markdown_fence(extract_answer_text(value)).strip()
+    if not content:
+        return None
+
+    direct = _CHOICE_LINE_RE.fullmatch(content)
+    if direct:
+        return direct.group(1).upper()
+
+    for line in reversed([line.strip() for line in content.splitlines()]):
+        if not line:
+            continue
+        line_match = _CHOICE_LINE_RE.fullmatch(line)
+        if line_match:
+            return line_match.group(1).upper()
+        phrase_match = _CHOICE_PHRASE_RE.search(line)
+        if phrase_match:
+            return phrase_match.group(1).upper()
+        trailing_match = _TRAILING_CHOICE_RE.search(line)
+        if trailing_match:
+            return trailing_match.group(1).upper()
+        break
+
+    return None
+
+
+def _normalize_choice_answer(value: Any) -> Any:
+    """Return a final choice letter when one can be safely extracted."""
+    choice = _extract_final_choice_from_text(value)
+    return choice if choice is not None else value
+
+
 def parse_structured_answer(value: Any) -> Any:
     """Parse JSON/Python-like structured output into a Python object."""
     if isinstance(value, (dict, list, tuple, int, float, bool)) or value is None:
@@ -726,6 +788,9 @@ def evaluate_static_json(
     """Evaluate one structured gold answer against one model answer."""
     if _is_mode_gold_answer(gold_answer):
         return _evaluate_mode_json(gold_answer, model_answer)
+
+    if _is_choice_scalar(gold_answer):
+        model_answer = _normalize_choice_answer(model_answer)
 
     gold_flat = flatten_answer(gold_answer)
     model_flat = flatten_answer(model_answer)
