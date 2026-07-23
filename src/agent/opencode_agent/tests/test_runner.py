@@ -190,7 +190,7 @@ def test_resolve_tokenrouter_anthropic_model(monkeypatch):
         "tokenrouter/anthropic/claude-opus-4.8"
     )
     assert model == "tokenrouter/anthropic/claude-opus-4.8"
-    assert provider["tokenrouter"]["npm"] == "@ai-sdk/anthropic"
+    assert provider["tokenrouter"]["npm"] == "@ai-sdk/openai-compatible"
     assert provider["tokenrouter"]["options"]["baseURL"] == "https://router.example/v1"
     assert (
         provider["tokenrouter"]["models"]["anthropic/claude-opus-4.8"]["name"]
