@@ -51,6 +51,39 @@ def test_parse_fault_code_as_categorical_string():
     assert parse_structured_answer("FC101") == "FC101"
 
 
+def test_choice_answer_accepts_final_standalone_letter_after_explanation():
+    score = evaluate_static_json(
+        "C",
+        (
+            "I compared the excavator repair costs and C has the highest total.\n\n"
+            "C"
+        ),
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.partial_exact_match_accuracy == 1.0
+    assert score.details[0].model_value == "c"
+
+
+def test_choice_answer_accepts_final_answer_label():
+    score = evaluate_static_json(
+        "C",
+        "The data points to excavator C.\n\nFinal Answer: C",
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.f1 == 1.0
+
+
+def test_choice_answer_accepts_trailing_option_phrase():
+    score = evaluate_static_json(
+        "C",
+        "After reviewing the options, the correct option is C.",
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+
+
 def test_flatten_nested_json():
     answer = {"a": {"b": 2}, "c": [3, {"d": 4}]}
 
