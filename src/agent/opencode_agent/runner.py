@@ -179,9 +179,8 @@ def _resolve_opencode_model_and_provider(
     """Translate AssetOpsBench router model IDs into OpenCode config.
 
     OpenCode wants ``provider/model``.  For AssetOpsBench router prefixes such
-    as ``litellm_proxy/`` and ``tokenrouter/``, declare a custom provider and
-    register the requested model explicitly. TokenRouter Claude models need the
-    Anthropic protocol so OpenCode preserves native Anthropic message handling.
+    as ``litellm_proxy/`` and ``tokenrouter/``, declare a custom
+    OpenAI-compatible provider and register the requested model explicitly.
     """
     creds = resolve_router_creds(model_id, strict=True)
     if creds is None:
@@ -191,11 +190,7 @@ def _resolve_opencode_model_and_provider(
     provider_name = "TokenRouter" if provider_id == "tokenrouter" else "LiteLLM Proxy"
     model_name = resolve_model(model_id)
     opencode_model = f"{provider_id}/{model_name}"
-    provider_npm = (
-        "@ai-sdk/anthropic"
-        if provider_id == "tokenrouter" and model_name.startswith("anthropic/")
-        else "@ai-sdk/openai-compatible"
-    )
+    provider_npm = "@ai-sdk/openai-compatible"
     model_config: dict[str, Any] = {"name": model_name}
     if _needs_reasoning_effort_none(provider_id, model_name):
         # TokenRouter rejects function tools for OpenAI GPT-5 models on
