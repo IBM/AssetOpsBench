@@ -539,6 +539,98 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
     )
 
 
+_MCQ_CHOICE_RE = re.compile(r"^[A-Za-z]$")
+
+_MCQ_ANSWER_PHRASE_RE = re.compile(
+    r"(?:final\s+answer|correct\s+answer|answer|choice|option)"
+    r"\s*(?:is|:|=)?\s*\(?\b([A-Za-z])\b\)?",
+    re.IGNORECASE,
+)
+_MCQ_STANDALONE_RE = re.compile(
+    r"(?<![A-Za-z0-9])([A-Za-z])(?:[.)\]]|\s*$)", re.MULTILINE
+)
+
+
+def _is_mcq_gold_answer(value: Any) -> bool:
+    """True when the gold answer is a bare single-letter MCQ choice, e.g. 'C'."""
+    parsed = parse_structured_answer(value)
+    return isinstance(parsed, str) and bool(_MCQ_CHOICE_RE.fullmatch(parsed.strip()))
+
+
+def extract_mcq_choice(text: Any) -> str | None:
+    """Extract the final single-letter MCQ choice from noisy model output.
+
+    Handles both explicit phrasing ("the answer is C") and reasoning that
+    simply trails off into a standalone letter on its own line.
+    """
+    if not isinstance(text, str):
+        return None
+
+    content = _strip_markdown_fence(extract_answer_text(text))
+
+    phrase_matches = list(_MCQ_ANSWER_PHRASE_RE.finditer(content))
+    if phrase_matches:
+        return phrase_matches[-1].group(1).upper()
+
+    standalone_matches = list(_MCQ_STANDALONE_RE.finditer(content.strip()))
+    if standalone_matches:
+        return standalone_matches[-1].group(1).upper()
+
+    return None
+
+
+def _evaluate_mcq_choice(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
+    gold_letter = str(parse_structured_answer(gold_answer)).strip().upper()
+    model_letter = extract_mcq_choice(model_answer)
+    match = model_letter == gold_letter
+    score_val = 1.0 if match else 0.0
+
+    details = [
+        KeyComparison(
+            key="answer.mcq_choice",
+            gold_value=gold_letter,
+            model_value=model_letter or "MISSING",
+            exact=match,
+            match_type=(
+                "exact"
+                if match
+                else "no_choice_found"
+                if not model_letter
+                else "mismatch"
+            ),
+            similarity=score_val,
+            accepted=match,
+        )
+    ]
+
+    return StaticJsonScore(
+        partial_match_accuracy=score_val,
+        partial_exact_match_accuracy=score_val,
+        strict_exact_match_accuracy=score_val,
+        partial_similarity_score=score_val,
+        partial_numeric_match_accuracy=0.0,
+        range_match_accuracy=0.0,
+        delta_1_match_accuracy=0.0,
+        precision=score_val,
+        recall=score_val,
+        f1=score_val,
+        total_gold_keys=1,
+        total_model_keys=1 if model_letter else 0,
+        matched_keys=1 if match else 0,
+        accepted_value_matches=1 if match else 0,
+        exact_value_matches=1 if match else 0,
+        numeric_gold_keys=0,
+        numeric_value_matches=0,
+        range_eligible_keys=0,
+        range_value_matches=0,
+        delta_1_eligible_keys=0,
+        delta_1_value_matches=0,
+        missing_keys=[] if match else ["answer"],
+        extra_keys=[],
+        details=details,
+    )
+
+
 _NUMBER_RE = r"[+-]?\d+(?:\.\d+)?"
 _RANGE_FIELD_PAIRS = (
     ("start_point", "end_point"),
@@ -726,6 +818,9 @@ def evaluate_static_json(
     """Evaluate one structured gold answer against one model answer."""
     if _is_mode_gold_answer(gold_answer):
         return _evaluate_mode_json(gold_answer, model_answer)
+
+    if _is_mcq_gold_answer(gold_answer):
+        return _evaluate_mcq_choice(gold_answer, model_answer)
 
     gold_flat = flatten_answer(gold_answer)
     model_flat = flatten_answer(model_answer)

@@ -339,3 +339,44 @@ def test_static_json_scorer_wrapper_exact_match():
     assert result.passed is True
     assert result.score == 1.0
     assert result.details["strict_exact_match_accuracy"] == 1.0
+
+
+def test_mcq_exact_letter_match():
+    score = evaluate_static_json("C", "C")
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.details[0].match_type == "exact"
+
+
+def test_mcq_matches_answer_is_phrasing_with_trailing_explanation():
+    score = evaluate_static_json(
+        "C", "After comparing the options, the answer is C."
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.details[0].model_value == "C"
+
+
+def test_mcq_matches_standalone_trailing_letter_without_answer_keyword():
+    score = evaluate_static_json(
+        "C",
+        "The vibration signature and temperature trend both point toward "
+        "bearing wear rather than lubrication loss.\n\nC",
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.details[0].model_value == "C"
+
+
+def test_mcq_wrong_letter_fails():
+    score = evaluate_static_json("C", "The answer is B.")
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.details[0].model_value == "B"
+
+
+def test_mcq_no_choice_found_fails_without_crashing():
+    score = evaluate_static_json("C", "I am unable to determine an answer.")
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.details[0].match_type == "no_choice_found"
