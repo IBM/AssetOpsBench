@@ -191,9 +191,12 @@ def _resolve_opencode_model_and_provider(
     provider_name = "TokenRouter" if provider_id == "tokenrouter" else "LiteLLM Proxy"
     model_name = resolve_model(model_id)
     opencode_model = f"{provider_id}/{model_name}"
+    is_tokenrouter_anthropic = (
+        provider_id == "tokenrouter" and model_name.startswith("anthropic/")
+    )
     provider_npm = (
         "@ai-sdk/anthropic"
-        if provider_id == "tokenrouter" and model_name.startswith("anthropic/")
+        if is_tokenrouter_anthropic
         else "@ai-sdk/openai-compatible"
     )
     model_config: dict[str, Any] = {"name": model_name}
@@ -201,6 +204,10 @@ def _resolve_opencode_model_and_provider(
         # TokenRouter rejects function tools for OpenAI GPT-5 models on
         # chat/completions unless reasoning_effort is explicitly disabled.
         model_config["options"] = {"reasoningEffort": "none"}
+    if is_tokenrouter_anthropic:
+        # Custom Anthropic gateways can reject replayed streamed tool-use input
+        # when OpenCode records malformed partial args as a string.
+        model_config["options"] = {"toolStreaming": False}
     provider = {
         provider_id: {
             "npm": provider_npm,

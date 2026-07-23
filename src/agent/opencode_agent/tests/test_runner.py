@@ -193,8 +193,11 @@ def test_resolve_tokenrouter_anthropic_model(monkeypatch):
     assert provider["tokenrouter"]["npm"] == "@ai-sdk/anthropic"
     assert provider["tokenrouter"]["options"]["baseURL"] == "https://router.example/v1"
     assert (
-        provider["tokenrouter"]["models"]["anthropic/claude-opus-4.8"]["name"]
-        == "anthropic/claude-opus-4.8"
+        provider["tokenrouter"]["models"]["anthropic/claude-opus-4.8"]
+        == {
+            "name": "anthropic/claude-opus-4.8",
+            "options": {"toolStreaming": False},
+        }
     )
     assert (
         env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test"
