@@ -2,7 +2,7 @@
 
 import pytest
 
-from servers.fmsr.main import mcp
+from servers.fmsr.main import _parse_relevancy_matrix, mcp
 
 from .conftest import call_tool, requires_watsonx
 
@@ -289,6 +289,32 @@ _FAILURE_MODES = ["Compressor Overheating", "Condenser Water side fouling"]
 _SENSORS = ["Chiller 6 Power Input", "Chiller 6 Supply Temperature"]
 
 
+def test_parse_relevancy_matrix_fills_omitted_pairs():
+    data = _parse_relevancy_matrix(
+        """
+        [
+          {
+            "failure_mode": "Compressor Overheating",
+            "sensor": "Chiller 6 Power Input",
+            "answer": "Yes",
+            "reason": "Power draw can rise during compressor overheating."
+          }
+        ]
+        """,
+        ["Compressor Overheating"],
+        ["Chiller 6 Power Input", "Chiller 6 Supply Temperature"],
+    )
+
+    assert data[("Compressor Overheating", "Chiller 6 Power Input")] == {
+        "answer": "Yes",
+        "reason": "Power draw can rise during compressor overheating.",
+    }
+    assert data[("Compressor Overheating", "Chiller 6 Supply Temperature")] == {
+        "answer": "Unknown",
+        "reason": "LLM response omitted this pair.",
+    }
+
+
 class TestGenerateFailureModeSensorMapping:
     @pytest.mark.anyio
     async def test_returns_expected_keys(self, mock_relevancy_chain):
@@ -323,9 +349,7 @@ class TestGenerateFailureModeSensorMapping:
         assert len(data["full_relevancy"]) == 4
 
     @pytest.mark.anyio
-    async def test_batches_by_failure_mode_when_failure_modes_not_larger(
-        self, mock_relevancy_chain
-    ):
+    async def test_uses_single_matrix_call(self, mock_relevancy_chain):
         sensors = _SENSORS + ["Chiller 6 Return Temperature"]
 
         data = await call_tool(
@@ -339,31 +363,48 @@ class TestGenerateFailureModeSensorMapping:
         )
 
         assert len(data["full_relevancy"]) == 6
-        assert mock_relevancy_chain["by_failure_mode"].call_count == len(
-            _FAILURE_MODES
+        mock_relevancy_chain.assert_called_once_with(
+            "chiller", _FAILURE_MODES, sensors
         )
-        mock_relevancy_chain["by_sensor"].assert_not_called()
 
     @pytest.mark.anyio
-    async def test_batches_by_sensor_when_sensors_are_smaller(
-        self, mock_relevancy_chain
-    ):
-        failure_modes = _FAILURE_MODES + ["Refrigerant Leak"]
-        sensors = ["Chiller 6 Power Input"]
-
+    async def test_rejects_too_many_failure_modes(self, mock_relevancy_chain):
         data = await call_tool(
             mcp,
             "generate_failure_mode_sensor_mapping",
             {
                 "asset_class": "Chiller",
-                "failure_modes": failure_modes,
-                "sensors": sensors,
+                "failure_modes": [
+                    "Compressor Overheating",
+                    "Condenser Water side fouling",
+                    "Refrigerant Leak",
+                    "Evaporator Freezing",
+                    "Low Oil Pressure",
+                    "Control Failure",
+                ],
+                "sensors": _SENSORS,
             },
         )
 
-        assert len(data["full_relevancy"]) == 3
-        assert mock_relevancy_chain["by_sensor"].call_count == len(sensors)
-        mock_relevancy_chain["by_failure_mode"].assert_not_called()
+        assert data == {
+            "error": "failure_modes list is too large; provide at most 5 failure modes"
+        }
+        mock_relevancy_chain.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_rejects_too_many_sensors(self, mock_relevancy_chain):
+        data = await call_tool(
+            mcp,
+            "generate_failure_mode_sensor_mapping",
+            {
+                "asset_class": "Chiller",
+                "failure_modes": _FAILURE_MODES,
+                "sensors": [f"Sensor {idx}" for idx in range(21)],
+            },
+        )
+
+        assert data == {"error": "sensors list is too large; provide at most 20 sensors"}
+        mock_relevancy_chain.assert_not_called()
 
     @pytest.mark.anyio
     async def test_empty_failure_modes_returns_error(self, mock_relevancy_chain):
