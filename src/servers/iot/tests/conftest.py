@@ -118,10 +118,12 @@ def clear_iot_caches():
     iot_main._registry_sites_cache = None
     iot_main._sensor_list_cache = {}
     iot_main._iot_summary_cache = {}
+    iot_main._iot_daily_summary_cache = {}
     yield
     iot_main._registry_sites_cache = None
     iot_main._sensor_list_cache = {}
     iot_main._iot_summary_cache = {}
+    iot_main._iot_daily_summary_cache = {}
 
 
 async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:

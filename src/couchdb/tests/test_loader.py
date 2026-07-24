@@ -81,12 +81,16 @@ def test_iot_summary_doc_materializes_full_stream_metadata() -> None:
         ]
     )
 
-    assert len(summaries) == 1
-    summary = summaries[0]
+    assert len(summaries) == 2
+    summaries_by_id = {summary["_id"]: summary for summary in summaries}
+    summary = summaries_by_id["iot_summary:Pump-1"]
+    daily = summaries_by_id["iot_summary_day:Pump-1:2024-01-01"]
+
     assert summary["_id"] == "iot_summary:Pump-1"
     assert summary["doctype"] == "iot_asset_summary"
     assert summary["summary_asset_id"] == "Pump-1"
     assert "asset_id" not in summary
+    assert "daily" not in summary
     assert summary["timestamped_records"] == 3
     assert summary["start_time"] == "2024-01-01T00:00:00"
     assert summary["end_time"] == "2024-01-01T00:02:00"
@@ -113,6 +117,14 @@ def test_iot_summary_doc_materializes_full_stream_metadata() -> None:
         "first_timestamp": "2024-01-01T00:00:00",
         "last_timestamp": "2024-01-01T00:02:00",
     }
+    assert daily["doctype"] == "iot_asset_daily_summary"
+    assert daily["summary_asset_id"] == "Pump-1"
+    assert daily["day"] == "2024-01-01"
+    assert daily["timestamped_records"] == 3
+    assert daily["start_time"] == "2024-01-01T00:00:00"
+    assert daily["end_time"] == "2024-01-01T00:02:00"
+    assert daily["sensors"] == ["Pressure", "Temp"]
+    assert daily["stats"]["Pressure"]["mean"] == 6.0
 
 
 def test_iot_load_appends_summary_doc_but_returns_source_count(monkeypatch) -> None:
@@ -147,4 +159,5 @@ def test_iot_load_appends_summary_doc_but_returns_source_count(monkeypatch) -> N
     assert [doc["_id"] for doc in inserted["docs"]] == [
         "iot:Pump-1:2024-01-01T00:00:00",
         "iot_summary:Pump-1",
+        "iot_summary_day:Pump-1:2024-01-01",
     ]

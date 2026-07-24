@@ -109,12 +109,15 @@ RESERVED_FIELDS = {"_id", "_rev", "asset_id", "timestamp", "dataset", "type", "d
 IOT_DESIGN_DOC = "iot"
 IOT_DOC_ID_PREFIX = "iot:"
 IOT_SUMMARY_ID_PREFIX = "iot_summary:"
+IOT_DAILY_SUMMARY_ID_PREFIX = "iot_summary_day:"
 IOT_SUMMARY_DOCTYPE = "iot_asset_summary"
+IOT_DAILY_SUMMARY_DOCTYPE = "iot_asset_daily_summary"
 
 
 _registry_sites_cache: Optional[List[str]] = None
 _sensor_list_cache: Dict[str, List[str]] = {}
 _iot_summary_cache: Dict[str, Dict[str, Any]] = {}
+_iot_daily_summary_cache: Dict[str, List[Dict[str, Any]]] = {}
 _VIEW_UNAVAILABLE = object()
 
 
@@ -249,6 +252,160 @@ def _sensor_stats_from_summary(
     ]
 
 
+def _empty_summary_stat_accumulator() -> Dict[str, Any]:
+    return {
+        "count": 0,
+        "null_count": 0,
+        "min": None,
+        "max": None,
+        "sum": 0.0,
+        "sumsq": 0.0,
+        "first_timestamp": None,
+        "last_timestamp": None,
+        "_first_dt": None,
+        "_last_dt": None,
+    }
+
+
+def _merge_summary_stat(
+    accumulator: Dict[str, Any],
+    stat: Dict[str, Any],
+) -> None:
+    count = int(stat.get("count") or 0)
+    null_count = int(stat.get("null_count") or 0)
+    accumulator["null_count"] += null_count
+    if count == 0:
+        return
+
+    mean = stat.get("mean")
+    stddev = stat.get("stddev") or 0.0
+    if mean is None:
+        return
+    mean = float(mean)
+    stddev = float(stddev)
+    accumulator["count"] += count
+    accumulator["sum"] += mean * count
+    accumulator["sumsq"] += ((stddev * stddev) + (mean * mean)) * count
+
+    minimum = stat.get("min")
+    maximum = stat.get("max")
+    accumulator["min"] = (
+        minimum
+        if accumulator["min"] is None
+        else min(accumulator["min"], minimum)
+    )
+    accumulator["max"] = (
+        maximum
+        if accumulator["max"] is None
+        else max(accumulator["max"], maximum)
+    )
+
+    first_timestamp = stat.get("first_timestamp")
+    first_dt = _parse_iso_timestamp(first_timestamp)
+    if first_dt is not None and (
+        accumulator["_first_dt"] is None or first_dt < accumulator["_first_dt"]
+    ):
+        accumulator["_first_dt"] = first_dt
+        accumulator["first_timestamp"] = first_timestamp
+
+    last_timestamp = stat.get("last_timestamp")
+    last_dt = _parse_iso_timestamp(last_timestamp)
+    if last_dt is not None and (
+        accumulator["_last_dt"] is None or last_dt > accumulator["_last_dt"]
+    ):
+        accumulator["_last_dt"] = last_dt
+        accumulator["last_timestamp"] = last_timestamp
+
+
+def _finalise_summary_stat_accumulator(
+    sensor: str,
+    accumulator: Dict[str, Any],
+) -> Dict[str, Any]:
+    count = int(accumulator["count"])
+    mean = None
+    stddev = None
+    if count:
+        mean = accumulator["sum"] / count
+        variance = (accumulator["sumsq"] / count) - (mean * mean)
+        if math.isfinite(variance):
+            stddev = math.sqrt(max(variance, 0.0))
+    return {
+        "sensor": sensor,
+        "count": count,
+        "null_count": int(accumulator["null_count"]),
+        "min": accumulator["min"] if count else None,
+        "max": accumulator["max"] if count else None,
+        "mean": mean,
+        "stddev": stddev,
+        "first_timestamp": accumulator["first_timestamp"],
+        "last_timestamp": accumulator["last_timestamp"],
+    }
+
+
+def _sensor_stats_from_daily_summary(
+    asset_id: str,
+    sensor: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> Optional[tuple[int, List[Dict[str, Any]]]]:
+    daily_summaries = _get_iot_daily_summaries(asset_id)
+    if daily_summaries is None or not daily_summaries:
+        return None
+
+    records_in_window = 0
+    accumulators: Dict[str, Dict[str, Any]] = {}
+    for bucket in daily_summaries:
+        if not isinstance(bucket, dict):
+            return None
+        bucket_start = _parse_iso_timestamp(bucket.get("start_time"))
+        bucket_end = _parse_iso_timestamp(bucket.get("end_time"))
+        if bucket_start is None or bucket_end is None:
+            return None
+
+        try:
+            if start_dt is not None and bucket_end < start_dt:
+                continue
+            if end_dt is not None and bucket_start >= end_dt:
+                continue
+            fully_contained = (
+                (start_dt is None or bucket_start >= start_dt)
+                and (end_dt is None or bucket_end < end_dt)
+            )
+        except TypeError:
+            return None
+        if not fully_contained:
+            return None
+
+        records_in_window += int(bucket.get("timestamped_records") or 0)
+        bucket_stats = bucket.get("stats") or {}
+        if sensor is not None:
+            stat = bucket_stats.get(sensor)
+            if isinstance(stat, dict):
+                _merge_summary_stat(
+                    accumulators.setdefault(
+                        sensor, _empty_summary_stat_accumulator()
+                    ),
+                    stat,
+                )
+            continue
+
+        for sensor_name, stat in sorted(bucket_stats.items()):
+            if not isinstance(stat, dict):
+                continue
+            _merge_summary_stat(
+                accumulators.setdefault(
+                    str(sensor_name), _empty_summary_stat_accumulator()
+                ),
+                stat,
+            )
+
+    stats = [
+        _finalise_summary_stat_accumulator(sensor_name, accumulator)
+        for sensor_name, accumulator in sorted(accumulators.items())
+    ]
+    return records_in_window, stats
+
+
 def _latest_reading_result_from_values(
     site_name: str,
     asset_id: str,
@@ -320,6 +477,45 @@ def _all_docs_rows(database: Any, **params: Any) -> Optional[List[Any]]:
 
 def _prefix_upper_bound(prefix: str) -> str:
     return prefix[:-1] + chr(ord(prefix[-1]) + 1)
+
+
+def _get_iot_daily_summaries(asset_id: str) -> Optional[List[Dict[str, Any]]]:
+    if asset_id in _iot_daily_summary_cache:
+        return _iot_daily_summary_cache[asset_id]
+    if iot_db is None:
+        return None
+    prefix = f"{IOT_DAILY_SUMMARY_ID_PREFIX}{asset_id}:"
+    try:
+        rows = _all_docs_rows(
+            iot_db,
+            startkey=prefix,
+            endkey=_prefix_upper_bound(prefix),
+            include_docs=True,
+            inclusive_end=False,
+            limit=10000,
+        )
+    except Exception as exc:
+        logger.debug(
+            "IoT daily summary lookup failed for asset_id %s: %s",
+            asset_id,
+            exc,
+        )
+        return None
+    if rows is None:
+        return None
+    summaries: List[Dict[str, Any]] = []
+    for row in rows:
+        doc = _row_doc(row)
+        if not isinstance(doc, dict):
+            continue
+        if (
+            doc.get("doctype") == IOT_DAILY_SUMMARY_DOCTYPE
+            and doc.get("summary_asset_id") == asset_id
+        ):
+            summaries.append(dict(doc))
+    summaries.sort(key=lambda doc: doc.get("day") or "")
+    _iot_daily_summary_cache[asset_id] = summaries
+    return summaries
 
 
 def _iot_id_bounds(
@@ -1967,13 +2163,41 @@ def sensor_stats(
     start_dt = _parse_iso_timestamp(start) if start is not None else None
     end_dt = _parse_iso_timestamp(end) if end is not None else None
     try:
-        if start is None and end is None:
-            summary = _get_iot_summary(asset_id)
-            if summary is not None:
-                summary_error = _summary_timestamp_error(summary)
-                if summary_error:
-                    return ErrorResult(error=summary_error)
+        summary = _get_iot_summary(asset_id)
+        if summary is not None:
+            summary_error = _summary_timestamp_error(summary)
+            if summary_error:
+                return ErrorResult(error=summary_error)
+            if start is None and end is None:
                 summary_stats = _sensor_stats_from_summary(summary, sensor)
+                if not summary_stats:
+                    if sensor is None:
+                        return ErrorResult(
+                            error=f"unknown asset_id {asset_id} or no sensors found"
+                        )
+                    return ErrorResult(
+                        error=f"no records for asset_id {asset_id}"
+                        + (f", sensor {sensor}" if sensor else "")
+                    )
+                return SensorStatsResult(
+                    site_name=site_name,
+                    asset_id=asset_id,
+                    stats=summary_stats,
+                    message=(
+                        f"numeric stats for {len(summary_stats)} sensor(s) "
+                        f"on asset_id {asset_id}."
+                    ),
+                )
+            daily_stats = _sensor_stats_from_daily_summary(
+                asset_id, sensor, start_dt, end_dt
+            )
+            if daily_stats is not None:
+                records_in_window, summary_stats = daily_stats
+                if records_in_window == 0:
+                    return ErrorResult(
+                        error=f"no records for asset_id {asset_id}"
+                        + (f", sensor {sensor}" if sensor else "")
+                    )
                 if not summary_stats:
                     if sensor is None:
                         return ErrorResult(
