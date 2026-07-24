@@ -107,10 +107,7 @@ def mock_relevancy_chain():
 
     def matrix(asset_class, failure_modes, sensors):
         return {
-            (failure_mode, sensor): {
-                "answer": "Yes",
-                "reason": "Relevant sensor",
-            }
+            (failure_mode, sensor): {"answer": "Yes"}
             for failure_mode in failure_modes
             for sensor in sensors
         }
