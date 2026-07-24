@@ -207,14 +207,15 @@ models such as `MiniMax-M3` must be registered explicitly.
 
 ### FMSR tool model
 
-FMSR tools take `asset_class`. `--model-id` controls OpenCode; LLM-backed FMSR
-tools use `FMSR_MODEL_ID`.
+FMSR tools take `asset_class`. `--model-id` controls OpenCode; LLM-backed
+failure-mode generation uses `FMSR_MODEL_ID`. Failure-mode/sensor mapping is not
+registered as an FMSR tool.
 
 ```bash
 MODEL_ID=tokenrouter/MiniMax-M3
 FMSR_MODEL_ID="$MODEL_ID" \
 uv run opencode-agent --model-id "$MODEL_ID" --show-trajectory \
-  "Use generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor']."
+  "Use generate_failure_modes for asset_class pump with max_modes 3."
 ```
 
 ---
@@ -421,12 +422,12 @@ uv run opencode-agent --show-trajectory \
   --model-id tokenrouter/MiniMax-M3 \
   "Use add_failure_modes for asset_class pump with failure_modes ['bearing wear'], exhaustive false, and source 'manual smoke test'. Return added, total, source, and message."
 
-# 8. FMSR mapping smoke test
+# 8. FMSR generation smoke test
 MODEL_ID=tokenrouter/MiniMax-M3
 FMSR_MODEL_ID="$MODEL_ID" \
 uv run opencode-agent --show-trajectory \
   --model-id "$MODEL_ID" \
-  "Use generate_failure_mode_sensor_mapping for asset_class pump with failure_modes ['seal leakage'] and sensors ['Pressure sensor', 'Vibration sensor']."
+  "Use generate_failure_modes for asset_class pump with max_modes 3."
 
 # 9. benchmark-suite dry run
 uv run python -m benchmark.scenario_suite_runner \

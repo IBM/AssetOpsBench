@@ -102,20 +102,6 @@ def broken_fm_db():
 
 
 @pytest.fixture
-def mock_relevancy_chain():
-    """Patch _call_relevancy so it always returns 'Yes' without calling the LLM."""
-    mock = MagicMock(
-        return_value={
-            "answer": "Yes",
-            "reason": "Relevant sensor",
-        }
-    )
-    with patch("servers.fmsr.main._call_relevancy", mock):
-        with patch("servers.fmsr.main._llm_available", True):
-            yield mock
-
-
-@pytest.fixture
 def mock_failure_mode_generation():
     """Patch failure-mode generation so tests do not call the LLM."""
     mock = MagicMock(
