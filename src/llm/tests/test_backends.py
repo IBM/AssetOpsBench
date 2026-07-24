@@ -35,6 +35,31 @@ def _install_fake_openai(monkeypatch, captured: dict):
     monkeypatch.setitem(sys.modules, "openai", fake)
 
 
+def _install_temperature_rejecting_openai(monkeypatch, calls: list[dict]):
+    """Install a stub ``openai`` module that rejects the temperature kwarg."""
+
+    def create(**kwargs):
+        calls.append(dict(kwargs))
+        if "temperature" in kwargs:
+            raise RuntimeError("`temperature` is deprecated for this model.")
+        return types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(message=types.SimpleNamespace(content="hi"))
+            ],
+            usage=types.SimpleNamespace(prompt_tokens=3, completion_tokens=2),
+        )
+
+    class OpenAI:
+        def __init__(self, base_url=None, api_key=None):
+            self.chat = types.SimpleNamespace(
+                completions=types.SimpleNamespace(create=create)
+            )
+
+    fake = types.ModuleType("openai")
+    fake.OpenAI = OpenAI
+    monkeypatch.setitem(sys.modules, "openai", fake)
+
+
 def test_is_openai_compat():
     assert is_openai_compat("tokenrouter/MiniMax-M3")
     assert not is_openai_compat("litellm_proxy/aws/claude-opus-4-6")
@@ -63,8 +88,27 @@ def test_tokenrouter_strips_prefix_and_routes(monkeypatch):
     assert captured["model"] == "MiniMax-M3"  # bare name, prefix stripped
     assert captured["base_url"] == "https://api.tokenrouter.com/v1"
     assert captured["api_key"] == "tr-key"
+    assert captured["temperature"] == 0.0
     assert result.text == "hi"
     assert (result.input_tokens, result.output_tokens) == (3, 2)
+
+
+def test_tokenrouter_retries_without_deprecated_temperature(monkeypatch):
+    calls: list[dict] = []
+    _install_temperature_rejecting_openai(monkeypatch, calls)
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://api.tokenrouter.com/v1")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "tr-key")
+
+    backend = make_backend("tokenrouter/anthropic/claude-opus-4.8")
+
+    result = backend.generate_with_usage("hello")
+    second_result = backend.generate_with_usage("hello again")
+
+    assert result.text == "hi"
+    assert second_result.text == "hi"
+    assert calls[0]["temperature"] == 0.0
+    assert "temperature" not in calls[1]
+    assert "temperature" not in calls[2]
 
 
 def test_model_id_property_keeps_full_string():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -99,10 +100,26 @@ def _is_not_found_error(exc: Exception) -> bool:
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
 
-_RELEVANCY_PROMPT = (
-    "For asset class {asset_class}, if the failure {failure_mode} occurs, "
-    "can sensor {sensor} help monitor or detect the failure for assets of class {asset_class}?\n"
-    "Provide the answer in the first line and reason in the second line."
+_RELEVANCY_BY_FAILURE_MODE_PROMPT = (
+    "Asset class: {asset_class}\n"
+    "Failure mode: {failure_mode}\n\n"
+    "For this failure mode, evaluate whether each listed sensor can help monitor "
+    "or detect the failure for assets of this class.\n\n"
+    "Sensors:\n{sensors}\n\n"
+    "Return only valid JSON as an array. Return one object for every sensor. "
+    'Each object must have keys "sensor", "answer", and "reason". '
+    'The "answer" value must be one of "Yes", "No", or "Unknown".'
+)
+
+_RELEVANCY_BY_SENSOR_PROMPT = (
+    "Asset class: {asset_class}\n"
+    "Sensor: {sensor}\n\n"
+    "For this sensor, evaluate whether it can help monitor or detect each listed "
+    "failure mode for assets of this class.\n\n"
+    "Failure modes:\n{failure_modes}\n\n"
+    "Return only valid JSON as an array. Return one object for every failure mode. "
+    'Each object must have keys "failure_mode", "answer", and "reason". '
+    'The "answer" value must be one of "Yes", "No", or "Unknown".'
 )
 
 _FAILURE_MODE_PROMPT = (
@@ -140,6 +157,98 @@ def _parse_relevancy(text: str) -> dict:
         answer = "Unknown"
     reason = lines[1] if len(lines) >= 2 else "Unknown"
     return {"answer": answer, "reason": reason}
+
+
+def _normalize_relevancy_answer(answer: object) -> str:
+    if isinstance(answer, bool):
+        return "Yes" if answer else "No"
+    normalized = str(answer or "").strip().lower()
+    if normalized.startswith("yes"):
+        return "Yes"
+    if normalized.startswith("no"):
+        return "No"
+    return "Unknown"
+
+
+def _normalize_mapping_label(label: object) -> str:
+    return re.sub(r"\s+", " ", str(label or "")).strip().lower()
+
+
+def _load_json_payload(text: str) -> object:
+    content = text.strip()
+    fenced = re.search(
+        r"```(?:json)?\s*(.*?)\s*```", content, flags=re.DOTALL | re.I
+    )
+    if fenced:
+        content = fenced.group(1).strip()
+    else:
+        starts = [
+            idx for idx in (content.find("["), content.find("{")) if idx != -1
+        ]
+        end = max(content.rfind("]"), content.rfind("}"))
+        if starts and end > min(starts):
+            content = content[min(starts) : end + 1]
+    return json.loads(content)
+
+
+def _extract_batch_records(payload: object, label_key: str) -> List[dict]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    if isinstance(payload.get("results"), list):
+        return [item for item in payload["results"] if isinstance(item, dict)]
+    if label_key in payload:
+        return [payload]
+
+    records: List[dict] = []
+    for label, value in payload.items():
+        if isinstance(value, dict):
+            records.append({label_key: label, **value})
+        else:
+            records.append({label_key: label, "answer": value})
+    return records
+
+
+def _parse_relevancy_batch(
+    text: str, label_key: str, expected_labels: List[str]
+) -> Dict[str, dict]:
+    try:
+        payload = _load_json_payload(text)
+    except json.JSONDecodeError:
+        if len(expected_labels) == 1:
+            return {expected_labels[0]: _parse_relevancy(text)}
+        raise
+
+    records = _extract_batch_records(payload, label_key)
+    if not records:
+        raise ValueError("LLM response did not contain relevancy records")
+
+    expected_by_label = {
+        _normalize_mapping_label(label): label for label in expected_labels
+    }
+    results = {
+        label: {
+            "answer": "Unknown",
+            "reason": "LLM response omitted this item.",
+        }
+        for label in expected_labels
+    }
+    for record in records:
+        expected_label = expected_by_label.get(
+            _normalize_mapping_label(record.get(label_key))
+        )
+        if expected_label is None:
+            continue
+        reason = record.get("reason") or record.get("relevancy_reason") or "Unknown"
+        answer = record.get("answer")
+        if answer is None:
+            answer = record.get("relevancy_answer")
+        results[expected_label] = {
+            "answer": _normalize_relevancy_answer(answer),
+            "reason": str(reason).strip() or "Unknown",
+        }
+    return results
 
 
 # ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
@@ -184,14 +293,37 @@ except Exception as _e:  # noqa: BLE001
     _llm_available = False
 
 
-def _call_relevancy(asset_class: str, failure_mode: str, sensor: str) -> dict:
-    prompt = _RELEVANCY_PROMPT.format(
-        asset_class=asset_class, failure_mode=failure_mode, sensor=sensor
+def _call_relevancy_batch_by_failure_mode(
+    asset_class: str, failure_mode: str, sensors: List[str]
+) -> Dict[str, dict]:
+    prompt = _RELEVANCY_BY_FAILURE_MODE_PROMPT.format(
+        asset_class=asset_class,
+        failure_mode=failure_mode,
+        sensors="\n".join(f"- {sensor}" for sensor in sensors),
     )
     last_exc: Exception | None = None
     for _ in range(_MAX_RETRIES):
         try:
-            return _parse_relevancy(_llm.generate(prompt))
+            return _parse_relevancy_batch(_llm.generate(prompt), "sensor", sensors)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+    raise last_exc
+
+
+def _call_relevancy_batch_by_sensor(
+    asset_class: str, sensor: str, failure_modes: List[str]
+) -> Dict[str, dict]:
+    prompt = _RELEVANCY_BY_SENSOR_PROMPT.format(
+        asset_class=asset_class,
+        sensor=sensor,
+        failure_modes="\n".join(f"- {failure_mode}" for failure_mode in failure_modes),
+    )
+    last_exc: Exception | None = None
+    for _ in range(_MAX_RETRIES):
+        try:
+            return _parse_relevancy_batch(
+                _llm.generate(prompt), "failure_mode", failure_modes
+            )
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
     raise last_exc
@@ -495,9 +627,12 @@ def generate_failure_mode_sensor_mapping(
     failure_modes: List[str],
     sensors: List[str],
 ) -> Union[FailureModeSensorMappingResult, ErrorResult]:
-    """GENERATE, for each (failure_mode, sensor) pair, whether the sensor can detect the failure
-    (one LLM call per pair). Returns a bidirectional mapping (fm→sensors, sensor→fms) plus per-pair
-    relevancy details. Keep both lists small (e.g. ≤5 failure modes, ≤10 sensors) to bound runtime.
+    """GENERATE whether each sensor can detect each failure mode.
+
+    Uses batched LLM calls along the smaller dimension: one call per failure
+    mode when the failure-mode list is no larger than the sensor list,
+    otherwise one call per sensor. Returns a bidirectional mapping
+    (fm→sensors, sensor→fms) plus per-pair relevancy details.
 
     Args:
         asset_class: Asset class to reason about, such as "pump". Case, whitespace,
@@ -519,29 +654,57 @@ def generate_failure_mode_sensor_mapping(
     fm2sensor: Dict[str, List[str]] = {}
     sensor2fm: Dict[str, List[str]] = {}
     try:
-        pairs = [(s, fm) for s in sensors for fm in failure_modes]
-        with ThreadPoolExecutor() as executor:
-            futures = {
-                executor.submit(_call_relevancy, key, fm, s): (s, fm)
-                for s, fm in pairs
-            }
-            for future in as_completed(futures):
-                s, fm = futures[future]
-                gen = future.result()
+        pair_relevancy: Dict[tuple[str, str], dict] = {}
+        batch_by_failure_mode = len(failure_modes) <= len(sensors)
+
+        if batch_by_failure_mode:
+            with ThreadPoolExecutor() as executor:
+                futures = {
+                    executor.submit(
+                        _call_relevancy_batch_by_failure_mode, key, fm, sensors
+                    ): fm
+                    for fm in failure_modes
+                }
+                for future in as_completed(futures):
+                    fm = futures[future]
+                    for sensor, gen in future.result().items():
+                        pair_relevancy[(fm, sensor)] = gen
+        else:
+            with ThreadPoolExecutor() as executor:
+                futures = {
+                    executor.submit(
+                        _call_relevancy_batch_by_sensor, key, sensor, failure_modes
+                    ): sensor
+                    for sensor in sensors
+                }
+                for future in as_completed(futures):
+                    sensor = futures[future]
+                    for fm, gen in future.result().items():
+                        pair_relevancy[(fm, sensor)] = gen
+
+        for sensor in sensors:
+            for fm in failure_modes:
+                gen = pair_relevancy.get(
+                    (fm, sensor),
+                    {
+                        "answer": "Unknown",
+                        "reason": "LLM response omitted this pair.",
+                    },
+                )
                 full_relevancy.append(
                     RelevancyEntry(
                         asset_class=key,
                         failure_mode=fm,
-                        sensor=s,
+                        sensor=sensor,
                         relevancy_answer=gen["answer"],
                         relevancy_reason=gen["reason"],
                     )
                 )
                 if "yes" in gen["answer"].lower():
-                    fm2sensor.setdefault(fm, []).append(s)
-                    sensor2fm.setdefault(s, []).append(fm)
+                    fm2sensor.setdefault(fm, []).append(sensor)
+                    sensor2fm.setdefault(sensor, []).append(fm)
     except Exception as exc:  # noqa: BLE001
-        logger.error("_call_relevancy failed: %s", exc)
+        logger.error("relevancy batch generation failed: %s", exc)
         return ErrorResult(error=str(exc))
 
     return FailureModeSensorMappingResult(

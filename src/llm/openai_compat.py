@@ -20,6 +20,15 @@ from .routers import is_openai_compat, resolve_model, resolve_router_creds
 __all__ = ["OpenAICompatBackend", "is_openai_compat"]
 
 
+def _is_temperature_rejected_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "temperature" in message and (
+        "deprecated" in message
+        or "unsupported" in message
+        or "not supported" in message
+    )
+
+
 class OpenAICompatBackend(LLMBackend):
     """LLM backend using the native ``openai`` SDK against a compatible router.
 
@@ -32,6 +41,7 @@ class OpenAICompatBackend(LLMBackend):
             raise ValueError(f"unsupported OpenAI-compatible model id: {model_id!r}")
         self._model_id = model_id
         self._model_name = resolve_model(model_id)
+        self._temperature_supported = True
 
     def generate(self, prompt: str, temperature: float = 0.0) -> str:
         return self.generate_with_usage(prompt, temperature).text
@@ -41,12 +51,25 @@ class OpenAICompatBackend(LLMBackend):
 
         creds = resolve_router_creds(self._model_id)  # strict: clear error if unset
         client = OpenAI(base_url=creds.base_url, api_key=creds.api_key)
-        response = client.chat.completions.create(
-            model=self._model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=2048,
-        )
+        kwargs = {
+            "model": self._model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 2048,
+        }
+        if self._temperature_supported:
+            kwargs["temperature"] = temperature
+
+        try:
+            response = client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            if not self._temperature_supported or not _is_temperature_rejected_error(
+                exc
+            ):
+                raise
+            self._temperature_supported = False
+            kwargs.pop("temperature", None)
+            response = client.chat.completions.create(**kwargs)
+
         usage = getattr(response, "usage", None)
         return LLMResult(
             text=response.choices[0].message.content,
