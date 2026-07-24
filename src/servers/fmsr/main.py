@@ -106,7 +106,7 @@ _RELEVANCY_MATRIX_PROMPT = (
     "Sensors:\n{sensors}\n\n"
     "Return only valid JSON as an array with exactly {pair_count} objects, one "
     "object for every failure-mode/sensor pair. Use the exact input strings. "
-    'Each object must have keys "failure_mode", "sensor", "answer", and "reason". '
+    'Each object must have keys "failure_mode", "sensor", and "answer". '
     'The "answer" value must be one of "Yes", "No", or "Unknown".'
 )
 
@@ -143,8 +143,7 @@ def _parse_relevancy(text: str) -> dict:
         answer = "No"
     else:
         answer = "Unknown"
-    reason = lines[1] if len(lines) >= 2 else "Unknown"
-    return {"answer": answer, "reason": reason}
+    return {"answer": answer}
 
 
 def _normalize_relevancy_answer(answer: object) -> str:
@@ -247,10 +246,7 @@ def _parse_relevancy_matrix(
         _normalize_mapping_label(sensor): sensor for sensor in sensors
     }
     results = {
-        (failure_mode, sensor): {
-            "answer": "Unknown",
-            "reason": "LLM response omitted this pair.",
-        }
+        (failure_mode, sensor): {"answer": "Unknown"}
         for sensor in sensors
         for failure_mode in failure_modes
     }
@@ -265,17 +261,10 @@ def _parse_relevancy_matrix(
         )
         if failure_mode is None or sensor is None:
             continue
-        reason = (
-            _record_value(record, "reason", "relevancy_reason", "relevancyReason")
-            or "Unknown"
-        )
         answer = _record_value(record, "answer", "relevancy_answer", "relevancyAnswer")
         if answer is None:
             answer = _record_value(record, "detects", "relevant")
-        results[(failure_mode, sensor)] = {
-            "answer": _normalize_relevancy_answer(answer),
-            "reason": str(reason).strip() or "Unknown",
-        }
+        results[(failure_mode, sensor)] = {"answer": _normalize_relevancy_answer(answer)}
     return results
 
 
@@ -573,20 +562,8 @@ def _deterministic_relevancy(
     sensor_rules = class_rules.get(_normalize_mapping_label(failure_mode))
     if sensor_rules is not None:
         if any(_sensor_matches(sensor, expected) for expected in sensor_rules):
-            return {
-                "answer": "Yes",
-                "reason": (
-                    "Matched a curated ISO 13379-1 / 17359 sensor rule for "
-                    f"{asset_class} failure mode '{failure_mode}'."
-                ),
-            }
-        return {
-            "answer": "No",
-            "reason": (
-                "No curated ISO 13379-1 / 17359 sensor rule matched this "
-                "failure-mode/sensor pair."
-            ),
-        }
+            return {"answer": "Yes"}
+        return {"answer": "No"}
 
     fm_key = _normalize_mapping_label(failure_mode)
     sensor_key = _normalize_mapping_label(sensor)
@@ -616,14 +593,8 @@ def _deterministic_relevancy(
         if any(token in fm_key for token in failure_tokens) and any(
             token in sensor_key for token in sensor_tokens
         ):
-            return {
-                "answer": "Yes",
-                "reason": "Matched a generic condition-monitoring sensor rule.",
-            }
-    return {
-        "answer": "Unknown",
-        "reason": "No deterministic mapping rule is available for this pair.",
-    }
+            return {"answer": "Yes"}
+    return {"answer": "Unknown"}
 
 
 def _deterministic_relevancy_matrix(
@@ -697,7 +668,6 @@ class RelevancyEntry(BaseModel):
     failure_mode: str
     sensor: str
     relevancy_answer: str
-    relevancy_reason: str
 
 
 class MappingMetadata(BaseModel):
@@ -994,21 +964,18 @@ def generate_failure_mode_sensor_mapping(
             for fm in failure_modes:
                 gen = pair_relevancy.get(
                     (fm, sensor),
-                    {
-                        "answer": "Unknown",
-                        "reason": "LLM response omitted this pair.",
-                    },
+                    {"answer": "Unknown"},
                 )
+                answer = gen.get("answer", "Unknown")
                 full_relevancy.append(
                     RelevancyEntry(
                         asset_class=key,
                         failure_mode=fm,
                         sensor=sensor,
-                        relevancy_answer=gen["answer"],
-                        relevancy_reason=gen["reason"],
+                        relevancy_answer=answer,
                     )
                 )
-                if "yes" in gen["answer"].lower():
+                if "yes" in answer.lower():
                     fm2sensor.setdefault(fm, []).append(sensor)
                     sensor2fm.setdefault(sensor, []).append(fm)
     except Exception as exc:  # noqa: BLE001

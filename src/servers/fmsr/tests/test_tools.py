@@ -307,11 +307,9 @@ def test_parse_relevancy_matrix_fills_omitted_pairs():
 
     assert data[("Compressor Overheating", "Chiller 6 Power Input")] == {
         "answer": "Yes",
-        "reason": "Power draw can rise during compressor overheating.",
     }
     assert data[("Compressor Overheating", "Chiller 6 Supply Temperature")] == {
         "answer": "Unknown",
-        "reason": "LLM response omitted this pair.",
     }
 
 
@@ -333,6 +331,7 @@ class TestGenerateFailureModeSensorMapping:
         assert "full_relevancy" in data
         assert data["metadata"]["asset_class"] == "chiller"
         assert data["full_relevancy"][0]["asset_class"] == "chiller"
+        assert "relevancy_reason" not in data["full_relevancy"][0]
 
     @pytest.mark.anyio
     async def test_full_relevancy_count(self, mock_relevancy_chain):
