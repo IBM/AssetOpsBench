@@ -32,6 +32,7 @@ _log = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MODEL = "opencode/gpt-5.1-codex"
 _DEFAULT_AGENT_NAME = "assetops"
+_DEFAULT_MCP_TIMEOUT_MS = 60000
 _LOG_STREAM_TAIL_CHARS = 1000
 _ERROR_STREAM_TAIL_CHARS = 4000
 
@@ -123,7 +124,7 @@ def _build_mcp_config(
     server_paths: dict[str, Path | str],
     *,
     cwd: Path = _REPO_ROOT,
-    timeout_ms: int = 30000,
+    timeout_ms: int = _DEFAULT_MCP_TIMEOUT_MS,
 ) -> dict[str, dict[str, Any]]:
     """Convert AssetOpsBench MCP server specs into OpenCode local MCP config."""
     mcp: dict[str, dict[str, Any]] = {}

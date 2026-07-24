@@ -33,7 +33,7 @@ def test_build_mcp_config_entrypoint():
         "command": ["uv", "run", "iot-mcp-server"],
         "cwd": "/repo",
         "enabled": True,
-        "timeout": 30000,
+        "timeout": 60000,
     }
 
 
