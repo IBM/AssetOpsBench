@@ -226,7 +226,8 @@ mcp = FastMCP(
         "Failure-mode catalog tools for industrial asset classes. Exposes stored "
         "failure-mode lookup, LLM failure-mode generation, and failure-mode "
         "persistence. Failure-mode/sensor mapping is intentionally disabled and "
-        "is not available as an FMSR tool."
+        "is not available as an FMSR tool. Agent should use LLM domain knowledge "
+        "to generate the mapping by themselves."
     ),
 )
 
