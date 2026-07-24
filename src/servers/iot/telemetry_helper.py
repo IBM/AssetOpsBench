@@ -105,7 +105,7 @@ def _iter_records(
     page_size: int = 1000,
 ) -> Iterator[Dict[str, Any]]:
     """Yield records matching a selector across paged query results."""
-    if not database:
+    if database is None:
         return
     if sort is None:
         sort = [{"asset_id": "asc"}, {"timestamp": "asc"}]
