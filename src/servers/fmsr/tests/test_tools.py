@@ -285,104 +285,11 @@ class TestAddFailureModes:
         }
 
 
-_FAILURE_MODES = ["Compressor Overheating", "Condenser Water side fouling"]
-_SENSORS = ["Chiller 6 Power Input", "Chiller 6 Supply Temperature"]
-
-
-class TestGenerateFailureModeSensorMapping:
+class TestToolRegistration:
     @pytest.mark.anyio
-    async def test_returns_expected_keys(self, mock_relevancy_chain):
-        data = await call_tool(
-            mcp,
-            "generate_failure_mode_sensor_mapping",
-            {
-                "asset_class": "chiller",
-                "failure_modes": _FAILURE_MODES,
-                "sensors": _SENSORS,
-            },
-        )
+    async def test_mapping_tool_is_not_registered(self):
+        tools = await mcp.list_tools()
 
-        assert "fm2sensor" in data
-        assert "sensor2fm" in data
-        assert "full_relevancy" in data
-        assert data["metadata"]["asset_class"] == "chiller"
-        assert data["full_relevancy"][0]["asset_class"] == "chiller"
-
-    @pytest.mark.anyio
-    async def test_full_relevancy_count(self, mock_relevancy_chain):
-        data = await call_tool(
-            mcp,
-            "generate_failure_mode_sensor_mapping",
-            {
-                "asset_class": "Chiller",
-                "failure_modes": _FAILURE_MODES,
-                "sensors": _SENSORS,
-            },
-        )
-
-        assert len(data["full_relevancy"]) == 4
-
-    @pytest.mark.anyio
-    async def test_empty_failure_modes_returns_error(self, mock_relevancy_chain):
-        data = await call_tool(
-            mcp,
-            "generate_failure_mode_sensor_mapping",
-            {"asset_class": "chiller", "failure_modes": [], "sensors": _SENSORS},
-        )
-
-        assert "error" in data
-
-    @pytest.mark.anyio
-    async def test_empty_asset_class_returns_error(self, mock_relevancy_chain):
-        data = await call_tool(
-            mcp,
-            "generate_failure_mode_sensor_mapping",
-            {
-                "asset_class": "",
-                "failure_modes": _FAILURE_MODES,
-                "sensors": _SENSORS,
-            },
-        )
-
-        assert data == {"error": "asset_class is required"}
-
-    @pytest.mark.anyio
-    async def test_empty_sensors_returns_error(self, mock_relevancy_chain):
-        data = await call_tool(
-            mcp,
-            "generate_failure_mode_sensor_mapping",
-            {"asset_class": "chiller", "failure_modes": _FAILURE_MODES, "sensors": []},
-        )
-
-        assert "error" in data
-
-    @pytest.mark.anyio
-    async def test_llm_unavailable_returns_error(self, no_llm):
-        data = await call_tool(
-            mcp,
-            "generate_failure_mode_sensor_mapping",
-            {
-                "asset_class": "chiller",
-                "failure_modes": _FAILURE_MODES,
-                "sensors": _SENSORS,
-            },
-        )
-
-        assert data == {"error": "LLM unavailable"}
-
-    @requires_watsonx
-    @pytest.mark.anyio
-    async def test_integration(self):
-        data = await call_tool(
-            mcp,
-            "generate_failure_mode_sensor_mapping",
-            {
-                "asset_class": "chiller",
-                "failure_modes": ["Compressor Overheating"],
-                "sensors": ["Chiller 6 Power Input"],
-            },
-        )
-
-        assert "full_relevancy" in data
-        assert len(data["full_relevancy"]) == 1
-        assert data["full_relevancy"][0]["relevancy_answer"] in ("Yes", "No", "Unknown")
+        assert "generate_failure_mode_sensor_mapping" not in {
+            tool.name for tool in tools
+        }
