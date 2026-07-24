@@ -276,11 +276,6 @@ _MAX_MAPPING_FAILURE_MODES = 20
 _MAX_MAPPING_SENSORS = 20
 _MAX_MAPPING_PAIRS = 400
 _MODEL_ID = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
-_USE_LLM_MAPPING = os.environ.get("FMSR_USE_LLM_MAPPING", "").lower() in {
-    "1",
-    "true",
-    "yes",
-}
 
 
 def _build_llm():
@@ -334,279 +329,6 @@ def _call_relevancy_matrix(
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
     raise last_exc
-
-
-_CURATED_SENSOR_RULES: Dict[str, Dict[str, List[str]]] = {
-    "aero gas turbine": {
-        "air inlet blockage": [
-            "Air flow",
-            "Compresor pressure/ pressure ratio",
-            "Compressor pressure",
-            "Compressor temperature",
-            "Pressure/ pressure ratio",
-        ],
-        "bearing wear/ damage": [
-            "Vibration",
-            "Oil debris",
-            "Oil leakage/ consumption",
-        ],
-        "burner blocked": [
-            "Fuel pressure/ fuel flow",
-            "Fuel pressure/ Fuel flow",
-            "Exhaust temperature",
-            "Gas generator temperature",
-        ],
-        "combustion chamber holed": [
-            "Exhaust temperature",
-            "Gas generator temperature",
-            "Pressure/ pressure ratio",
-        ],
-        "compressor damaged": [
-            "Compressor temperature",
-            "Compresor pressure/ pressure ratio",
-            "Compressor pressure",
-            "Air flow",
-            "Vibration",
-        ],
-        "compressor fouled": [
-            "Compressor temperature",
-            "Compresor pressure/ pressure ratio",
-            "Compressor pressure",
-            "Air flow",
-        ],
-        "compressor stall": [
-            "Compresor pressure/ pressure ratio",
-            "Compressor pressure",
-            "Air flow",
-            "Compressor temperature",
-            "Vibration",
-        ],
-        "fuel filter blockage": ["Fuel pressure/ fuel flow", "Fuel pressure/ Fuel flow"],
-        "gear defects": ["Vibration", "Oil debris"],
-        "misalignment": ["Vibration"],
-        "power turbine damage": [
-            "Power turbine temperature",
-            "Vibration",
-            "Pressure/ pressure ratio",
-        ],
-        "power turbine dirty": [
-            "Power turbine temperature",
-            "Exhaust temperature",
-            "Pressure/ pressure ratio",
-        ],
-        "seal leakage": ["Oil leakage/ consumption", "Pressure/ pressure ratio"],
-        "unbalance": ["Vibration"],
-    },
-    "industrial gas turbine": {
-        "air inlet blockage": [
-            "Air flow",
-            "Compressor pressure",
-            "Compressor temperature",
-        ],
-        "bearing wear/ damage": ["Vibration", "Oil debris/ contamination", "Oil consumption"],
-        "burner blocked": ["Fuel pressure/ Fuel flow", "Exhaust temperature"],
-        "combustion chamber holed": ["Exhaust temperature", "Output power"],
-        "compressor damaged": [
-            "Compressor temperature",
-            "Compressor pressure",
-            "Air flow",
-            "Vibration",
-            "Compressor efficiency",
-        ],
-        "compressor fouled": [
-            "Compressor temperature",
-            "Compressor pressure",
-            "Air flow",
-            "Compressor efficiency",
-        ],
-        "compressor stall": [
-            "Compressor pressure",
-            "Air flow",
-            "Compressor temperature",
-            "Vibration",
-        ],
-        "fuel filter blockage": ["Fuel pressure/ Fuel flow"],
-        "gear defects": ["Vibration", "Oil debris/ contamination"],
-        "misalignment": ["Vibration"],
-        "power turbine damage": ["Turbine efficiency", "Vibration", "Output power"],
-        "power turbine dirty": ["Turbine efficiency", "Exhaust temperature"],
-        "seal leakage": ["Oil consumption", "Compressor pressure"],
-        "unbalance": ["Vibration"],
-    },
-    "compressor": {
-        "bearing damage": ["Vibration", "Oil debris", "Temperature"],
-        "bearing wear": ["Vibration", "Oil debris", "Temperature", "Coast down time"],
-        "compressor stall": ["Pressure or vacuum", "Power", "Vibration"],
-        "cooling system fault": ["Temperature", "Fluid leakage"],
-        "damaged impeller": ["Vibration", "Pressure or vacuum"],
-        "damaged seals": ["Fluid leakage", "Oil leakage", "Pressure or vacuum"],
-        "eccentric impeller": ["Vibration"],
-        "misalignment": ["Vibration"],
-        "mounting fault": ["Vibration"],
-        "unbalance": ["Vibration"],
-        "valve fault": ["Pressure or vacuum", "Power"],
-    },
-    "reciprocating internal combustion engine": {
-        "air inlet blockage": ["Air flow", "Cylinder pressure", "Engine temperature"],
-        "bearing wear": ["Vibration", "Oil debris", "Oil consumption"],
-        "cooling system fault": ["Engine temperature", "Cooling fluid leak"],
-        "flywheel damage": ["Vibration"],
-        "fuel filter blockage": ["Fuel pressure", "Fuel flow"],
-        "fuel injector fault": [
-            "Fuel pressure",
-            "Fuel flow",
-            "Exhaust temperature",
-            "Cylinder pressure",
-        ],
-        "gear defects": ["Vibration", "Oil debris"],
-        "ignition fault": ["Cylinder pressure", "Exhaust temperature", "Output power"],
-        "misalignment": ["Vibration"],
-        "mounting fault": ["Vibration"],
-        "piston ring fault": ["Cylinder pressure", "Oil consumption", "Exhaust pressure"],
-        "seal leakage": ["Oil consumption", "Cooling fluid leak"],
-        "secondary balance gear fault": ["Vibration"],
-        "unbalance": ["Vibration"],
-    },
-    "power transformer": {
-        "arcing/ electrical discharge": [
-            "Dissolved gas analysis",
-            "Partial discharge",
-            "Ultrasound",
-            "Noise",
-        ],
-        "connection/ bushing faults": [
-            "Bushing capacitance",
-            "Power factor/tanδ",
-            "Temperature",
-            "Partial discharge",
-            "Visual",
-        ],
-        "core looseness": [
-            "Vibration",
-            "Noise",
-            "Frequency Response Analysis (FRA)",
-            "Excitation current",
-        ],
-        "de-energized tap-changer condition/ fault": [
-            "Resistance",
-            "Dielecric frequency response",
-            "Dielectric frequency response",
-            "Visual",
-            "Dissolved gas analysis",
-        ],
-        "external damage/ disturbance": ["Visual", "Amps/ volts/ load"],
-        "insulation deterioration": [
-            "Dissolved gas analysis",
-            "Power factor/tanδ",
-            "Partial discharge",
-            "Dielecric frequency response",
-            "Dielectric frequency response",
-            "Oil condition",
-        ],
-        "low oil level": ["Visual", "Oil condition"],
-        "moisture ingress/ content": [
-            "Oil condition",
-            "Dielecric frequency response",
-            "Dielectric frequency response",
-            "Dissolved gas analysis",
-        ],
-        "oil circulation system problem": ["Temperature", "Oil condition"],
-        "oil leak": ["Visual", "Oil condition"],
-        "oil quality deterioration": ["Oil condition", "Dissolved gas analysis"],
-        "on-load tap-changer condition/ fault": [
-            "Vibration",
-            "Noise",
-            "Dissolved gas analysis",
-            "Resistance",
-            "Ultrasound",
-        ],
-        "overheating/ auxiliary cooling system fault": [
-            "Temperature",
-            "Dissolved gas analysis",
-        ],
-        "supply faults, e.g. excessive harmonics and over fluxing": [
-            "Amps/ volts/ load",
-            "Excitation current",
-        ],
-        "through fault e.g. lightning strike": [
-            "Amps/ volts/ load",
-            "Frequency Response Analysis (FRA)",
-            "Leak reactance fluX",
-        ],
-        "winding looseness": [
-            "Frequency Response Analysis (FRA)",
-            "Vibration",
-            "Leak reactance fluX",
-            "Excitation current",
-        ],
-        "winding distortion": [
-            "Frequency Response Analysis (FRA)",
-            "Leak reactance fluX",
-            "Excitation current",
-            "Resistance",
-        ],
-    },
-}
-
-
-def _sensor_matches(sensor: str, expected: str) -> bool:
-    sensor_key = _normalize_mapping_label(sensor)
-    expected_key = _normalize_mapping_label(expected)
-    return expected_key in sensor_key or sensor_key in expected_key
-
-
-def _deterministic_relevancy(
-    asset_class: str, failure_mode: str, sensor: str
-) -> dict:
-    class_rules = _CURATED_SENSOR_RULES.get(_asset_class_key(asset_class), {})
-    sensor_rules = class_rules.get(_normalize_mapping_label(failure_mode))
-    if sensor_rules is not None:
-        if any(_sensor_matches(sensor, expected) for expected in sensor_rules):
-            return {"answer": "Yes"}
-        return {"answer": "No"}
-
-    fm_key = _normalize_mapping_label(failure_mode)
-    sensor_key = _normalize_mapping_label(sensor)
-    generic_groups = [
-        (
-            ("bearing", "gear", "misalignment", "mounting", "unbalance", "looseness"),
-            ("vibration", "oil debris", "noise", "ultrasound"),
-        ),
-        (
-            ("leak", "seal", "low oil", "oil quality", "oil circulation"),
-            ("leak", "oil", "visual", "pressure"),
-        ),
-        (
-            ("blockage", "filter", "fouled", "dirty", "stall"),
-            ("flow", "pressure", "temperature", "power"),
-        ),
-        (
-            ("cooling", "overheating", "temperature"),
-            ("temperature", "cooling", "dissolved gas"),
-        ),
-        (
-            ("arcing", "discharge", "insulation", "moisture", "bushing"),
-            ("partial discharge", "dissolved gas", "power factor", "capacitance"),
-        ),
-    ]
-    for failure_tokens, sensor_tokens in generic_groups:
-        if any(token in fm_key for token in failure_tokens) and any(
-            token in sensor_key for token in sensor_tokens
-        ):
-            return {"answer": "Yes"}
-    return {"answer": "Unknown"}
-
-
-def _deterministic_relevancy_matrix(
-    asset_class: str, failure_modes: List[str], sensors: List[str]
-) -> Dict[tuple[str, str], dict]:
-    return {
-        (failure_mode, sensor): _deterministic_relevancy(
-            asset_class, failure_mode, sensor
-        )
-        for sensor in sensors
-        for failure_mode in failure_modes
-    }
 
 
 def _call_failure_mode_generation(
@@ -908,10 +630,9 @@ def generate_failure_mode_sensor_mapping(
 ) -> Union[FailureModeSensorMappingResult, ErrorResult]:
     """GENERATE whether each sensor can detect each failure mode.
 
-    Uses deterministic ISO-style sensor rules by default and returns a
-    bidirectional mapping (fm→sensors, sensor→fms) plus per-pair relevancy
-    details. Set FMSR_USE_LLM_MAPPING=true to use one full-matrix LLM call
-    instead. Inputs are capped to keep this one tool call bounded.
+    Uses one full-matrix LLM call and returns a bidirectional mapping
+    (fm→sensors, sensor→fms) plus compact per-pair relevancy answers. Inputs
+    are capped to keep this one tool call bounded.
 
     Args:
         asset_class: Asset class to reason about, such as "pump". Case, whitespace,
@@ -948,25 +669,21 @@ def generate_failure_mode_sensor_mapping(
                 f"provide at most {_MAX_MAPPING_PAIRS} total pairs"
             )
         )
-    if _USE_LLM_MAPPING and not _llm_available:
+    if not _llm_available:
         return ErrorResult(error="LLM unavailable")
 
     full_relevancy: List[RelevancyEntry] = []
     fm2sensor: Dict[str, List[str]] = {}
     sensor2fm: Dict[str, List[str]] = {}
     try:
-        pair_relevancy = (
-            _call_relevancy_matrix(key, failure_modes, sensors)
-            if _USE_LLM_MAPPING
-            else _deterministic_relevancy_matrix(key, failure_modes, sensors)
-        )
+        pair_relevancy = _call_relevancy_matrix(key, failure_modes, sensors)
         for sensor in sensors:
             for fm in failure_modes:
                 gen = pair_relevancy.get(
                     (fm, sensor),
                     {"answer": "Unknown"},
                 )
-                answer = gen.get("answer", "Unknown")
+                answer = _normalize_relevancy_answer(gen.get("answer", "Unknown"))
                 full_relevancy.append(
                     RelevancyEntry(
                         asset_class=key,
