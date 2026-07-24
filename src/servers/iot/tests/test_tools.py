@@ -26,15 +26,48 @@ class ViewBackedIotDb:
 
 
 class SummaryBackedIotDb:
-    def __init__(self, summaries):
+    def __init__(self, summaries, docs=None):
         self.summaries = summaries
+        self.docs = {**summaries, **(docs or {})}
         self.get_calls = []
+        self.all_docs_calls = []
         self.view_calls = []
         self.find_calls = []
 
     def get(self, doc_id, **kwargs):
         self.get_calls.append((doc_id, kwargs))
         return self.summaries.get(doc_id)
+
+    def all_docs(self, **kwargs):
+        self.all_docs_calls.append(kwargs)
+        startkey = kwargs.get("startkey")
+        endkey = kwargs.get("endkey")
+        if isinstance(startkey, str) and startkey.startswith('"'):
+            startkey = json.loads(startkey)
+        if isinstance(endkey, str) and endkey.startswith('"'):
+            endkey = json.loads(endkey)
+        limit = kwargs.get("limit", 1000)
+        skip = kwargs.get("skip", 0)
+        include_docs = kwargs.get("include_docs")
+        inclusive_end = kwargs.get("inclusive_end", True)
+        rows = []
+        for key in sorted(self.docs):
+            if startkey is not None and key < startkey:
+                continue
+            if endkey is not None:
+                if inclusive_end and key > endkey:
+                    continue
+                if not inclusive_end and key >= endkey:
+                    continue
+            rows.append(
+                {
+                    "id": key,
+                    "key": key,
+                    "value": {"rev": "1-test"},
+                    **({"doc": self.docs[key]} if include_docs else {}),
+                }
+            )
+        return {"rows": rows[skip : skip + limit]}
 
     def view(self, ddoc, view_name, **kwargs):
         self.view_calls.append((ddoc, view_name, kwargs))
@@ -102,6 +135,62 @@ def iot_summary_doc(asset_id="Pump-1"):
         "timestamped_records": 3,
         "invalid_timestamp_count": 0,
         "mixed_timezone_awareness": False,
+        "start_time": "2024-01-01T00:00:00",
+        "end_time": "2024-01-01T00:02:00",
+        "sensors": ["Pressure", "Temp"],
+        "coverage": {
+            "Pressure": {
+                "non_null_count": 2,
+                "first_timestamp": "2024-01-01T00:00:00",
+                "last_timestamp": "2024-01-01T00:01:00",
+                "latest_timestamp": "2024-01-01T00:01:00",
+                "latest_value": 6.0,
+            },
+            "Temp": {
+                "non_null_count": 3,
+                "first_timestamp": "2024-01-01T00:00:00",
+                "last_timestamp": "2024-01-01T00:02:00",
+                "latest_timestamp": "2024-01-01T00:02:00",
+                "latest_value": 12.0,
+            },
+        },
+        "stats": {
+            "Pressure": {
+                "count": 2,
+                "null_count": 0,
+                "min": 5.0,
+                "max": 6.0,
+                "mean": 5.5,
+                "stddev": 0.5,
+                "first_timestamp": "2024-01-01T00:00:00",
+                "last_timestamp": "2024-01-01T00:01:00",
+            },
+            "Temp": {
+                "count": 3,
+                "null_count": 0,
+                "min": 10.0,
+                "max": 12.0,
+                "mean": 11.0,
+                "stddev": 0.816496580927726,
+                "first_timestamp": "2024-01-01T00:00:00",
+                "last_timestamp": "2024-01-01T00:02:00",
+            },
+        },
+        "latest": {
+            "timestamp": "2024-01-01T00:02:00",
+            "values": {"Pressure": None, "Temp": 12.0},
+        },
+    }
+
+
+def iot_daily_summary_doc(asset_id="Pump-1", day="2024-01-01"):
+    return {
+        "_id": f"iot_summary_day:{asset_id}:{day}",
+        "dataset": "iot",
+        "doctype": "iot_asset_daily_summary",
+        "summary_asset_id": asset_id,
+        "day": day,
+        "timestamped_records": 3,
         "start_time": "2024-01-01T00:00:00",
         "end_time": "2024-01-01T00:02:00",
         "sensors": ["Pressure", "Temp"],
@@ -2179,6 +2268,87 @@ class TestSensorStats:
                 "last_timestamp": "2024-01-01T00:02:00",
             }
         ]
+        assert fake_iot_db.find_calls == []
+        assert fake_iot_db.view_calls == []
+
+    @pytest.mark.anyio
+    async def test_window_uses_daily_materialized_summary(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        fake_iot_db = SummaryBackedIotDb(
+            {"iot_summary:Pump-1": iot_summary_doc()},
+            {"iot_summary_day:Pump-1:2024-01-01": iot_daily_summary_doc()},
+        )
+
+        with patch("servers.iot.main.iot_db", fake_iot_db):
+            data = await call_tool(
+                mcp,
+                "sensor_stats",
+                {
+                    "site_name": "MAIN",
+                    "asset_id": "Pump-1",
+                    "sensor": "Temp",
+                    "start": "2024-01-01T00:00:00",
+                    "end": "2024-01-02T00:00:00",
+                },
+            )
+
+        assert data["stats"][0]["count"] == 3
+        assert data["stats"][0]["mean"] == 11.0
+        assert fake_iot_db.all_docs_calls
+        assert fake_iot_db.find_calls == []
+        assert fake_iot_db.view_calls == []
+
+    @pytest.mark.anyio
+    async def test_window_merges_daily_materialized_summaries(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        second_day = iot_daily_summary_doc(day="2024-01-02")
+        second_day.update(
+            {
+                "timestamped_records": 2,
+                "start_time": "2024-01-02T00:00:00",
+                "end_time": "2024-01-02T00:01:00",
+                "stats": {
+                    "Temp": {
+                        "count": 2,
+                        "null_count": 0,
+                        "min": 14.0,
+                        "max": 16.0,
+                        "mean": 15.0,
+                        "stddev": 1.0,
+                        "first_timestamp": "2024-01-02T00:00:00",
+                        "last_timestamp": "2024-01-02T00:01:00",
+                    }
+                },
+            }
+        )
+        fake_iot_db = SummaryBackedIotDb(
+            {"iot_summary:Pump-1": iot_summary_doc()},
+            {
+                "iot_summary_day:Pump-1:2024-01-01": iot_daily_summary_doc(),
+                "iot_summary_day:Pump-1:2024-01-02": second_day,
+            },
+        )
+
+        with patch("servers.iot.main.iot_db", fake_iot_db):
+            data = await call_tool(
+                mcp,
+                "sensor_stats",
+                {
+                    "site_name": "MAIN",
+                    "asset_id": "Pump-1",
+                    "sensor": "Temp",
+                    "start": "2024-01-01T00:00:00",
+                    "end": "2024-01-03T00:00:00",
+                },
+            )
+
+        assert data["stats"][0]["count"] == 5
+        assert data["stats"][0]["min"] == 10.0
+        assert data["stats"][0]["max"] == 16.0
+        assert data["stats"][0]["mean"] == pytest.approx(12.6)
+        assert data["stats"][0]["stddev"] == pytest.approx(2.154065922853802)
+        assert data["stats"][0]["first_timestamp"] == "2024-01-01T00:00:00"
+        assert data["stats"][0]["last_timestamp"] == "2024-01-02T00:01:00"
         assert fake_iot_db.find_calls == []
         assert fake_iot_db.view_calls == []
 
