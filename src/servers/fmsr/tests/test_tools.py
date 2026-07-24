@@ -323,6 +323,49 @@ class TestGenerateFailureModeSensorMapping:
         assert len(data["full_relevancy"]) == 4
 
     @pytest.mark.anyio
+    async def test_batches_by_failure_mode_when_failure_modes_not_larger(
+        self, mock_relevancy_chain
+    ):
+        sensors = _SENSORS + ["Chiller 6 Return Temperature"]
+
+        data = await call_tool(
+            mcp,
+            "generate_failure_mode_sensor_mapping",
+            {
+                "asset_class": "Chiller",
+                "failure_modes": _FAILURE_MODES,
+                "sensors": sensors,
+            },
+        )
+
+        assert len(data["full_relevancy"]) == 6
+        assert mock_relevancy_chain["by_failure_mode"].call_count == len(
+            _FAILURE_MODES
+        )
+        mock_relevancy_chain["by_sensor"].assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_batches_by_sensor_when_sensors_are_smaller(
+        self, mock_relevancy_chain
+    ):
+        failure_modes = _FAILURE_MODES + ["Refrigerant Leak"]
+        sensors = ["Chiller 6 Power Input"]
+
+        data = await call_tool(
+            mcp,
+            "generate_failure_mode_sensor_mapping",
+            {
+                "asset_class": "Chiller",
+                "failure_modes": failure_modes,
+                "sensors": sensors,
+            },
+        )
+
+        assert len(data["full_relevancy"]) == 3
+        assert mock_relevancy_chain["by_sensor"].call_count == len(sensors)
+        mock_relevancy_chain["by_failure_mode"].assert_not_called()
+
+    @pytest.mark.anyio
     async def test_empty_failure_modes_returns_error(self, mock_relevancy_chain):
         data = await call_tool(
             mcp,

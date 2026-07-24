@@ -103,17 +103,40 @@ def broken_fm_db():
 
 @pytest.fixture
 def mock_relevancy_chain():
-    """Patch _call_relevancy so it always returns 'Yes' without calling the LLM."""
-    mock = MagicMock(
-        return_value={
-            "answer": "Yes",
-            "reason": "Relevant sensor",
-        }
-    )
-    with patch("servers.fmsr.main._call_relevancy", mock):
-        with patch("servers.fmsr.main._llm_available", True):
-            yield mock
+    """Patch batched relevancy generation so tests do not call the LLM."""
 
+    def by_failure_mode(asset_class, failure_mode, sensors):
+        return {
+            sensor: {
+                "answer": "Yes",
+                "reason": "Relevant sensor",
+            }
+            for sensor in sensors
+        }
+
+    def by_sensor(asset_class, sensor, failure_modes):
+        return {
+            failure_mode: {
+                "answer": "Yes",
+                "reason": "Relevant sensor",
+            }
+            for failure_mode in failure_modes
+        }
+
+    by_failure_mode_mock = MagicMock(side_effect=by_failure_mode)
+    by_sensor_mock = MagicMock(side_effect=by_sensor)
+    with patch(
+        "servers.fmsr.main._call_relevancy_batch_by_failure_mode",
+        by_failure_mode_mock,
+    ):
+        with patch(
+            "servers.fmsr.main._call_relevancy_batch_by_sensor", by_sensor_mock
+        ):
+            with patch("servers.fmsr.main._llm_available", True):
+                yield {
+                    "by_failure_mode": by_failure_mode_mock,
+                    "by_sensor": by_sensor_mock,
+                }
 
 @pytest.fixture
 def mock_failure_mode_generation():
