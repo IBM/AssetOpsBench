@@ -1,9 +1,27 @@
 """Tests for IoT MCP server tools."""
 
+from unittest.mock import patch
+
 import pytest
 
 from servers.iot.main import mcp
 from .conftest import call_tool, requires_couchdb, requires_iot_db
+
+
+class ViewBackedIotDb:
+    def __init__(self, rows_by_view):
+        self.rows_by_view = rows_by_view
+        self.view_calls = []
+        self.find_calls = []
+
+    def view(self, ddoc, view_name, **kwargs):
+        self.view_calls.append((ddoc, view_name, kwargs))
+        rows = self.rows_by_view.get(view_name, [])
+        return {"rows": rows(view_name, kwargs) if callable(rows) else rows}
+
+    def find(self, selector, **kwargs):
+        self.find_calls.append((selector, kwargs))
+        return {"docs": []}
 
 
 class TestToolRegistration:
@@ -280,6 +298,31 @@ class TestMeasuredSensors:
         mock_iot_db.find.assert_called_once()
 
     @pytest.mark.anyio
+    async def test_uses_sensor_coverage_view_when_available(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        fake_iot_db = ViewBackedIotDb(
+            {
+                "coverage_by_asset_sensor": [
+                    {"key": ["Pump-1", "Pressure"], "value": {"non_null_count": 2}},
+                    {"key": ["Pump-1", "Temperature"], "value": {"non_null_count": 1}},
+                ]
+            }
+        )
+
+        with patch("servers.iot.main.iot_db", fake_iot_db):
+            data = await call_tool(
+                mcp,
+                "measured_sensors",
+                {"site_name": "MAIN", "asset_id": "Pump-1"},
+            )
+
+        assert data["sensors"] == ["Pressure", "Temperature"]
+        assert fake_iot_db.find_calls == []
+        assert [call[1] for call in fake_iot_db.view_calls] == [
+            "coverage_by_asset_sensor"
+        ]
+
+    @pytest.mark.anyio
     async def test_db_disconnected(self, mock_asset_db, no_iot_db):
         mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
         data = await call_tool(
@@ -496,6 +539,49 @@ class TestFindAssetsBySensors:
         assert data["assets"] == [
             {"asset_id": "Compressor-1", "matched_sensors": ["Oil Pressure"]},
             {"asset_id": "Pump-1", "matched_sensors": ["Discharge Pressure"]},
+        ]
+
+    @pytest.mark.anyio
+    async def test_measured_source_exact_match_uses_reverse_view(self, mock_asset_db):
+        mock_asset_db.find.side_effect = [
+            {"docs": [{"siteid": "MAIN"}]},
+            {"docs": [{"assetnum": "Fan-2"}, {"assetnum": "Pump-1"}]},
+        ]
+        fake_iot_db = ViewBackedIotDb(
+            {
+                "assets_by_sensor": lambda _view, kwargs: (
+                    [
+                        {"key": ["Pressure", "Pump-1"], "value": 3},
+                        {"key": ["Pressure", "Other-Site"], "value": 1},
+                    ]
+                    if "Pressure" in kwargs["startkey"]
+                    else [
+                        {"key": ["Temperature", "Pump-1"], "value": 2},
+                        {"key": ["Temperature", "Fan-2"], "value": 1},
+                    ]
+                )
+            }
+        )
+
+        with patch("servers.iot.main.iot_db", fake_iot_db):
+            data = await call_tool(
+                mcp,
+                "find_assets_by_sensors",
+                {
+                    "site_name": "MAIN",
+                    "sensors": ["Pressure", "Temperature"],
+                    "source": "measured",
+                },
+            )
+
+        assert data["total_assets"] == 1
+        assert data["assets"] == [
+            {"asset_id": "Pump-1", "matched_sensors": ["Pressure", "Temperature"]}
+        ]
+        assert fake_iot_db.find_calls == []
+        assert [call[1] for call in fake_iot_db.view_calls] == [
+            "assets_by_sensor",
+            "assets_by_sensor",
         ]
 
 
@@ -1254,6 +1340,77 @@ class TestLatestReading:
         assert data["timestamp"] == "2024-01-01T00:00:00+00:00"
         assert data["values"] == {"Temp": 3.0}
         assert data["age_seconds"] > 0
+
+    @pytest.mark.anyio
+    async def test_uses_latest_stream_view_when_available(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        fake_iot_db = ViewBackedIotDb(
+            {
+                "stream_by_asset_time": [
+                    {
+                        "key": ["Pump-1", "2024-01-01T00:02:00"],
+                        "doc": {
+                            "_id": "iot:Pump-1:2024-01-01T00:02:00",
+                            "asset_id": "Pump-1",
+                            "timestamp": "2024-01-01T00:02:00",
+                            "Temp": 3.0,
+                            "Pressure": 12.0,
+                        },
+                    }
+                ]
+            }
+        )
+
+        with patch("servers.iot.main.iot_db", fake_iot_db):
+            data = await call_tool(
+                mcp,
+                "latest_reading",
+                {"site_name": "MAIN", "asset_id": "Pump-1"},
+            )
+
+        assert data["timestamp"] == "2024-01-01T00:02:00"
+        assert data["values"] == {"Temp": 3.0, "Pressure": 12.0}
+        assert fake_iot_db.find_calls == []
+        assert fake_iot_db.view_calls[0][1] == "stream_by_asset_time"
+        assert fake_iot_db.view_calls[0][2]["include_docs"] is True
+
+    @pytest.mark.anyio
+    async def test_sensor_latest_uses_sensor_stream_view(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        fake_iot_db = ViewBackedIotDb(
+            {
+                "coverage_by_asset_sensor": [
+                    {"key": ["Pump-1", "Temp"], "value": {"non_null_count": 2}},
+                    {"key": ["Pump-1", "Pressure"], "value": {"non_null_count": 2}},
+                ],
+                "stream_by_asset_sensor_time": [
+                    {
+                        "key": ["Pump-1", "Temp", "2024-01-01T00:02:00"],
+                        "doc": {
+                            "asset_id": "Pump-1",
+                            "timestamp": "2024-01-01T00:02:00",
+                            "Temp": 3.0,
+                            "Pressure": 12.0,
+                        },
+                    }
+                ],
+            }
+        )
+
+        with patch("servers.iot.main.iot_db", fake_iot_db):
+            data = await call_tool(
+                mcp,
+                "latest_reading",
+                {"site_name": "MAIN", "asset_id": "Pump-1", "sensor": "Temp"},
+            )
+
+        assert data["timestamp"] == "2024-01-01T00:02:00"
+        assert data["values"] == {"Temp": 3.0}
+        assert fake_iot_db.find_calls == []
+        assert [call[1] for call in fake_iot_db.view_calls] == [
+            "coverage_by_asset_sensor",
+            "stream_by_asset_sensor_time",
+        ]
 
     @pytest.mark.anyio
     async def test_sensor_filter_returns_only_requested_value(
