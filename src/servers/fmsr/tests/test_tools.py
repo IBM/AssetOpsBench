@@ -374,22 +374,33 @@ class TestGenerateFailureModeSensorMapping:
             "generate_failure_mode_sensor_mapping",
             {
                 "asset_class": "Chiller",
-                "failure_modes": [
-                    "Compressor Overheating",
-                    "Condenser Water side fouling",
-                    "Refrigerant Leak",
-                    "Evaporator Freezing",
-                    "Low Oil Pressure",
-                    "Control Failure",
-                ],
+                "failure_modes": [f"Failure Mode {idx}" for idx in range(21)],
                 "sensors": _SENSORS,
             },
         )
 
         assert data == {
-            "error": "failure_modes list is too large; provide at most 5 failure modes"
+            "error": "failure_modes list is too large; provide at most 20 failure modes"
         }
         mock_relevancy_chain.assert_not_called()
+
+    @pytest.mark.anyio
+    async def test_allows_iso_sized_matrix_without_llm(self, no_llm):
+        failure_modes = [f"Failure Mode {idx}" for idx in range(17)]
+        sensors = [f"Sensor {idx}" for idx in range(16)]
+
+        data = await call_tool(
+            mcp,
+            "generate_failure_mode_sensor_mapping",
+            {
+                "asset_class": "power transformer",
+                "failure_modes": failure_modes,
+                "sensors": sensors,
+            },
+        )
+
+        assert "error" not in data
+        assert len(data["full_relevancy"]) == 272
 
     @pytest.mark.anyio
     async def test_rejects_too_many_sensors(self, mock_relevancy_chain):
@@ -441,7 +452,7 @@ class TestGenerateFailureModeSensorMapping:
         assert "error" in data
 
     @pytest.mark.anyio
-    async def test_llm_unavailable_returns_error(self, no_llm):
+    async def test_mapping_works_without_llm(self, no_llm):
         data = await call_tool(
             mcp,
             "generate_failure_mode_sensor_mapping",
@@ -452,7 +463,8 @@ class TestGenerateFailureModeSensorMapping:
             },
         )
 
-        assert data == {"error": "LLM unavailable"}
+        assert "error" not in data
+        assert len(data["full_relevancy"]) == 4
 
     @requires_watsonx
     @pytest.mark.anyio
