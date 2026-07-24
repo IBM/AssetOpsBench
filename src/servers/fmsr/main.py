@@ -1,12 +1,11 @@
-"""Failure mode and sensor reasoning for industrial asset classes."""
+"""Failure-mode catalog reasoning for industrial asset classes."""
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
-from typing import Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 import couchdb3
 from couchdb3.exceptions import NotFoundError
@@ -98,18 +97,6 @@ def _is_not_found_error(exc: Exception) -> bool:
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
 
-_RELEVANCY_MATRIX_PROMPT = (
-    "Asset class: {asset_class}\n"
-    "Evaluate whether each sensor can help monitor or detect each failure mode "
-    "for assets of this class.\n\n"
-    "Failure modes:\n{failure_modes}\n\n"
-    "Sensors:\n{sensors}\n\n"
-    "Return only valid JSON as an array with exactly {pair_count} objects, one "
-    "object for every failure-mode/sensor pair. Use the exact input strings. "
-    'Each object must have keys "failure_mode", "sensor", and "answer". '
-    'The "answer" value must be one of "Yes", "No", or "Unknown".'
-)
-
 _FAILURE_MODE_PROMPT = (
     "List up to {max_modes} common failure modes for asset class {asset_class}.\n"
     "Return only failure mode names, one per line."
@@ -135,146 +122,10 @@ def _parse_failure_mode_list(text: str) -> List[str]:
     return items
 
 
-def _parse_relevancy(text: str) -> dict:
-    lines = [ln for ln in text.strip().splitlines() if ln.strip()]
-    if lines and lines[0].lower().startswith("yes"):
-        answer = "Yes"
-    elif lines and lines[0].lower().startswith("no"):
-        answer = "No"
-    else:
-        answer = "Unknown"
-    return {"answer": answer}
-
-
-def _normalize_relevancy_answer(answer: object) -> str:
-    if isinstance(answer, bool):
-        return "Yes" if answer else "No"
-    normalized = str(answer or "").strip().lower()
-    if normalized.startswith("yes"):
-        return "Yes"
-    if normalized.startswith("no"):
-        return "No"
-    return "Unknown"
-
-
-def _normalize_mapping_label(label: object) -> str:
-    return re.sub(r"\s+", " ", str(label or "")).strip().lower()
-
-
-def _load_json_payload(text: str) -> object:
-    content = text.strip()
-    fenced = re.search(
-        r"```(?:json)?\s*(.*?)\s*```", content, flags=re.DOTALL | re.I
-    )
-    if fenced:
-        content = fenced.group(1).strip()
-    else:
-        starts = [
-            idx for idx in (content.find("["), content.find("{")) if idx != -1
-        ]
-        end = max(content.rfind("]"), content.rfind("}"))
-        if starts and end > min(starts):
-            content = content[min(starts) : end + 1]
-    return json.loads(content)
-
-
-def _record_value(record: dict, *keys: str) -> object:
-    lower_keys = {str(key).lower(): key for key in record}
-    for key in keys:
-        if key in record:
-            return record[key]
-        actual_key = lower_keys.get(key.lower())
-        if actual_key is not None:
-            return record[actual_key]
-    return None
-
-
-def _extract_matrix_records(payload: object) -> List[dict]:
-    if isinstance(payload, list):
-        return [item for item in payload if isinstance(item, dict)]
-    if not isinstance(payload, dict):
-        return []
-    for key in ("results", "mappings", "full_relevancy", "relevancy"):
-        if isinstance(payload.get(key), list):
-            return [item for item in payload[key] if isinstance(item, dict)]
-    if _record_value(payload, "failure_mode", "failureMode", "fm") is not None:
-        return [payload]
-
-    records: List[dict] = []
-    for failure_mode, sensors in payload.items():
-        if not isinstance(sensors, dict):
-            continue
-        for sensor, value in sensors.items():
-            if isinstance(value, dict):
-                records.append(
-                    {
-                        "failure_mode": failure_mode,
-                        "sensor": sensor,
-                        **value,
-                    }
-                )
-            else:
-                records.append(
-                    {
-                        "failure_mode": failure_mode,
-                        "sensor": sensor,
-                        "answer": value,
-                    }
-                )
-    return records
-
-
-def _parse_relevancy_matrix(
-    text: str, failure_modes: List[str], sensors: List[str]
-) -> Dict[tuple[str, str], dict]:
-    try:
-        payload = _load_json_payload(text)
-    except json.JSONDecodeError:
-        if len(failure_modes) == 1 and len(sensors) == 1:
-            return {(failure_modes[0], sensors[0]): _parse_relevancy(text)}
-        raise
-
-    records = _extract_matrix_records(payload)
-    if not records:
-        raise ValueError("LLM response did not contain relevancy records")
-
-    expected_fms = {
-        _normalize_mapping_label(failure_mode): failure_mode
-        for failure_mode in failure_modes
-    }
-    expected_sensors = {
-        _normalize_mapping_label(sensor): sensor for sensor in sensors
-    }
-    results = {
-        (failure_mode, sensor): {"answer": "Unknown"}
-        for sensor in sensors
-        for failure_mode in failure_modes
-    }
-    for record in records:
-        failure_mode = expected_fms.get(
-            _normalize_mapping_label(
-                _record_value(record, "failure_mode", "failureMode", "fm")
-            )
-        )
-        sensor = expected_sensors.get(
-            _normalize_mapping_label(_record_value(record, "sensor", "sensor_name"))
-        )
-        if failure_mode is None or sensor is None:
-            continue
-        answer = _record_value(record, "answer", "relevancy_answer", "relevancyAnswer")
-        if answer is None:
-            answer = _record_value(record, "detects", "relevant")
-        results[(failure_mode, sensor)] = {"answer": _normalize_relevancy_answer(answer)}
-    return results
-
-
 # ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
 
 _DEFAULT_MODEL_ID = "watsonx/meta-llama/llama-3-3-70b-instruct"
 _MAX_RETRIES = 3
-_MAX_MAPPING_FAILURE_MODES = 20
-_MAX_MAPPING_SENSORS = 20
-_MAX_MAPPING_PAIRS = 400
 _MODEL_ID = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
 
 
@@ -311,24 +162,6 @@ except Exception as _e:  # noqa: BLE001
     logger.warning("LLM unavailable (generate_* tools disabled): %s", _e)
     _llm = None
     _llm_available = False
-
-
-def _call_relevancy_matrix(
-    asset_class: str, failure_modes: List[str], sensors: List[str]
-) -> Dict[tuple[str, str], dict]:
-    prompt = _RELEVANCY_MATRIX_PROMPT.format(
-        asset_class=asset_class,
-        failure_modes="\n".join(f"- {failure_mode}" for failure_mode in failure_modes),
-        sensors="\n".join(f"- {sensor}" for sensor in sensors),
-        pair_count=len(failure_modes) * len(sensors),
-    )
-    last_exc: Exception | None = None
-    for _ in range(_MAX_RETRIES):
-        try:
-            return _parse_relevancy_matrix(_llm.generate(prompt), failure_modes, sensors)
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-    raise last_exc
 
 
 def _call_failure_mode_generation(
@@ -385,31 +218,16 @@ class AddFailureModesResult(BaseModel):
     message: str
 
 
-class RelevancyEntry(BaseModel):
-    asset_class: str
-    failure_mode: str
-    sensor: str
-    relevancy_answer: str
-
-
-class MappingMetadata(BaseModel):
-    asset_class: str
-    failure_modes: List[str]
-    sensors: List[str]
-
-
-class FailureModeSensorMappingResult(BaseModel):
-    metadata: MappingMetadata
-    fm2sensor: Dict[str, List[str]]
-    sensor2fm: Dict[str, List[str]]
-    full_relevancy: List[RelevancyEntry]
-
-
 # ── FastMCP server ────────────────────────────────────────────────────────────
 
 mcp = FastMCP(
     "fmsr",
-    instructions="Failure mode and sensor reasoning for industrial asset classes.",
+    instructions=(
+        "Failure-mode catalog tools for industrial asset classes. Exposes stored "
+        "failure-mode lookup, LLM failure-mode generation, and failure-mode "
+        "persistence. Failure-mode/sensor mapping is intentionally disabled and "
+        "is not available as an FMSR tool."
+    ),
 )
 
 
@@ -622,91 +440,9 @@ def add_failure_modes(
         return ErrorResult(error=str(exc))
 
 
-@mcp.tool(title="Generate Failure Mode Sensor Mapping")
-def generate_failure_mode_sensor_mapping(
-    asset_class: str,
-    failure_modes: List[str],
-    sensors: List[str],
-) -> Union[FailureModeSensorMappingResult, ErrorResult]:
-    """GENERATE whether each sensor can detect each failure mode.
-
-    Uses one full-matrix LLM call and returns a bidirectional mapping
-    (fm→sensors, sensor→fms) plus compact per-pair relevancy answers. Inputs
-    are capped to keep this one tool call bounded.
-
-    Args:
-        asset_class: Asset class to reason about, such as "pump". Case, whitespace,
-            digits, underscores, and hyphens are normalized before prompting the LLM.
-        failure_modes: Failure modes for the asset class.
-        sensors: Sensor names to evaluate for detection relevance.
-    """
-    key = _asset_class_key(asset_class)
-    if not key or key == "none":
-        return ErrorResult(error="asset_class is required")
-    if not failure_modes:
-        return ErrorResult(error="failure_modes list is required")
-    if not sensors:
-        return ErrorResult(error="sensors list is required")
-    if len(failure_modes) > _MAX_MAPPING_FAILURE_MODES:
-        return ErrorResult(
-            error=(
-                "failure_modes list is too large; "
-                f"provide at most {_MAX_MAPPING_FAILURE_MODES} failure modes"
-            )
-        )
-    if len(sensors) > _MAX_MAPPING_SENSORS:
-        return ErrorResult(
-            error=(
-                "sensors list is too large; "
-                f"provide at most {_MAX_MAPPING_SENSORS} sensors"
-            )
-        )
-    total_pairs = len(failure_modes) * len(sensors)
-    if total_pairs > _MAX_MAPPING_PAIRS:
-        return ErrorResult(
-            error=(
-                "failure_mode/sensor matrix is too large; "
-                f"provide at most {_MAX_MAPPING_PAIRS} total pairs"
-            )
-        )
-    if not _llm_available:
-        return ErrorResult(error="LLM unavailable")
-
-    full_relevancy: List[RelevancyEntry] = []
-    fm2sensor: Dict[str, List[str]] = {}
-    sensor2fm: Dict[str, List[str]] = {}
-    try:
-        pair_relevancy = _call_relevancy_matrix(key, failure_modes, sensors)
-        for sensor in sensors:
-            for fm in failure_modes:
-                gen = pair_relevancy.get(
-                    (fm, sensor),
-                    {"answer": "Unknown"},
-                )
-                answer = _normalize_relevancy_answer(gen.get("answer", "Unknown"))
-                full_relevancy.append(
-                    RelevancyEntry(
-                        asset_class=key,
-                        failure_mode=fm,
-                        sensor=sensor,
-                        relevancy_answer=answer,
-                    )
-                )
-                if "yes" in answer.lower():
-                    fm2sensor.setdefault(fm, []).append(sensor)
-                    sensor2fm.setdefault(sensor, []).append(fm)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("relevancy matrix generation failed: %s", exc)
-        return ErrorResult(error=str(exc))
-
-    return FailureModeSensorMappingResult(
-        metadata=MappingMetadata(
-            asset_class=key, failure_modes=failure_modes, sensors=sensors
-        ),
-        fm2sensor=fm2sensor,
-        sensor2fm=sensor2fm,
-        full_relevancy=full_relevancy,
-    )
+# generate_failure_mode_sensor_mapping is intentionally not registered. The
+# mapping workflow is disabled because large failure-mode/sensor matrices make
+# benchmark tool calls too expensive and timeout-prone.
 
 
 def main():

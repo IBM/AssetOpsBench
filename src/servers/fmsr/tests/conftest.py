@@ -102,23 +102,6 @@ def broken_fm_db():
 
 
 @pytest.fixture
-def mock_relevancy_chain():
-    """Patch matrix relevancy generation so tests do not call the LLM."""
-
-    def matrix(asset_class, failure_modes, sensors):
-        return {
-            (failure_mode, sensor): {"answer": "Yes"}
-            for failure_mode in failure_modes
-            for sensor in sensors
-        }
-
-    mock = MagicMock(side_effect=matrix)
-    with patch("servers.fmsr.main._call_relevancy_matrix", mock):
-        with patch("servers.fmsr.main._llm_available", True):
-            yield mock
-
-
-@pytest.fixture
 def mock_failure_mode_generation():
     """Patch failure-mode generation so tests do not call the LLM."""
     mock = MagicMock(
