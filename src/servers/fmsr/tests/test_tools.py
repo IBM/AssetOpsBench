@@ -384,7 +384,7 @@ class TestGenerateFailureModeSensorMapping:
         mock_relevancy_chain.assert_not_called()
 
     @pytest.mark.anyio
-    async def test_allows_iso_sized_matrix_without_llm(self, no_llm):
+    async def test_allows_iso_sized_matrix_with_llm(self, mock_relevancy_chain):
         failure_modes = [f"Failure Mode {idx}" for idx in range(17)]
         sensors = [f"Sensor {idx}" for idx in range(16)]
 
@@ -400,6 +400,9 @@ class TestGenerateFailureModeSensorMapping:
 
         assert "error" not in data
         assert len(data["full_relevancy"]) == 272
+        mock_relevancy_chain.assert_called_once_with(
+            "power transformer", failure_modes, sensors
+        )
 
     @pytest.mark.anyio
     async def test_rejects_too_many_sensors(self, mock_relevancy_chain):
@@ -451,7 +454,7 @@ class TestGenerateFailureModeSensorMapping:
         assert "error" in data
 
     @pytest.mark.anyio
-    async def test_mapping_works_without_llm(self, no_llm):
+    async def test_mapping_requires_llm(self, no_llm):
         data = await call_tool(
             mcp,
             "generate_failure_mode_sensor_mapping",
@@ -462,8 +465,7 @@ class TestGenerateFailureModeSensorMapping:
             },
         )
 
-        assert "error" not in data
-        assert len(data["full_relevancy"]) == 4
+        assert data == {"error": "LLM unavailable"}
 
     @requires_watsonx
     @pytest.mark.anyio

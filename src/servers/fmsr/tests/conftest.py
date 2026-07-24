@@ -115,8 +115,7 @@ def mock_relevancy_chain():
     mock = MagicMock(side_effect=matrix)
     with patch("servers.fmsr.main._call_relevancy_matrix", mock):
         with patch("servers.fmsr.main._llm_available", True):
-            with patch("servers.fmsr.main._USE_LLM_MAPPING", True):
-                yield mock
+            yield mock
 
 
 @pytest.fixture
