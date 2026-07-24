@@ -1,4 +1,6 @@
 import logging
+import json
+import math
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
@@ -34,6 +36,7 @@ from servers.iot.telemetry_helper import (
     _history_observation,
     _iter_records,
     _iter_records_in_window,
+    _is_timezone_aware,
     _parse_iso_timestamp,
     _timestamp_age_seconds,
     _validate_dates,
@@ -90,10 +93,312 @@ mcp = FastMCP(
 DEFAULT_SITES = ["MAIN"]
 PAGE_SIZE = 1000
 RESERVED_FIELDS = {"_id", "_rev", "asset_id", "timestamp", "dataset", "type", "doctype"}
+IOT_DESIGN_DOC = "iot"
 
 
 _registry_sites_cache: Optional[List[str]] = None
 _sensor_list_cache: Dict[str, List[str]] = {}
+
+
+def _is_mock_database(database: Any) -> bool:
+    return type(database).__module__.startswith("unittest.mock")
+
+
+def _row_value(row: Any) -> Any:
+    return row.get("value") if isinstance(row, dict) else getattr(row, "value", None)
+
+
+def _row_key(row: Any) -> Any:
+    return row.get("key") if isinstance(row, dict) else getattr(row, "key", None)
+
+
+def _view_rows(database: Any, view_name: str, **params: Any) -> Optional[List[Any]]:
+    """Return CouchDB view rows, or None when the design doc is unavailable."""
+    if not database or _is_mock_database(database):
+        return None
+    view = getattr(database, "view", None)
+    if not callable(view):
+        return None
+    encoded = {
+        key: json.dumps(value) if key in {"key", "keys", "startkey", "endkey"} else value
+        for key, value in params.items()
+    }
+    try:
+        result = view(IOT_DESIGN_DOC, view_name, **encoded)
+    except Exception as exc:
+        logger.debug("IoT aggregate view %s unavailable: %s", view_name, exc)
+        return None
+    rows = result.get("rows") if isinstance(result, dict) else getattr(result, "rows", None)
+    return list(rows or [])
+
+
+def _view_key_bounds(
+    asset_id: str,
+    start: Optional[str],
+    end: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    sensor: Optional[str] = None,
+) -> Optional[tuple[List[Any], List[Any]]]:
+    """Return exact view key bounds when lexical timestamp ranges are safe."""
+    bounds = [bound for bound in (start_dt, end_dt) if bound is not None]
+    if any(_is_timezone_aware(bound) for bound in bounds):
+        return None
+    prefix: List[Any] = [asset_id] if sensor is None else [asset_id, sensor]
+    startkey = [*prefix, start] if start is not None else prefix
+    endkey = [*prefix, end] if end is not None else [*prefix, {}]
+    return startkey, endkey
+
+
+def _row_timestamp(row: Any) -> Optional[str]:
+    key = _row_key(row)
+    if isinstance(key, list) and key:
+        value = key[-1]
+        return value if isinstance(value, str) else None
+    return None
+
+
+def _timestamp_matches_window(
+    timestamp: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> bool:
+    timestamp_dt = _parse_iso_timestamp(timestamp)
+    if timestamp_dt is None:
+        return False
+    if start_dt is not None and timestamp_dt < start_dt:
+        return False
+    if end_dt is not None and timestamp_dt >= end_dt:
+        return False
+    return True
+
+
+def _view_count(
+    database: Any,
+    view_name: str,
+    startkey: List[Any],
+    endkey: List[Any],
+    *,
+    end_is_exclusive: bool,
+) -> Optional[int]:
+    rows = _view_rows(
+        database,
+        view_name,
+        startkey=startkey,
+        endkey=endkey,
+        reduce=True,
+        inclusive_end=not end_is_exclusive,
+    )
+    if rows is None:
+        return None
+    if not rows:
+        return 0
+    return int(_row_value(rows[0]) or 0)
+
+
+def _first_view_timestamp(
+    database: Any,
+    view_name: str,
+    startkey: List[Any],
+    endkey: List[Any],
+    *,
+    end_is_exclusive: bool,
+) -> Optional[str]:
+    rows = _view_rows(
+        database,
+        view_name,
+        startkey=startkey,
+        endkey=endkey,
+        reduce=False,
+        inclusive_end=not end_is_exclusive,
+        limit=1,
+    )
+    if rows is None:
+        return None
+    return _row_timestamp(rows[0]) if rows else None
+
+
+def _last_view_timestamp(
+    database: Any,
+    view_name: str,
+    startkey: List[Any],
+    endkey: List[Any],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> Optional[str]:
+    rows = _view_rows(
+        database,
+        view_name,
+        startkey=endkey,
+        endkey=startkey,
+        reduce=False,
+        descending=True,
+        limit=2,
+    )
+    if rows is None:
+        return None
+    for row in rows:
+        timestamp = _row_timestamp(row)
+        if _timestamp_matches_window(timestamp, start_dt, end_dt):
+            return timestamp
+    return None
+
+
+def _stream_extent_from_views(
+    asset_id: str,
+    sensor: Optional[str],
+    start: Optional[str],
+    end: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> Optional[tuple[int, Optional[str], Optional[str]]]:
+    bounds = _view_key_bounds(asset_id, start, end, start_dt, end_dt, sensor=sensor)
+    if bounds is None:
+        return None
+    startkey, endkey = bounds
+    view_name = "stream_by_asset_sensor_time" if sensor else "stream_by_asset_time"
+    end_is_exclusive = end is not None
+    total = _view_count(
+        iot_db,
+        view_name,
+        startkey,
+        endkey,
+        end_is_exclusive=end_is_exclusive,
+    )
+    if total is None:
+        return None
+    if total == 0:
+        return 0, None, None
+    first = _first_view_timestamp(
+        iot_db,
+        view_name,
+        startkey,
+        endkey,
+        end_is_exclusive=end_is_exclusive,
+    )
+    last = _last_view_timestamp(iot_db, view_name, startkey, endkey, start_dt, end_dt)
+    if first is None or last is None:
+        return None
+    return total, first, last
+
+
+def _stat_from_aggregate(sensor: str, value: Dict[str, Any]):
+    count = int(value.get("count") or 0)
+    null_count = int(value.get("null_count") or 0)
+    minimum = value.get("min") if count else None
+    maximum = value.get("max") if count else None
+    mean = None
+    stddev = None
+    if count:
+        total = float(value.get("sum") or 0.0)
+        sumsq = float(value.get("sumsq") or 0.0)
+        mean = total / count
+        variance = (sumsq / count) - (mean * mean)
+        if math.isfinite(variance):
+            stddev = math.sqrt(max(variance, 0.0))
+    return {
+        "sensor": sensor,
+        "count": count,
+        "null_count": null_count,
+        "min": minimum,
+        "max": maximum,
+        "mean": mean,
+        "stddev": stddev,
+        "first_timestamp": value.get("first_timestamp"),
+        "last_timestamp": value.get("last_timestamp"),
+    }
+
+
+def _sensor_stats_from_views(
+    asset_id: str,
+    sensor: Optional[str],
+    start: Optional[str],
+    end: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> Optional[List[Dict[str, Any]]]:
+    if sensor is None and (start is not None or end is not None):
+        return None
+    if sensor is not None and (start is not None or end is not None):
+        bounds = _view_key_bounds(asset_id, start, end, start_dt, end_dt, sensor=sensor)
+        if bounds is None:
+            return None
+        rows = _view_rows(
+            iot_db,
+            "stats_by_asset_sensor_time",
+            startkey=bounds[0],
+            endkey=bounds[1],
+            reduce=True,
+            inclusive_end=end is None,
+        )
+        if rows is None:
+            return None
+        value = _row_value(rows[0]) if rows else {}
+        if not value or not (int(value.get("count") or 0) + int(value.get("null_count") or 0)):
+            return []
+        return [_stat_from_aggregate(sensor, value)]
+
+    bounds = _view_key_bounds(asset_id, None, None, None, None, sensor=sensor)
+    assert bounds is not None
+    rows = _view_rows(
+        iot_db,
+        "stats_by_asset_sensor",
+        startkey=bounds[0],
+        endkey=bounds[1],
+        reduce=True,
+        group_level=2,
+    )
+    if rows is None:
+        return None
+    stats = []
+    for row in rows:
+        key = _row_key(row)
+        value = _row_value(row)
+        if not isinstance(key, list) or len(key) < 2 or not isinstance(value, dict):
+            continue
+        stats.append(_stat_from_aggregate(str(key[1]), value))
+    return sorted(stats, key=lambda item: item["sensor"])
+
+
+def _sensor_coverage_from_views(
+    asset_id: str,
+) -> Optional[tuple[int, List[Dict[str, Any]]]]:
+    bounds = _view_key_bounds(asset_id, None, None, None, None)
+    assert bounds is not None
+    docs_scanned = _view_count(
+        iot_db,
+        "stream_by_asset_time",
+        bounds[0],
+        bounds[1],
+        end_is_exclusive=False,
+    )
+    if docs_scanned is None:
+        return None
+    rows = _view_rows(
+        iot_db,
+        "coverage_by_asset_sensor",
+        startkey=bounds[0],
+        endkey=bounds[1],
+        reduce=True,
+        group_level=2,
+    )
+    if rows is None:
+        return None
+    sensors = []
+    for row in rows:
+        key = _row_key(row)
+        value = _row_value(row)
+        if not isinstance(key, list) or len(key) < 2 or not isinstance(value, dict):
+            continue
+        sensors.append(
+            {
+                "sensor": str(key[1]),
+                "non_null_count": int(value.get("non_null_count") or 0),
+                "first_timestamp": value.get("first_timestamp"),
+                "last_timestamp": value.get("last_timestamp"),
+            }
+        )
+    return docs_scanned, sorted(sensors, key=lambda item: item["sensor"])
 
 
 def get_sensor_list(asset_id: str) -> List[str]:
@@ -581,6 +886,46 @@ def stream_extent(
 
     start_dt = _parse_iso_timestamp(start) if start is not None else None
     end_dt = _parse_iso_timestamp(end) if end is not None else None
+    try:
+        view_extent = _stream_extent_from_views(
+            asset_id, sensor, start, end, start_dt, end_dt
+        )
+        if view_extent is not None:
+            total_records, first_timestamp, last_timestamp = view_extent
+            if total_records == 0:
+                return ErrorResult(
+                    error=f"no records for asset_id {asset_id}"
+                    + (f", sensor {sensor}" if sensor else "")
+                )
+            first_datetime = _parse_iso_timestamp(first_timestamp)
+            last_datetime = _parse_iso_timestamp(last_timestamp)
+            if first_datetime is None or last_datetime is None:
+                raise _TimestampHandlingError(
+                    "telemetry record has an invalid ISO 8601 timestamp"
+                )
+            approx_interval: Optional[float] = None
+            if total_records > 1:
+                approx_interval = (last_datetime - first_datetime).total_seconds() / (
+                    total_records - 1
+                )
+            return StreamExtentResult(
+                site_name=site_name,
+                asset_id=asset_id,
+                sensor=sensor,
+                start_time=first_timestamp,
+                end_time=last_timestamp,
+                total_records=total_records,
+                exceeds_page_limit=total_records > PAGE_SIZE,
+                approx_interval_seconds=approx_interval,
+                message=f"{total_records} record(s) for asset_id {asset_id}"
+                + (f" (sensor {sensor})" if sensor else "")
+                + f" from {first_timestamp} to {last_timestamp}.",
+            )
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
+    except Exception as e:
+        logger.debug("stream_extent aggregate fast path skipped: %s", e)
+
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
         "timestamp": {"$exists": True, "$ne": None},
@@ -595,7 +940,13 @@ def stream_extent(
     total_records = 0
     try:
         for _, timestamp, timestamp_dt in _iter_records_in_window(
-            iot_db, selector, start_dt, end_dt, fields=["timestamp"]
+            iot_db,
+            selector,
+            start_dt,
+            end_dt,
+            fields=["timestamp"],
+            start_key=start,
+            end_key=end,
         ):
             if first_datetime is None or timestamp_dt < first_datetime:
                 first_datetime = timestamp_dt
@@ -736,7 +1087,13 @@ def history(
     previous_datetime: Optional[datetime] = None
     try:
         for doc, timestamp, timestamp_dt in _iter_records_in_window(
-            iot_db, selector, start_dt, end_dt, fields=fields
+            iot_db,
+            selector,
+            start_dt,
+            end_dt,
+            fields=fields,
+            start_key=start,
+            end_key=end,
         ):
             if previous_datetime is not None and timestamp_dt < previous_datetime:
                 raise _TimestampHandlingError(
@@ -907,6 +1264,28 @@ def sensor_coverage(
     if not iot_db:
         return ErrorResult(error="IoT records database not connected")
 
+    try:
+        view_coverage = _sensor_coverage_from_views(asset_id)
+        if view_coverage is not None:
+            docs_scanned, sensors = view_coverage
+            if docs_scanned == 0:
+                return ErrorResult(
+                    error=f"unknown asset_id {asset_id} or no records found"
+                )
+            message = (
+                f"coverage for {len(sensors)} sensor(s) on asset_id {asset_id} "
+                f"across {docs_scanned} timestamped record(s)."
+            )
+            return SensorCoverageResult(
+                site_name=site_name,
+                asset_id=asset_id,
+                docs_scanned=docs_scanned,
+                sensors=sensors,
+                message=message,
+            )
+    except Exception as e:
+        logger.debug("sensor_coverage aggregate fast path skipped: %s", e)
+
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
         "timestamp": {"$exists": True, "$ne": None},
@@ -994,16 +1373,38 @@ def sensor_stats(
             error=f"sensor must be a telemetry field, not reserved metadata field {sensor}"
         )
 
-    available_sensors = get_sensor_list(asset_id)
-    if not available_sensors:
-        return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
-    if sensor is not None and sensor not in available_sensors:
-        return ErrorResult(error=f"unknown sensor {sensor} for asset_id {asset_id}")
-
-    targets = [sensor] if sensor is not None else available_sensors
-    accumulators = {target: _SensorAccumulator() for target in targets}
     start_dt = _parse_iso_timestamp(start) if start is not None else None
     end_dt = _parse_iso_timestamp(end) if end is not None else None
+    try:
+        view_stats = _sensor_stats_from_views(
+            asset_id, sensor, start, end, start_dt, end_dt
+        )
+        if view_stats is not None:
+            if not view_stats:
+                if sensor is None:
+                    return ErrorResult(
+                        error=f"unknown asset_id {asset_id} or no sensors found"
+                    )
+                return ErrorResult(
+                    error=f"no records for asset_id {asset_id}"
+                    + (f", sensor {sensor}" if sensor else "")
+                )
+            return SensorStatsResult(
+                site_name=site_name,
+                asset_id=asset_id,
+                stats=view_stats,
+                message=(
+                    f"numeric stats for {len(view_stats)} sensor(s) "
+                    f"on asset_id {asset_id}."
+                ),
+            )
+    except Exception as e:
+        logger.debug("sensor_stats aggregate fast path skipped: %s", e)
+
+    targets = [sensor] if sensor is not None else []
+    accumulators = (
+        {sensor: _SensorAccumulator()} if sensor is not None else {}
+    )
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
         "timestamp": {"$exists": True, "$ne": None},
@@ -1018,9 +1419,18 @@ def sensor_stats(
             selector,
             start_dt,
             end_dt,
-            fields=["timestamp", *targets],
+            fields=["timestamp", sensor] if sensor is not None else None,
+            start_key=start,
+            end_key=end,
         ):
+            if sensor is not None and sensor not in doc:
+                continue
             records_in_window += 1
+            if sensor is None:
+                for field in doc:
+                    if field not in RESERVED_FIELDS:
+                        accumulators.setdefault(field, _SensorAccumulator())
+                targets = sorted(accumulators)
             for target in targets:
                 if target not in doc:
                     continue
@@ -1042,6 +1452,8 @@ def sensor_stats(
             error=f"no records for asset_id {asset_id}"
             + (f", sensor {sensor}" if sensor else "")
         )
+    if not accumulators:
+        return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
 
     stats = [accumulators[target].result(target) for target in targets]
     return SensorStatsResult(

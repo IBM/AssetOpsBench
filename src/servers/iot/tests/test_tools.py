@@ -614,7 +614,7 @@ class TestStreamExtent:
         mock_iot_db.find.assert_called_once_with(
             {
                 "asset_id": "Pump-1",
-                "timestamp": {"$exists": True, "$ne": None},
+                "timestamp": {"$gt": None},
             },
             limit=1000,
             sort=[{"asset_id": "asc"}, {"timestamp": "asc"}],
@@ -651,7 +651,10 @@ class TestStreamExtent:
         selector = mock_iot_db.find.call_args.args[0]
         assert selector == {
             "asset_id": "Pump-1",
-            "timestamp": {"$exists": True, "$ne": None},
+            "timestamp": {
+                "$gte": "2024-01-01T00:00:00",
+                "$lt": "2024-01-01T00:05:00",
+            },
             "Pressure": {"$exists": True, "$ne": None},
         }
 
@@ -683,7 +686,7 @@ class TestStreamExtent:
         assert data["start_time"] == "2024-01-01T12:00:00"
         assert data["end_time"] == "2024-01-01T12:00:00"
         selector = mock_iot_db.find.call_args.args[0]
-        assert selector["timestamp"] == {"$exists": True, "$ne": None}
+        assert selector["timestamp"] == {"$gte": "2024-01-01", "$lt": "2024-01-02"}
 
     @pytest.mark.anyio
     async def test_bounds_must_match_stream_timezone_awareness(
@@ -1534,9 +1537,7 @@ class TestSensorStats:
             },
         )
 
-        assert data == {
-            "error": "unknown sensor Temperature for asset_id Pump-1"
-        }
+        assert data == {"error": "no records for asset_id Pump-1, sensor Temperature"}
 
     @pytest.mark.anyio
     async def test_single_sensor_numeric_summary(self, mock_asset_db, mock_iot_db):
@@ -1577,10 +1578,10 @@ class TestSensorStats:
             ],
             "message": "numeric stats for 1 sensor(s) on asset_id Pump-1.",
         }
-        stats_query = mock_iot_db.find.call_args_list[1]
+        stats_query = mock_iot_db.find.call_args_list[0]
         assert stats_query.args[0] == {
             "asset_id": "Pump-1",
-            "timestamp": {"$exists": True, "$ne": None},
+            "timestamp": {"$gt": None},
             "Temp": {"$exists": True},
         }
         assert stats_query.kwargs["fields"] == ["timestamp", "Temp"]
