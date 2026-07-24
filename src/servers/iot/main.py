@@ -98,6 +98,7 @@ IOT_DESIGN_DOC = "iot"
 
 _registry_sites_cache: Optional[List[str]] = None
 _sensor_list_cache: Dict[str, List[str]] = {}
+_VIEW_UNAVAILABLE = object()
 
 
 def _is_mock_database(database: Any) -> bool:
@@ -110,6 +111,11 @@ def _row_value(row: Any) -> Any:
 
 def _row_key(row: Any) -> Any:
     return row.get("key") if isinstance(row, dict) else getattr(row, "key", None)
+
+
+def _row_doc(row: Any) -> Optional[Dict[str, Any]]:
+    doc = row.get("doc") if isinstance(row, dict) else getattr(row, "doc", None)
+    return dict(doc) if doc else None
 
 
 def _view_rows(database: Any, view_name: str, **params: Any) -> Optional[List[Any]]:
@@ -401,6 +407,125 @@ def _sensor_coverage_from_views(
     return docs_scanned, sorted(sensors, key=lambda item: item["sensor"])
 
 
+def _sensor_list_from_views(asset_id: str) -> Optional[List[str]]:
+    bounds = _view_key_bounds(asset_id, None, None, None, None)
+    assert bounds is not None
+    rows = _view_rows(
+        iot_db,
+        "coverage_by_asset_sensor",
+        startkey=bounds[0],
+        endkey=bounds[1],
+        reduce=True,
+        group_level=2,
+    )
+    if rows is None:
+        return None
+    sensors = set()
+    for row in rows:
+        key = _row_key(row)
+        if isinstance(key, list) and len(key) >= 2:
+            sensors.add(str(key[1]))
+    return sorted(sensors)
+
+
+def _latest_doc_from_views(asset_id: str, sensor: Optional[str]) -> Any:
+    bounds = _view_key_bounds(asset_id, None, None, None, None, sensor=sensor)
+    assert bounds is not None
+    view_name = "stream_by_asset_sensor_time" if sensor else "stream_by_asset_time"
+    rows = _view_rows(
+        iot_db,
+        view_name,
+        startkey=bounds[1],
+        endkey=bounds[0],
+        reduce=False,
+        descending=True,
+        include_docs=True,
+        limit=1,
+    )
+    if rows is None:
+        return _VIEW_UNAVAILABLE
+    if not rows:
+        return None, None, None
+
+    doc = _row_doc(rows[0])
+    if doc is None:
+        return _VIEW_UNAVAILABLE
+    timestamp = doc.get("timestamp") or _row_timestamp(rows[0])
+    timestamp_dt = _parse_iso_timestamp(timestamp)
+    if timestamp_dt is None:
+        raise _TimestampHandlingError(
+            "telemetry record has an invalid ISO 8601 timestamp"
+        )
+    if _is_timezone_aware(timestamp_dt):
+        return _VIEW_UNAVAILABLE
+    return doc, timestamp, timestamp_dt
+
+
+def _latest_reading_result(
+    site_name: str,
+    asset_id: str,
+    sensor: Optional[str],
+    latest_doc: Dict[str, Any],
+    latest_timestamp: str,
+    latest_datetime: datetime,
+) -> LatestReadingResult:
+    if sensor is None:
+        values = {
+            field: value
+            for field, value in latest_doc.items()
+            if field not in RESERVED_FIELDS
+        }
+    else:
+        values = {sensor: latest_doc[sensor]}
+    return LatestReadingResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        timestamp=latest_timestamp,
+        values=values,
+        age_seconds=_timestamp_age_seconds(latest_datetime),
+        message=f"latest reading for asset_id {asset_id} at {latest_timestamp}.",
+    )
+
+
+def _find_measured_assets_from_views(
+    site_asset_ids: List[str],
+    query_sensors: List[str],
+    match: str,
+) -> Optional[List[AssetSensorMatch]]:
+    site_asset_set = set(site_asset_ids)
+    matched_by_asset: Dict[str, set[str]] = {}
+    for sensor_name in query_sensors:
+        rows = _view_rows(
+            iot_db,
+            "assets_by_sensor",
+            startkey=[sensor_name],
+            endkey=[sensor_name, {}],
+            reduce=True,
+            group_level=2,
+        )
+        if rows is None:
+            return None
+        for row in rows:
+            key = _row_key(row)
+            if not isinstance(key, list) or len(key) < 2:
+                continue
+            matched_sensor, asset_id = str(key[0]), str(key[1])
+            if matched_sensor == sensor_name and asset_id in site_asset_set:
+                matched_by_asset.setdefault(asset_id, set()).add(matched_sensor)
+
+    matches: List[AssetSensorMatch] = []
+    for asset_id in site_asset_ids:
+        matched = sorted(matched_by_asset.get(asset_id, set()))
+        ok = (
+            len(matched) == len(query_sensors)
+            if match == "all"
+            else len(matched) > 0
+        )
+        if ok:
+            matches.append(AssetSensorMatch(asset_id=asset_id, matched_sensors=matched))
+    return matches
+
+
 def get_sensor_list(asset_id: str) -> List[str]:
     """Return sorted telemetry field names observed across all records for an asset."""
     if asset_id in _sensor_list_cache:
@@ -408,6 +533,12 @@ def get_sensor_list(asset_id: str) -> List[str]:
     if not iot_db:
         return []
     try:
+        sensors = _sensor_list_from_views(asset_id)
+        if sensors is not None:
+            if sensors:
+                _sensor_list_cache[asset_id] = sensors
+            return sensors
+
         found = set()
         seen = False
         for doc in _iter_records(iot_db, {"asset_id": asset_id}):
@@ -784,8 +915,28 @@ def find_assets_by_sensors(
         return ErrorResult(error="IoT records database not connected")
 
     query_sensors = list(dict.fromkeys(sensors))
+    site_asset_ids = _site_asset_ids(site_name)
+    if source == "measured" and not substring:
+        view_matches = _find_measured_assets_from_views(
+            site_asset_ids, query_sensors, match
+        )
+        if view_matches is not None:
+            return FindAssetsResult(
+                site_name=site_name,
+                query_sensors=query_sensors,
+                match=match,
+                source=source,
+                total_assets=len(view_matches),
+                assets=view_matches,
+                message=(
+                    f"{len(view_matches)} asset(s) at {site_name} match "
+                    f"{query_sensors} (match={match}, substring={substring}, "
+                    f"source={source})."
+                ),
+            )
+
     matches: List[AssetSensorMatch] = []
-    for asset_id in _site_asset_ids(site_name):
+    for asset_id in site_asset_ids:
         available = (
             get_sensor_list(asset_id)
             if source == "measured"
@@ -1189,6 +1340,32 @@ def latest_reading(
         if sensor not in available_sensors:
             return ErrorResult(error=f"unknown sensor {sensor} for asset_id {asset_id}")
 
+    try:
+        view_latest = _latest_doc_from_views(asset_id, sensor)
+        if view_latest is not _VIEW_UNAVAILABLE:
+            latest_doc, latest_timestamp, latest_datetime = view_latest
+            if (
+                latest_doc is None
+                or latest_timestamp is None
+                or latest_datetime is None
+            ):
+                return ErrorResult(
+                    error=f"no records for asset_id {asset_id}"
+                    + (f", sensor {sensor}" if sensor else "")
+                )
+            return _latest_reading_result(
+                site_name,
+                asset_id,
+                sensor,
+                latest_doc,
+                latest_timestamp,
+                latest_datetime,
+            )
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
+    except Exception as e:
+        logger.debug("latest_reading aggregate fast path skipped: %s", e)
+
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
         "timestamp": {"$exists": True, "$ne": None},
@@ -1221,21 +1398,13 @@ def latest_reading(
             + (f", sensor {sensor}" if sensor else "")
         )
 
-    if sensor is None:
-        values = {
-            field: value
-            for field, value in latest_doc.items()
-            if field not in RESERVED_FIELDS
-        }
-    else:
-        values = {sensor: latest_doc[sensor]}
-    return LatestReadingResult(
-        site_name=site_name,
-        asset_id=asset_id,
-        timestamp=latest_timestamp,
-        values=values,
-        age_seconds=_timestamp_age_seconds(latest_datetime),
-        message=f"latest reading for asset_id {asset_id} at {latest_timestamp}.",
+    return _latest_reading_result(
+        site_name,
+        asset_id,
+        sensor,
+        latest_doc,
+        latest_timestamp,
+        latest_datetime,
     )
 
 
