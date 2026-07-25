@@ -580,6 +580,14 @@ def test_parse_json_markdown_fence():
     assert _parse_json('```json\n{"a": "b"}\n```') == {"a": "b"}
 
 
+def test_parse_json_single_line_fence():
+    assert _parse_json('```json{"site": "MAIN"}```') == {"site": "MAIN"}
+
+
+def test_parse_json_single_line_fence_no_language_tag():
+    assert _parse_json('```{"site": "MAIN"}```') == {"site": "MAIN"}
+
+
 def test_parse_json_embedded():
     assert _parse_json('Result: {"a": "b"} done.') == {"a": "b"}
 
