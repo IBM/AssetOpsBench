@@ -24,6 +24,10 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
 
+# Matches a ```-fenced block whether the language tag and content share a
+# line with the fence markers or sit on lines of their own.
+_FENCE_RE = re.compile(r"^```[a-zA-Z0-9_+-]*\r?\n?(.*?)\r?\n?```$", re.DOTALL)
+
 _ARG_RESOLUTION_PROMPT = """\
 Generate the JSON arguments for the tool call below.
 
@@ -230,9 +234,9 @@ def _parse_json(raw: str) -> dict | None:
     """
     text = raw.strip()
     if text.startswith("```"):
-        lines = text.splitlines()
-        inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
-        text = "\n".join(inner).lstrip("json").strip()
+        match = _FENCE_RE.match(text)
+        if match:
+            text = match.group(1).strip()
     try:
         result = json.loads(text)
         if isinstance(result, dict):
