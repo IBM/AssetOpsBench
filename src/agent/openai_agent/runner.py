@@ -28,6 +28,7 @@ from agents import (
     Agent,
     ModelProvider,
     OpenAIChatCompletionsModel,
+    OpenAIProvider,
     RunConfig,
     Runner,
     set_tracing_disabled,
@@ -36,7 +37,7 @@ from agents.mcp import MCPServerStdio
 
 from observability import agent_run_span, persist_trajectory
 
-from llm.routers import resolve_model, resolve_router_creds
+from llm.routers import TOKENROUTER_PREFIX, resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
@@ -44,15 +45,17 @@ from ..runner import AgentRunner
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
+_TOKENROUTER_OPENAI_PREFIX = f"{TOKENROUTER_PREFIX}openai/"
 
 
 def _build_run_config(model_id: str) -> RunConfig | None:
-    """Build a RunConfig with a LiteLLM model provider when needed.
+    """Build a RunConfig with a router-specific model provider when needed.
 
     When *model_id* starts with a proxy-router prefix (``litellm_proxy/`` or
     ``tokenrouter/``), creates an :class:`AsyncOpenAI` client pointing at that
-    router's OpenAI-compatible endpoint (credentials from the router's env
-    vars) and wraps it in :class:`OpenAIChatCompletionsModel`.
+    router's OpenAI-compatible endpoint using credentials from the router's
+    environment variables. OpenAI models routed through TokenRouter use the
+    Responses API; other routed models use Chat Completions.
 
     Returns ``None`` for direct OpenAI API usage.
     """
@@ -64,14 +67,22 @@ def _build_run_config(model_id: str) -> RunConfig | None:
     client = AsyncOpenAI(base_url=creds.base_url, api_key=creds.api_key)
     set_tracing_disabled(disabled=True)
 
-    class _LiteLLMModelProvider(ModelProvider):
+    if model_id.startswith(_TOKENROUTER_OPENAI_PREFIX):
+        return RunConfig(
+            model_provider=OpenAIProvider(
+                openai_client=client,
+                use_responses=True,
+            )
+        )
+
+    class _ChatCompletionsModelProvider(ModelProvider):
         def get_model(self, model_name: str | None):
             return OpenAIChatCompletionsModel(
                 model=model_name or resolved,
                 openai_client=client,
             )
 
-    return RunConfig(model_provider=_LiteLLMModelProvider())
+    return RunConfig(model_provider=_ChatCompletionsModelProvider())
 
 
 def _build_mcp_servers(
