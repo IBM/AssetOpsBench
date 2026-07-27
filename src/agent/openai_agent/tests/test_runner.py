@@ -65,27 +65,26 @@ def test_build_run_config_litellm_prefix(monkeypatch):
     assert model.model == "Azure/gpt-5-2025-08-07"
 
 
-def test_build_run_config_tokenrouter_openai_uses_responses(monkeypatch):
+@pytest.mark.parametrize(
+    ("model_id", "resolved_model"),
+    [
+        ("tokenrouter/openai/gpt-5.4", "openai/gpt-5.4"),
+        ("tokenrouter/anthropic/claude-opus-4.8", "anthropic/claude-opus-4.8"),
+        ("tokenrouter/MiniMax-M3", "MiniMax-M3"),
+    ],
+)
+def test_build_run_config_tokenrouter_uses_responses(
+    monkeypatch, model_id, resolved_model
+):
     monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://api.tokenrouter.com/v1")
     monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
-    config = _build_run_config("tokenrouter/openai/gpt-5.4")
+    config = _build_run_config(model_id)
     assert config is not None
     assert isinstance(config.model_provider, OpenAIProvider)
-    model = config.model_provider.get_model("openai/gpt-5.4")
+    model = config.model_provider.get_model(resolved_model)
     assert isinstance(model, OpenAIResponsesModel)
-    assert model.model == "openai/gpt-5.4"
+    assert model.model == resolved_model
     assert str(model._client.base_url) == "https://api.tokenrouter.com/v1/"
-
-
-def test_build_run_config_tokenrouter_anthropic_uses_chat_completions(monkeypatch):
-    monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://api.tokenrouter.com/v1")
-    monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
-    config = _build_run_config("tokenrouter/anthropic/claude-opus-4.8")
-    assert config is not None
-    assert config.model_provider is not None
-    model = config.model_provider.get_model(None)
-    assert isinstance(model, OpenAIChatCompletionsModel)
-    assert model.model == "anthropic/claude-opus-4.8"
 
 
 def test_build_run_config_missing_env_raises(monkeypatch):

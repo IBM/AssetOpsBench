@@ -45,7 +45,6 @@ from ..runner import AgentRunner
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
-_TOKENROUTER_OPENAI_PREFIX = f"{TOKENROUTER_PREFIX}openai/"
 
 
 def _build_run_config(model_id: str) -> RunConfig | None:
@@ -54,8 +53,8 @@ def _build_run_config(model_id: str) -> RunConfig | None:
     When *model_id* starts with a proxy-router prefix (``litellm_proxy/`` or
     ``tokenrouter/``), creates an :class:`AsyncOpenAI` client pointing at that
     router's OpenAI-compatible endpoint using credentials from the router's
-    environment variables. OpenAI models routed through TokenRouter use the
-    Responses API; other routed models use Chat Completions.
+    environment variables. All models routed through TokenRouter use the
+    Responses API; LiteLLM models use Chat Completions.
 
     Returns ``None`` for direct OpenAI API usage.
     """
@@ -67,7 +66,7 @@ def _build_run_config(model_id: str) -> RunConfig | None:
     client = AsyncOpenAI(base_url=creds.base_url, api_key=creds.api_key)
     set_tracing_disabled(disabled=True)
 
-    if model_id.startswith(_TOKENROUTER_OPENAI_PREFIX):
+    if creds.prefix == TOKENROUTER_PREFIX:
         return RunConfig(
             model_provider=OpenAIProvider(
                 openai_client=client,
