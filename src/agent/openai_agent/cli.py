@@ -32,7 +32,6 @@ API routing:
   all other model IDs          Chat Completions API
 
 environment variables:
-  OPENAI_API_KEY         OpenAI API key      (for direct models)
   LITELLM_API_KEY       LiteLLM API key    (required)
   LITELLM_BASE_URL      LiteLLM base URL   (required)
   TOKENROUTER_API_KEY   TokenRouter API key  (for tokenrouter/* models)
