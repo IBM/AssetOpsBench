@@ -1,13 +1,11 @@
-"""Failure mode and sensor reasoning for industrial asset classes."""
+"""Failure-mode catalog reasoning for industrial asset classes."""
 
 from __future__ import annotations
 
 import logging
 import os
 import re
-from typing import Dict, List, Optional, Union
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Optional, Union
 
 import couchdb3
 from couchdb3.exceptions import NotFoundError
@@ -99,12 +97,6 @@ def _is_not_found_error(exc: Exception) -> bool:
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
 
-_RELEVANCY_PROMPT = (
-    "For asset class {asset_class}, if the failure {failure_mode} occurs, "
-    "can sensor {sensor} help monitor or detect the failure for assets of class {asset_class}?\n"
-    "Provide the answer in the first line and reason in the second line."
-)
-
 _FAILURE_MODE_PROMPT = (
     "List up to {max_modes} common failure modes for asset class {asset_class}.\n"
     "Return only failure mode names, one per line."
@@ -128,18 +120,6 @@ def _parse_failure_mode_list(text: str) -> List[str]:
         if item:
             items.append(item)
     return items
-
-
-def _parse_relevancy(text: str) -> dict:
-    lines = [ln for ln in text.strip().splitlines() if ln.strip()]
-    if lines and lines[0].lower().startswith("yes"):
-        answer = "Yes"
-    elif lines and lines[0].lower().startswith("no"):
-        answer = "No"
-    else:
-        answer = "Unknown"
-    reason = lines[1] if len(lines) >= 2 else "Unknown"
-    return {"answer": answer, "reason": reason}
 
 
 # ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
@@ -182,19 +162,6 @@ except Exception as _e:  # noqa: BLE001
     logger.warning("LLM unavailable (generate_* tools disabled): %s", _e)
     _llm = None
     _llm_available = False
-
-
-def _call_relevancy(asset_class: str, failure_mode: str, sensor: str) -> dict:
-    prompt = _RELEVANCY_PROMPT.format(
-        asset_class=asset_class, failure_mode=failure_mode, sensor=sensor
-    )
-    last_exc: Exception | None = None
-    for _ in range(_MAX_RETRIES):
-        try:
-            return _parse_relevancy(_llm.generate(prompt))
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-    raise last_exc
 
 
 def _call_failure_mode_generation(
@@ -251,32 +218,17 @@ class AddFailureModesResult(BaseModel):
     message: str
 
 
-class RelevancyEntry(BaseModel):
-    asset_class: str
-    failure_mode: str
-    sensor: str
-    relevancy_answer: str
-    relevancy_reason: str
-
-
-class MappingMetadata(BaseModel):
-    asset_class: str
-    failure_modes: List[str]
-    sensors: List[str]
-
-
-class FailureModeSensorMappingResult(BaseModel):
-    metadata: MappingMetadata
-    fm2sensor: Dict[str, List[str]]
-    sensor2fm: Dict[str, List[str]]
-    full_relevancy: List[RelevancyEntry]
-
-
 # ── FastMCP server ────────────────────────────────────────────────────────────
 
 mcp = FastMCP(
     "fmsr",
-    instructions="Failure mode and sensor reasoning for industrial asset classes.",
+    instructions=(
+        "Failure-mode catalog tools for industrial asset classes. Exposes stored "
+        "failure-mode lookup, LLM failure-mode generation, and failure-mode "
+        "persistence. Failure-mode/sensor mapping is intentionally disabled and "
+        "is not available as an FMSR tool. Agent should use LLM domain knowledge "
+        "to get mapping by themselves."
+    ),
 )
 
 
@@ -489,69 +441,9 @@ def add_failure_modes(
         return ErrorResult(error=str(exc))
 
 
-@mcp.tool(title="Generate Failure Mode Sensor Mapping")
-def generate_failure_mode_sensor_mapping(
-    asset_class: str,
-    failure_modes: List[str],
-    sensors: List[str],
-) -> Union[FailureModeSensorMappingResult, ErrorResult]:
-    """GENERATE, for each (failure_mode, sensor) pair, whether the sensor can detect the failure
-    (one LLM call per pair). Returns a bidirectional mapping (fm→sensors, sensor→fms) plus per-pair
-    relevancy details. Keep both lists small (e.g. ≤5 failure modes, ≤10 sensors) to bound runtime.
-
-    Args:
-        asset_class: Asset class to reason about, such as "pump". Case, whitespace,
-            digits, underscores, and hyphens are normalized before prompting the LLM.
-        failure_modes: Failure modes for the asset class.
-        sensors: Sensor names to evaluate for detection relevance.
-    """
-    key = _asset_class_key(asset_class)
-    if not key or key == "none":
-        return ErrorResult(error="asset_class is required")
-    if not failure_modes:
-        return ErrorResult(error="failure_modes list is required")
-    if not sensors:
-        return ErrorResult(error="sensors list is required")
-    if not _llm_available:
-        return ErrorResult(error="LLM unavailable")
-
-    full_relevancy: List[RelevancyEntry] = []
-    fm2sensor: Dict[str, List[str]] = {}
-    sensor2fm: Dict[str, List[str]] = {}
-    try:
-        pairs = [(s, fm) for s in sensors for fm in failure_modes]
-        with ThreadPoolExecutor() as executor:
-            futures = {
-                executor.submit(_call_relevancy, key, fm, s): (s, fm)
-                for s, fm in pairs
-            }
-            for future in as_completed(futures):
-                s, fm = futures[future]
-                gen = future.result()
-                full_relevancy.append(
-                    RelevancyEntry(
-                        asset_class=key,
-                        failure_mode=fm,
-                        sensor=s,
-                        relevancy_answer=gen["answer"],
-                        relevancy_reason=gen["reason"],
-                    )
-                )
-                if "yes" in gen["answer"].lower():
-                    fm2sensor.setdefault(fm, []).append(s)
-                    sensor2fm.setdefault(s, []).append(fm)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("_call_relevancy failed: %s", exc)
-        return ErrorResult(error=str(exc))
-
-    return FailureModeSensorMappingResult(
-        metadata=MappingMetadata(
-            asset_class=key, failure_modes=failure_modes, sensors=sensors
-        ),
-        fm2sensor=fm2sensor,
-        sensor2fm=sensor2fm,
-        full_relevancy=full_relevancy,
-    )
+# generate_failure_mode_sensor_mapping is intentionally not registered. The
+# mapping workflow is disabled because large failure-mode/sensor matrices make
+# benchmark tool calls too expensive and timeout-prone.
 
 
 def main():
