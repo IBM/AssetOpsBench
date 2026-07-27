@@ -24,8 +24,15 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog="""
 model-id format:
   litellm_proxy/<model>   LiteLLM proxy (e.g. litellm_proxy/azure/gpt-5.4)
+  tokenrouter/<model>     TokenRouter (e.g. tokenrouter/openai/gpt-5.6-sol)
+  <model>                 Direct OpenAI API model
+
+API routing:
+  tokenrouter/openai/gpt-5.*   Responses API
+  all other model IDs          Chat Completions API
 
 environment variables:
+  OPENAI_API_KEY         OpenAI API key      (for direct models)
   LITELLM_API_KEY       LiteLLM API key    (required)
   LITELLM_BASE_URL      LiteLLM base URL   (required)
   TOKENROUTER_API_KEY   TokenRouter API key  (for tokenrouter/* models)

@@ -7,15 +7,17 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from agents import OpenAIChatCompletionsModel, OpenAIResponsesModel
 
 from agent.openai_agent.runner import (
     OpenAIAgentRunner,
     _build_mcp_servers,
     _build_run_config,
     _build_trajectory,
+    _uses_responses_api,
 )
 from agent.models import AgentResult, Trajectory
 
@@ -49,16 +51,52 @@ def test_build_mcp_servers_empty():
 # ---------------------------------------------------------------------------
 
 
-def test_build_run_config_no_prefix_returns_none():
-    assert _build_run_config("gpt-4o") is None
+@pytest.mark.parametrize(
+    ("model_id", "expected"),
+    [
+        ("tokenrouter/openai/gpt-5.5", True),
+        ("tokenrouter/openai/gpt-5.6-sol", True),
+        ("tokenrouter/openai/gpt-4.1", False),
+        ("tokenrouter/anthropic/claude-opus-4.8", False),
+        ("litellm_proxy/openai/gpt-5.5", False),
+        ("gpt-5.5", False),
+    ],
+)
+def test_uses_responses_api(model_id, expected):
+    assert _uses_responses_api(model_id) is expected
+
+
+def test_build_run_config_no_prefix_uses_chat_completions(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    config = _build_run_config("gpt-4o")
+    model = config.model_provider.get_model("gpt-4o")
+    assert isinstance(model, OpenAIChatCompletionsModel)
+    assert config.tracing_disabled is False
 
 
 def test_build_run_config_litellm_prefix(monkeypatch):
     monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
     monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
     config = _build_run_config("litellm_proxy/Azure/gpt-5-2025-08-07")
-    assert config is not None
-    assert config.model_provider is not None
+    model = config.model_provider.get_model("Azure/gpt-5-2025-08-07")
+    assert isinstance(model, OpenAIChatCompletionsModel)
+
+
+def test_build_run_config_tokenrouter_openai_gpt5_uses_responses(monkeypatch):
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "http://localhost:4001")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
+    config = _build_run_config("tokenrouter/openai/gpt-5.6-sol")
+    model = config.model_provider.get_model("openai/gpt-5.6-sol")
+    assert isinstance(model, OpenAIResponsesModel)
+    assert config.tracing_disabled is True
+
+
+def test_build_run_config_other_tokenrouter_model_uses_chat_completions(monkeypatch):
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "http://localhost:4001")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
+    config = _build_run_config("tokenrouter/MiniMax-M3")
+    model = config.model_provider.get_model("MiniMax-M3")
+    assert isinstance(model, OpenAIChatCompletionsModel)
 
 
 def test_build_run_config_missing_env_raises(monkeypatch):
@@ -122,9 +160,14 @@ def _make_tool_call_item(name: str, args: str, call_id: str = "call_1"):
     return SimpleNamespace(type="tool_call_item", raw_item=raw)
 
 
-def _make_tool_output_item(output):
+def _make_tool_output_item(output, call_id: str | None = None):
     """Create a fake ToolCallOutputItem."""
-    return SimpleNamespace(type="tool_call_output_item", output=output)
+    raw_item = {"call_id": call_id} if call_id else None
+    return SimpleNamespace(
+        type="tool_call_output_item",
+        raw_item=raw_item,
+        output=output,
+    )
 
 
 def _make_usage(input_tokens: int, output_tokens: int):
@@ -197,9 +240,9 @@ def test_build_trajectory_invalid_json_args():
 def test_build_trajectory_multiple_tool_calls():
     items = [
         _make_tool_call_item("sites", "{}", "call_1"),
-        _make_tool_output_item(["MAIN"]),
         _make_tool_call_item("assets", '{"site_id": "MAIN"}', "call_2"),
-        _make_tool_output_item(["Chiller 6"]),
+        _make_tool_output_item(["MAIN"], "call_1"),
+        _make_tool_output_item(["Chiller 6"], "call_2"),
         _make_message_item("Found Chiller 6 at site MAIN."),
     ]
     # Two turns: (tool calls) and (message), so two raw_responses
@@ -218,6 +261,49 @@ def test_build_trajectory_multiple_tool_calls():
     assert traj.all_tool_calls[1].output == ["Chiller 6"]
     assert traj.total_input_tokens == 50 + 80
     assert traj.total_output_tokens == 10 + 15
+
+
+def test_build_trajectory_keeps_preamble_and_tool_call_in_same_turn():
+    items = [
+        _make_message_item("I'll check. "),
+        _make_tool_call_item("sites", "{}", "call_1"),
+        _make_tool_output_item(["MAIN"], "call_1"),
+        _make_message_item("Found site MAIN."),
+    ]
+    raw = [
+        SimpleNamespace(usage=_make_usage(50, 10)),
+        SimpleNamespace(usage=_make_usage(80, 15)),
+    ]
+    traj = _build_trajectory(_make_run_result(items, raw))
+
+    assert len(traj.turns) == 2
+    assert traj.turns[0].text == "I'll check. "
+    assert traj.turns[0].tool_calls[0].output == ["MAIN"]
+    assert traj.turns[0].input_tokens == 50
+    assert traj.turns[1].text == "Found site MAIN."
+    assert traj.turns[1].input_tokens == 80
+
+
+def test_build_trajectory_matches_parallel_outputs_by_call_id():
+    items = [
+        _make_tool_call_item("sites", "{}", "call_1"),
+        _make_tool_call_item("assets", "{}", "call_2"),
+        _make_tool_output_item(["Chiller 6"], "call_2"),
+        _make_tool_output_item(["MAIN"], "call_1"),
+    ]
+    traj = _build_trajectory(_make_run_result(items))
+
+    assert traj.all_tool_calls[0].output == ["MAIN"]
+    assert traj.all_tool_calls[1].output == ["Chiller 6"]
+
+
+def test_build_trajectory_preserves_usage_for_response_without_visible_items():
+    raw = [SimpleNamespace(usage=_make_usage(12, 3))]
+    traj = _build_trajectory(_make_run_result([], raw))
+
+    assert len(traj.turns) == 1
+    assert traj.total_input_tokens == 12
+    assert traj.total_output_tokens == 3
 
 
 # ---------------------------------------------------------------------------

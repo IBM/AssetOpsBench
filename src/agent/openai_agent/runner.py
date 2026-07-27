@@ -22,15 +22,11 @@ import time
 from contextlib import AsyncExitStack
 from pathlib import Path
 
-from openai import AsyncOpenAI
-
 from agents import (
     Agent,
-    ModelProvider,
-    OpenAIChatCompletionsModel,
+    OpenAIProvider,
     RunConfig,
     Runner,
-    set_tracing_disabled,
 )
 from agents.mcp import MCPServerStdio
 
@@ -44,34 +40,43 @@ from ..runner import AgentRunner
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
+_TOKENROUTER_OPENAI_GPT5_PREFIX = "tokenrouter/openai/gpt-5."
 
 
-def _build_run_config(model_id: str) -> RunConfig | None:
-    """Build a RunConfig with a LiteLLM model provider when needed.
+def _uses_responses_api(model_id: str) -> bool:
+    """Return whether *model_id* should use the OpenAI Responses API."""
+    return model_id.startswith(_TOKENROUTER_OPENAI_GPT5_PREFIX)
+
+
+def _build_run_config(model_id: str) -> RunConfig:
+    """Build a RunConfig that selects the requested OpenAI API.
 
     When *model_id* starts with a proxy-router prefix (``litellm_proxy/`` or
-    ``tokenrouter/``), creates an :class:`AsyncOpenAI` client pointing at that
-    router's OpenAI-compatible endpoint (credentials from the router's env
-    vars) and wraps it in :class:`OpenAIChatCompletionsModel`.
+    ``tokenrouter/``), configures an :class:`OpenAIProvider` for that router's
+    OpenAI-compatible endpoint and credentials.
 
-    Returns ``None`` for direct OpenAI API usage.
+    ``tokenrouter/openai/gpt-5.*`` models use the Responses API. All other
+    model IDs use Chat Completions, including direct OpenAI API usage.
     """
     creds = resolve_router_creds(model_id)
-    if creds is None:
-        return None
+    use_responses = _uses_responses_api(model_id)
+    provider = (
+        OpenAIProvider(
+            base_url=creds.base_url,
+            api_key=creds.api_key,
+            use_responses=use_responses,
+        )
+        if creds is not None
+        else OpenAIProvider(use_responses=use_responses)
+    )
 
-    resolved = resolve_model(model_id)
-    client = AsyncOpenAI(base_url=creds.base_url, api_key=creds.api_key)
-    set_tracing_disabled(disabled=True)
-
-    class _LiteLLMModelProvider(ModelProvider):
-        def get_model(self, model_name: str | None):
-            return OpenAIChatCompletionsModel(
-                model=model_name or resolved,
-                openai_client=client,
-            )
-
-    return RunConfig(model_provider=_LiteLLMModelProvider())
+    return RunConfig(
+        model_provider=provider,
+        # Router credentials cannot authenticate with the OpenAI traces API.
+        # Keep this run-scoped so other Agents SDK users retain their setting.
+        tracing_disabled=creds is not None,
+        workflow_name="AssetOps Assistant",
+    )
 
 
 def _build_mcp_servers(
@@ -109,9 +114,10 @@ def _build_trajectory(result) -> Trajectory:
     turn_index = 0
     text_parts: list[str] = []
     tool_calls: list[ToolCall] = []
+    saw_tool_output = False
 
     def _flush() -> None:
-        nonlocal text_parts, tool_calls, turn_index
+        nonlocal text_parts, tool_calls, turn_index, saw_tool_output
         if not text_parts and not tool_calls:
             return
         trajectory.turns.append(
@@ -124,24 +130,37 @@ def _build_trajectory(result) -> Trajectory:
         turn_index += 1
         text_parts = []
         tool_calls = []
+        saw_tool_output = False
+
+    def _start_model_item() -> None:
+        # Tool outputs separate one model response from the next. This keeps a
+        # response containing both preamble text and tool calls in one turn.
+        if saw_tool_output:
+            _flush()
+
+    def _field(value, name: str, default=None):
+        if isinstance(value, dict):
+            return value.get(name, default)
+        return getattr(value, name, default)
 
     for item in result.new_items:
         item_type = getattr(item, "type", "")
         if item_type == "message_output_item":
-            # Flush any pending tool calls from previous turn
-            _flush()
+            _start_model_item()
             raw = getattr(item, "raw_item", None)
             if raw:
-                content = getattr(raw, "content", None) or []
+                content = _field(raw, "content", None) or []
                 for part in content:
-                    if hasattr(part, "text"):
-                        text_parts.append(part.text)
+                    text = _field(part, "text")
+                    if text:
+                        text_parts.append(text)
         elif item_type == "tool_call_item":
+            _start_model_item()
             raw = getattr(item, "raw_item", None)
             if raw:
-                tc_name = getattr(raw, "name", "") or ""
-                tc_id = getattr(raw, "call_id", "") or getattr(raw, "id", "") or ""
-                tc_args = getattr(raw, "arguments", "{}") or "{}"
+                tc_name = _field(raw, "name", "") or ""
+                tc_id = _field(raw, "call_id", "") or _field(raw, "id", "") or ""
+                tc_args = _field(raw, "arguments", "{}") or "{}"
                 try:
                     tc_input = (
                         json.loads(tc_args) if isinstance(tc_args, str) else tc_args
@@ -151,18 +170,31 @@ def _build_trajectory(result) -> Trajectory:
                 tool_calls.append(ToolCall(name=tc_name, input=tc_input, id=tc_id))
         elif item_type == "tool_call_output_item":
             output = getattr(item, "output", None)
-            # Attach output to the last matching tool call
-            if tool_calls:
-                tool_calls[-1].output = output
+            raw = getattr(item, "raw_item", None)
+            output_call_id = _field(raw, "call_id", "") if raw else ""
+            matching_call = next(
+                (call for call in reversed(tool_calls) if call.id == output_call_id),
+                None,
+            )
+            if matching_call is None:
+                matching_call = next(
+                    (call for call in reversed(tool_calls) if call.output is None),
+                    None,
+                )
+            if matching_call is not None:
+                matching_call.output = output
+            saw_tool_output = True
 
     # Flush remaining
     _flush()
 
     # Distribute token usage from raw_responses across turns
     raw_responses = getattr(result, "raw_responses", []) or []
+    while len(trajectory.turns) < len(raw_responses):
+        trajectory.turns.append(TurnRecord(index=len(trajectory.turns), text=""))
     for i, resp in enumerate(raw_responses):
         usage = getattr(resp, "usage", None)
-        if usage and i < len(trajectory.turns):
+        if usage:
             trajectory.turns[i].input_tokens = getattr(usage, "input_tokens", 0) or 0
             trajectory.turns[i].output_tokens = getattr(usage, "output_tokens", 0) or 0
 
@@ -175,17 +207,17 @@ class OpenAIAgentRunner(AgentRunner):
     The SDK handles tool discovery, invocation, and multi-turn conversation
     against the registered MCP servers.
 
-    Routes all requests through a LiteLLM proxy via the ``litellm_proxy/``
-    proxy-router prefix ``litellm_proxy/`` or ``tokenrouter/`` (requires the
-    matching ``*_BASE_URL`` / ``*_API_KEY`` env vars).
+    Router-prefixed models use the matching proxy endpoint and credentials.
+    ``tokenrouter/openai/gpt-5.*`` uses the Responses API; all other model IDs
+    use Chat Completions.
 
     Args:
         llm: Unused — OpenAIAgentRunner uses the OpenAI Agents SDK directly.
              Accepted for interface compatibility with ``AgentRunner``.
         server_paths: MCP server specs identical to ``PlanExecuteRunner``.
                       Defaults to all registered servers.
-        model: LiteLLM model string with ``litellm_proxy/`` prefix
-               (default: ``litellm_proxy/azure/gpt-5.4``).
+        model: Model ID, optionally prefixed with ``litellm_proxy/`` or
+               ``tokenrouter/`` (default: ``litellm_proxy/azure/gpt-5.4``).
         max_turns: Maximum agentic loop turns (default: 30).
     """
 
@@ -237,14 +269,11 @@ class OpenAIAgentRunner(AgentRunner):
                     len(active_servers),
                 )
 
-                run_kwargs: dict = dict(max_turns=self._max_turns)
-                if self._run_config is not None:
-                    run_kwargs["run_config"] = self._run_config
-
                 result = await Runner.run(
                     agent,
                     question,
-                    **run_kwargs,
+                    max_turns=self._max_turns,
+                    run_config=self._run_config,
                 )
 
                 answer = result.final_output or ""
