@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime as _dt
 import logging
 import time
+from collections import deque
 from pathlib import Path
 
 from claude_agent_sdk import (
@@ -39,6 +40,37 @@ from ..runner import AgentRunner
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/aws/claude-opus-4-6"
+_TOKENROUTER_ANTHROPIC_PREFIX = "tokenrouter/anthropic/"
+_TOKENROUTER_OPENAI_PREFIX = "tokenrouter/openai/"
+_ERROR_STREAM_TAIL_CHARS = 4000
+_STDERR_MAX_LINES = 200
+
+
+class ClaudeAgentError(RuntimeError):
+    """Raised when the Claude Code SDK subprocess reports a run failure."""
+
+
+class ClaudeAgentConfigurationError(ValueError):
+    """Raised when a requested model cannot be driven by claude-agent."""
+
+
+def _validate_model_id(model_id: str) -> None:
+    """Reject model IDs known to be incompatible with Claude Code."""
+    if model_id.startswith(_TOKENROUTER_ANTHROPIC_PREFIX):
+        raise ClaudeAgentConfigurationError(
+            "claude-agent is backed by Claude Code, which rejects "
+            f"provider-prefixed TokenRouter model IDs like {model_id!r}. "
+            "Use openai-agent or opencode-agent for TokenRouter Anthropic "
+            "models, e.g. "
+            f"uv run openai-agent --model-id {model_id!r} \"hello\"."
+        )
+    if model_id.startswith(_TOKENROUTER_OPENAI_PREFIX):
+        raise ClaudeAgentConfigurationError(
+            "claude-agent is backed by Claude Code and cannot run "
+            f"{model_id!r}. Use openai-agent or opencode-agent for "
+            "TokenRouter OpenAI models, e.g. "
+            f"uv run openai-agent --model-id {model_id!r} \"hello\"."
+        )
 
 
 def _sdk_env(model_id: str) -> dict[str, str] | None:
@@ -57,6 +89,31 @@ def _sdk_env(model_id: str) -> dict[str, str] | None:
         "ANTHROPIC_BASE_URL": creds.base_url,
         "ANTHROPIC_API_KEY": creds.api_key,
     }
+
+
+def _tail_text(text: str, limit: int = _ERROR_STREAM_TAIL_CHARS) -> str:
+    """Return a compact suffix of *text* for user-facing error messages."""
+    if len(text) <= limit:
+        return text
+    return "..." + text[-limit:]
+
+
+def _format_sdk_failure(
+    exc: Exception,
+    *,
+    result_error: str | None,
+    stderr_lines: deque[str],
+) -> str:
+    """Build a useful error from the SDK exception plus captured CLI output."""
+    parts = ["Claude Code CLI failed."]
+    if result_error:
+        parts.append(f"Result error: {result_error}")
+    stderr = "\n".join(stderr_lines).strip()
+    if stderr:
+        parts.append(f"stderr tail:\n{_tail_text(stderr)}")
+    elif not result_error:
+        parts.append(str(exc))
+    return "\n".join(parts)
 
 
 def _build_mcp_servers(
@@ -102,6 +159,7 @@ class ClaudeAgentRunner(AgentRunner):
         max_turns: int = 30,
         permission_mode: str = "bypassPermissions",
     ) -> None:
+        _validate_model_id(model)
         super().__init__(llm, server_paths)
         self._model = resolve_model(model)
         self._sdk_env = _sdk_env(model)
@@ -121,13 +179,19 @@ class ClaudeAgentRunner(AgentRunner):
         with agent_run_span(
             "claude-agent", model=self._model, question=question
         ) as span:
+            stderr_lines: deque[str] = deque(maxlen=_STDERR_MAX_LINES)
+
+            def _capture_stderr(line: str) -> None:
+                stderr_lines.append(line)
+
             options = ClaudeAgentOptions(
                 model=self._model,
                 system_prompt=AGENT_SYSTEM_PROMPT,
                 mcp_servers=self._mcp_servers,
                 max_turns=self._max_turns,
                 permission_mode=self._permission_mode,
-                env=self._sdk_env,
+                env=self._sdk_env or {},
+                stderr=_capture_stderr,
             )
 
             _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
@@ -137,6 +201,7 @@ class ClaudeAgentRunner(AgentRunner):
             turn_index = 0
             last_turn_start = run_started
             tool_outputs: dict[str, object] = {}
+            result_error: str | None = None
 
             async def _capture_tool_output(
                 input_data, tool_use_id: str, context
@@ -170,46 +235,74 @@ class ClaudeAgentRunner(AgentRunner):
                     if tc.id in tool_outputs:
                         tc.output = tool_outputs.pop(tc.id)
 
-            async for message in query(prompt=question, options=options):
-                if isinstance(message, AssistantMessage):
-                    _flush_tool_outputs()
-                    now = time.perf_counter()
-                    turn_duration_ms = (now - last_turn_start) * 1000
-                    last_turn_start = now
-                    text = ""
-                    tool_calls: list[ToolCall] = []
-                    for block in message.content:
-                        if isinstance(block, TextBlock):
-                            text += block.text
-                        elif isinstance(block, ToolUseBlock):
-                            tool_calls.append(
-                                ToolCall(
-                                    name=block.name, input=block.input, id=block.id
+            try:
+                async for message in query(prompt=question, options=options):
+                    if isinstance(message, AssistantMessage):
+                        _flush_tool_outputs()
+                        now = time.perf_counter()
+                        turn_duration_ms = (now - last_turn_start) * 1000
+                        last_turn_start = now
+                        text = ""
+                        tool_calls: list[ToolCall] = []
+                        for block in message.content:
+                            if isinstance(block, TextBlock):
+                                text += block.text
+                            elif isinstance(block, ToolUseBlock):
+                                tool_calls.append(
+                                    ToolCall(
+                                        name=block.name, input=block.input, id=block.id
+                                    )
                                 )
+                        usage = message.usage or {}
+                        trajectory.turns.append(
+                            TurnRecord(
+                                index=turn_index,
+                                text=text,
+                                tool_calls=tool_calls,
+                                input_tokens=usage.get("input_tokens", 0),
+                                output_tokens=usage.get("output_tokens", 0),
+                                duration_ms=turn_duration_ms,
                             )
-                    usage = message.usage or {}
-                    trajectory.turns.append(
-                        TurnRecord(
-                            index=turn_index,
-                            text=text,
-                            tool_calls=tool_calls,
-                            input_tokens=usage.get("input_tokens", 0),
-                            output_tokens=usage.get("output_tokens", 0),
-                            duration_ms=turn_duration_ms,
                         )
+                        turn_index += 1
+                    elif isinstance(message, ResultMessage):
+                        _flush_tool_outputs()
+                        answer = message.result or ""
+                        if message.is_error:
+                            result_error = (
+                                message.result
+                                or (
+                                    "; ".join(message.errors)
+                                    if message.errors
+                                    else None
+                                )
+                                or "Claude Code returned an error result."
+                            )
+                        _log.info(
+                            "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "
+                            "input_tokens=%d, output_tokens=%d)",
+                            message.stop_reason,
+                            len(trajectory.turns),
+                            trajectory.total_input_tokens,
+                            trajectory.total_output_tokens,
+                        )
+            except Exception as exc:
+                raise ClaudeAgentError(
+                    _format_sdk_failure(
+                        exc,
+                        result_error=result_error,
+                        stderr_lines=stderr_lines,
                     )
-                    turn_index += 1
-                elif isinstance(message, ResultMessage):
-                    _flush_tool_outputs()
-                    answer = message.result or ""
-                    _log.info(
-                        "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "
-                        "input_tokens=%d, output_tokens=%d)",
-                        message.stop_reason,
-                        len(trajectory.turns),
-                        trajectory.total_input_tokens,
-                        trajectory.total_output_tokens,
+                ) from exc
+
+            if result_error:
+                raise ClaudeAgentError(
+                    _format_sdk_failure(
+                        RuntimeError(result_error),
+                        result_error=result_error,
+                        stderr_lines=stderr_lines,
                     )
+                )
 
             duration_ms = (time.perf_counter() - run_started) * 1000
             span.set_attribute("agent.answer.length", len(answer))

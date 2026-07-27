@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 
 from .._cli_common import add_common_args, print_result, run_sdk_cli
 
@@ -25,7 +26,7 @@ def _build_parser() -> argparse.ArgumentParser:
 environment variables:
   LITELLM_API_KEY       LiteLLM / Anthropic API key (for litellm_proxy/* models)
   LITELLM_BASE_URL      LiteLLM proxy URL (required for litellm_proxy/* models)
-  TOKENROUTER_API_KEY   TokenRouter API key (for tokenrouter/* models)
+  TOKENROUTER_API_KEY   TokenRouter API key (Claude/Anthropic models only)
   TOKENROUTER_BASE_URL  TokenRouter base URL (Anthropic-compatible endpoint)
 
 examples:
@@ -48,10 +49,18 @@ examples:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    from agent.claude_agent.runner import ClaudeAgentRunner
+    from agent.claude_agent.runner import (
+        ClaudeAgentConfigurationError,
+        ClaudeAgentError,
+        ClaudeAgentRunner,
+    )
 
-    runner = ClaudeAgentRunner(model=args.model_id, max_turns=args.max_turns)
-    result = await runner.run(args.question)
+    try:
+        runner = ClaudeAgentRunner(model=args.model_id, max_turns=args.max_turns)
+        result = await runner.run(args.question)
+    except (ClaudeAgentConfigurationError, ClaudeAgentError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
     print_result(
         result, show_trajectory=args.show_trajectory, output_json=args.output_json
     )

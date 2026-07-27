@@ -10,13 +10,29 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent.claude_agent.runner import ClaudeAgentRunner, _build_mcp_servers, _sdk_env
+from agent.claude_agent.runner import (
+    ClaudeAgentConfigurationError,
+    ClaudeAgentError,
+    ClaudeAgentRunner,
+    _build_mcp_servers,
+    _sdk_env,
+)
 from agent.models import AgentResult, Trajectory
 
 
 def test_resolve_model_stored_on_runner():
     runner = ClaudeAgentRunner(model="litellm_proxy/aws/claude-opus-4-6")
     assert runner._model == "aws/claude-opus-4-6"
+
+
+def test_rejects_tokenrouter_openai_models():
+    with pytest.raises(ClaudeAgentConfigurationError, match="openai-agent"):
+        ClaudeAgentRunner(model="tokenrouter/openai/gpt-5.6-sol")
+
+
+def test_rejects_tokenrouter_anthropic_provider_models():
+    with pytest.raises(ClaudeAgentConfigurationError, match="TokenRouter Anthropic"):
+        ClaudeAgentRunner(model="tokenrouter/anthropic/claude-opus-4.8")
 
 
 def test_sdk_env_no_prefix_returns_none():
@@ -95,6 +111,7 @@ async def test_run_returns_orchestrator_result():
     mock_result = MagicMock(spec=ResultMessage)
     mock_result.result = "42 sensors found"
     mock_result.stop_reason = "end_turn"
+    mock_result.is_error = False
 
     async def fake_query(prompt, options):
         yield mock_result
@@ -109,6 +126,62 @@ async def test_run_returns_orchestrator_result():
     assert isinstance(result.trajectory, Trajectory)
     assert result.trajectory.total_input_tokens == 0
     assert result.trajectory.total_output_tokens == 0
+
+
+@pytest.mark.anyio
+async def test_run_uses_empty_env_for_unproxied_model():
+    from claude_agent_sdk import ResultMessage
+
+    captured = {}
+    mock_result = MagicMock(spec=ResultMessage)
+    mock_result.result = "ok"
+    mock_result.stop_reason = "end_turn"
+    mock_result.is_error = False
+
+    async def fake_query(prompt, options):
+        captured["env"] = options.env
+        captured["stderr"] = options.stderr
+        yield mock_result
+
+    with patch("agent.claude_agent.runner.query", side_effect=fake_query):
+        runner = ClaudeAgentRunner(server_paths={}, model="claude-opus-4-6")
+        result = await runner.run("hello")
+
+    assert result.answer == "ok"
+    assert captured["env"] == {}
+    assert callable(captured["stderr"])
+
+
+@pytest.mark.anyio
+async def test_run_raises_on_sdk_error_result():
+    from claude_agent_sdk import ResultMessage
+
+    mock_result = MagicMock(spec=ResultMessage)
+    mock_result.result = "selected model is invalid"
+    mock_result.stop_reason = "stop_sequence"
+    mock_result.is_error = True
+    mock_result.errors = None
+
+    async def fake_query(prompt, options):
+        yield mock_result
+
+    with patch("agent.claude_agent.runner.query", side_effect=fake_query):
+        runner = ClaudeAgentRunner(server_paths={})
+        with pytest.raises(ClaudeAgentError, match="selected model is invalid"):
+            await runner.run("hello")
+
+
+@pytest.mark.anyio
+async def test_run_includes_captured_stderr_on_sdk_exception():
+    async def fake_query(prompt, options):
+        options.stderr("diagnostic stderr")
+        raise RuntimeError("sdk wrapper failure")
+        yield  # make it an async generator
+
+    with patch("agent.claude_agent.runner.query", side_effect=fake_query):
+        runner = ClaudeAgentRunner(server_paths={})
+        with pytest.raises(ClaudeAgentError, match="diagnostic stderr"):
+            await runner.run("hello")
 
 
 @pytest.mark.anyio
@@ -135,6 +208,7 @@ async def test_run_collects_trajectory():
     mock_result = MagicMock(spec=ResultMessage)
     mock_result.result = "Chiller 6 has 5 sensors."
     mock_result.stop_reason = "end_turn"
+    mock_result.is_error = False
 
     async def fake_query(prompt, options):
         yield mock_assistant
@@ -188,6 +262,7 @@ async def test_run_tool_output_captured():
     mock_result = MagicMock(spec=ResultMessage)
     mock_result.result = "5 sensors."
     mock_result.stop_reason = "end_turn"
+    mock_result.is_error = False
 
     async def fake_query(prompt, options):
         # Simulate hook firing between turns by calling it directly
@@ -235,6 +310,7 @@ async def test_run_tool_output_string_response():
     mock_result = MagicMock(spec=ResultMessage)
     mock_result.result = "MAIN"
     mock_result.stop_reason = "end_turn"
+    mock_result.is_error = False
 
     async def fake_query(prompt, options):
         hook_fn = options.hooks["PostToolUse"][0].hooks[0]
