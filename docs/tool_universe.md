@@ -41,3 +41,9 @@ uv run python examples/quickstart_tooluniverse.py
 
 Each server launches via `uv run <server>-mcp-server` and inherits your
 environment. Override with `ToolUniverse(servers={...})` if you run outside `uv`.
+
+## Guided tour
+
+[`notebook/showcase_iot_mcp_tools.ipynb`](../notebook/showcase_iot_mcp_tools.ipynb)
+walks through every tool on the IoT server using the contract above: discovery,
+sites and assets, sensor inventory, telemetry, a plot, and a registered workflow.
