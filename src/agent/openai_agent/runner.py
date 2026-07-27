@@ -26,6 +26,7 @@ from openai import AsyncOpenAI
 
 from agents import (
     Agent,
+    ModelSettings,
     ModelProvider,
     OpenAIChatCompletionsModel,
     RunConfig,
@@ -33,6 +34,7 @@ from agents import (
     set_tracing_disabled,
 )
 from agents.mcp import MCPServerStdio
+from openai.types.shared import Reasoning
 
 from observability import agent_run_span, persist_trajectory
 
@@ -44,6 +46,21 @@ from ..runner import AgentRunner
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
+_TOKENROUTER_OPENAI_GPT5_PREFIX = "tokenrouter/openai/gpt-5"
+
+
+def _needs_reasoning_effort_none(model_id: str) -> bool:
+    """Whether this router model requires reasoning_effort=none with tools."""
+    return model_id.startswith(_TOKENROUTER_OPENAI_GPT5_PREFIX)
+
+
+def _build_model_settings(model_id: str) -> ModelSettings:
+    """Build per-model settings for OpenAI-compatible chat completions."""
+    if _needs_reasoning_effort_none(model_id):
+        # TokenRouter rejects function tools for OpenAI GPT-5 models on
+        # /v1/chat/completions unless reasoning_effort is explicitly disabled.
+        return ModelSettings(reasoning=Reasoning(effort="none"))
+    return ModelSettings()
 
 
 def _build_run_config(model_id: str) -> RunConfig | None:
@@ -200,6 +217,7 @@ class OpenAIAgentRunner(AgentRunner):
         self._model_id = model
         self._model = resolve_model(model)
         self._run_config = _build_run_config(model)
+        self._model_settings = _build_model_settings(model)
         self._max_turns = max_turns
 
     async def run(self, question: str) -> AgentResult:
@@ -229,6 +247,7 @@ class OpenAIAgentRunner(AgentRunner):
                     instructions=AGENT_SYSTEM_PROMPT,
                     mcp_servers=active_servers,
                     model=self._model,
+                    model_settings=self._model_settings,
                 )
 
                 _log.info(

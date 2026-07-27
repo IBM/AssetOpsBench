@@ -14,8 +14,10 @@ import pytest
 from agent.openai_agent.runner import (
     OpenAIAgentRunner,
     _build_mcp_servers,
+    _build_model_settings,
     _build_run_config,
     _build_trajectory,
+    _needs_reasoning_effort_none,
 )
 from agent.models import AgentResult, Trajectory
 
@@ -69,6 +71,29 @@ def test_build_run_config_missing_env_raises(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# _build_model_settings
+# ---------------------------------------------------------------------------
+
+
+def test_tokenrouter_gpt5_models_need_reasoning_effort_none():
+    assert _needs_reasoning_effort_none("tokenrouter/openai/gpt-5.6-sol")
+    assert _needs_reasoning_effort_none("tokenrouter/openai/gpt-5.4")
+    assert not _needs_reasoning_effort_none("tokenrouter/MiniMax-M3")
+    assert not _needs_reasoning_effort_none("litellm_proxy/openai/gpt-5.6-sol")
+
+
+def test_build_model_settings_tokenrouter_gpt5_reasoning_none():
+    settings = _build_model_settings("tokenrouter/openai/gpt-5.6-sol")
+    assert settings.reasoning is not None
+    assert settings.reasoning.effort == "none"
+
+
+def test_build_model_settings_default_empty():
+    settings = _build_model_settings("tokenrouter/MiniMax-M3")
+    assert settings.reasoning is None
+
+
+# ---------------------------------------------------------------------------
 # OpenAIAgentRunner.__init__
 # ---------------------------------------------------------------------------
 
@@ -102,6 +127,16 @@ def test_runner_litellm_model(monkeypatch):
     runner = OpenAIAgentRunner(model="litellm_proxy/Azure/gpt-5-2025-08-07")
     assert runner._model == "Azure/gpt-5-2025-08-07"
     assert runner._run_config is not None
+
+
+def test_runner_tokenrouter_gpt5_model_settings(monkeypatch):
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "http://localhost:4000/v1")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
+    runner = OpenAIAgentRunner(model="tokenrouter/openai/gpt-5.6-sol")
+    assert runner._model == "openai/gpt-5.6-sol"
+    assert runner._run_config is not None
+    assert runner._model_settings.reasoning is not None
+    assert runner._model_settings.reasoning.effort == "none"
 
 
 # ---------------------------------------------------------------------------
