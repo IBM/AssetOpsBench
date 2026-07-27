@@ -24,6 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog="""
 model-id format:
   litellm_proxy/<model>   LiteLLM proxy (e.g. litellm_proxy/azure/gpt-5.4)
+  tokenrouter/<model>     TokenRouter Responses API (e.g. tokenrouter/MiniMax-M3)
 
 environment variables:
   LITELLM_API_KEY       LiteLLM API key    (required)

@@ -31,7 +31,6 @@ from agents import (
     OpenAIProvider,
     RunConfig,
     Runner,
-    set_tracing_disabled,
 )
 from agents.mcp import MCPServerStdio
 
@@ -64,14 +63,14 @@ def _build_run_config(model_id: str) -> RunConfig | None:
 
     resolved = resolve_model(model_id)
     client = AsyncOpenAI(base_url=creds.base_url, api_key=creds.api_key)
-    set_tracing_disabled(disabled=True)
 
     if creds.prefix == TOKENROUTER_PREFIX:
         return RunConfig(
             model_provider=OpenAIProvider(
                 openai_client=client,
                 use_responses=True,
-            )
+            ),
+            tracing_disabled=True,
         )
 
     class _ChatCompletionsModelProvider(ModelProvider):
@@ -81,7 +80,10 @@ def _build_run_config(model_id: str) -> RunConfig | None:
                 openai_client=client,
             )
 
-    return RunConfig(model_provider=_ChatCompletionsModelProvider())
+    return RunConfig(
+        model_provider=_ChatCompletionsModelProvider(),
+        tracing_disabled=True,
+    )
 
 
 def _build_mcp_servers(
@@ -109,19 +111,103 @@ def _build_mcp_servers(
     return servers
 
 
-def _build_trajectory(result) -> Trajectory:
+def _item_value(item, name: str, default=None):
+    if isinstance(item, dict):
+        return item.get(name, default)
+    return getattr(item, name, default)
+
+
+def _tool_call_id(raw_item) -> str:
+    return (_item_value(raw_item, "call_id", "") or _item_value(raw_item, "id", ""))
+
+
+def _tool_call_from_raw(raw_item) -> ToolCall:
+    tc_args = _item_value(raw_item, "arguments", "{}") or "{}"
+    try:
+        tc_input = json.loads(tc_args) if isinstance(tc_args, str) else tc_args
+    except (json.JSONDecodeError, TypeError):
+        tc_input = {"raw": tc_args}
+    return ToolCall(
+        name=_item_value(raw_item, "name", "") or "",
+        input=tc_input,
+        id=_tool_call_id(raw_item),
+    )
+
+
+def _message_text(raw_item) -> str:
+    text_parts: list[str] = []
+    for part in _item_value(raw_item, "content", None) or []:
+        text = _item_value(part, "text", None)
+        if text:
+            text_parts.append(text)
+    return "".join(text_parts)
+
+
+def _collect_tool_calls(result) -> dict[str, ToolCall]:
+    calls_by_id: dict[str, ToolCall] = {}
+    for item in getattr(result, "new_items", []) or []:
+        if getattr(item, "type", "") != "tool_call_item":
+            continue
+        raw_item = getattr(item, "raw_item", None)
+        if raw_item is None:
+            continue
+        tool_call = _tool_call_from_raw(raw_item)
+        if tool_call.id:
+            calls_by_id[tool_call.id] = tool_call
+
+    for item in getattr(result, "new_items", []) or []:
+        if getattr(item, "type", "") != "tool_call_output_item":
+            continue
+        raw_item = getattr(item, "raw_item", None)
+        call_id = _tool_call_id(raw_item)
+        if call_id in calls_by_id:
+            calls_by_id[call_id].output = getattr(item, "output", None)
+
+    return calls_by_id
+
+
+def _build_trajectory_from_responses(result, raw_responses) -> Trajectory:
+    trajectory = Trajectory()
+    calls_by_id = _collect_tool_calls(result)
+
+    for index, response in enumerate(raw_responses):
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+        for raw_item in getattr(response, "output", None) or []:
+            if _item_value(raw_item, "type", "") == "message":
+                text_parts.append(_message_text(raw_item))
+            call_id = _tool_call_id(raw_item)
+            if call_id in calls_by_id:
+                tool_calls.append(calls_by_id[call_id])
+
+        usage = getattr(response, "usage", None)
+        trajectory.turns.append(
+            TurnRecord(
+                index=index,
+                text="".join(text_parts),
+                tool_calls=tool_calls,
+                input_tokens=getattr(usage, "input_tokens", 0) or 0,
+                output_tokens=getattr(usage, "output_tokens", 0) or 0,
+            )
+        )
+
+    return trajectory
+
+
+def _build_trajectory_from_items(result, raw_responses) -> Trajectory:
     """Extract a Trajectory from a Runner.run result.
 
-    Walks ``result.new_items`` to collect text messages, tool calls, and
-    tool outputs.  Token usage is pulled from ``result.raw_responses``.
+    Fallback for mocked or legacy results whose raw responses do not expose
+    their output items.
     """
     trajectory = Trajectory()
     turn_index = 0
     text_parts: list[str] = []
     tool_calls: list[ToolCall] = []
+    tool_calls_by_id: dict[str, ToolCall] = {}
 
     def _flush() -> None:
-        nonlocal text_parts, tool_calls, turn_index
+        nonlocal text_parts, tool_calls, tool_calls_by_id, turn_index
         if not text_parts and not tool_calls:
             return
         trajectory.turns.append(
@@ -134,6 +220,7 @@ def _build_trajectory(result) -> Trajectory:
         turn_index += 1
         text_parts = []
         tool_calls = []
+        tool_calls_by_id = {}
 
     for item in result.new_items:
         item_type = getattr(item, "type", "")
@@ -149,34 +236,43 @@ def _build_trajectory(result) -> Trajectory:
         elif item_type == "tool_call_item":
             raw = getattr(item, "raw_item", None)
             if raw:
-                tc_name = getattr(raw, "name", "") or ""
-                tc_id = getattr(raw, "call_id", "") or getattr(raw, "id", "") or ""
-                tc_args = getattr(raw, "arguments", "{}") or "{}"
-                try:
-                    tc_input = (
-                        json.loads(tc_args) if isinstance(tc_args, str) else tc_args
-                    )
-                except (json.JSONDecodeError, TypeError):
-                    tc_input = {"raw": tc_args}
-                tool_calls.append(ToolCall(name=tc_name, input=tc_input, id=tc_id))
+                tool_call = _tool_call_from_raw(raw)
+                tool_calls.append(tool_call)
+                if tool_call.id:
+                    tool_calls_by_id[tool_call.id] = tool_call
         elif item_type == "tool_call_output_item":
             output = getattr(item, "output", None)
-            # Attach output to the last matching tool call
-            if tool_calls:
-                tool_calls[-1].output = output
+            call_id = _tool_call_id(getattr(item, "raw_item", None))
+            matching_call = tool_calls_by_id.get(call_id)
+            if matching_call is None:
+                matching_call = next(
+                    (call for call in reversed(tool_calls) if call.output is None), None
+                )
+            if matching_call is not None:
+                matching_call.output = output
 
     # Flush remaining
     _flush()
 
     # Distribute token usage from raw_responses across turns
-    raw_responses = getattr(result, "raw_responses", []) or []
     for i, resp in enumerate(raw_responses):
         usage = getattr(resp, "usage", None)
-        if usage and i < len(trajectory.turns):
-            trajectory.turns[i].input_tokens = getattr(usage, "input_tokens", 0) or 0
-            trajectory.turns[i].output_tokens = getattr(usage, "output_tokens", 0) or 0
+        if not usage:
+            continue
+        if i >= len(trajectory.turns):
+            trajectory.turns.append(TurnRecord(index=i, text=""))
+        trajectory.turns[i].input_tokens = getattr(usage, "input_tokens", 0) or 0
+        trajectory.turns[i].output_tokens = getattr(usage, "output_tokens", 0) or 0
 
     return trajectory
+
+
+def _build_trajectory(result) -> Trajectory:
+    """Extract text, tool calls, tool outputs, and usage from a run result."""
+    raw_responses = getattr(result, "raw_responses", []) or []
+    if raw_responses and all(hasattr(response, "output") for response in raw_responses):
+        return _build_trajectory_from_responses(result, raw_responses)
+    return _build_trajectory_from_items(result, raw_responses)
 
 
 class OpenAIAgentRunner(AgentRunner):
@@ -185,17 +281,16 @@ class OpenAIAgentRunner(AgentRunner):
     The SDK handles tool discovery, invocation, and multi-turn conversation
     against the registered MCP servers.
 
-    Routes all requests through a LiteLLM proxy via the ``litellm_proxy/``
-    proxy-router prefix ``litellm_proxy/`` or ``tokenrouter/`` (requires the
-    matching ``*_BASE_URL`` / ``*_API_KEY`` env vars).
+    Routes prefixed models through either LiteLLM or TokenRouter using the
+    matching ``*_BASE_URL`` / ``*_API_KEY`` environment variables.
 
     Args:
         llm: Unused — OpenAIAgentRunner uses the OpenAI Agents SDK directly.
              Accepted for interface compatibility with ``AgentRunner``.
         server_paths: MCP server specs identical to ``PlanExecuteRunner``.
                       Defaults to all registered servers.
-        model: LiteLLM model string with ``litellm_proxy/`` prefix
-               (default: ``litellm_proxy/azure/gpt-5.4``).
+        model: Direct model ID or a ``litellm_proxy/`` / ``tokenrouter/``
+               model ID (default: ``litellm_proxy/azure/gpt-5.4``).
         max_turns: Maximum agentic loop turns (default: 30).
     """
 

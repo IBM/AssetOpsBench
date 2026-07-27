@@ -63,6 +63,7 @@ def test_build_run_config_litellm_prefix(monkeypatch):
     model = config.model_provider.get_model(None)
     assert isinstance(model, OpenAIChatCompletionsModel)
     assert model.model == "Azure/gpt-5-2025-08-07"
+    assert config.tracing_disabled is True
 
 
 @pytest.mark.parametrize(
@@ -85,6 +86,7 @@ def test_build_run_config_tokenrouter_uses_responses(
     assert isinstance(model, OpenAIResponsesModel)
     assert model.model == resolved_model
     assert str(model._client.base_url) == "https://api.tokenrouter.com/v1/"
+    assert config.tracing_disabled is True
 
 
 def test_build_run_config_missing_env_raises(monkeypatch):
@@ -138,19 +140,22 @@ def test_runner_litellm_model(monkeypatch):
 def _make_message_item(text: str):
     """Create a fake MessageOutputItem."""
     text_part = SimpleNamespace(text=text)
-    raw = SimpleNamespace(content=[text_part])
+    raw = SimpleNamespace(type="message", content=[text_part])
     return SimpleNamespace(type="message_output_item", raw_item=raw)
 
 
 def _make_tool_call_item(name: str, args: str, call_id: str = "call_1"):
     """Create a fake ToolCallItem."""
-    raw = SimpleNamespace(name=name, arguments=args, call_id=call_id)
+    raw = SimpleNamespace(
+        type="function_call", name=name, arguments=args, call_id=call_id
+    )
     return SimpleNamespace(type="tool_call_item", raw_item=raw)
 
 
-def _make_tool_output_item(output):
+def _make_tool_output_item(output, call_id: str = "call_1"):
     """Create a fake ToolCallOutputItem."""
-    return SimpleNamespace(type="tool_call_output_item", output=output)
+    raw = {"type": "function_call_output", "call_id": call_id, "output": output}
+    return SimpleNamespace(type="tool_call_output_item", raw_item=raw, output=output)
 
 
 def _make_usage(input_tokens: int, output_tokens: int):
@@ -225,7 +230,7 @@ def test_build_trajectory_multiple_tool_calls():
         _make_tool_call_item("sites", "{}", "call_1"),
         _make_tool_output_item(["MAIN"]),
         _make_tool_call_item("assets", '{"site_id": "MAIN"}', "call_2"),
-        _make_tool_output_item(["Chiller 6"]),
+        _make_tool_output_item(["Chiller 6"], "call_2"),
         _make_message_item("Found Chiller 6 at site MAIN."),
     ]
     # Two turns: (tool calls) and (message), so two raw_responses
@@ -244,6 +249,61 @@ def test_build_trajectory_multiple_tool_calls():
     assert traj.all_tool_calls[1].output == ["Chiller 6"]
     assert traj.total_input_tokens == 50 + 80
     assert traj.total_output_tokens == 10 + 15
+
+
+def test_build_trajectory_matches_batched_outputs_by_call_id():
+    first_call = _make_tool_call_item("sites", "{}", "call_1")
+    second_call = _make_tool_call_item(
+        "assets", '{"site_id": "MAIN"}', "call_2"
+    )
+    message = _make_message_item("Found Chiller 6 at site MAIN.")
+    items = [
+        first_call,
+        second_call,
+        _make_tool_output_item(["MAIN"], "call_1"),
+        _make_tool_output_item(["Chiller 6"], "call_2"),
+        message,
+    ]
+    raw_responses = [
+        SimpleNamespace(
+            output=[first_call.raw_item, second_call.raw_item],
+            usage=_make_usage(50, 10),
+        ),
+        SimpleNamespace(output=[message.raw_item], usage=_make_usage(80, 15)),
+    ]
+
+    traj = _build_trajectory(_make_run_result(items, raw_responses))
+
+    assert len(traj.turns) == 2
+    assert traj.all_tool_calls[0].output == ["MAIN"]
+    assert traj.all_tool_calls[1].output == ["Chiller 6"]
+
+
+def test_build_trajectory_preserves_sequential_response_usage():
+    first_call = _make_tool_call_item("sites", "{}", "call_1")
+    second_call = _make_tool_call_item(
+        "assets", '{"site_id": "MAIN"}', "call_2"
+    )
+    message = _make_message_item("Found Chiller 6 at site MAIN.")
+    items = [
+        first_call,
+        _make_tool_output_item(["MAIN"], "call_1"),
+        second_call,
+        _make_tool_output_item(["Chiller 6"], "call_2"),
+        message,
+    ]
+    raw_responses = [
+        SimpleNamespace(output=[first_call.raw_item], usage=_make_usage(10, 1)),
+        SimpleNamespace(output=[second_call.raw_item], usage=_make_usage(20, 2)),
+        SimpleNamespace(output=[message.raw_item], usage=_make_usage(30, 3)),
+    ]
+
+    traj = _build_trajectory(_make_run_result(items, raw_responses))
+
+    assert len(traj.turns) == 3
+    assert [turn.input_tokens for turn in traj.turns] == [10, 20, 30]
+    assert traj.total_input_tokens == 60
+    assert traj.total_output_tokens == 6
 
 
 # ---------------------------------------------------------------------------
