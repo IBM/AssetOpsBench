@@ -251,6 +251,39 @@ uv run opencode-agent "$query"
 uv run direct-llm-agent "$query"
 ```
 
+### OpenAI agent routing and permissions
+
+`openai-agent` accepts router-backed model IDs only. Use a `litellm_proxy/` or
+`tokenrouter/` prefix; unprefixed model IDs are rejected so the runner never
+falls back to direct OpenAI credentials.
+
+- `tokenrouter/openai/gpt-5.*` uses the Responses API.
+- All other supported router-backed models use Chat Completions.
+- The agent exposes only configured AssetOpsBench MCP servers. It does not
+  register shell, file, edit, web, subagent, or other hosted tools.
+- Configured MCP tools execute non-interactively by default, which is suitable
+  for benchmark runs.
+
+To restrict a CLI run to specific MCP tools, repeat `--allow-mcp-tool` with a
+`SERVER/TOOL` value. Once the flag is present, the allowlist is fail-closed:
+unlisted tools and all tools from unlisted servers are hidden from the model.
+
+```bash
+uv run openai-agent \
+  --allow-mcp-tool iot/sites \
+  --allow-mcp-tool iot/asset_ids \
+  "List the asset IDs at every site."
+```
+
+Programmatic callers can pass the equivalent per-server mapping:
+
+```python
+runner = OpenAIAgentRunner(
+    model="tokenrouter/openai/gpt-5.6-sol",
+    mcp_tool_allowlist={"iot": {"sites", "asset_ids"}},
+)
+```
+
 ### Common flags
 
 | Flag                  | Description                                                                                  |
@@ -268,6 +301,7 @@ uv run direct-llm-agent "$query"
 | --------------------- | -------------------------- | ----------------------------------------------------------------- |
 | `--show-plan`         | plan-execute               | Print the generated plan before execution                         |
 | `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
+| `--allow-mcp-tool SERVER/TOOL` | openai-agent | Repeatable fail-closed MCP tool allowlist                          |
 | `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
 | `--code-enabled` / `--no-code` | stirrup-agent | Enable (default) / disable code execution — selects the code track |
 | `--code-backend B`             | stirrup-agent | Code sandbox: `docker` (default), `local`, or `e2b`                |
