@@ -89,7 +89,7 @@ def test_scenario_mappings_cover_expected_categories() -> None:
         "24",
         "31",
         "43",
-        "52",
+        "50",
         "61",
         "66",
     )
