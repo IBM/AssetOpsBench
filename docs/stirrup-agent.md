@@ -25,7 +25,7 @@ Unlike the other runners, Stirrup is a **code-capable** agent — it can write a
 
 - **In-process Python library**, so it integrates like `deep-agent` (no subprocess, no session-file parsing). The runner maps Stirrup's returned message history straight into the shared `Trajectory`.
 - **Native LiteLLM client**, so `watsonx/...` and other `<provider>/<model>` strings work directly; the `litellm_proxy/` prefix is also supported.
-- **Sandboxed code execution** out of the box (local / Docker / E2B).
+- **Code execution** through local or Docker backends.
 - **MCP client support**, so it connects to the same six AssetOpsBench servers as every other runner.
 
 ---
@@ -140,7 +140,6 @@ Backends (`--code-backend`):
 | -------- | --------- | ------------------------------- | ------------------------------------------------- |
 | `docker` | full      | none (container filesystem)     | unattended runs; the default                      |
 | `local`  | none      | reads host paths directly       | development / trusted inputs; fastest, no Docker  |
-| `e2b`    | full      | remote sandbox                  | hosted execution                                  |
 
 > `local` runs model-authored code on your host with your permissions. Use it for
 > inputs you control; prefer `docker` for unattended or untrusted runs.
@@ -232,7 +231,7 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | --------------------- | ------------------------------------------------------------------------------------ |
 | `--code-enabled`      | Enable code execution (default). The code track.                                     |
 | `--no-code`           | Tools-only; comparable to the other runners.                                         |
-| `--code-backend`      | `docker` (default), `local`, or `e2b`.                                               |
+| `--code-backend`      | `docker` (default) or `local`.                                                        |
 | `--max-turns N`       | Max agent turns (default: 30).                                                       |
 | `--max-tokens N`      | Max output tokens per model call; keep under the provider limit (default: 16384).    |
 | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |

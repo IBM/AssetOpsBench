@@ -65,7 +65,7 @@ examples:
     )
     parser.add_argument(
         "--code-backend",
-        choices=["docker", "local", "e2b"],
+        choices=["docker", "local"],
         default="docker",
         help="Code-execution sandbox backend (default: docker).",
     )
