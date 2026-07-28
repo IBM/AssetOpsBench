@@ -100,6 +100,12 @@ def _load_scenario_dir(path: Path) -> list[Scenario]:
             scenario_id = scenario_id.removeprefix("scenario_")
 
         expected_answer = groundtruth_path.read_text(encoding="utf-8").strip()
+        eval_metadata_path = child / "groundtruth_eval.json"
+        evaluation_metadata = None
+        if eval_metadata_path.exists():
+            evaluation_metadata = json.loads(
+                eval_metadata_path.read_text(encoding="utf-8")
+            )
 
         question_path = child / "question.txt"
         text = (
@@ -115,6 +121,7 @@ def _load_scenario_dir(path: Path) -> list[Scenario]:
                     "text": text,
                     "type": "structured",
                     "expected_answer": expected_answer,
+                    "evaluation_metadata": evaluation_metadata,
                     "scoring_method": "static_json",
                 }
             )
