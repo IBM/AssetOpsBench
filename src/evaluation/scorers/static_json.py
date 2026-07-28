@@ -78,6 +78,10 @@ class StaticJsonScore:
     mode_required_terms: list[str] = field(default_factory=list)
     mode_matched_terms: list[str] = field(default_factory=list)
     mode_term_coverage: float | None = None
+    mode_optional_terms: list[str] = field(default_factory=list)
+    mode_matched_optional_terms: list[str] = field(default_factory=list)
+    mode_optional_term_coverage: float | None = None
+    car_score: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dictionary."""
@@ -125,56 +129,76 @@ def _strip_markdown_fence(content: str) -> str:
     return content
 
 
-def _extract_balanced_structure(content: str) -> str:
-    """Extract first balanced {...}, [...], or (...) from noisy text."""
+def _balanced_structure_candidates(
+    content: str,
+    open_chars: set[str],
+) -> list[str]:
+    """Return balanced structured substrings from noisy text.
+
+    Parentheses are handled separately from JSON-like braces/brackets because
+    natural-language answers often contain explanatory parentheticals before
+    the final JSON object.
+    """
     content = content.strip()
+    close_for_open = {"{": "}", "[": "]", "(": ")"}
+    candidates: list[str] = []
 
-    candidates = [
-        (content.find("{"), "{", "}"),
-        (content.find("["), "[", "]"),
-        (content.find("("), "(", ")"),
-    ]
-    candidates = [
-        (idx, open_ch, close_ch)
-        for idx, open_ch, close_ch in candidates
-        if idx != -1
-    ]
-
-    if not candidates:
-        return content
-
-    start, open_ch, close_ch = min(candidates, key=lambda item: item[0])
-
-    depth = 0
-    in_string = False
-    quote_char = ""
-    escaped = False
-
-    for index in range(start, len(content)):
-        ch = content[index]
-
-        if in_string:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == quote_char:
-                in_string = False
+    for start, open_ch in enumerate(content):
+        if open_ch not in open_chars:
             continue
 
-        if ch in {"'", '"'}:
-            in_string = True
-            quote_char = ch
-            continue
+        close_ch = close_for_open[open_ch]
+        depth = 0
+        in_string = False
+        quote_char = ""
+        escaped = False
 
-        if ch == open_ch:
-            depth += 1
-        elif ch == close_ch:
-            depth -= 1
-            if depth == 0:
-                return content[start : index + 1].strip()
+        for index in range(start, len(content)):
+            ch = content[index]
 
-    return content[start:].strip()
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == quote_char:
+                    in_string = False
+                continue
+
+            if ch in {"'", '"'}:
+                in_string = True
+                quote_char = ch
+                continue
+
+            if ch == open_ch:
+                depth += 1
+            elif ch == close_ch:
+                depth -= 1
+                if depth == 0:
+                    candidates.append(content[start : index + 1].strip())
+                    break
+
+    return candidates
+
+
+def _parse_structured_candidate(content: str) -> tuple[bool, Any]:
+    """Try supported structured parsers for a candidate answer."""
+    try:
+        return True, json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        return True, ast.literal_eval(content)
+    except (ValueError, SyntaxError):
+        pass
+
+    try:
+        return True, json.loads(content.replace("'", '"'))
+    except json.JSONDecodeError:
+        pass
+
+    return False, None
 
 
 def _extract_count_from_text(content: str) -> int | float | None:
@@ -268,22 +292,19 @@ def parse_structured_answer(value: Any) -> Any:
     content = extract_answer_text(value)
     content = _strip_markdown_fence(content)
 
-    content = _extract_balanced_structure(content)
+    parsed, result = _parse_structured_candidate(content)
+    if parsed:
+        return result
 
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
+    for candidate in _balanced_structure_candidates(content, {"{", "["}):
+        parsed, result = _parse_structured_candidate(candidate)
+        if parsed:
+            return result
 
-    try:
-        return ast.literal_eval(content)
-    except (ValueError, SyntaxError):
-        pass
-
-    try:
-        return json.loads(content.replace("'", '"'))
-    except json.JSONDecodeError:
-        pass
+    for candidate in _balanced_structure_candidates(content, {"("}):
+        parsed, result = _parse_structured_candidate(candidate)
+        if parsed:
+            return result
 
     count = _extract_count_from_text(content)
     if count is not None:
@@ -494,12 +515,44 @@ def _is_mode_gold_answer(value: Any) -> bool:
     return key in _MODE_KEYS
 
 
-def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
+def _as_terms(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    return _dedupe_terms([str(item) for item in value])
+
+
+def _mode_metadata_from_gold(gold_answer: Any) -> dict[str, Any]:
+    gold = parse_structured_answer(gold_answer)
+    gold_key = str(next(iter(gold))).strip().lower()
+    gold_value = next(iter(gold.values()))
+    return {
+        "mode": gold_key,
+        "required_terms": _extract_required_mode_terms(gold_value),
+        "optional_terms": [],
+        "must_have_exactly_one_mode_key": True,
+    }
+
+
+def _evaluate_mode_json(
+    gold_answer: Any,
+    model_answer: Any,
+    evaluation_metadata: dict[str, Any] | None = None,
+) -> StaticJsonScore:
     gold = parse_structured_answer(gold_answer)
     model = parse_structured_answer(model_answer)
 
-    gold_key = str(next(iter(gold))).strip().lower()
-    gold_value = next(iter(gold.values()))
+    metadata = _mode_metadata_from_gold(gold_answer)
+    if evaluation_metadata:
+        metadata.update(evaluation_metadata)
+
+    gold_key = str(metadata.get("mode") or next(iter(gold))).strip().lower()
+    required_terms = _as_terms(metadata.get("required_terms"))
+    optional_terms = _as_terms(metadata.get("optional_terms"))
+    must_have_one_key = bool(metadata.get("must_have_exactly_one_mode_key", True))
 
     model_is_dict = isinstance(model, dict)
     model_keys = [str(key).strip().lower() for key in model.keys()] if model_is_dict else []
@@ -508,13 +561,18 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
     model_value = next(iter(model.values())) if model_is_dict and model_exactly_one_key else ""
 
     key_match = model_exactly_one_key and model_key == gold_key
-    required_terms = _extract_required_mode_terms(gold_value)
     model_text = _normalize_text_for_terms(model_value)
     matched_terms = [
         term for term in required_terms if f" {term} " in f" {model_text} "
     ]
     term_coverage = (
         len(matched_terms) / len(required_terms) if required_terms else 1.0
+    )
+    matched_optional_terms = [
+        term for term in optional_terms if f" {term} " in f" {model_text} "
+    ]
+    optional_term_coverage = (
+        len(matched_optional_terms) / len(optional_terms) if optional_terms else None
     )
 
     details = [
@@ -543,13 +601,27 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
             )
         )
 
+    for term in optional_terms:
+        matched = term in matched_optional_terms
+        details.append(
+            KeyComparison(
+                key=f"answer.optional_term.{term}",
+                gold_value=term,
+                model_value=term if matched else "MISSING",
+                exact=matched,
+                match_type="optional_term_present" if matched else "optional_term_missing",
+                similarity=1.0 if matched else 0.0,
+                accepted=matched,
+            )
+        )
+
     missing_keys = [] if key_match else [f"answer.{gold_key}"]
     extra_keys = []
     if model_is_dict:
         extra_keys = [
             f"answer.{key}"
             for key in model_keys
-            if key not in {gold_key} or not model_exactly_one_key
+            if key not in {gold_key} or (must_have_one_key and not model_exactly_one_key)
         ]
     else:
         extra_keys = ["answer"] if model is not None else []
@@ -557,6 +629,10 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
     total_gold_keys = 1 + len(required_terms)
     total_model_keys = 1 + len(required_terms) + len(extra_keys)
     exact_matches = (1 if key_match else 0) + len(matched_terms)
+    required_details = details[:total_gold_keys]
+    required_term_score = term_coverage
+    required_term_pass = bool(matched_terms) if required_terms else True
+    car_score = (0.6 * (1.0 if key_match else 0.0)) + (0.4 * required_term_score)
 
     precision = exact_matches / total_model_keys if total_model_keys else 0.0
     recall = exact_matches / total_gold_keys if total_gold_keys else 0.0
@@ -565,13 +641,19 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
         if precision + recall > 0
         else 0.0
     )
-    strict_exact = 1.0 if key_match and term_coverage == 1.0 and not extra_keys else 0.0
+    strict_exact = (
+        1.0
+        if key_match
+        and required_term_pass
+        and (model_exactly_one_key or not must_have_one_key)
+        else 0.0
+    )
 
     return StaticJsonScore(
         partial_match_accuracy=recall,
         partial_exact_match_accuracy=recall,
         strict_exact_match_accuracy=strict_exact,
-        partial_similarity_score=sum(item.similarity for item in details)
+        partial_similarity_score=sum(item.similarity for item in required_details)
         / total_gold_keys,
         partial_numeric_match_accuracy=0.0,
         range_match_accuracy=0.0,
@@ -598,6 +680,10 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
         mode_required_terms=required_terms,
         mode_matched_terms=matched_terms,
         mode_term_coverage=term_coverage,
+        mode_optional_terms=optional_terms,
+        mode_matched_optional_terms=matched_optional_terms,
+        mode_optional_term_coverage=optional_term_coverage,
+        car_score=car_score,
     )
 
 
@@ -784,8 +870,12 @@ def evaluate_static_json(
     model_answer: Any,
     *,
     similarity_threshold: float = 0.0,
+    evaluation_metadata: dict[str, Any] | None = None,
 ) -> StaticJsonScore:
     """Evaluate one structured gold answer against one model answer."""
+    if evaluation_metadata and str(evaluation_metadata.get("mode", "")).lower() in _MODE_KEYS:
+        return _evaluate_mode_json(gold_answer, model_answer, evaluation_metadata)
+
     if _is_mode_gold_answer(gold_answer):
         return _evaluate_mode_json(gold_answer, model_answer)
 
@@ -1013,13 +1103,20 @@ class StaticJsonScorer:
                 ),
             )
 
-        static_score = evaluate_static_json(gold_answer, answer)
+        static_score = evaluate_static_json(
+            gold_answer,
+            answer,
+            evaluation_metadata=scenario.evaluation_metadata,
+        )
         passed = static_score.strict_exact_match_accuracy == 1.0
+        score_value = static_score.car_score
+        if score_value is None:
+            score_value = static_score.f1
 
         return ScorerResult(
             scorer=self.name,
             passed=passed,
-            score=round(static_score.f1, 3),
+            score=round(score_value, 3),
             rationale=(
                 "strict structured match"
                 if passed

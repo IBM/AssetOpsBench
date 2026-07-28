@@ -23,6 +23,7 @@ class Scenario(BaseModel):
     category: str = ""
     characteristic_form: str | None = None
     expected_answer: str | None = None
+    evaluation_metadata: dict[str, Any] | None = None
     scoring_method: str | None = None
 
     @classmethod
