@@ -59,7 +59,17 @@ def test_scenario_mappings_cover_expected_categories() -> None:
     assert mr.SCENARIO_IDS_ALL["wosr"] == tuple(
         str(scenario_id) for scenario_id in range(1, 67)
     )
-    assert all(len(ids) == 1 for ids in mr.SCENARIO_IDS_LITE.values())
+    assert all(
+        len(mr.SCENARIO_IDS_LITE[category]) == 1
+        for category in expected - {"health", "tsfm"}
+    )
+    assert mr.SCENARIO_IDS_LITE["health"] == tuple(
+        str(scenario_id) for scenario_id in range(401, 411)
+    )
+    assert mr.SCENARIO_IDS_LITE["tsfm"] == (
+        *tuple(str(scenario_id) for scenario_id in range(1001, 1006)),
+        *tuple(str(scenario_id) for scenario_id in range(1026, 1031)),
+    )
 
 
 def test_scenario_profiles_are_loaded_from_yaml() -> None:
@@ -98,7 +108,25 @@ def test_scenario_ids_for_selector_resolves_profile_shorthands() -> None:
         "301",
         "902",
         "401",
+        "402",
+        "403",
+        "404",
+        "405",
+        "406",
+        "407",
+        "408",
+        "409",
+        "410",
         "1001",
+        "1002",
+        "1003",
+        "1004",
+        "1005",
+        "1026",
+        "1027",
+        "1028",
+        "1029",
+        "1030",
         "1",
     ]
     assert len(mr.scenario_ids_for_selector("all")) == 215
