@@ -4,6 +4,7 @@ from argparse import Namespace
 from pathlib import Path
 
 import pytest
+import yaml
 
 from benchmark import scenario_suite_runner as mr
 
@@ -50,6 +51,16 @@ def test_scenario_profiles_are_loaded_from_yaml() -> None:
     assert mr.SCENARIO_IDS_LITE == mr.load_scenario_profile(
         mr.SCENARIO_PROFILE_PATHS["lite"]
     )
+
+
+def test_scenario_profile_yaml_uses_integer_ids() -> None:
+    for path in mr.SCENARIO_PROFILE_PATHS.values():
+        raw_profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert all(
+            isinstance(scenario_id, int)
+            for scenario_ids in raw_profile.values()
+            for scenario_id in scenario_ids
+        )
 
 
 def test_scenario_ids_for_selector_resolves_combined_all_categories() -> None:
