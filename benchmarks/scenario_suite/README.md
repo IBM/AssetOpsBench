@@ -229,16 +229,13 @@ traces/trajectories/scenario_suite/
 ```text
 reports/scenario_suite/
   direct_llm/
-    direct_llm_11.json
-    direct_llm_12.json
     _aggregate.json
   stirrup_agent/
-    stirrup_agent_11.json
-    stirrup_agent_12.json
     _aggregate.json
 ```
 
-Each per-scenario report contains the final answer, score, and operational metrics. The aggregate report summarizes the full batch.
+Each aggregate report contains all matched scenario results, operational
+metrics, and score summaries grouped by runner/model.
 
 ## Tests
 

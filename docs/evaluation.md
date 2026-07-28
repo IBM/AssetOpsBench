@@ -6,7 +6,7 @@ The evaluation module follows the three-stage pattern used by SWE-bench,
 HELM, and τ-bench:
 
 ```
-agent run  →  trajectory (run_id)  →  evaluate  →  reports/<run_id>.json
+agent run  →  trajectory (run_id)  →  evaluate  →  reports/_aggregate.json
 ```
 
 Re-scoring from saved trajectories is first-class: re-run with a
@@ -74,6 +74,32 @@ JSON per run. Fields the evaluator reads:
 
 `scenario_id` is the primary join key. If `scenario_id` is missing or null, the loader may fall back to the trajectory filename stem. For generated trajectories where `scenario_id` contains a descriptive label, the evaluator can also fall back to `run_id` when it matches the scenario id.
 
+When `--trajectories` points to a directory, every nested `*.json` file is
+discovered recursively. This allows one evaluation command to aggregate a tree
+organized by runner and model.
+
+### Optional scenario selection
+
+Use `--scenario-ids` to restrict evaluation to categories defined in
+`benchmarks/scenario_suite/all.yaml` or `lite.yaml`:
+
+```bash
+uv run evaluate \
+  --trajectories traces/trajectories \
+  --scenarios /path/to/scenarios_data \
+  --scenario-ids fcc+fmsr_all \
+  --scorer-default static_json
+```
+
+The selector format is `<category>[+<category>...]_<all|lite>`. For example,
+`fcc_lite` selects the FCC IDs in `lite.yaml`, while `fcc+fmsr_all` selects the
+FCC and FMSR IDs in `all.yaml`. Categories are `car`, `fcc`, `fmsr`, `health`,
+`tsfm`, and `wosr`.
+
+The flag is optional. When omitted, every trajectory that matches a loaded
+scenario is evaluated. When present, unselected trajectories are ignored and
+do not appear in totals, `score_summary`, or `results` in `_aggregate.json`.
+
 ## End-to-end workflow
 
 ```bash
@@ -103,58 +129,17 @@ Operational metrics:
   tool_calls_total:  1
   duration_ms_p50:   14690.6
 
-Reports written: reports/<run_id>.json (1 files)
-Aggregate:       reports/_aggregate.json
+Aggregate report written: reports/_aggregate.json
 ```
 
 ## Output layout
 
 ```
 reports/
-├── <run_id>.json        # one ScenarioResult per trajectory
-├── <run_id>.json
-└── _aggregate.json      # EvalReport: totals, by_scenario_type, ops rollup
+└── _aggregate.json      # complete EvalReport for all matched trajectories
 ```
 
-Per-run file (`reports/<run_id>.json`):
-
-```json
-{
-  "scenario_id": "101",
-  "scenario_type": "FMSR",
-  "run_id": "112c1b56-…",
-  "runner": "claude-agent",
-  "model": "litellm_proxy/aws/claude-opus-4-6",
-  "question": "List all failure modes of asset Chiller.",
-  "answer":   "Here are the 7 failure modes for the Chiller asset: …",
-  "score": {
-    "scorer": "llm_judge",
-    "passed": true,
-    "score": 1.0,
-    "rationale": "",
-    "details": {
-      "task_completion": true,
-      "data_retrieval_accuracy": true,
-      "generalized_result_verification": true,
-      "agent_sequence_correct": true,
-      "clarity_and_justification": true,
-      "hallucinations": false,
-      "suggestions": ""
-    }
-  },
-  "ops": {
-    "turn_count": 2,
-    "tool_call_count": 1,
-    "unique_tools": ["get_failure_modes"],
-    "tokens_in": 7,
-    "tokens_out": 25,
-    "duration_ms": 14690.6,
-    "est_cost_usd": 0.001959
-  }
-}
-```
-
-Aggregate (`reports/_aggregate.json`) is the full `EvalReport`:
+`reports/_aggregate.json` is the full `EvalReport`:
 
 ```json
 {
@@ -178,9 +163,20 @@ Aggregate (`reports/_aggregate.json`) is the full `EvalReport`:
     "duration_ms_p95":    14690.6,
     "est_cost_usd_total": 0.001959
   },
-  "results": [ /* one ScenarioResult per run, same shape as the per-run files */ ]
+  "score_summary": {
+    "claude-agent_litellm_proxy/aws/claude-opus-4-6": {
+      "scored_results": 1,
+      "score_avg": 1.0,
+      "score_min": 1.0,
+      "score_max": 1.0
+    }
+  },
+  "results": [ /* one ScenarioResult per matched trajectory */ ]
 }
 ```
+
+Each `score_summary` key combines the trajectory's runner and model. For
+example: `openai-agent_tokenrouter/openai/gpt-5.6-sol`.
 
 ## CLI reference
 
@@ -188,6 +184,7 @@ Aggregate (`reports/_aggregate.json`) is the full `EvalReport`:
 uv run evaluate \
   --trajectories DIR_OR_FILE     # required
   --scenarios FILE [FILE ...]    # required, one or more
+  [--scenario-ids SELECTOR]      # e.g. fcc_lite or fcc+fmsr_all
   [--reports-dir DIR]            # default: reports/
   [--scorer-default NAME]        # default: llm_judge
   [--judge-model MODEL_ID]       # required when llm_judge runs
