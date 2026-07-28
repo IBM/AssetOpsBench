@@ -69,31 +69,20 @@ def test_write_report_round_trips(tmp_path: Path):
     assert data["by_scenario_type"]["iot"]["pass_rate"] == 1.0
 
 
-def test_write_reports_dir_per_run_files(tmp_path: Path):
+def test_write_reports_dir_writes_only_aggregate(tmp_path: Path):
     results = [
         _result("iot", True, run_id="run-a"),
         _result("tsfm", False, run_id="run-b"),
     ]
     out_dir = write_reports_dir(build_report(results), tmp_path / "reports")
 
-    assert (out_dir / "run-a.json").exists()
-    assert (out_dir / "run-b.json").exists()
     assert (out_dir / "_aggregate.json").exists()
-
-    per_run = json.loads((out_dir / "run-a.json").read_text())
-    assert per_run["run_id"] == "run-a"
-    assert per_run["score"]["passed"] is True
+    assert sorted(path.name for path in out_dir.glob("*.json")) == ["_aggregate.json"]
 
     agg = json.loads((out_dir / "_aggregate.json").read_text())
     assert agg["totals"]["scenarios"] == 2
-
-
-def test_write_reports_dir_falls_back_to_scenario_id(tmp_path: Path):
-    # ScenarioResult.run_id is empty when the trajectory pre-dates the
-    # run_id field; the writer must still produce a file.
-    results = [_result("iot", True)]
-    out_dir = write_reports_dir(build_report(results), tmp_path / "reports")
-    assert (out_dir / "scenario-x.json").exists()
+    assert set(agg["score_summary"]) == {"plan-execute_watsonx/ibm/granite"}
+    assert len(agg["results"]) == 2
 
 
 def test_render_summary_includes_headlines():
@@ -103,6 +92,7 @@ def test_render_summary_includes_headlines():
     ]
     text = render_summary(build_report(results))
     assert "Pass rate" in text
+    assert "plan-execute_watsonx/ibm/granite" in text
     assert "iot" in text
     assert "tokens_in_total" in text
 
@@ -154,6 +144,41 @@ def test_build_report_includes_score_summary():
     report = build_report(results)
 
     assert report.score_summary is not None
-    assert report.score_summary["partial_exact_match_accuracy_avg"] == 0.0
-    assert report.score_summary["strict_exact_match_accuracy_avg"] == 0.0
-    assert report.score_summary["missing_keys_total"] == 0
+    summary = report.score_summary["direct-llm-agent_tokenrouter/MiniMax-M3"]
+    assert summary["partial_exact_match_accuracy_avg"] == 0.0
+    assert summary["strict_exact_match_accuracy_avg"] == 0.0
+    assert summary["missing_keys_total"] == 0
+
+
+def test_build_report_groups_score_summary_by_runner_and_model():
+    results = [
+        _result("iot", True),
+        ScenarioResult(
+            scenario_id="y",
+            scenario_type="iot",
+            run_id="run-direct",
+            runner="direct-llm-agent",
+            model="tokenrouter/MiniMax-M3",
+            question="q",
+            answer="a",
+            score=ScorerResult(
+                scorer="static_json",
+                passed=False,
+                score=0.25,
+            ),
+            ops=OpsMetrics(),
+        ),
+    ]
+
+    report = build_report(results)
+
+    assert set(report.score_summary or {}) == {
+        "direct-llm-agent_tokenrouter/MiniMax-M3",
+        "plan-execute_watsonx/ibm/granite",
+    }
+    assert (
+        report.score_summary["direct-llm-agent_tokenrouter/MiniMax-M3"][
+            "score_avg"
+        ]
+        == 0.25
+    )

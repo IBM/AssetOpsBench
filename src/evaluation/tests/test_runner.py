@@ -46,6 +46,34 @@ def test_evaluate_end_to_end(tmp_path: Path, make_persisted_record):
     assert report.ops.tokens_in_total > 0
 
 
+def test_evaluate_function_filters_scenario_ids(tmp_path: Path, make_persisted_record):
+    rec_a = make_persisted_record(run_id="run-a", scenario_id=1, answer="A")
+    rec_b = make_persisted_record(run_id="run-b", scenario_id=2, answer="B")
+    (tmp_path / "run-a.json").write_text(json.dumps(rec_a), encoding="utf-8")
+    (tmp_path / "run-b.json").write_text(json.dumps(rec_b), encoding="utf-8")
+
+    scenarios_path = tmp_path / "scenarios.json"
+    scenarios_path.write_text(
+        json.dumps(
+            [
+                {"id": 1, "text": "Q1", "type": "iot"},
+                {"id": 2, "text": "Q2", "type": "tsfm"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    registry.register("stub", _always_pass_scorer)
+    report = evaluate(
+        trajectories_path=tmp_path,
+        scenarios_paths=[scenarios_path],
+        default_scoring_method="stub",
+        scenario_ids={"2"},
+    )
+
+    assert [result.scenario_id for result in report.results] == ["2"]
+
+
 def _always_fail_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
     return ScorerResult(scorer="stub-fail", passed=False, score=0.0)
 
