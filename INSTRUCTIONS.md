@@ -270,7 +270,7 @@ uv run direct-llm-agent "$query"
 | `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
 | `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
 | `--code-enabled` / `--no-code` | stirrup-agent | Enable (default) / disable code execution — selects the code track |
-| `--code-backend B`             | stirrup-agent | Code sandbox: `docker` (default), `local`, or `e2b`                |
+| `--code-backend B`             | stirrup-agent | Code backend: `docker` (default) or `local`                        |
 | `--max-tokens N`               | stirrup-agent | Max output tokens per call; keep under provider limit (default 16384) |
 | `--max-steps N`                | opencode-agent | Max OpenCode agentic iterations (default: 30)                      |
 | `--attach URL`                 | opencode-agent | Attach to a running `opencode serve` instance                      |

@@ -102,7 +102,7 @@ class StirrupAgentRunner(AgentRunner):
         server_paths: MCP server specs (defaults to all registered servers).
         model: ``litellm_proxy/<provider>/<model>`` or native ``<provider>/<model>``.
         code_enabled: Add a sandboxed code-execution tool (the code track).
-        code_backend: ``"docker"`` (sandboxed, default), ``"local"``, or ``"e2b"``.
+        code_backend: ``"docker"`` (sandboxed, default) or ``"local"``.
         workspace_dir: Optional host base directory for Docker/local code execution.
         preserve_workspace: Copy final code-execution files back into ``workspace_dir``.
         max_turns: Stirrup agent loop bound.
@@ -124,6 +124,8 @@ class StirrupAgentRunner(AgentRunner):
         temperature: float | None = None,
     ) -> None:
         super().__init__(llm, server_paths)
+        if code_backend not in {"docker", "local"}:
+            raise ValueError("code_backend must be 'docker' or 'local'")
         self._model_id = model
         self._code_enabled = code_enabled
         self._code_backend = code_backend
@@ -201,10 +203,6 @@ class StirrupAgentRunner(AgentRunner):
                 provider_cls = _preserving_provider_class(provider_cls)
                 kwargs["preserve_dir"] = self._workspace_dir
             return provider_cls(**kwargs)
-        if self._code_backend == "e2b":
-            from stirrup.tools.code_backends.e2b import E2BCodeExecToolProvider
-
-            return E2BCodeExecToolProvider()
         from stirrup.tools.code_backends.docker import DockerCodeExecToolProvider
 
         if self._preserve_workspace:

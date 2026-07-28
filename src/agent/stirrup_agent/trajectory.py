@@ -24,7 +24,7 @@ from typing import Any, Iterable
 
 from ..models import ToolCall, Trajectory, TurnRecord
 
-# Stirrup's built-in code-execution tool name (LocalCodeExec / Docker / E2B all
+# Stirrup's built-in code-execution tool name (LocalCodeExec and Docker both
 # register under this name by default).  A call to it = "the agent ran code".
 _CODE_TOOL_NAMES = {"code_exec"}
 # Default web tools, if ever attached; counted as "other", never domain.

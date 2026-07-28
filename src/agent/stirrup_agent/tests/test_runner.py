@@ -92,6 +92,11 @@ def test_stirrup_runner_requires_workspace_when_preserving():
         StirrupAgentRunner(preserve_workspace=True)
 
 
+def test_stirrup_runner_rejects_unsupported_code_backend():
+    with pytest.raises(ValueError, match="code_backend"):
+        StirrupAgentRunner(code_backend="e2b")
+
+
 def test_stirrup_runner_forwards_temperature_to_litellm_client():
     runner = StirrupAgentRunner(
         model="watsonx/ibm/granite-4-h-small",
