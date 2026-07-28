@@ -415,9 +415,6 @@ def run_evaluation(
 def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     """Build available method configs from CLI args."""
     stirrup_extra_args: list[str] = []
-    stirrup_extra_args.extend(
-        ["--max-tokens", str(getattr(args, "stirrup_max_tokens", 4096))]
-    )
     temperature = getattr(args, "temperature", None)
     if temperature is not None:
         stirrup_extra_args.extend(["--temperature", str(temperature)])
@@ -523,12 +520,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scenario_suite_runner",
         description="Run benchmark scenarios sequentially.",
-    )
-    parser.add_argument(
-        "--stirrup-max-tokens",
-        type=int,
-        default=4096,
-        help="Max output tokens per Stirrup model call.",
     )
     parser.add_argument(
         "--temperature",
