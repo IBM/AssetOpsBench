@@ -40,7 +40,25 @@ def test_scenario_mappings_cover_expected_categories() -> None:
 
     assert set(mr.SCENARIO_IDS_ALL) == expected
     assert set(mr.SCENARIO_IDS_LITE) == expected
-    assert all(len(ids) == 10 for ids in mr.SCENARIO_IDS_ALL.values())
+    assert all(
+        len(mr.SCENARIO_IDS_ALL[category]) == 10
+        for category in expected - {"car", "fcc", "fmsr", "tsfm", "wosr"}
+    )
+    assert mr.SCENARIO_IDS_ALL["car"] == tuple(
+        str(scenario_id) for scenario_id in range(151, 201)
+    )
+    assert mr.SCENARIO_IDS_ALL["fcc"] == tuple(
+        str(scenario_id) for scenario_id in range(301, 328)
+    )
+    assert mr.SCENARIO_IDS_ALL["fmsr"] == tuple(
+        str(scenario_id) for scenario_id in range(901, 933)
+    )
+    assert mr.SCENARIO_IDS_ALL["tsfm"] == tuple(
+        str(scenario_id) for scenario_id in range(1001, 1031)
+    )
+    assert mr.SCENARIO_IDS_ALL["wosr"] == tuple(
+        str(scenario_id) for scenario_id in range(1, 67)
+    )
     assert all(len(ids) == 1 for ids in mr.SCENARIO_IDS_LITE.values())
 
 
@@ -83,7 +101,7 @@ def test_scenario_ids_for_selector_resolves_profile_shorthands() -> None:
         "1001",
         "1",
     ]
-    assert len(mr.scenario_ids_for_selector("all")) == 60
+    assert len(mr.scenario_ids_for_selector("all")) == 215
 
 
 @pytest.mark.parametrize(

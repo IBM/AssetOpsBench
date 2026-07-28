@@ -25,7 +25,9 @@ Available categories are:
 
 The profiles are defined in:
 
-- `benchmarks/scenario_suite/all.yaml` — all ten scenarios per category
+- `benchmarks/scenario_suite/all.yaml` — the complete selection for each
+  category, including CAR 151–200, FCC 301–327, FMSR 901–932, TSFM 1001–1030,
+  and WOSR 1–66
 - `benchmarks/scenario_suite/lite.yaml` — one representative scenario per
   category for quick smoke runs
 
