@@ -1,13 +1,14 @@
 """Sequential runner for the benchmark scenarios.
 
-This runner reads a simple scenario-id file, runs each scenario with the
-selected agent method, saves trajectories through AGENT_TRAJECTORY_DIR, and
-optionally invokes the existing evaluator to generate reports.
+This runner resolves a named scenario selection (or reads a custom scenario-id
+file), runs each scenario with the selected agent method, saves trajectories
+through AGENT_TRAJECTORY_DIR, and optionally invokes the existing evaluator to
+generate reports.
 
 Example:
 
     uv run python -m benchmark.scenario_suite_runner \
-      --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+      --scenario-ids fcc+fmsr_all \
       --scenario-root /path/to/scenarios_data \
       --agent_name direct_llm \
       --model-id tokenrouter/MiniMax-M3
@@ -34,10 +35,80 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 _DEFAULT_MODEL_ID = "tokenrouter/MiniMax-M3"
 _DEFAULT_GEMINI_MODEL_ID = "tokenrouter_gemini/google/gemma-4-26b-a4b-it"
+
+SCENARIO_CATEGORY_ORDER = ("car", "fcc", "fmsr", "health", "tsfm", "wosr")
+SCENARIO_PROFILE_PATHS = {
+    "all": REPO_ROOT / "benchmarks/scenario_suite/all.yaml",
+    "lite": REPO_ROOT / "benchmarks/scenario_suite/lite.yaml",
+}
+
+
+def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
+    """Load and validate a category-to-scenario-ids YAML profile."""
+    if not path.exists():
+        raise FileNotFoundError(f"Scenario profile not found: {path}")
+
+    raw_profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw_profile, dict):
+        raise ValueError(f"Scenario profile must be a YAML mapping: {path}")
+    if any(not isinstance(category, str) for category in raw_profile):
+        raise ValueError(f"Scenario profile category names must be strings: {path}")
+
+    expected_categories = set(SCENARIO_CATEGORY_ORDER)
+    actual_categories = set(raw_profile)
+    if actual_categories != expected_categories:
+        missing = sorted(expected_categories - actual_categories)
+        unknown = sorted(actual_categories - expected_categories)
+        details = []
+        if missing:
+            details.append(f"missing categories: {', '.join(missing)}")
+        if unknown:
+            details.append(f"unknown categories: {', '.join(unknown)}")
+        raise ValueError(f"Invalid scenario profile {path}: {'; '.join(details)}")
+
+    profile: dict[str, tuple[str, ...]] = {}
+    for category in SCENARIO_CATEGORY_ORDER:
+        raw_ids = raw_profile[category]
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise ValueError(
+                f"Scenario profile category {category!r} must be a non-empty list: "
+                f"{path}"
+            )
+
+        scenario_ids: list[str] = []
+        for raw_id in raw_ids:
+            if isinstance(raw_id, bool) or not isinstance(raw_id, (str, int)):
+                raise ValueError(
+                    f"Invalid scenario id {raw_id!r} in category {category!r}: {path}"
+                )
+            scenario_id = str(raw_id).strip()
+            if not scenario_id:
+                raise ValueError(
+                    f"Empty scenario id in category {category!r}: {path}"
+                )
+            scenario_ids.append(scenario_id)
+
+        if len(set(scenario_ids)) != len(scenario_ids):
+            raise ValueError(
+                f"Duplicate scenario ids in category {category!r}: {path}"
+            )
+        profile[category] = tuple(scenario_ids)
+
+    return profile
+
+
+SCENARIO_IDS_ALL = load_scenario_profile(SCENARIO_PROFILE_PATHS["all"])
+SCENARIO_IDS_LITE = load_scenario_profile(SCENARIO_PROFILE_PATHS["lite"])
+SCENARIO_ID_PROFILES = {
+    "all": SCENARIO_IDS_ALL,
+    "lite": SCENARIO_IDS_LITE,
+}
 
 
 @dataclass(frozen=True)
@@ -102,6 +173,72 @@ def load_scenario_ids(path: Path) -> list[str]:
         raise ValueError(f"No scenario ids found in {path}")
 
     return scenario_ids
+
+
+def _scenario_selector_error(selector: str) -> ValueError:
+    categories = ", ".join(SCENARIO_CATEGORY_ORDER)
+    return ValueError(
+        f"Invalid scenario selector {selector!r}. Use "
+        f"<category>[+<category>...]_<all|lite>; categories: {categories}. "
+        "The shorthands 'all' and 'lite' select every category."
+    )
+
+
+def scenario_ids_for_selector(selector: str) -> list[str]:
+    """Resolve a named category/profile selector into scenario ids.
+
+    Examples:
+
+        fcc_lite
+        fcc+fmsr_all
+        all
+        lite
+    """
+    normalized = selector.strip().lower()
+    if normalized in SCENARIO_ID_PROFILES:
+        profile_name = normalized
+        categories = list(SCENARIO_CATEGORY_ORDER)
+    else:
+        category_expression, separator, profile_name = normalized.rpartition("_")
+        if not separator or profile_name not in SCENARIO_ID_PROFILES:
+            raise _scenario_selector_error(selector)
+        categories = category_expression.split("+")
+        if not categories or any(
+            not category or category not in SCENARIO_CATEGORY_ORDER
+            for category in categories
+        ):
+            raise _scenario_selector_error(selector)
+
+    profile = SCENARIO_ID_PROFILES[profile_name]
+    scenario_ids: list[str] = []
+    seen: set[str] = set()
+    for category in categories:
+        for scenario_id in profile[category]:
+            if scenario_id not in seen:
+                scenario_ids.append(scenario_id)
+                seen.add(scenario_id)
+    return scenario_ids
+
+
+def resolve_scenario_ids(value: str | Path) -> list[str]:
+    """Resolve a selector expression, YAML profile, or plain scenario-id file."""
+    raw_value = str(value).strip()
+    if not raw_value:
+        raise _scenario_selector_error(raw_value)
+
+    path = Path(raw_value).expanduser()
+    if path.exists():
+        if path.suffix.lower() in {".yaml", ".yml"}:
+            profile = load_scenario_profile(path)
+            return [
+                scenario_id
+                for category in SCENARIO_CATEGORY_ORDER
+                for scenario_id in profile[category]
+            ]
+        return load_scenario_ids(path)
+    if path.suffix or "/" in raw_value or "\\" in raw_value:
+        raise FileNotFoundError(f"Scenario id file not found: {path}")
+    return scenario_ids_for_selector(raw_value)
 
 
 def scenario_dir_for_id(scenario_root: Path, scenario_id: str) -> Path:
@@ -427,9 +564,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--scenario-ids",
-        type=Path,
-        default=Path("benchmarks/scenario_suite/scenarios.txt"),
-        help="Plain text file containing one scenario id per line.",
+        default="benchmarks/scenario_suite/scenarios.txt",
+        metavar="SELECTOR_OR_FILE",
+        help=(
+            "Scenario selector such as fcc_lite, fcc+fmsr_all, all, or lite; "
+            "a YAML profile or plain text file is also accepted."
+        ),
     )
     parser.add_argument(
         "--scenario-root",
@@ -746,13 +886,16 @@ def main() -> None:
             "files, bash, or edits"
         )
 
-    scenario_ids = load_scenario_ids(args.scenario_ids)
+    try:
+        scenario_ids = resolve_scenario_ids(args.scenario_ids)
+    except (FileNotFoundError, ValueError) as exc:
+        parser.error(str(exc))
     methods = selected_methods(
         method_name=args.agent_name,
         methods=build_methods(args),
     )
 
-    print(f"Loaded {len(scenario_ids)} scenario ids from {args.scenario_ids}")
+    print(f"Resolved {len(scenario_ids)} scenario ids from {args.scenario_ids}")
     print(f"Selected methods: {', '.join(method.agent_name for method in methods)}")
 
     for method in methods:

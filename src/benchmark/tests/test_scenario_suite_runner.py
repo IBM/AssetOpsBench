@@ -34,6 +34,106 @@ def test_load_scenario_ids_raises_for_missing_file(tmp_path: Path) -> None:
         mr.load_scenario_ids(p)
 
 
+def test_scenario_mappings_cover_expected_categories() -> None:
+    expected = {"car", "fcc", "fmsr", "health", "tsfm", "wosr"}
+
+    assert set(mr.SCENARIO_IDS_ALL) == expected
+    assert set(mr.SCENARIO_IDS_LITE) == expected
+    assert all(len(ids) == 10 for ids in mr.SCENARIO_IDS_ALL.values())
+    assert all(len(ids) == 1 for ids in mr.SCENARIO_IDS_LITE.values())
+
+
+def test_scenario_profiles_are_loaded_from_yaml() -> None:
+    assert mr.SCENARIO_IDS_ALL == mr.load_scenario_profile(
+        mr.SCENARIO_PROFILE_PATHS["all"]
+    )
+    assert mr.SCENARIO_IDS_LITE == mr.load_scenario_profile(
+        mr.SCENARIO_PROFILE_PATHS["lite"]
+    )
+
+
+def test_scenario_ids_for_selector_resolves_combined_all_categories() -> None:
+    assert mr.scenario_ids_for_selector("fcc+fmsr_all") == [
+        *mr.SCENARIO_IDS_ALL["fcc"],
+        *mr.SCENARIO_IDS_ALL["fmsr"],
+    ]
+
+
+def test_scenario_ids_for_selector_resolves_lite_category() -> None:
+    assert mr.scenario_ids_for_selector("fcc_lite") == ["301"]
+
+
+def test_scenario_ids_for_selector_resolves_profile_shorthands() -> None:
+    assert mr.scenario_ids_for_selector("lite") == [
+        "151",
+        "301",
+        "902",
+        "401",
+        "1001",
+        "1",
+    ]
+    assert len(mr.scenario_ids_for_selector("all")) == 60
+
+
+@pytest.mark.parametrize(
+    "selector",
+    ["fcc", "fcc_fast", "unknown_lite", "fcc++fmsr_all", "_lite"],
+)
+def test_scenario_ids_for_selector_rejects_invalid_selector(selector: str) -> None:
+    with pytest.raises(ValueError, match="Invalid scenario selector"):
+        mr.scenario_ids_for_selector(selector)
+
+
+def test_resolve_scenario_ids_keeps_file_compatibility(tmp_path: Path) -> None:
+    path = tmp_path / "custom.txt"
+    path.write_text("301\n# skip\n902\n", encoding="utf-8")
+
+    assert mr.resolve_scenario_ids(path) == ["301", "902"]
+
+
+def test_resolve_scenario_ids_accepts_yaml_profile(tmp_path: Path) -> None:
+    path = tmp_path / "profile.yaml"
+    path.write_text(
+        """
+car: [151]
+fcc: [301]
+fmsr: [902]
+health: [401]
+tsfm: [1001]
+wosr: [1]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert mr.resolve_scenario_ids(path) == ["151", "301", "902", "401", "1001", "1"]
+
+
+def test_load_scenario_profile_rejects_missing_category(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.yaml"
+    path.write_text("fcc: [301]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing categories"):
+        mr.load_scenario_profile(path)
+
+
+def test_resolve_scenario_ids_raises_for_missing_file_path(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="Scenario id file not found"):
+        mr.resolve_scenario_ids(tmp_path / "missing.txt")
+
+
+def test_parser_accepts_named_scenario_selector() -> None:
+    args = mr._build_parser().parse_args(
+        [
+            "--scenario-ids",
+            "fcc+fmsr_all",
+            "--scenario-root",
+            "/tmp/scenarios_data",
+        ]
+    )
+
+    assert args.scenario_ids == "fcc+fmsr_all"
+
+
 def test_scenario_dir_for_id() -> None:
     root = Path("/tmp/scenarios_data")
     assert mr.scenario_dir_for_id(root, "11") == root / "scenario_11"

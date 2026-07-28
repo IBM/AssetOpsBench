@@ -6,9 +6,57 @@ In the benchmark, users can add the scenario IDs they want to execute.
 
 The benchmark runner executes each scenario sequentially, saves trajectories, and then invokes the existing evaluation pipeline to generate per-scenario and aggregate reports.
 
-## Scenario ID file
+## Scenario selections
 
-The benchmark registry is a plain text file:
+`--scenario-ids` accepts a named selector:
+
+```text
+<category>[+<category>...]_<all|lite>
+```
+
+Available categories are:
+
+- `car`
+- `fcc`
+- `fmsr`
+- `health`
+- `tsfm`
+- `wosr`
+
+The profiles are defined in:
+
+- `benchmarks/scenario_suite/all.yaml` — all ten scenarios per category
+- `benchmarks/scenario_suite/lite.yaml` — one representative scenario per
+  category for quick smoke runs
+
+Edit those two YAML files to change the category membership. The runner loads
+and validates them at startup.
+
+Examples:
+
+```bash
+# One quick FCC scenario
+--scenario-ids fcc_lite
+
+# All FCC and FMSR scenarios
+--scenario-ids fcc+fmsr_all
+
+# One quick scenario from every category
+--scenario-ids lite
+
+# Every scenario from every category
+--scenario-ids all
+```
+
+### Custom scenario ID file
+
+The profile YAML files can also be passed directly:
+
+```bash
+--scenario-ids benchmarks/scenario_suite/lite.yaml
+```
+
+Custom plain-text files remain supported as well:
 
 ```text
 benchmarks/scenario_suite/scenarios.txt
@@ -60,7 +108,7 @@ For each scenario:
 - `manifest.json` is used by couchdb to load the data
 - `groundtruth.txt` is used by the evaluator
 
-The scenario folder name must match the id from `scenarios.txt`:
+The scenario folder name must match the selected id:
 
 - `11` → `scenario_11`
 - `12` → `scenario_12`
@@ -70,7 +118,7 @@ The scenario folder name must match the id from `scenarios.txt`:
 Run the direct LLM baseline sequentially over the listed scenarios:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name direct_llm --model-id tokenrouter/MiniMax-M3
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids all   --scenario-root /.../scenarios_data   --agent_name direct_llm --model-id tokenrouter/MiniMax-M3
 ```
 
 This writes trajectories to:
@@ -90,14 +138,14 @@ reports/scenario_suite/direct_llm/
 Run the Stirrup agent sequentially over the listed scenarios:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name stirrup_agent
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids all   --scenario-root /.../scenarios_data   --agent_name stirrup_agent
 ```
 
 Run the Stirrup agent sequentially over the listed scenarios using the MiniMax model
 
 ```bash
 uv run python -m benchmark.scenario_suite_runner \
-  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-ids all \
   --scenario-root /.../scenarios_data \
   --agent_name stirrup_agent \
   --model-id tokenrouter/MiniMax-M3
@@ -120,7 +168,7 @@ reports/scenario_suite/stirrup_agent/
 Run all supported agents one after the other:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name all
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids all   --scenario-root /.../scenarios_data   --agent_name all
 ```
 
 ## Useful options
@@ -130,7 +178,7 @@ uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/sce
 Print the commands without executing them:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name direct_llm   --dry-run
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids fcc_lite   --scenario-root /.../scenarios_data   --agent_name direct_llm   --dry-run
 ```
 
 ### Skip existing trajectories
@@ -138,7 +186,7 @@ uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/sce
 Skip scenarios whose trajectory files already exist:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name direct_llm   --skip-existing
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids fcc+fmsr_all   --scenario-root /.../scenarios_data   --agent_name direct_llm   --skip-existing
 ```
 
 ### Continue after errors
@@ -146,7 +194,7 @@ uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/sce
 Keep running later scenarios even if one fails:
 
 ```bash
-uv run python -m benchmark.scenario_suite_runner   --scenario-ids benchmarks/scenario_suite/scenarios.txt   --scenario-root /.../scenarios_data   --agent_name direct_llm   --continue-on-error
+uv run python -m benchmark.scenario_suite_runner   --scenario-ids all   --scenario-root /.../scenarios_data   --agent_name direct_llm   --continue-on-error
 ```
 
 ## Environment variables
