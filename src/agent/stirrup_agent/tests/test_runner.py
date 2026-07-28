@@ -167,15 +167,23 @@ def test_build_trajectory_maps_turns_calls_and_outputs():
     assert call.duration_ms == 500.0  # (3.0 - 2.5) * 1000
     assert traj.turns[0].duration_ms == 1500.0  # (2.5 - 1.0) * 1000
 
-    assert final_answer(history, _Finish("done")) == "there are 7 open work orders"
+    assert final_answer(history, None) == "there are 7 open work orders"
 
 
-def test_final_answer_falls_back_to_finish_reason():
-    history = [[_Assistant(content="")]]
+def test_final_answer_prefers_finish_reason_over_earlier_assistant_text():
+    history = [
+        [_Assistant(content="I will inspect the work orders.")],
+        [_Assistant(content="")],
+    ]
     assert (
         final_answer(history, _Finish("computed RUL = 142 days"))
         == "computed RUL = 142 days"
     )
+
+
+def test_final_answer_falls_back_to_assistant_text_without_finish_reason():
+    history = [[_Assistant(content="The pump is healthy.")]]
+    assert final_answer(history, None) == "The pump is healthy."
 
 
 def test_arguments_parsed_when_already_dict():
