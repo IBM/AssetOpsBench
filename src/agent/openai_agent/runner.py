@@ -52,6 +52,26 @@ ReasoningEffort = (
     Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
 )
 
+_OPENAI_AGENT_SYSTEM_PROMPT = (
+    AGENT_SYSTEM_PROMPT
+    + """
+
+Use the configured AssetOpsBench MCP tools for operational data. Do not ask
+the user follow-up questions during benchmark runs; make reasonable
+assumptions and answer with the evidence you found. Do not edit files, run
+shell commands, browse the web, or inspect local files unless those
+capabilities have been enabled for this run.
+
+When file or bash access is enabled, use the current working directory as the
+run workspace. Always assume the current working directory is the only visible
+directory for file or bash operations. Write any scripts, temporary files,
+intermediate data, and final artifacts there. Do not read or write files outside
+the current workspace. Do not inspect the database directly.
+Do not inspect parent directories, repository folders, reports, traces,
+groundtruth files, previous agent outputs, or hidden evaluation artifacts.
+"""
+)
+
 
 @dataclass(frozen=True)
 class _ModelCapabilityRule:
@@ -491,7 +511,7 @@ class OpenAIAgentRunner(AgentRunner):
             async def _execute(active_servers: list[MCPServerStdio]) -> AgentResult:
                 agent = Agent(
                     name="AssetOps Assistant",
-                    instructions=AGENT_SYSTEM_PROMPT,
+                    instructions=_OPENAI_AGENT_SYSTEM_PROMPT,
                     tools=self._local_tools,
                     mcp_servers=active_servers,
                     mcp_config={"include_server_in_tool_names": True},
