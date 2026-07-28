@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from .._cli_common import add_common_args, print_result, run_sdk_cli
 
@@ -39,9 +40,9 @@ API routing:
   all other model IDs          Chat Completions API
 
 permissions:
-  Only configured AssetOpsBench MCP tools are exposed. Shell, file, edit, web,
-  and other hosted tools are not registered. Repeat --allow-mcp-tool SERVER/TOOL
-  to expose only selected MCP tools; once used, unlisted servers expose no tools.
+  AssetOpsBench MCP tools are enabled. Local files, Bash, edits, and web access
+  are denied unless their --allow-* flags are passed. Files, Bash, and edits
+  require --workspace-dir. Repeat --allow-mcp-tool SERVER/TOOL to restrict MCP.
 
 environment variables:
   LITELLM_API_KEY       LiteLLM API key    (required)
@@ -75,6 +76,42 @@ examples:
             "using the flag enables a fail-closed allowlist."
         ),
     )
+    parser.add_argument(
+        "--allow-files",
+        action="store_true",
+        help=(
+            "Allow workspace file listing, reading, and search. "
+            "Requires --workspace-dir."
+        ),
+    )
+    parser.add_argument(
+        "--allow-bash",
+        action="store_true",
+        help=(
+            "Allow Bash commands and workspace edits. Requires --workspace-dir; "
+            "this is not an OS-level sandbox."
+        ),
+    )
+    parser.add_argument(
+        "--allow-edit",
+        action="store_true",
+        help=(
+            "Allow workspace file writes, replacements, and deletes. "
+            "Requires --workspace-dir."
+        ),
+    )
+    parser.add_argument(
+        "--allow-web",
+        action="store_true",
+        help="Allow public web search and fetch tools.",
+    )
+    parser.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Dedicated workspace required by --allow-files/--allow-bash/--allow-edit.",
+    )
     return parser
 
 
@@ -91,6 +128,11 @@ async def _run(args: argparse.Namespace) -> None:
         model=args.model_id,
         max_turns=args.max_turns,
         mcp_tool_allowlist=mcp_tool_allowlist,
+        allow_files=args.allow_files,
+        allow_bash=args.allow_bash,
+        allow_edit=args.allow_edit,
+        allow_web=args.allow_web,
+        workspace_dir=args.workspace_dir,
     ) as runner:
         result = await runner.run(args.question)
     print_result(

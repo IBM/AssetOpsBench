@@ -162,7 +162,9 @@ def validate_workspace_root_outside_repo(workspace_root: Path, label: str) -> No
         )
 
 
-def reset_and_load_couchdb(scenario_id: str, scenario_root: Path, dry_run: bool) -> None:
+def reset_and_load_couchdb(
+    scenario_id: str, scenario_root: Path, dry_run: bool
+) -> None:
     """Reset CouchDB and load the scenario-specific data from scenario_root."""
     env = os.environ.copy()
     env["SCENARIOS_DATA_DIR"] = str(scenario_root)
@@ -284,9 +286,10 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     temperature = getattr(args, "temperature", None)
     if temperature is not None:
         stirrup_extra_args.extend(["--temperature", str(temperature)])
-    if getattr(args, "preserve_workspaces", False) and getattr(
-        args, "stirrup_workspace_root", None
-    ) is not None:
+    if (
+        getattr(args, "preserve_workspaces", False)
+        and getattr(args, "stirrup_workspace_root", None) is not None
+    ):
         stirrup_extra_args.append("--preserve-workspace")
 
     opencode_extra_args: list[str] = []
@@ -304,6 +307,16 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     opencode_temperature = getattr(args, "opencode_temperature", None)
     if opencode_temperature is not None:
         opencode_extra_args.extend(["--temperature", str(opencode_temperature)])
+
+    openai_extra_args: list[str] = []
+    if getattr(args, "openai_allow_files", False):
+        openai_extra_args.append("--allow-files")
+    if getattr(args, "openai_allow_bash", False):
+        openai_extra_args.append("--allow-bash")
+    if getattr(args, "openai_allow_edit", False):
+        openai_extra_args.append("--allow-edit")
+    if getattr(args, "openai_allow_web", False):
+        openai_extra_args.append("--allow-web")
 
     gemini_extra_args: list[str] = []
     if args.gemini_allow_files:
@@ -348,6 +361,13 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             model_id=args.model_id,
             extra_args=tuple(opencode_extra_args),
             workspace_root=args.opencode_workspace_root,
+        ),
+        "openai_agent": MethodConfig(
+            agent_name="openai_agent",
+            command="openai-agent",
+            model_id=args.model_id,
+            extra_args=tuple(openai_extra_args),
+            workspace_root=getattr(args, "openai_workspace_root", None),
         ),
         "gemini_cli_agent": MethodConfig(
             agent_name="gemini_cli_agent",
@@ -420,6 +440,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "direct_llm",
             "stirrup_agent",
             "opencode_agent",
+            "openai_agent",
             "gemini_cli_agent",
             "openclaw_cli_agent",
             "all",
@@ -442,7 +463,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model-id",
         default=_DEFAULT_MODEL_ID,
-        help="Model id used by direct_llm, stirrup_agent, and opencode_agent.",
+        help=(
+            "Model id used by direct_llm, stirrup_agent, opencode_agent, "
+            "and openai_agent."
+        ),
     )
     parser.add_argument(
         "--stirrup-workspace-root",
@@ -457,17 +481,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--gemini-model-id",
         default=_DEFAULT_GEMINI_MODEL_ID,
         help=(
-            "Model id used by gemini_cli_agent "
-            f"(default: {_DEFAULT_GEMINI_MODEL_ID})."
+            f"Model id used by gemini_cli_agent (default: {_DEFAULT_GEMINI_MODEL_ID})."
         ),
     )
     parser.add_argument(
         "--openclaw-model-id",
         default=_DEFAULT_MODEL_ID,
-        help=(
-            "Model id used by openclaw_cli_agent "
-            f"(default: {_DEFAULT_MODEL_ID})."
-        ),
+        help=(f"Model id used by openclaw_cli_agent (default: {_DEFAULT_MODEL_ID})."),
     )
     parser.add_argument(
         "--opencode-workspace-root",
@@ -519,6 +539,36 @@ def _build_parser() -> argparse.ArgumentParser:
             "OpenCode model temperature for opencode_agent. When omitted, "
             "opencode-agent uses its default temperature."
         ),
+    )
+    parser.add_argument(
+        "--openai-workspace-root",
+        type=Path,
+        default=None,
+        help=(
+            "Root directory for per-run OpenAI-agent workspaces. Required when "
+            "using --openai-allow-files, --openai-allow-bash, or "
+            "--openai-allow-edit. Workspaces are nested by agent/model/run_id."
+        ),
+    )
+    parser.add_argument(
+        "--openai-allow-files",
+        action="store_true",
+        help="Allow openai-agent file listing, reading, and search in its workspace.",
+    )
+    parser.add_argument(
+        "--openai-allow-bash",
+        action="store_true",
+        help="Allow openai-agent Bash commands and workspace edits.",
+    )
+    parser.add_argument(
+        "--openai-allow-edit",
+        action="store_true",
+        help="Allow openai-agent workspace file writes, replacements, and deletes.",
+    )
+    parser.add_argument(
+        "--openai-allow-web",
+        action="store_true",
+        help="Allow openai-agent public web search and fetch tools.",
     )
     parser.add_argument(
         "--gemini-workspace-root",
@@ -643,6 +693,21 @@ def main() -> None:
             )
         except ValueError as exc:
             parser.error(str(exc))
+    openai_workspace_required = (
+        args.openai_allow_files or args.openai_allow_bash or args.openai_allow_edit
+    )
+    if openai_workspace_required and args.openai_workspace_root is None:
+        parser.error(
+            "--openai-workspace-root is required when enabling OpenAI-agent "
+            "files, bash/workspace writes, or edits"
+        )
+    if openai_workspace_required:
+        try:
+            validate_workspace_root_outside_repo(
+                args.openai_workspace_root, "--openai-workspace-root"
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.stirrup_workspace_root is not None:
         try:
             validate_workspace_root_outside_repo(
@@ -698,7 +763,9 @@ def main() -> None:
             report_dir.mkdir(parents=True, exist_ok=True)
 
         for scenario_id in scenario_ids:
-            expected_trajectory = trajectory_dir / f"{method.agent_name}_{scenario_id}.json"
+            expected_trajectory = (
+                trajectory_dir / f"{method.agent_name}_{scenario_id}.json"
+            )
 
             if args.skip_existing and expected_trajectory.exists():
                 print(

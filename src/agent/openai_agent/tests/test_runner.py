@@ -20,10 +20,12 @@ from agent.openai_agent.cli import _build_parser, _parse_mcp_tool_permission
 from agent.openai_agent.runner import (
     OpenAIAgentRunner,
     _build_mcp_servers,
+    _build_permissions,
     _build_run_config,
     _build_trajectory,
     _enter_mcp_servers,
     _normalize_mcp_tool_allowlist,
+    _resolve_run_dir,
     _uses_responses_api,
 )
 
@@ -173,6 +175,49 @@ def test_build_run_config_missing_env_raises(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def test_build_permissions_default_safe():
+    assert _build_permissions() == {
+        "mcp": True,
+        "files": False,
+        "bash": False,
+        "edit": False,
+        "web": False,
+    }
+
+
+def test_build_permissions_allows_opt_in_tools():
+    assert _build_permissions(
+        allow_files=True,
+        allow_bash=True,
+        allow_web=True,
+    ) == {
+        "mcp": True,
+        "files": True,
+        "bash": True,
+        "edit": True,
+        "web": True,
+    }
+
+
+def test_resolve_run_dir_requires_workspace_for_local_tools():
+    with pytest.raises(ValueError, match="workspace_dir is required"):
+        _resolve_run_dir(
+            workspace_dir=None,
+            permissions=_build_permissions(allow_files=True),
+        )
+
+
+def test_resolve_run_dir_creates_workspace(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    result = _resolve_run_dir(
+        workspace_dir=workspace,
+        permissions=_build_permissions(allow_edit=True),
+    )
+
+    assert result == workspace.resolve()
+    assert workspace.is_dir()
+
+
 def test_runner_defaults(monkeypatch):
     monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
     monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
@@ -181,6 +226,8 @@ def test_runner_defaults(monkeypatch):
     assert runner._run_config is not None
     assert runner._max_turns == 30
     assert "iot" in runner._server_paths
+    assert runner._permissions == _build_permissions()
+    assert runner._local_tools == []
 
 
 def test_runner_custom_server_paths(monkeypatch):
@@ -202,6 +249,38 @@ def test_runner_normalizes_mcp_tool_allowlist(monkeypatch):
     assert runner._mcp_tool_allowlist == {
         "iot": ("sites",),
         "utilities": (),
+    }
+
+
+def test_runner_builds_opt_in_local_tools(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
+    runner = OpenAIAgentRunner(
+        server_paths={},
+        workspace_dir=tmp_path,
+        allow_files=True,
+        allow_bash=True,
+        allow_web=True,
+    )
+
+    assert runner._run_dir == tmp_path.resolve()
+    assert runner._permissions == {
+        "mcp": True,
+        "files": True,
+        "bash": True,
+        "edit": True,
+        "web": True,
+    }
+    assert {tool.name for tool in runner._local_tools} == {
+        "delete_file",
+        "list_files",
+        "read_file",
+        "replace_in_file",
+        "run_bash",
+        "search_files",
+        "web_fetch",
+        "web_search",
+        "write_file",
     }
 
 
@@ -255,6 +334,26 @@ def test_cli_collects_mcp_tool_permissions():
         ("iot", "sites"),
         ("utilities", "current_date_time"),
     ]
+
+
+def test_cli_collects_workspace_permissions(tmp_path: Path):
+    args = _build_parser().parse_args(
+        [
+            "--allow-files",
+            "--allow-bash",
+            "--allow-edit",
+            "--allow-web",
+            "--workspace-dir",
+            str(tmp_path),
+            "question",
+        ]
+    )
+
+    assert args.allow_files is True
+    assert args.allow_bash is True
+    assert args.allow_edit is True
+    assert args.allow_web is True
+    assert args.workspace_dir == tmp_path
 
 
 # ---------------------------------------------------------------------------

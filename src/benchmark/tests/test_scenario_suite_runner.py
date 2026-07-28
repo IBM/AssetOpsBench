@@ -116,8 +116,7 @@ def test_validate_workspace_root_rejects_repo_paths() -> None:
 def test_model_dir_name_normalizes_router_model_ids() -> None:
     assert mr.model_dir_name("tokenrouter/MiniMax-M3") == "tokenrouter-MiniMax-M3"
     assert (
-        mr.model_dir_name("tokenrouter/openai/gpt-5.4")
-        == "tokenrouter-openai-gpt-5.4"
+        mr.model_dir_name("tokenrouter/openai/gpt-5.4") == "tokenrouter-openai-gpt-5.4"
     )
     assert mr.model_dir_name(" rits/qwen3:30b ") == "rits-qwen3-30b"
 
@@ -184,6 +183,10 @@ def test_build_methods_uses_cli_defaults() -> None:
     assert methods["opencode_agent"].command == "opencode-agent"
     assert methods["opencode_agent"].extra_args == ()
     assert methods["opencode_agent"].workspace_root is None
+    assert methods["openai_agent"].command == "openai-agent"
+    assert methods["openai_agent"].model_id == "tokenrouter/MiniMax-M3"
+    assert methods["openai_agent"].extra_args == ()
+    assert methods["openai_agent"].workspace_root is None
     assert methods["gemini_cli_agent"].command == "gemini-cli-agent"
     assert (
         methods["gemini_cli_agent"].model_id
@@ -306,6 +309,43 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
         "--temperature",
         "0.0",
     )
+
+
+def test_build_methods_openai_workspace_options(tmp_path: Path) -> None:
+    args = Namespace(
+        model_id="tokenrouter/anthropic/claude-opus-4.8",
+        gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
+        openclaw_model_id="tokenrouter/MiniMax-M3",
+        opencode_allow_files=False,
+        opencode_allow_bash=False,
+        opencode_allow_edit=False,
+        opencode_workspace_root=None,
+        openai_allow_files=True,
+        openai_allow_bash=True,
+        openai_allow_edit=False,
+        openai_allow_web=True,
+        openai_workspace_root=tmp_path / "openai-workspaces",
+        gemini_allow_files=False,
+        gemini_allow_bash=False,
+        gemini_allow_edit=False,
+        gemini_allow_web=False,
+        gemini_sandbox=False,
+        gemini_workspace_root=None,
+        openclaw_allow_files=False,
+        openclaw_allow_bash=False,
+        openclaw_allow_edit=False,
+        openclaw_allow_web=False,
+        openclaw_thinking="off",
+        openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
+    )
+
+    methods = mr.build_methods(args)
+    openai = methods["openai_agent"]
+
+    assert openai.extra_args == ("--allow-files", "--allow-bash", "--allow-web")
+    assert openai.workspace_root == tmp_path / "openai-workspaces"
 
 
 def test_build_methods_gemini_workspace_options(tmp_path: Path) -> None:
@@ -494,6 +534,54 @@ def test_run_agent_for_scenario_adds_opencode_workspace(
         "401",
         "--run-id",
         "opencode_agent_401",
+        "Which excavator costs the most?",
+    ]
+
+
+def test_run_agent_for_scenario_adds_openai_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(mr.subprocess, "run", fake_run)
+
+    method = mr.MethodConfig(
+        agent_name="openai_agent",
+        command="openai-agent",
+        model_id="tokenrouter/anthropic/claude-opus-4.8",
+        extra_args=("--allow-files", "--allow-bash", "--allow-web"),
+        workspace_root=tmp_path / "openai-workspaces",
+    )
+
+    mr.run_agent_for_scenario(
+        method=method,
+        scenario_id="401",
+        question="Which excavator costs the most?",
+        trajectory_dir=tmp_path / "traj",
+        dry_run=False,
+    )
+
+    expected_workspace = tmp_path / "openai-workspaces" / "openai_agent_401"
+    assert expected_workspace.exists()
+    assert captured["cmd"] == [
+        "uv",
+        "run",
+        "openai-agent",
+        "--model-id",
+        "tokenrouter/anthropic/claude-opus-4.8",
+        "--allow-files",
+        "--allow-bash",
+        "--allow-web",
+        "--workspace-dir",
+        str(expected_workspace),
+        "--scenario-id",
+        "401",
+        "--run-id",
+        "openai_agent_401",
         "Which excavator costs the most?",
     ]
 

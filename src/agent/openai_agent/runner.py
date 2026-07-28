@@ -39,6 +39,7 @@ from observability import agent_run_span, persist_trajectory
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
+from .workspace_tools import WorkspaceToolFactory
 
 _log = logging.getLogger(__name__)
 
@@ -51,6 +52,49 @@ MCPToolAllowlist = Mapping[str, Collection[str]]
 def _uses_responses_api(model_id: str) -> bool:
     """Return whether *model_id* should use the OpenAI Responses API."""
     return model_id.startswith(_TOKENROUTER_OPENAI_GPT5_PREFIX)
+
+
+def _build_permissions(
+    *,
+    allow_bash: bool = False,
+    allow_edit: bool = False,
+    allow_web: bool = False,
+    allow_files: bool = False,
+) -> dict[str, bool]:
+    """Build benchmark-safe OpenAI-agent capability permissions.
+
+    MCP access is always available through the separately configured server and
+    tool allowlists. Local workspace and web tools are denied unless explicitly
+    enabled. Bash also enables workspace edits, matching the OpenCode runner.
+    """
+    return {
+        "mcp": True,
+        "files": allow_files,
+        "bash": allow_bash,
+        "edit": allow_edit or allow_bash,
+        "web": allow_web,
+    }
+
+
+def _resolve_run_dir(
+    *,
+    workspace_dir: Path | str | None,
+    permissions: Mapping[str, bool],
+) -> Path | None:
+    """Resolve the optional workspace required by local file/edit/bash tools."""
+    workspace_requested = any(
+        permissions[capability] for capability in ("files", "bash", "edit")
+    )
+    if workspace_requested and workspace_dir is None:
+        raise ValueError(
+            "workspace_dir is required when enabling files, edits, or bash"
+        )
+    if workspace_dir is None:
+        return None
+
+    run_dir = Path(workspace_dir).expanduser().resolve()
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
 
 def _build_run_config(model_id: str) -> RunConfig:
@@ -267,6 +311,10 @@ class OpenAIAgentRunner(AgentRunner):
     The SDK handles tool discovery, invocation, and multi-turn conversation
     against the registered MCP servers.
 
+    Local file, edit, Bash, and web function tools are denied by default. They
+    can be enabled independently for a dedicated workspace. These are ordinary
+    function tools so they work with both Responses and Chat Completions models.
+
     A one-shot :meth:`run` connects and closes MCP servers automatically. For
     repeated calls, use the runner as an async context manager to connect once
     and reuse the active servers until :meth:`aclose`.
@@ -286,6 +334,12 @@ class OpenAIAgentRunner(AgentRunner):
         mcp_tool_allowlist: Optional mapping of MCP server names to allowed tool
                             names. Supplying it enables fail-closed filtering:
                             servers omitted from the mapping expose no tools.
+        allow_files: Allow workspace file listing, reading, and search tools.
+        allow_bash: Allow Bash commands and workspace edits. This is not an OS
+                    sandbox; commands can reference host paths explicitly.
+        allow_edit: Allow workspace write, replace, and delete tools.
+        allow_web: Allow public web search and fetch tools.
+        workspace_dir: Dedicated workspace required by files, Bash, or edits.
     """
 
     def __init__(
@@ -295,6 +349,11 @@ class OpenAIAgentRunner(AgentRunner):
         model: str = _DEFAULT_MODEL,
         max_turns: int = 30,
         mcp_tool_allowlist: MCPToolAllowlist | None = None,
+        allow_bash: bool = False,
+        allow_edit: bool = False,
+        allow_web: bool = False,
+        allow_files: bool = False,
+        workspace_dir: Path | str | None = None,
     ) -> None:
         super().__init__(llm, server_paths)
         self._model_id = model
@@ -303,6 +362,22 @@ class OpenAIAgentRunner(AgentRunner):
         self._max_turns = max_turns
         self._mcp_tool_allowlist = _normalize_mcp_tool_allowlist(
             self._server_paths, mcp_tool_allowlist
+        )
+        self._permissions = _build_permissions(
+            allow_bash=allow_bash,
+            allow_edit=allow_edit,
+            allow_web=allow_web,
+            allow_files=allow_files,
+        )
+        self._run_dir = _resolve_run_dir(
+            workspace_dir=workspace_dir,
+            permissions=self._permissions,
+        )
+        self._local_tools = WorkspaceToolFactory(self._run_dir).build_tools(
+            allow_bash=allow_bash,
+            allow_edit=allow_edit,
+            allow_web=allow_web,
+            allow_files=allow_files,
         )
         self._mcp_stack: AsyncExitStack | None = None
         self._active_mcp_servers: list[MCPServerStdio] | None = None
@@ -366,15 +441,19 @@ class OpenAIAgentRunner(AgentRunner):
                 agent = Agent(
                     name="AssetOps Assistant",
                     instructions=AGENT_SYSTEM_PROMPT,
+                    tools=self._local_tools,
                     mcp_servers=active_servers,
                     mcp_config={"include_server_in_tool_names": True},
                     model=self._model,
                 )
 
                 _log.info(
-                    "OpenAIAgentRunner: starting query (model=%s, servers=%d)",
+                    "OpenAIAgentRunner: starting query "
+                    "(model=%s, servers=%d, workspace=%s, permissions=%s)",
                     self._model,
                     len(active_servers),
+                    self._run_dir or "<disabled>",
+                    self._permissions,
                 )
 
                 result = await Runner.run(

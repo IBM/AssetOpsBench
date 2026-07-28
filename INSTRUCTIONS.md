@@ -259,10 +259,23 @@ falls back to direct OpenAI credentials.
 
 - `tokenrouter/openai/gpt-5.*` uses the Responses API.
 - All other supported router-backed models use Chat Completions.
-- The agent exposes only configured AssetOpsBench MCP servers. It does not
-  register shell, file, edit, web, subagent, or other hosted tools.
+- The agent exposes configured AssetOpsBench MCP servers by default. Local file,
+  Bash, edit, and web function tools are denied unless explicitly enabled.
 - Configured MCP tools execute non-interactively by default, which is suitable
   for benchmark runs.
+
+Workspace and web capabilities use the same opt-in shape as `opencode-agent`:
+
+| Capability | Default | Flag |
+| ---------- | ------- | ---- |
+| File listing, reading, search | denied | `--allow-files` |
+| Bash commands | denied | `--allow-bash` |
+| Workspace writes/replacements/deletes | denied | `--allow-edit` or `--allow-bash` |
+| Public web search/fetch | denied | `--allow-web` |
+
+Files, Bash, and edits require `--workspace-dir`. Bash runs with that directory
+as its working directory and a credential-scrubbed environment, but it is not a
+hard OS-level sandbox: an explicit absolute path can still reach host files.
 
 To restrict a CLI run to specific MCP tools, repeat `--allow-mcp-tool` with a
 `SERVER/TOOL` value. Once the flag is present, the allowlist is fail-closed:
@@ -302,6 +315,8 @@ runner = OpenAIAgentRunner(
 | `--show-plan`         | plan-execute               | Print the generated plan before execution                         |
 | `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
 | `--allow-mcp-tool SERVER/TOOL` | openai-agent | Repeatable fail-closed MCP tool allowlist                          |
+| `--allow-files` / `--workspace-dir PATH` | openai-agent | Enable workspace file listing, reading, and search                 |
+| `--allow-bash` / `--allow-edit` / `--allow-web` | openai-agent | Opt into Bash plus edits, edits without Bash, or public web access |
 | `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
 | `--code-enabled` / `--no-code` | stirrup-agent | Enable (default) / disable code execution — selects the code track |
 | `--code-backend B`             | stirrup-agent | Code sandbox: `docker` (default), `local`, or `e2b`                |
@@ -381,6 +396,30 @@ workspace file writes so agents can save output artifacts. If any of them are en
 
 > `--opencode-allow-bash` is not a hard OS-level sandbox. For strict filesystem
 > isolation, run the benchmark inside Docker or another sandbox.
+
+### OpenAI-agent scenario-suite workspace mode
+
+The scenario-suite runner also supports `openai_agent` with equivalent opt-in
+workspace and web flags:
+
+```bash
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name openai_agent \
+  --model-id tokenrouter/anthropic/claude-opus-4.8 \
+  --trajectory-root /tmp/leaderboard/assetopsbench-trajectories/tokenrouter/opus \
+  --reports-root /tmp/leaderboard/assetopsbench-reports/tokenrouter/opus \
+  --openai-workspace-root /tmp/leaderboard/assetopsbench-openai-workspaces/tokenrouter/opus \
+  --openai-allow-files \
+  --openai-allow-bash \
+  --openai-allow-web \
+  --continue-on-error
+```
+
+`--openai-allow-files`, `--openai-allow-bash`, and `--openai-allow-edit`
+require `--openai-workspace-root`, which must be outside the repository. Each
+scenario receives a fresh workspace nested by agent, model, and run ID.
 
 ---
 
