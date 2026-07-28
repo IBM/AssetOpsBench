@@ -28,9 +28,9 @@ The profiles are defined in:
 - `benchmarks/scenario_suite/all.yaml` — the complete selection for each
   category, including CAR 151–200, FCC 301–327, FMSR 901–932, TSFM 1001–1030,
   and WOSR 1–66
-- `benchmarks/scenario_suite/lite.yaml` — a quick profile with Health 401–410,
-  TSFM 1001–1005 and 1026–1030, and one representative scenario for each
-  other category
+- `benchmarks/scenario_suite/lite.yaml` — a quick profile with ten FCC, FMSR,
+  and Health scenarios, TSFM 1001–1005, and one representative CAR and WOSR
+  scenario
 
 Edit those two YAML files to change the category membership. The runner loads
 and validates them at startup.

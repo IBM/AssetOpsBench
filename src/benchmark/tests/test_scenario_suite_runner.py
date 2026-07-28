@@ -61,14 +61,17 @@ def test_scenario_mappings_cover_expected_categories() -> None:
     )
     assert all(
         len(mr.SCENARIO_IDS_LITE[category]) == 1
-        for category in expected - {"health", "tsfm"}
+        for category in {"car", "wosr"}
+    )
+    assert all(
+        len(mr.SCENARIO_IDS_LITE[category]) == 10
+        for category in {"fcc", "fmsr", "health"}
     )
     assert mr.SCENARIO_IDS_LITE["health"] == tuple(
         str(scenario_id) for scenario_id in range(401, 411)
     )
-    assert mr.SCENARIO_IDS_LITE["tsfm"] == (
-        *tuple(str(scenario_id) for scenario_id in range(1001, 1006)),
-        *tuple(str(scenario_id) for scenario_id in range(1026, 1031)),
+    assert mr.SCENARIO_IDS_LITE["tsfm"] == tuple(
+        str(scenario_id) for scenario_id in range(1001, 1006)
     )
 
 
@@ -99,35 +102,16 @@ def test_scenario_ids_for_selector_resolves_combined_all_categories() -> None:
 
 
 def test_scenario_ids_for_selector_resolves_lite_category() -> None:
-    assert mr.scenario_ids_for_selector("fcc_lite") == ["301"]
+    assert mr.scenario_ids_for_selector("fcc_lite") == list(
+        mr.SCENARIO_IDS_LITE["fcc"]
+    )
 
 
 def test_scenario_ids_for_selector_resolves_profile_shorthands() -> None:
     assert mr.scenario_ids_for_selector("lite") == [
-        "151",
-        "301",
-        "902",
-        "401",
-        "402",
-        "403",
-        "404",
-        "405",
-        "406",
-        "407",
-        "408",
-        "409",
-        "410",
-        "1001",
-        "1002",
-        "1003",
-        "1004",
-        "1005",
-        "1026",
-        "1027",
-        "1028",
-        "1029",
-        "1030",
-        "1",
+        scenario_id
+        for category in mr.SCENARIO_CATEGORY_ORDER
+        for scenario_id in mr.SCENARIO_IDS_LITE[category]
     ]
     assert len(mr.scenario_ids_for_selector("all")) == 215
 
