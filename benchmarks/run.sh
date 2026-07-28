@@ -48,7 +48,14 @@ for model in "${models[@]}"; do
     --scenario-root "$scenario_root" \
     --agent_name openai_agent \
     --model-id "$model" \
+    --trajectory-root /tmp/leaderboard/assetopsbench-trajectories \
+    --reports-root /tmp/leaderboard/assetopsbench-reports \
+    --openai-workspace-root /tmp/leaderboard/assetopsbench-workspaces \
+    --openai-allow-files \
+    --openai-allow-bash \
+    --openai-allow-edit \
     --openai-reasoning-effort "$reasoning_effort" \
+    --openai-reasoning-summary auto \
     --skip-existing \
     --continue-on-error \
     "$@"

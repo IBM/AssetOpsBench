@@ -94,7 +94,9 @@ benchmarks/run.sh /path/to/scenarios_data
 ```
 
 Set `OPENAI_REASONING_EFFORT` to override the default `medium` effort. Any
-additional arguments are forwarded to `scenario_suite_runner`.
+additional arguments are forwarded to `scenario_suite_runner`. The launcher
+writes trajectories, reports, and file-enabled agent workspaces under
+`/tmp/leaderboard/`.
 
 ### OpenAI agent routing
 
