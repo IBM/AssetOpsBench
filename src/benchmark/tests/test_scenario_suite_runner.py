@@ -60,18 +60,38 @@ def test_scenario_mappings_cover_expected_categories() -> None:
         str(scenario_id) for scenario_id in range(1, 67)
     )
     assert all(
-        len(mr.SCENARIO_IDS_LITE[category]) == 1
-        for category in {"car", "wosr"}
-    )
-    assert all(
         len(mr.SCENARIO_IDS_LITE[category]) == 10
-        for category in {"fcc", "fmsr", "health"}
+        for category in {"car", "fcc", "fmsr", "health", "wosr"}
+    )
+    assert mr.SCENARIO_IDS_LITE["car"] == (
+        "151",
+        "152",
+        "153",
+        "156",
+        "167",
+        "178",
+        "180",
+        "182",
+        "183",
+        "193",
     )
     assert mr.SCENARIO_IDS_LITE["health"] == tuple(
         str(scenario_id) for scenario_id in range(401, 411)
     )
     assert mr.SCENARIO_IDS_LITE["tsfm"] == tuple(
         str(scenario_id) for scenario_id in range(1001, 1006)
+    )
+    assert mr.SCENARIO_IDS_LITE["wosr"] == (
+        "5",
+        "9",
+        "13",
+        "20",
+        "24",
+        "31",
+        "40",
+        "52",
+        "61",
+        "66",
     )
 
 

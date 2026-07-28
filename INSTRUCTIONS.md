@@ -257,20 +257,25 @@ uv run direct-llm-agent "$query"
 `tokenrouter/` prefix; unprefixed model IDs are rejected so the runner never
 falls back to direct OpenAI credentials.
 
-- `tokenrouter/openai/gpt-5.*`, `tokenrouter/MiniMax-M3`, and
-  `tokenrouter/google/gemini-3.6-flash` use the Responses API.
-- All other supported router-backed models use Chat Completions.
-- Verified compatible models use reasoning effort `medium` by default. Override
-  it with `--reasoning-effort`; unsupported models such as Claude Opus ignore
-  the generic OpenAI-compatible setting.
-- `tokenrouter/openai/gpt-5.*` models request a safe reasoning summary by
-  default and persist it as `reasoning_summary` on each trajectory turn. Raw
-  chain-of-thought is not exposed. Use `--reasoning-summary none` to disable
-  summaries.
-- The agent exposes configured AssetOpsBench MCP servers by default. Local file,
-  Bash, edit, and web function tools are denied unless explicitly enabled.
-- Configured MCP tools execute non-interactively by default, which is suitable
-  for benchmark runs.
+Recommended TokenRouter routing:
+
+| Model ID | API route | Reasoning effort |
+| -------- | --------- | ---------------- |
+| `tokenrouter/openai/gpt-5.*` | Responses | supported |
+| `tokenrouter/MiniMax-M3` | Responses | supported |
+| `tokenrouter/google/gemini-3.6-flash` | Responses | supported |
+| `tokenrouter/anthropic/claude-opus-4.8` | Chat Completions | ignored |
+| `tokenrouter/z-ai/glm-5.2` | Chat Completions | supported |
+
+Other router-backed models use Chat Completions. Supported models default to
+`--reasoning-effort medium`; choose `none`, `minimal`, `low`, `medium`, `high`,
+`xhigh`, or `max`. GPT-5 models also request a safe reasoning summary by
+default. The trajectory stores only the API-provided summary and token count,
+never raw chain-of-thought. Use `--reasoning-summary none` to disable it.
+
+All configured AssetOpsBench MCP tools are available and execute
+non-interactively by default. Local file, Bash, edit, and web tools remain
+disabled until explicitly enabled.
 
 Workspace and web capabilities use the same opt-in shape as `opencode-agent`:
 
@@ -285,38 +290,6 @@ Files, Bash, and edits require `--workspace-dir`. Bash runs with that directory
 as its working directory and a credential-scrubbed environment, but it is not a
 hard OS-level sandbox: an explicit absolute path can still reach host files.
 
-To smoke-test workspace file writes and reads, create a portable temporary
-directory instead of hard-coding a platform-specific path such as
-`/private/tmp`:
-
-```bash
-OPENAI_AGENT_TMP_ROOT="${TMPDIR:-/tmp}"
-export OPENAI_AGENT_TEST_DIR="$(mktemp -d "${OPENAI_AGENT_TMP_ROOT%/}/openai-agent-files.XXXXXX")"
-
-uv run openai-agent \
-  --model-id tokenrouter/openai/gpt-5.6-sol \
-  --workspace-dir "$OPENAI_AGENT_TEST_DIR" \
-  --allow-files \
-  --allow-edit \
-  --show-trajectory \
-  'Write exactly "openai-agent file test" followed by a newline to smoke.txt, then read smoke.txt and report its contents.'
-
-cat "$OPENAI_AGENT_TEST_DIR/smoke.txt"
-```
-
-The trajectory should contain `write_file` and `read_file` calls, and the final
-`cat` command should print `openai-agent file test`. A separate read-only check
-can reuse the file while omitting `--allow-edit`:
-
-```bash
-uv run openai-agent \
-  --model-id tokenrouter/openai/gpt-5.6-sol \
-  --workspace-dir "$OPENAI_AGENT_TEST_DIR" \
-  --allow-files \
-  --show-trajectory \
-  'Read smoke.txt and report its exact contents. Do not modify any files.'
-```
-
 To restrict a CLI run to specific MCP tools, repeat `--allow-mcp-tool` with a
 `SERVER/TOOL` value. Once the flag is present, the allowlist is fail-closed:
 unlisted tools and all tools from unlisted servers are hidden from the model.
@@ -326,15 +299,6 @@ uv run openai-agent \
   --allow-mcp-tool iot/sites \
   --allow-mcp-tool iot/asset_ids \
   "List the asset IDs at every site."
-```
-
-Programmatic callers can pass the equivalent per-server mapping:
-
-```python
-runner = OpenAIAgentRunner(
-    model="tokenrouter/openai/gpt-5.6-sol",
-    mcp_tool_allowlist={"iot": {"sites", "asset_ids"}},
-)
 ```
 
 ### Common flags
@@ -439,33 +403,31 @@ workspace file writes so agents can save output artifacts. If any of them are en
 > `--opencode-allow-bash` is not a hard OS-level sandbox. For strict filesystem
 > isolation, run the benchmark inside Docker or another sandbox.
 
-### OpenAI-agent scenario-suite workspace mode
+### OpenAI-agent scenario-suite runs
 
-The scenario-suite runner also supports `openai_agent` with equivalent opt-in
-workspace and web flags:
+The scenario-suite runner forwards OpenAI-specific reasoning and permission
+flags. For example:
 
 ```bash
 uv run python -m benchmark.scenario_suite_runner \
-  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-ids lite \
   --scenario-root /path/to/scenarios_data \
   --agent_name openai_agent \
-  --model-id tokenrouter/anthropic/claude-opus-4.8 \
-  --trajectory-root /tmp/leaderboard/assetopsbench-trajectories/tokenrouter/opus \
-  --reports-root /tmp/leaderboard/assetopsbench-reports/tokenrouter/opus \
-  --openai-workspace-root /tmp/leaderboard/assetopsbench-openai-workspaces/tokenrouter/opus \
+  --model-id tokenrouter/openai/gpt-5.6-sol \
+  --openai-reasoning-effort medium \
+  --openai-workspace-root /tmp/assetopsbench-openai/workspaces \
   --openai-allow-files \
-  --openai-allow-bash \
-  --openai-allow-web \
+  --skip-existing \
   --continue-on-error
 ```
 
 `--openai-allow-files`, `--openai-allow-bash`, and `--openai-allow-edit`
 require `--openai-workspace-root`, which must be outside the repository. Each
-scenario receives a fresh workspace nested by agent, model, and run ID.
-`--openai-reasoning-summary` applies only to `tokenrouter/openai/gpt-5.*`
-Responses models and defaults to `auto`.
-`--openai-reasoning-effort` is passed to `openai-agent` and defaults to
-`medium`; models without verified support ignore it.
+scenario receives a workspace nested by agent, model, and run ID. Reasoning
+effort defaults to `medium`; reasoning summaries default to `auto` for GPT-5
+Responses models. See
+[benchmarks/scenario_suite/README.md](benchmarks/scenario_suite/README.md) for
+profiles, output paths, and resume behavior.
 
 ---
 
