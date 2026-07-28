@@ -86,6 +86,16 @@ uv run python -m benchmark.scenario_suite_runner \
 Available agent names are `direct_llm`, `stirrup_agent`, `opencode_agent`,
 `openai_agent`, `gemini_cli_agent`, `openclaw_cli_agent`, and `all`.
 
+Run the Lite profile with `openai_agent` across all five verified TokenRouter
+models:
+
+```bash
+benchmarks/run.sh /path/to/scenarios_data
+```
+
+Set `OPENAI_REASONING_EFFORT` to override the default `medium` effort. Any
+additional arguments are forwarded to `scenario_suite_runner`.
+
 ### OpenAI agent routing
 
 | Model ID | API route | Reasoning effort |
