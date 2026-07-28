@@ -39,6 +39,10 @@ API routing:
   tokenrouter/openai/gpt-5.*   Responses API
   all other model IDs          Chat Completions API
 
+reasoning summaries:
+  Responses models request safe reasoning summaries by default. Raw internal
+  chain-of-thought is never exposed. Use --reasoning-summary none to disable.
+
 permissions:
   AssetOpsBench MCP tools are enabled. Local files, Bash, edits, and web access
   are denied unless their --allow-* flags are passed. Files, Bash, and edits
@@ -64,6 +68,15 @@ examples:
         default=30,
         metavar="N",
         help="Maximum agentic loop turns (default: 30).",
+    )
+    parser.add_argument(
+        "--reasoning-summary",
+        choices=("auto", "concise", "detailed", "none"),
+        default="auto",
+        help=(
+            "Reasoning-summary detail for Responses models (default: auto). "
+            "Ignored for Chat Completions; use none to disable."
+        ),
     )
     parser.add_argument(
         "--allow-mcp-tool",
@@ -133,6 +146,9 @@ async def _run(args: argparse.Namespace) -> None:
         allow_edit=args.allow_edit,
         allow_web=args.allow_web,
         workspace_dir=args.workspace_dir,
+        reasoning_summary=(
+            None if args.reasoning_summary == "none" else args.reasoning_summary
+        ),
     ) as runner:
         result = await runner.run(args.question)
     print_result(

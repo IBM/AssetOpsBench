@@ -324,6 +324,7 @@ def test_build_methods_openai_workspace_options(tmp_path: Path) -> None:
         openai_allow_bash=True,
         openai_allow_edit=False,
         openai_allow_web=True,
+        openai_reasoning_summary="detailed",
         openai_workspace_root=tmp_path / "openai-workspaces",
         gemini_allow_files=False,
         gemini_allow_bash=False,
@@ -344,7 +345,13 @@ def test_build_methods_openai_workspace_options(tmp_path: Path) -> None:
     methods = mr.build_methods(args)
     openai = methods["openai_agent"]
 
-    assert openai.extra_args == ("--allow-files", "--allow-bash", "--allow-web")
+    assert openai.extra_args == (
+        "--allow-files",
+        "--allow-bash",
+        "--allow-web",
+        "--reasoning-summary",
+        "detailed",
+    )
     assert openai.workspace_root == tmp_path / "openai-workspaces"
 
 

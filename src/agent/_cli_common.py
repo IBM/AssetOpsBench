@@ -17,7 +17,7 @@ import json
 import logging
 import sys
 import uuid
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 LOG_DATE_FORMAT = "%H:%M:%S"
@@ -94,6 +94,15 @@ def print_trajectory(trajectory) -> None:
         if turn.text:
             snippet = turn.text[:200] + ("..." if len(turn.text) > 200 else "")
             print(f"    text: {snippet}")
+        reasoning_summary = getattr(turn, "reasoning_summary", "")
+        if reasoning_summary:
+            snippet = reasoning_summary[:500] + (
+                "..." if len(reasoning_summary) > 500 else ""
+            )
+            print(f"    reasoning summary: {snippet}")
+        reasoning_tokens = getattr(turn, "reasoning_tokens", 0)
+        if reasoning_tokens:
+            print(f"    reasoning tokens: {reasoning_tokens}")
         for tc in turn.tool_calls:
             print(f"    tool: {tc.name}  input: {tc.input}")
             if tc.output is not None:

@@ -317,6 +317,9 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
         openai_extra_args.append("--allow-edit")
     if getattr(args, "openai_allow_web", False):
         openai_extra_args.append("--allow-web")
+    openai_reasoning_summary = getattr(args, "openai_reasoning_summary", "auto")
+    if openai_reasoning_summary != "auto":
+        openai_extra_args.extend(["--reasoning-summary", openai_reasoning_summary])
 
     gemini_extra_args: list[str] = []
     if args.gemini_allow_files:
@@ -569,6 +572,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--openai-allow-web",
         action="store_true",
         help="Allow openai-agent public web search and fetch tools.",
+    )
+    parser.add_argument(
+        "--openai-reasoning-summary",
+        choices=("auto", "concise", "detailed", "none"),
+        default="auto",
+        help=(
+            "Reasoning-summary detail for OpenAI Responses models "
+            "(default: auto). Use none to disable."
+        ),
     )
     parser.add_argument(
         "--gemini-workspace-root",

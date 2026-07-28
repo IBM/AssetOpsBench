@@ -22,16 +22,19 @@ import logging
 import time
 from collections.abc import Collection, Mapping
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from agents import (
     Agent,
+    ModelSettings,
     OpenAIProvider,
     RunConfig,
     Runner,
 )
 from agents.mcp import MCPServerStdio, create_static_tool_filter
+from openai.types.shared import Reasoning
 
 from llm.routers import resolve_model, resolve_router_creds
 from observability import agent_run_span, persist_trajectory
@@ -47,11 +50,30 @@ _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 _TOKENROUTER_OPENAI_GPT5_PREFIX = "tokenrouter/openai/gpt-5."
 
 MCPToolAllowlist = Mapping[str, Collection[str]]
+ReasoningSummary = Literal["auto", "concise", "detailed"] | None
+
+
+@dataclass
+class OpenAITurnRecord(TurnRecord):
+    """OpenAI turn data, including the optional safe reasoning summary."""
+
+    reasoning_summary: str = ""
+    reasoning_tokens: int = 0
 
 
 def _uses_responses_api(model_id: str) -> bool:
     """Return whether *model_id* should use the OpenAI Responses API."""
     return model_id.startswith(_TOKENROUTER_OPENAI_GPT5_PREFIX)
+
+
+def _build_model_settings(
+    model_id: str,
+    reasoning_summary: ReasoningSummary = "auto",
+) -> ModelSettings:
+    """Request safe reasoning summaries only from Responses-routed models."""
+    if not _uses_responses_api(model_id) or reasoning_summary is None:
+        return ModelSettings()
+    return ModelSettings(reasoning=Reasoning(summary=reasoning_summary))
 
 
 def _build_permissions(
@@ -236,7 +258,9 @@ def _build_trajectory(result) -> Trajectory:
     """Extract a Trajectory from a Runner.run result.
 
     Each raw model response becomes exactly one trajectory turn. Tool outputs
-    are then joined from ``result.new_items`` by call ID.
+    are then joined from ``result.new_items`` by call ID. Responses reasoning
+    summaries are preserved separately from assistant text; raw chain-of-thought
+    is neither requested nor persisted.
     """
     trajectory = Trajectory()
 
@@ -250,6 +274,7 @@ def _build_trajectory(result) -> Trajectory:
 
     for turn_index, response in enumerate(getattr(result, "raw_responses", []) or []):
         text_parts: list[str] = []
+        reasoning_summary_parts: list[str] = []
         turn_tool_calls: list[ToolCall] = []
 
         for raw in _field(response, "output", []) or []:
@@ -259,6 +284,11 @@ def _build_trajectory(result) -> Trajectory:
                     text = _field(part, "text")
                     if text:
                         text_parts.append(text)
+            elif raw_type == "reasoning":
+                for part in _field(raw, "summary", []) or []:
+                    text = _field(part, "text")
+                    if text:
+                        reasoning_summary_parts.append(text)
             elif raw_type == "function_call":
                 tc_name = _field(raw, "name", "") or ""
                 tc_id = _field(raw, "call_id", "") or _field(raw, "id", "") or ""
@@ -276,13 +306,18 @@ def _build_trajectory(result) -> Trajectory:
                     tool_calls_by_id[tc_id] = tool_call
 
         usage = _field(response, "usage")
+        output_token_details = _field(usage, "output_tokens_details")
         trajectory.turns.append(
-            TurnRecord(
+            OpenAITurnRecord(
                 index=turn_index,
                 text="".join(text_parts),
                 tool_calls=turn_tool_calls,
                 input_tokens=_field(usage, "input_tokens", 0) or 0,
                 output_tokens=_field(usage, "output_tokens", 0) or 0,
+                reasoning_summary="\n\n".join(reasoning_summary_parts),
+                reasoning_tokens=(
+                    _field(output_token_details, "reasoning_tokens", 0) or 0
+                ),
             )
         )
 
@@ -340,6 +375,9 @@ class OpenAIAgentRunner(AgentRunner):
         allow_edit: Allow workspace write, replace, and delete tools.
         allow_web: Allow public web search and fetch tools.
         workspace_dir: Dedicated workspace required by files, Bash, or edits.
+        reasoning_summary: Responses reasoning-summary detail. Defaults to
+                           ``"auto"``; use ``None`` to disable. Ignored for
+                           Chat Completions models.
     """
 
     def __init__(
@@ -354,11 +392,13 @@ class OpenAIAgentRunner(AgentRunner):
         allow_web: bool = False,
         allow_files: bool = False,
         workspace_dir: Path | str | None = None,
+        reasoning_summary: ReasoningSummary = "auto",
     ) -> None:
         super().__init__(llm, server_paths)
         self._model_id = model
         self._model = resolve_model(model)
         self._run_config = _build_run_config(model)
+        self._model_settings = _build_model_settings(model, reasoning_summary)
         self._max_turns = max_turns
         self._mcp_tool_allowlist = _normalize_mcp_tool_allowlist(
             self._server_paths, mcp_tool_allowlist
@@ -445,15 +485,22 @@ class OpenAIAgentRunner(AgentRunner):
                     mcp_servers=active_servers,
                     mcp_config={"include_server_in_tool_names": True},
                     model=self._model,
+                    model_settings=self._model_settings,
                 )
 
                 _log.info(
                     "OpenAIAgentRunner: starting query "
-                    "(model=%s, servers=%d, workspace=%s, permissions=%s)",
+                    "(model=%s, servers=%d, workspace=%s, permissions=%s, "
+                    "reasoning_summary=%s)",
                     self._model,
                     len(active_servers),
                     self._run_dir or "<disabled>",
                     self._permissions,
+                    (
+                        self._model_settings.reasoning.summary
+                        if self._model_settings.reasoning is not None
+                        else "disabled"
+                    ),
                 )
 
                 result = await Runner.run(

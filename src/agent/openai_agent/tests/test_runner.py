@@ -20,6 +20,7 @@ from agent.openai_agent.cli import _build_parser, _parse_mcp_tool_permission
 from agent.openai_agent.runner import (
     OpenAIAgentRunner,
     _build_mcp_servers,
+    _build_model_settings,
     _build_permissions,
     _build_run_config,
     _build_trajectory,
@@ -170,6 +171,27 @@ def test_build_run_config_missing_env_raises(monkeypatch):
         _build_run_config("litellm_proxy/Azure/gpt-5-2025-08-07")
 
 
+def test_build_model_settings_requests_responses_reasoning_summary():
+    settings = _build_model_settings("tokenrouter/openai/gpt-5.6-sol")
+
+    assert settings.reasoning is not None
+    assert settings.reasoning.summary == "auto"
+
+
+def test_build_model_settings_can_disable_responses_reasoning_summary():
+    settings = _build_model_settings(
+        "tokenrouter/openai/gpt-5.6-sol", reasoning_summary=None
+    )
+
+    assert settings.reasoning is None
+
+
+def test_build_model_settings_ignores_summary_for_chat_completions():
+    settings = _build_model_settings("tokenrouter/anthropic/claude-opus-4.8")
+
+    assert settings.reasoning is None
+
+
 # ---------------------------------------------------------------------------
 # OpenAIAgentRunner.__init__
 # ---------------------------------------------------------------------------
@@ -289,6 +311,16 @@ def test_runner_custom_model(monkeypatch):
     monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
     runner = OpenAIAgentRunner(model="tokenrouter/openai/gpt-4.1-mini")
     assert runner._model == "openai/gpt-4.1-mini"
+    assert runner._model_settings.reasoning is None
+
+
+def test_runner_responses_model_requests_reasoning_summary(monkeypatch):
+    monkeypatch.setenv("TOKENROUTER_BASE_URL", "http://localhost:4001")
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
+    runner = OpenAIAgentRunner(model="tokenrouter/openai/gpt-5.6-sol")
+
+    assert runner._model_settings.reasoning is not None
+    assert runner._model_settings.reasoning.summary == "auto"
 
 
 def test_runner_unprefixed_model_raises():
@@ -356,6 +388,12 @@ def test_cli_collects_workspace_permissions(tmp_path: Path):
     assert args.workspace_dir == tmp_path
 
 
+def test_cli_collects_reasoning_summary_setting():
+    args = _build_parser().parse_args(["--reasoning-summary", "detailed", "question"])
+
+    assert args.reasoning_summary == "detailed"
+
+
 # ---------------------------------------------------------------------------
 # _build_trajectory
 # ---------------------------------------------------------------------------
@@ -398,8 +436,23 @@ def _make_raw_tool_call(name: str, args: str, call_id: str = "call_1"):
     )
 
 
-def _make_usage(input_tokens: int, output_tokens: int):
-    return SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
+def _make_usage(
+    input_tokens: int,
+    output_tokens: int,
+    reasoning_tokens: int = 0,
+):
+    return SimpleNamespace(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        output_tokens_details=SimpleNamespace(reasoning_tokens=reasoning_tokens),
+    )
+
+
+def _make_raw_reasoning(*summaries: str):
+    return SimpleNamespace(
+        type="reasoning",
+        summary=[SimpleNamespace(text=text) for text in summaries],
+    )
 
 
 def _make_raw_response(outputs=None, usage=None):
@@ -467,6 +520,31 @@ def test_build_trajectory_token_usage():
     assert traj.turns[0].output_tokens == 25
     assert traj.total_input_tokens == 100
     assert traj.total_output_tokens == 25
+
+
+def test_build_trajectory_preserves_reasoning_summary_and_tokens():
+    raw_responses = [
+        _make_raw_response(
+            [
+                _make_raw_reasoning(
+                    "**Inspecting work orders**\n\nI will identify missing codes.",
+                    "**Ranking codes**\n\nI will count the inferred assignments.",
+                ),
+                _make_raw_tool_call("list_workorders", "{}", "call_1"),
+            ],
+            _make_usage(100, 80, reasoning_tokens=60),
+        )
+    ]
+
+    traj = _build_trajectory(_make_run_result([], raw_responses))
+    turn = traj.turns[0]
+
+    assert turn.reasoning_summary == (
+        "**Inspecting work orders**\n\nI will identify missing codes.\n\n"
+        "**Ranking codes**\n\nI will count the inferred assignments."
+    )
+    assert turn.reasoning_tokens == 60
+    assert turn.text == ""
 
 
 def test_build_trajectory_invalid_json_args():
