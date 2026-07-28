@@ -118,10 +118,6 @@ The runner's default model is
 Required env vars match the rest of the repo: the standard watsonx vars for the
 native route, or `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the proxy route.
 
-> **Output-token cap.** Stirrup forwards `--max-tokens` as the completion's
-> *max output tokens*. watsonx caps new tokens at 100k, so keep `--max-tokens`
-> below that. Default is `16384`.
-
 ---
 
 ## Code execution tracks
@@ -233,7 +229,6 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--no-code`           | Tools-only; comparable to the other runners.                                         |
 | `--code-backend`      | `docker` (default) or `local`.                                                        |
 | `--max-turns N`       | Max agent turns (default: 30).                                                       |
-| `--max-tokens N`      | Max output tokens per model call; keep under the provider limit (default: 16384).    |
 | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
 | `--preserve-workspace` | Copy final code-execution files into `--workspace-dir` before cleanup.              |
 
@@ -301,7 +296,6 @@ uv run stirrup-agent --no-code --run-id stirrup-smoke --scenario-id 101 \
 
 | Symptom | Cause / fix |
 | ------- | ----------- |
-| `WatsonxException ... number of new tokens 200000 ... exceeds the limit of 100000` | `--max-tokens` too high; keep under 100k (default 16384). |
 | `docker.errors.DockerException: Error while fetching server API version ... FileNotFoundError` | SDK can't find the daemon socket. `export DOCKER_HOST=unix://<path from 'docker context inspect | grep Host'>`. |
 | Docker connects but `code_exec` hits `ModuleNotFoundError` | Sandbox image lacks the library; build/point `STIRRUP_CODE_IMAGE` at `assetops-code` (or an image with the stack). |
 | Agent's code can't open a tool-produced file path in Docker | Expected — the host path isn't in the sandbox. Use `--code-backend local` for file-reading scenarios. |

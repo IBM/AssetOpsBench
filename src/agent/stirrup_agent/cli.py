@@ -77,14 +77,6 @@ examples:
         help="Maximum agent turns (default: 30).",
     )
     parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=16_384,
-        metavar="N",
-        help="Max output tokens per model call; must stay under the provider "
-        "limit (watsonx caps new tokens at 100k). Default: 16384.",
-    )
-    parser.add_argument(
         "--temperature",
         type=float,
         default=None,
@@ -125,7 +117,6 @@ async def _run(args: argparse.Namespace) -> None:
         workspace_dir=args.workspace_dir,
         preserve_workspace=args.preserve_workspace,
         max_turns=args.max_turns,
-        max_tokens=args.max_tokens,
         temperature=args.temperature,
     )
     result = await runner.run(args.question)

@@ -101,13 +101,12 @@ def test_stirrup_runner_forwards_temperature_to_litellm_client():
     runner = StirrupAgentRunner(
         model="watsonx/ibm/granite-4-h-small",
         temperature=0.2,
-        max_tokens=1234,
     )
 
     client = runner._build_client()
 
     assert client._kwargs == {"temperature": 0.2}
-    assert client._max_tokens == 1234
+    assert client.max_tokens == 64_000
 
 
 def test_stirrup_runner_forwards_temperature_to_router_client(
@@ -119,13 +118,12 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
     runner = StirrupAgentRunner(
         model="tokenrouter/MiniMax-M3",
         temperature=0.2,
-        max_tokens=1234,
     )
 
     client = runner._build_client()
 
     assert client._kwargs == {"temperature": 0.2}
-    assert client._max_tokens == 1234
+    assert client.max_tokens == 64_000
 
 
 def test_build_trajectory_maps_turns_calls_and_outputs():
