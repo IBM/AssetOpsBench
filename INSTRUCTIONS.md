@@ -280,6 +280,38 @@ Files, Bash, and edits require `--workspace-dir`. Bash runs with that directory
 as its working directory and a credential-scrubbed environment, but it is not a
 hard OS-level sandbox: an explicit absolute path can still reach host files.
 
+To smoke-test workspace file writes and reads, create a portable temporary
+directory instead of hard-coding a platform-specific path such as
+`/private/tmp`:
+
+```bash
+OPENAI_AGENT_TMP_ROOT="${TMPDIR:-/tmp}"
+export OPENAI_AGENT_TEST_DIR="$(mktemp -d "${OPENAI_AGENT_TMP_ROOT%/}/openai-agent-files.XXXXXX")"
+
+uv run openai-agent \
+  --model-id tokenrouter/openai/gpt-5.6-sol \
+  --workspace-dir "$OPENAI_AGENT_TEST_DIR" \
+  --allow-files \
+  --allow-edit \
+  --show-trajectory \
+  'Write exactly "openai-agent file test" followed by a newline to smoke.txt, then read smoke.txt and report its contents.'
+
+cat "$OPENAI_AGENT_TEST_DIR/smoke.txt"
+```
+
+The trajectory should contain `write_file` and `read_file` calls, and the final
+`cat` command should print `openai-agent file test`. A separate read-only check
+can reuse the file while omitting `--allow-edit`:
+
+```bash
+uv run openai-agent \
+  --model-id tokenrouter/openai/gpt-5.6-sol \
+  --workspace-dir "$OPENAI_AGENT_TEST_DIR" \
+  --allow-files \
+  --show-trajectory \
+  'Read smoke.txt and report its exact contents. Do not modify any files.'
+```
+
 To restrict a CLI run to specific MCP tools, repeat `--allow-mcp-tool` with a
 `SERVER/TOOL` value. Once the flag is present, the allowlist is fail-closed:
 unlisted tools and all tools from unlisted servers are hidden from the model.
