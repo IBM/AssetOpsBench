@@ -5,7 +5,6 @@ These tests patch agents.Runner.run so no real API calls are made.
 
 from __future__ import annotations
 
-import argparse
 from contextlib import AsyncExitStack
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,7 +15,7 @@ import pytest
 from agents import OpenAIChatCompletionsModel, OpenAIResponsesModel
 
 from agent.models import AgentResult, Trajectory
-from agent.openai_agent.cli import _build_parser, _parse_mcp_tool_permission
+from agent.openai_agent.cli import _build_parser
 from agent.openai_agent.runner import (
     OpenAIAgentRunner,
     _build_mcp_servers,
@@ -25,7 +24,6 @@ from agent.openai_agent.runner import (
     _build_run_config,
     _build_trajectory,
     _enter_mcp_servers,
-    _normalize_mcp_tool_allowlist,
     _resolve_run_dir,
     _uses_responses_api,
 )
@@ -54,34 +52,6 @@ def test_build_mcp_servers_path():
 
 def test_build_mcp_servers_empty():
     assert _build_mcp_servers({}) == []
-
-
-def test_build_mcp_servers_applies_fail_closed_tool_allowlist():
-    specs = {"iot": "iot-mcp-server", "utilities": "utilities-mcp-server"}
-    result = _build_mcp_servers(
-        specs,
-        mcp_tool_allowlist={"iot": {"sites", "asset_ids"}},
-    )
-
-    assert len(result) == 1
-    assert result[0].tool_filter == {"allowed_tool_names": ["asset_ids", "sites"]}
-    assert all(server._needs_approval_policy is False for server in result)
-
-
-def test_normalize_mcp_tool_allowlist_rejects_unknown_server():
-    with pytest.raises(ValueError, match="unknown servers: typo"):
-        _normalize_mcp_tool_allowlist(
-            {"iot": "iot-mcp-server"},
-            {"typo": {"sites"}},
-        )
-
-
-def test_normalize_mcp_tool_allowlist_rejects_string_value():
-    with pytest.raises(TypeError, match="must be a collection"):
-        _normalize_mcp_tool_allowlist(
-            {"iot": "iot-mcp-server"},
-            {"iot": "sites"},
-        )
 
 
 @pytest.mark.anyio
@@ -260,20 +230,6 @@ def test_runner_custom_server_paths(monkeypatch):
     assert runner._server_paths == paths
 
 
-def test_runner_normalizes_mcp_tool_allowlist(monkeypatch):
-    monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
-    monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
-    runner = OpenAIAgentRunner(
-        server_paths={"iot": "iot-mcp-server", "utilities": "utilities-mcp-server"},
-        mcp_tool_allowlist={"iot": {"sites"}},
-    )
-
-    assert runner._mcp_tool_allowlist == {
-        "iot": ("sites",),
-        "utilities": (),
-    }
-
-
 def test_runner_builds_opt_in_local_tools(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("LITELLM_BASE_URL", "http://localhost:4000")
     monkeypatch.setenv("LITELLM_API_KEY", "sk-test")
@@ -341,31 +297,8 @@ def test_runner_litellm_model(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_parse_mcp_tool_permission():
-    assert _parse_mcp_tool_permission("iot/sites") == ("iot", "sites")
-
-
-@pytest.mark.parametrize("value", ["sites", "/sites", "iot/"])
-def test_parse_mcp_tool_permission_rejects_invalid_value(value):
-    with pytest.raises(argparse.ArgumentTypeError, match="expected SERVER/TOOL"):
-        _parse_mcp_tool_permission(value)
-
-
-def test_cli_collects_mcp_tool_permissions():
-    args = _build_parser().parse_args(
-        [
-            "--allow-mcp-tool",
-            "iot/sites",
-            "--allow-mcp-tool",
-            "utilities/current_date_time",
-            "question",
-        ]
-    )
-
-    assert args.allow_mcp_tool == [
-        ("iot", "sites"),
-        ("utilities", "current_date_time"),
-    ]
+def test_cli_has_no_mcp_tool_allowlist_flag():
+    assert "--allow-mcp-tool" not in _build_parser().format_help()
 
 
 def test_cli_collects_workspace_permissions(tmp_path: Path):

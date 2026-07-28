@@ -17,14 +17,6 @@ from .._cli_common import add_common_args, print_result, run_sdk_cli
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 
 
-def _parse_mcp_tool_permission(value: str) -> tuple[str, str]:
-    """Parse ``SERVER/TOOL`` for the repeatable MCP allowlist flag."""
-    server_name, separator, tool_name = value.partition("/")
-    if not separator or not server_name or not tool_name:
-        raise argparse.ArgumentTypeError("expected SERVER/TOOL, for example iot/sites")
-    return server_name, tool_name
-
-
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openai-agent",
@@ -44,9 +36,9 @@ reasoning summaries:
   chain-of-thought is never exposed. Use --reasoning-summary none to disable.
 
 permissions:
-  AssetOpsBench MCP tools are enabled. Local files, Bash, edits, and web access
-  are denied unless their --allow-* flags are passed. Files, Bash, and edits
-  require --workspace-dir. Repeat --allow-mcp-tool SERVER/TOOL to restrict MCP.
+  All AssetOpsBench MCP tools are enabled. Local files, Bash, edits, and web
+  access are denied unless their --allow-* flags are passed. Files, Bash, and
+  edits require --workspace-dir.
 
 environment variables:
   LITELLM_API_KEY       LiteLLM API key    (required)
@@ -76,17 +68,6 @@ examples:
         help=(
             "Reasoning-summary detail for Responses models (default: auto). "
             "Ignored for Chat Completions; use none to disable."
-        ),
-    )
-    parser.add_argument(
-        "--allow-mcp-tool",
-        action="append",
-        default=None,
-        type=_parse_mcp_tool_permission,
-        metavar="SERVER/TOOL",
-        help=(
-            "Restrict MCP access to this server/tool pair. Repeat as needed; "
-            "using the flag enables a fail-closed allowlist."
         ),
     )
     parser.add_argument(
@@ -131,16 +112,9 @@ examples:
 async def _run(args: argparse.Namespace) -> None:
     from agent.openai_agent.runner import OpenAIAgentRunner
 
-    mcp_tool_allowlist: dict[str, set[str]] | None = None
-    if args.allow_mcp_tool:
-        mcp_tool_allowlist = {}
-        for server_name, tool_name in args.allow_mcp_tool:
-            mcp_tool_allowlist.setdefault(server_name, set()).add(tool_name)
-
     async with OpenAIAgentRunner(
         model=args.model_id,
         max_turns=args.max_turns,
-        mcp_tool_allowlist=mcp_tool_allowlist,
         allow_files=args.allow_files,
         allow_bash=args.allow_bash,
         allow_edit=args.allow_edit,

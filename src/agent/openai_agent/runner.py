@@ -20,7 +20,7 @@ import datetime as _dt
 import json
 import logging
 import time
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,7 +33,7 @@ from agents import (
     RunConfig,
     Runner,
 )
-from agents.mcp import MCPServerStdio, create_static_tool_filter
+from agents.mcp import MCPServerStdio
 from openai.types.shared import Reasoning
 
 from llm.routers import resolve_model, resolve_router_creds
@@ -49,7 +49,6 @@ _log = logging.getLogger(__name__)
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 _TOKENROUTER_OPENAI_GPT5_PREFIX = "tokenrouter/openai/gpt-5."
 
-MCPToolAllowlist = Mapping[str, Collection[str]]
 ReasoningSummary = Literal["auto", "concise", "detailed"] | None
 
 
@@ -85,9 +84,9 @@ def _build_permissions(
 ) -> dict[str, bool]:
     """Build benchmark-safe OpenAI-agent capability permissions.
 
-    MCP access is always available through the separately configured server and
-    tool allowlists. Local workspace and web tools are denied unless explicitly
-    enabled. Bash also enables workspace edits, matching the OpenCode runner.
+    MCP access is always available through the separately configured servers.
+    Local workspace and web tools are denied unless explicitly enabled. Bash
+    also enables workspace edits, matching the OpenCode runner.
     """
     return {
         "mcp": True,
@@ -153,53 +152,8 @@ def _build_run_config(model_id: str) -> RunConfig:
     )
 
 
-def _normalize_mcp_tool_allowlist(
-    server_paths: Mapping[str, Path | str],
-    mcp_tool_allowlist: MCPToolAllowlist | None,
-) -> dict[str, tuple[str, ...]] | None:
-    """Validate and copy an optional per-server MCP tool allowlist.
-
-    Supplying any allowlist enables fail-closed mode: configured servers omitted
-    from the mapping expose no tools. Unknown servers and invalid tool names are
-    rejected so a typo cannot silently widen or misdirect permissions.
-    """
-    if mcp_tool_allowlist is None:
-        return None
-
-    unknown_servers = sorted(set(mcp_tool_allowlist) - set(server_paths))
-    if unknown_servers:
-        raise ValueError(
-            "MCP tool allowlist contains unknown servers: " + ", ".join(unknown_servers)
-        )
-
-    normalized: dict[str, tuple[str, ...]] = {}
-    for server_name in server_paths:
-        tool_names = mcp_tool_allowlist.get(server_name, ())
-        if isinstance(tool_names, str):
-            raise TypeError(
-                f"MCP tool allowlist for {server_name!r} must be a collection "
-                "of tool names, not a string"
-            )
-
-        invalid_names = [
-            tool_name
-            for tool_name in tool_names
-            if not isinstance(tool_name, str) or not tool_name.strip()
-        ]
-        if invalid_names:
-            raise ValueError(
-                f"MCP tool allowlist for {server_name!r} contains invalid tool "
-                f"names: {invalid_names!r}"
-            )
-        normalized[server_name] = tuple(sorted(set(tool_names)))
-
-    return normalized
-
-
 def _build_mcp_servers(
     server_paths: dict[str, Path | str],
-    *,
-    mcp_tool_allowlist: MCPToolAllowlist | None = None,
 ) -> list[MCPServerStdio]:
     """Convert server_paths entries into MCPServerStdio instances.
 
@@ -207,26 +161,13 @@ def _build_mcp_servers(
     ``MCPServerStdio(command="uv", args=["run", name])``.
     Path objects become ``MCPServerStdio(command="uv", args=["run", str(path)])``.
 
-    The runner exposes MCP tools only. When ``mcp_tool_allowlist`` is provided,
-    each server receives an SDK-native static allowlist; omitted servers expose
-    no tools. Allowed MCP calls run without interactive approval, matching the
-    non-interactive benchmark behavior of the OpenCode runner.
+    Every configured server exposes all of its MCP tools. MCP calls run without
+    interactive approval, matching the non-interactive benchmark behavior of
+    the OpenCode runner.
     """
-    normalized_allowlist = _normalize_mcp_tool_allowlist(
-        server_paths, mcp_tool_allowlist
-    )
     servers: list[MCPServerStdio] = []
     for name, spec in server_paths.items():
-        if normalized_allowlist is not None and not normalized_allowlist[name]:
-            continue
         cmd_arg = str(spec) if isinstance(spec, Path) else spec
-        tool_filter = (
-            create_static_tool_filter(
-                allowed_tool_names=list(normalized_allowlist[name])
-            )
-            if normalized_allowlist is not None
-            else None
-        )
         servers.append(
             MCPServerStdio(
                 name=name,
@@ -235,7 +176,6 @@ def _build_mcp_servers(
                     "args": ["run", cmd_arg],
                 },
                 cache_tools_list=True,
-                tool_filter=tool_filter,
                 require_approval="never",
             )
         )
@@ -366,9 +306,6 @@ class OpenAIAgentRunner(AgentRunner):
         model: Model ID prefixed with ``litellm_proxy/`` or ``tokenrouter/``
                (default: ``litellm_proxy/azure/gpt-5.4``).
         max_turns: Maximum agentic loop turns (default: 30).
-        mcp_tool_allowlist: Optional mapping of MCP server names to allowed tool
-                            names. Supplying it enables fail-closed filtering:
-                            servers omitted from the mapping expose no tools.
         allow_files: Allow workspace file listing, reading, and search tools.
         allow_bash: Allow Bash commands and workspace edits. This is not an OS
                     sandbox; commands can reference host paths explicitly.
@@ -386,7 +323,6 @@ class OpenAIAgentRunner(AgentRunner):
         server_paths: dict[str, Path | str] | None = None,
         model: str = _DEFAULT_MODEL,
         max_turns: int = 30,
-        mcp_tool_allowlist: MCPToolAllowlist | None = None,
         allow_bash: bool = False,
         allow_edit: bool = False,
         allow_web: bool = False,
@@ -400,9 +336,6 @@ class OpenAIAgentRunner(AgentRunner):
         self._run_config = _build_run_config(model)
         self._model_settings = _build_model_settings(model, reasoning_summary)
         self._max_turns = max_turns
-        self._mcp_tool_allowlist = _normalize_mcp_tool_allowlist(
-            self._server_paths, mcp_tool_allowlist
-        )
         self._permissions = _build_permissions(
             allow_bash=allow_bash,
             allow_edit=allow_edit,
@@ -440,10 +373,7 @@ class OpenAIAgentRunner(AgentRunner):
             try:
                 active_servers = await _enter_mcp_servers(
                     stack,
-                    _build_mcp_servers(
-                        self._server_paths,
-                        mcp_tool_allowlist=self._mcp_tool_allowlist,
-                    ),
+                    _build_mcp_servers(self._server_paths),
                 )
             except BaseException:
                 await stack.aclose()
@@ -554,9 +484,6 @@ class OpenAIAgentRunner(AgentRunner):
             async with AsyncExitStack() as stack:
                 active_servers = await _enter_mcp_servers(
                     stack,
-                    _build_mcp_servers(
-                        self._server_paths,
-                        mcp_tool_allowlist=self._mcp_tool_allowlist,
-                    ),
+                    _build_mcp_servers(self._server_paths),
                 )
                 return await _execute(active_servers)
