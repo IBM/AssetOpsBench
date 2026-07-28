@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from .._cli_common import add_common_args, print_result, run_sdk_cli
 
@@ -24,6 +25,30 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog="""
 model-id format:
   litellm_proxy/<model>   LiteLLM proxy (e.g. litellm_proxy/azure/gpt-5.4)
+  tokenrouter/<model>     TokenRouter (e.g. tokenrouter/openai/gpt-5.6-sol)
+
+API routing:
+  Responses API:
+    tokenrouter/openai/gpt-5.*
+    tokenrouter/MiniMax-M3
+    tokenrouter/google/gemini-3.6-flash
+  Chat Completions API:
+    all other model IDs
+
+reasoning summaries:
+  tokenrouter/openai/gpt-5.* models request safe reasoning summaries by
+  default. Raw internal chain-of-thought is never exposed. Use
+  --reasoning-summary none to disable.
+
+reasoning effort:
+  Supported routed models use medium reasoning effort by default. Choose from
+  none, minimal, low, medium, high, xhigh, or max. The setting is ignored for
+  models without verified OpenAI-compatible reasoning-effort support.
+
+permissions:
+  All AssetOpsBench MCP tools are enabled. Local files, Bash, edits, and web
+  access are denied unless their --allow-* flags are passed. Files, Bash, and
+  edits require --workspace-dir.
 
 environment variables:
   LITELLM_API_KEY       LiteLLM API key    (required)
@@ -46,14 +71,80 @@ examples:
         metavar="N",
         help="Maximum agentic loop turns (default: 30).",
     )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+        default="medium",
+        help=(
+            "Reasoning effort for supported models (default: medium). Ignored "
+            "for models without verified support."
+        ),
+    )
+    parser.add_argument(
+        "--reasoning-summary",
+        choices=("auto", "concise", "detailed", "none"),
+        default="auto",
+        help=(
+            "Reasoning-summary detail for Responses models (default: auto). "
+            "Ignored for Chat Completions; use none to disable."
+        ),
+    )
+    parser.add_argument(
+        "--allow-files",
+        action="store_true",
+        help=(
+            "Allow workspace file listing, reading, and search. "
+            "Requires --workspace-dir."
+        ),
+    )
+    parser.add_argument(
+        "--allow-bash",
+        action="store_true",
+        help=(
+            "Allow Bash commands and workspace edits. Requires --workspace-dir; "
+            "this is not an OS-level sandbox."
+        ),
+    )
+    parser.add_argument(
+        "--allow-edit",
+        action="store_true",
+        help=(
+            "Allow workspace file writes, replacements, and deletes. "
+            "Requires --workspace-dir."
+        ),
+    )
+    parser.add_argument(
+        "--allow-web",
+        action="store_true",
+        help="Allow public web search and fetch tools.",
+    )
+    parser.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Dedicated workspace required by --allow-files/--allow-bash/--allow-edit.",
+    )
     return parser
 
 
 async def _run(args: argparse.Namespace) -> None:
     from agent.openai_agent.runner import OpenAIAgentRunner
 
-    runner = OpenAIAgentRunner(model=args.model_id, max_turns=args.max_turns)
-    result = await runner.run(args.question)
+    async with OpenAIAgentRunner(
+        model=args.model_id,
+        max_turns=args.max_turns,
+        allow_files=args.allow_files,
+        allow_bash=args.allow_bash,
+        allow_edit=args.allow_edit,
+        allow_web=args.allow_web,
+        workspace_dir=args.workspace_dir,
+        reasoning_summary=(
+            None if args.reasoning_summary == "none" else args.reasoning_summary
+        ),
+        reasoning_effort=args.reasoning_effort,
+    ) as runner:
+        result = await runner.run(args.question)
     print_result(
         result, show_trajectory=args.show_trajectory, output_json=args.output_json
     )

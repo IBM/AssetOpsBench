@@ -262,7 +262,8 @@ Example score:
 
 ## Reports
 
-The evaluator writes per-run reports and an aggregate report to the directory passed with `--reports-dir`.
+The evaluator writes one aggregate report to the directory passed with
+`--reports-dir`.
 
 Example:
 
@@ -270,23 +271,25 @@ Example:
 uv run evaluate \
   --trajectories traces/trajectories/direct_llm \
   --scenarios /path/to/scenarios_data \
+  --scenario-ids fcc+fmsr_all \
   --scorer-default static_json \
   --reports-dir reports/static_json_direct_llm
 ```
+
+`--scenario-ids` is optional. It filters the aggregate using category IDs from
+`benchmarks/scenario_suite/all.yaml` or `lite.yaml`; omit it to evaluate every
+matched scenario.
 
 Output:
 
 ```text
 reports/static_json_direct_llm/
-  11.json
-  12.json
-  ...
   _aggregate.json
 ```
 
-Each per-run report contains the scenario id, run id, model answer, score, key-level comparison details, and operational metrics.
-
-The aggregate report summarizes the number of scored scenarios, pass rate, runner/model names, and operational metrics.
+The aggregate report contains every matched per-run result, overall totals,
+operational metrics, and `score_summary` entries grouped under
+`<runner>_<model>` keys.
 
 ---
 

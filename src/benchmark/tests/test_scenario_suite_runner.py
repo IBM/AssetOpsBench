@@ -4,6 +4,7 @@ from argparse import Namespace
 from pathlib import Path
 
 import pytest
+import yaml
 
 from benchmark import scenario_suite_runner as mr
 
@@ -32,6 +33,182 @@ def test_load_scenario_ids_raises_for_missing_file(tmp_path: Path) -> None:
 
     with pytest.raises(FileNotFoundError):
         mr.load_scenario_ids(p)
+
+
+def test_scenario_mappings_cover_expected_categories() -> None:
+    expected = {"car", "fcc", "fmsr", "health", "tsfm", "wosr"}
+
+    assert set(mr.SCENARIO_IDS_ALL) == expected
+    assert set(mr.SCENARIO_IDS_LITE) == expected
+    assert all(
+        len(mr.SCENARIO_IDS_ALL[category]) == 10
+        for category in expected - {"car", "fcc", "fmsr", "tsfm", "wosr"}
+    )
+    assert mr.SCENARIO_IDS_ALL["car"] == tuple(
+        str(scenario_id) for scenario_id in range(151, 201)
+    )
+    assert mr.SCENARIO_IDS_ALL["fcc"] == tuple(
+        str(scenario_id) for scenario_id in range(301, 328)
+    )
+    assert mr.SCENARIO_IDS_ALL["fmsr"] == tuple(
+        str(scenario_id) for scenario_id in range(901, 933)
+    )
+    assert mr.SCENARIO_IDS_ALL["tsfm"] == tuple(
+        str(scenario_id) for scenario_id in range(1001, 1031)
+    )
+    assert mr.SCENARIO_IDS_ALL["wosr"] == tuple(
+        str(scenario_id) for scenario_id in range(1, 67)
+    )
+    assert all(
+        len(mr.SCENARIO_IDS_LITE[category]) == 10
+        for category in {"car", "fcc", "fmsr", "health", "wosr"}
+    )
+    assert mr.SCENARIO_IDS_LITE["car"] == (
+        "151",
+        "152",
+        "153",
+        "156",
+        "167",
+        "178",
+        "180",
+        "182",
+        "183",
+        "193",
+    )
+    assert mr.SCENARIO_IDS_LITE["health"] == tuple(
+        str(scenario_id) for scenario_id in range(401, 411)
+    )
+    assert mr.SCENARIO_IDS_LITE["tsfm"] == tuple(
+        str(scenario_id) for scenario_id in range(1001, 1006)
+    )
+    assert mr.SCENARIO_IDS_LITE["wosr"] == (
+        "5",
+        "9",
+        "13",
+        "20",
+        "24",
+        "31",
+        "43",
+        "50",
+        "61",
+        "66",
+    )
+
+
+def test_scenario_profiles_are_loaded_from_yaml() -> None:
+    assert mr.SCENARIO_IDS_ALL == mr.load_scenario_profile(
+        mr.SCENARIO_PROFILE_PATHS["all"]
+    )
+    assert mr.SCENARIO_IDS_LITE == mr.load_scenario_profile(
+        mr.SCENARIO_PROFILE_PATHS["lite"]
+    )
+
+
+def test_scenario_profile_yaml_uses_integer_ids() -> None:
+    for path in mr.SCENARIO_PROFILE_PATHS.values():
+        raw_profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert all(
+            isinstance(scenario_id, int)
+            for scenario_ids in raw_profile.values()
+            for scenario_id in scenario_ids
+        )
+
+
+def test_scenario_ids_for_selector_resolves_combined_all_categories() -> None:
+    assert mr.scenario_ids_for_selector("fcc+fmsr_all") == [
+        *mr.SCENARIO_IDS_ALL["fcc"],
+        *mr.SCENARIO_IDS_ALL["fmsr"],
+    ]
+
+
+def test_scenario_ids_for_selector_resolves_lite_category() -> None:
+    assert mr.scenario_ids_for_selector("fcc_lite") == list(
+        mr.SCENARIO_IDS_LITE["fcc"]
+    )
+
+
+def test_scenario_ids_for_selector_resolves_profile_shorthands() -> None:
+    assert mr.scenario_ids_for_selector("lite") == [
+        scenario_id
+        for category in mr.SCENARIO_CATEGORY_ORDER
+        for scenario_id in mr.SCENARIO_IDS_LITE[category]
+    ]
+    assert len(mr.scenario_ids_for_selector("all")) == 215
+
+
+@pytest.mark.parametrize(
+    "selector",
+    ["fcc", "fcc_fast", "unknown_lite", "fcc++fmsr_all", "_lite"],
+)
+def test_scenario_ids_for_selector_rejects_invalid_selector(selector: str) -> None:
+    with pytest.raises(ValueError, match="Invalid scenario selector"):
+        mr.scenario_ids_for_selector(selector)
+
+
+def test_resolve_scenario_ids_keeps_file_compatibility(tmp_path: Path) -> None:
+    path = tmp_path / "custom.txt"
+    path.write_text("301\n# skip\n902\n", encoding="utf-8")
+
+    assert mr.resolve_scenario_ids(path) == ["301", "902"]
+
+
+def test_resolve_scenario_ids_accepts_yaml_profile(tmp_path: Path) -> None:
+    path = tmp_path / "profile.yaml"
+    path.write_text(
+        """
+car: [151]
+fcc: [301]
+fmsr: [902]
+health: [401]
+tsfm: [1001]
+wosr: [1]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert mr.resolve_scenario_ids(path) == ["151", "301", "902", "401", "1001", "1"]
+
+
+def test_load_scenario_profile_rejects_missing_category(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.yaml"
+    path.write_text("fcc: [301]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="missing categories"):
+        mr.load_scenario_profile(path)
+
+
+def test_resolve_scenario_ids_raises_for_missing_file_path(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="Scenario id file not found"):
+        mr.resolve_scenario_ids(tmp_path / "missing.txt")
+
+
+def test_parser_accepts_named_scenario_selector() -> None:
+    args = mr._build_parser().parse_args(
+        [
+            "--scenario-ids",
+            "fcc+fmsr_all",
+            "--scenario-root",
+            "/tmp/scenarios_data",
+        ]
+    )
+
+    assert args.scenario_ids == "fcc+fmsr_all"
+    assert args.openai_reasoning_effort == "medium"
+
+
+def test_parser_accepts_openai_reasoning_effort() -> None:
+    args = mr._build_parser().parse_args(
+        [
+            "--scenario-ids",
+            "lite",
+            "--scenario-root",
+            "/tmp/scenarios_data",
+            "--openai-reasoning-effort",
+            "max",
+        ]
+    )
+
+    assert args.openai_reasoning_effort == "max"
 
 
 def test_scenario_dir_for_id() -> None:
@@ -116,8 +293,7 @@ def test_validate_workspace_root_rejects_repo_paths() -> None:
 def test_model_dir_name_normalizes_router_model_ids() -> None:
     assert mr.model_dir_name("tokenrouter/MiniMax-M3") == "tokenrouter-MiniMax-M3"
     assert (
-        mr.model_dir_name("tokenrouter/openai/gpt-5.4")
-        == "tokenrouter-openai-gpt-5.4"
+        mr.model_dir_name("tokenrouter/openai/gpt-5.4") == "tokenrouter-openai-gpt-5.4"
     )
     assert mr.model_dir_name(" rits/qwen3:30b ") == "rits-qwen3-30b"
 
@@ -184,6 +360,13 @@ def test_build_methods_uses_cli_defaults() -> None:
     assert methods["opencode_agent"].command == "opencode-agent"
     assert methods["opencode_agent"].extra_args == ()
     assert methods["opencode_agent"].workspace_root is None
+    assert methods["openai_agent"].command == "openai-agent"
+    assert methods["openai_agent"].model_id == "tokenrouter/MiniMax-M3"
+    assert methods["openai_agent"].extra_args == (
+        "--reasoning-effort",
+        "medium",
+    )
+    assert methods["openai_agent"].workspace_root is None
     assert methods["gemini_cli_agent"].command == "gemini-cli-agent"
     assert (
         methods["gemini_cli_agent"].model_id
@@ -306,6 +489,53 @@ def test_build_methods_opencode_thinking_and_variant() -> None:
         "--temperature",
         "0.0",
     )
+
+
+def test_build_methods_openai_workspace_options(tmp_path: Path) -> None:
+    args = Namespace(
+        model_id="tokenrouter/anthropic/claude-opus-4.8",
+        gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
+        openclaw_model_id="tokenrouter/MiniMax-M3",
+        opencode_allow_files=False,
+        opencode_allow_bash=False,
+        opencode_allow_edit=False,
+        opencode_workspace_root=None,
+        openai_allow_files=True,
+        openai_allow_bash=True,
+        openai_allow_edit=False,
+        openai_allow_web=True,
+        openai_reasoning_effort="low",
+        openai_reasoning_summary="detailed",
+        openai_workspace_root=tmp_path / "openai-workspaces",
+        gemini_allow_files=False,
+        gemini_allow_bash=False,
+        gemini_allow_edit=False,
+        gemini_allow_web=False,
+        gemini_sandbox=False,
+        gemini_workspace_root=None,
+        openclaw_allow_files=False,
+        openclaw_allow_bash=False,
+        openclaw_allow_edit=False,
+        openclaw_allow_web=False,
+        openclaw_thinking="off",
+        openclaw_workspace_root=None,
+        stirrup_max_tokens=4096,
+        temperature=None,
+    )
+
+    methods = mr.build_methods(args)
+    openai = methods["openai_agent"]
+
+    assert openai.extra_args == (
+        "--allow-files",
+        "--allow-bash",
+        "--allow-web",
+        "--reasoning-effort",
+        "low",
+        "--reasoning-summary",
+        "detailed",
+    )
+    assert openai.workspace_root == tmp_path / "openai-workspaces"
 
 
 def test_build_methods_gemini_workspace_options(tmp_path: Path) -> None:
@@ -494,6 +724,54 @@ def test_run_agent_for_scenario_adds_opencode_workspace(
         "401",
         "--run-id",
         "opencode_agent_401",
+        "Which excavator costs the most?",
+    ]
+
+
+def test_run_agent_for_scenario_adds_openai_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(mr.subprocess, "run", fake_run)
+
+    method = mr.MethodConfig(
+        agent_name="openai_agent",
+        command="openai-agent",
+        model_id="tokenrouter/anthropic/claude-opus-4.8",
+        extra_args=("--allow-files", "--allow-bash", "--allow-web"),
+        workspace_root=tmp_path / "openai-workspaces",
+    )
+
+    mr.run_agent_for_scenario(
+        method=method,
+        scenario_id="401",
+        question="Which excavator costs the most?",
+        trajectory_dir=tmp_path / "traj",
+        dry_run=False,
+    )
+
+    expected_workspace = tmp_path / "openai-workspaces" / "openai_agent_401"
+    assert expected_workspace.exists()
+    assert captured["cmd"] == [
+        "uv",
+        "run",
+        "openai-agent",
+        "--model-id",
+        "tokenrouter/anthropic/claude-opus-4.8",
+        "--allow-files",
+        "--allow-bash",
+        "--allow-web",
+        "--workspace-dir",
+        str(expected_workspace),
+        "--scenario-id",
+        "401",
+        "--run-id",
+        "openai_agent_401",
         "Which excavator costs the most?",
     ]
 

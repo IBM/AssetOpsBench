@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from pathlib import Path
 
 from .evaluator import Evaluator
@@ -14,6 +15,7 @@ def evaluate(
     scenarios_paths: list[Path],
     default_scoring_method: str = "llm_judge",
     judge_model: str | None = None,
+    scenario_ids: Collection[str] | None = None,
 ) -> EvalReport:
     """Load, score, and aggregate.
 
@@ -26,4 +28,5 @@ def evaluate(
     ).evaluate(
         trajectories_path=trajectories_path,
         scenarios_paths=scenarios_paths,
+        scenario_ids=scenario_ids,
     )

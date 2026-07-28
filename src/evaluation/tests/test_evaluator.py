@@ -35,6 +35,42 @@ def test_evaluator_routes_to_default_scorer(tmp_path: Path, make_persisted_recor
     assert report.results[0].score.scorer == "stub-evaluator"
 
 
+def test_evaluator_filters_to_selected_scenario_ids(
+    tmp_path: Path, make_persisted_record
+):
+    for scenario_id in (301, 302):
+        record = make_persisted_record(
+            run_id=f"run-{scenario_id}",
+            scenario_id=scenario_id,
+        )
+        (tmp_path / f"run-{scenario_id}.json").write_text(
+            json.dumps(record), encoding="utf-8"
+        )
+
+    scenarios_path = tmp_path / "scenarios.json"
+    scenarios_path.write_text(
+        json.dumps(
+            [
+                {"id": 301, "text": "Q301", "type": "fcc"},
+                {"id": 302, "text": "Q302", "type": "fcc"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    registry.register("stub-evaluator", _stub_scorer)
+    report = Evaluator(default_scorer="stub-evaluator").evaluate(
+        trajectories_path=tmp_path,
+        scenarios_paths=[scenarios_path],
+        scenario_ids={"302"},
+    )
+
+    assert report.totals["scenarios"] == 1
+    assert [result.scenario_id for result in report.results] == ["302"]
+    summary = report.score_summary["plan-execute_watsonx/ibm/granite"]
+    assert summary["scored_results"] == 1
+
+
 def test_evaluator_strips_think_blocks_before_scoring(
     tmp_path: Path, make_persisted_record
 ):

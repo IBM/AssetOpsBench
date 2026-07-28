@@ -251,6 +251,56 @@ uv run opencode-agent "$query"
 uv run direct-llm-agent "$query"
 ```
 
+### OpenAI agent routing and permissions
+
+`openai-agent` accepts router-backed model IDs only. Use a `litellm_proxy/` or
+`tokenrouter/` prefix; unprefixed model IDs are rejected so the runner never
+falls back to direct OpenAI credentials.
+
+Recommended TokenRouter routing:
+
+| Model ID | API route | Reasoning effort |
+| -------- | --------- | ---------------- |
+| `tokenrouter/openai/gpt-5.*` | Responses | supported |
+| `tokenrouter/MiniMax-M3` | Responses | supported |
+| `tokenrouter/google/gemini-3.6-flash` | Responses | supported |
+| `tokenrouter/anthropic/claude-opus-4.8` | Chat Completions | ignored |
+| `tokenrouter/z-ai/glm-5.2` | Chat Completions | supported |
+
+Other router-backed models use Chat Completions. Supported models default to
+`--reasoning-effort medium`; choose `none`, `minimal`, `low`, `medium`, `high`,
+`xhigh`, or `max`. GPT-5 models also request a safe reasoning summary by
+default. The trajectory stores only the API-provided summary and token count,
+never raw chain-of-thought. Use `--reasoning-summary none` to disable it.
+
+All configured AssetOpsBench MCP tools are available and execute
+non-interactively by default. Local file, Bash, edit, and web tools remain
+disabled until explicitly enabled.
+
+Workspace and web capabilities use the same opt-in shape as `opencode-agent`:
+
+| Capability | Default | Flag |
+| ---------- | ------- | ---- |
+| File listing, reading, search | denied | `--allow-files` |
+| Bash commands | denied | `--allow-bash` |
+| Workspace writes/replacements/deletes | denied | `--allow-edit` or `--allow-bash` |
+| Public web search/fetch | denied | `--allow-web` |
+
+Files, Bash, and edits require `--workspace-dir`. Bash runs with that directory
+as its working directory and a credential-scrubbed environment, but it is not a
+hard OS-level sandbox: an explicit absolute path can still reach host files.
+
+To restrict a CLI run to specific MCP tools, repeat `--allow-mcp-tool` with a
+`SERVER/TOOL` value. Once the flag is present, the allowlist is fail-closed:
+unlisted tools and all tools from unlisted servers are hidden from the model.
+
+```bash
+uv run openai-agent \
+  --allow-mcp-tool iot/sites \
+  --allow-mcp-tool iot/asset_ids \
+  "List the asset IDs at every site."
+```
+
 ### Common flags
 
 | Flag                  | Description                                                                                  |
@@ -268,6 +318,11 @@ uv run direct-llm-agent "$query"
 | --------------------- | -------------------------- | ----------------------------------------------------------------- |
 | `--show-plan`         | plan-execute               | Print the generated plan before execution                         |
 | `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
+| `--allow-mcp-tool SERVER/TOOL` | openai-agent | Repeatable fail-closed MCP tool allowlist                          |
+| `--reasoning-effort LEVEL` | openai-agent | Reasoning effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max` (default: `medium`) |
+| `--reasoning-summary LEVEL` | openai-agent | Responses reasoning summary: `auto`, `concise`, `detailed`, or `none` |
+| `--allow-files` / `--workspace-dir PATH` | openai-agent | Enable workspace file listing, reading, and search                 |
+| `--allow-bash` / `--allow-edit` / `--allow-web` | openai-agent | Opt into Bash plus edits, edits without Bash, or public web access |
 | `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
 | `--code-enabled` / `--no-code` | stirrup-agent | Enable (default) / disable code execution — selects the code track |
 | `--code-backend B`             | stirrup-agent | Code sandbox: `docker` (default), `local`, or `e2b`                |
@@ -347,6 +402,32 @@ workspace file writes so agents can save output artifacts. If any of them are en
 
 > `--opencode-allow-bash` is not a hard OS-level sandbox. For strict filesystem
 > isolation, run the benchmark inside Docker or another sandbox.
+
+### OpenAI-agent scenario-suite runs
+
+The scenario-suite runner forwards OpenAI-specific reasoning and permission
+flags. For example:
+
+```bash
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-ids lite \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name openai_agent \
+  --model-id tokenrouter/openai/gpt-5.6-sol \
+  --openai-reasoning-effort medium \
+  --openai-workspace-root /tmp/assetopsbench-openai/workspaces \
+  --openai-allow-files \
+  --skip-existing \
+  --continue-on-error
+```
+
+`--openai-allow-files`, `--openai-allow-bash`, and `--openai-allow-edit`
+require `--openai-workspace-root`, which must be outside the repository. Each
+scenario receives a workspace nested by agent, model, and run ID. Reasoning
+effort defaults to `medium`; reasoning summaries default to `auto` for GPT-5
+Responses models. See
+[benchmarks/scenario_suite/README.md](benchmarks/scenario_suite/README.md) for
+profiles, output paths, and resume behavior.
 
 ---
 

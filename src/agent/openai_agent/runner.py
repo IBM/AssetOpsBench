@@ -15,63 +15,234 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
 import datetime as _dt
 import json
 import logging
 import time
+from collections.abc import Mapping
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from pathlib import Path
-
-from openai import AsyncOpenAI
+from typing import Literal, Self
 
 from agents import (
     Agent,
-    ModelProvider,
-    OpenAIChatCompletionsModel,
+    ModelSettings,
+    OpenAIProvider,
     RunConfig,
     Runner,
-    set_tracing_disabled,
 )
 from agents.mcp import MCPServerStdio
-
-from observability import agent_run_span, persist_trajectory
+from openai.types.shared import Reasoning
 
 from llm.routers import resolve_model, resolve_router_creds
+from observability import agent_run_span, persist_trajectory
+
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
 from ..runner import AgentRunner
+from .workspace_tools import WorkspaceToolFactory
 
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
+ReasoningSummary = Literal["auto", "concise", "detailed"] | None
+ReasoningEffort = (
+    Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+)
+
+_OPENAI_AGENT_SYSTEM_PROMPT = (
+    AGENT_SYSTEM_PROMPT
+    + """
+
+Use the configured AssetOpsBench MCP tools for operational data. Do not ask
+the user follow-up questions during benchmark runs; make reasonable
+assumptions and answer with the evidence you found. Do not edit files, run
+shell commands, browse the web, or inspect local files unless those
+capabilities have been enabled for this run.
+
+When file or bash access is enabled, use the current working directory as the
+run workspace. Always assume the current working directory is the only visible
+directory for file or bash operations. Write any scripts, temporary files,
+intermediate data, and final artifacts there. Do not read or write files outside
+the current workspace. Do not inspect the database directly.
+Do not inspect parent directories, repository folders, reports, traces,
+groundtruth files, previous agent outputs, or hidden evaluation artifacts.
+"""
+)
 
 
-def _build_run_config(model_id: str) -> RunConfig | None:
-    """Build a RunConfig with a LiteLLM model provider when needed.
+@dataclass(frozen=True)
+class _ModelCapabilityRule:
+    """Match rule for model-specific API and reasoning capabilities."""
+
+    pattern: str
+    prefix_match: bool = False
+    use_responses: bool = False
+    supports_reasoning_summary: bool = False
+    supports_reasoning_effort: bool = False
+
+    def matches(self, model_id: str) -> bool:
+        if self.prefix_match:
+            return model_id.startswith(self.pattern)
+        return model_id == self.pattern
+
+
+_TOKENROUTER_MODEL_CAPABILITY_RULES = (
+    _ModelCapabilityRule(
+        pattern="tokenrouter/openai/gpt-5.",
+        prefix_match=True,
+        use_responses=True,
+        supports_reasoning_summary=True,
+        supports_reasoning_effort=True,
+    ),
+    _ModelCapabilityRule(
+        pattern="tokenrouter/MiniMax-M3",
+        use_responses=True,
+        supports_reasoning_effort=True,
+    ),
+    _ModelCapabilityRule(
+        pattern="tokenrouter/google/gemini-3.6-flash",
+        use_responses=True,
+        supports_reasoning_effort=True,
+    ),
+    _ModelCapabilityRule(
+        pattern="tokenrouter/z-ai/glm-5.2",
+        supports_reasoning_effort=True,
+    ),
+)
+
+
+@dataclass
+class OpenAITurnRecord(TurnRecord):
+    """OpenAI turn data, including the optional safe reasoning summary."""
+
+    reasoning_summary: str = ""
+    reasoning_tokens: int = 0
+
+
+def _model_capability_rule(model_id: str) -> _ModelCapabilityRule | None:
+    """Return the first capability rule matching *model_id*, if any."""
+    return next(
+        (
+            rule
+            for rule in _TOKENROUTER_MODEL_CAPABILITY_RULES
+            if rule.matches(model_id)
+        ),
+        None,
+    )
+
+
+def _uses_responses_api(model_id: str) -> bool:
+    """Return whether *model_id* should use the OpenAI Responses API."""
+    rule = _model_capability_rule(model_id)
+    return rule is not None and rule.use_responses
+
+
+def _supports_reasoning_summary(model_id: str) -> bool:
+    """Return whether *model_id* supports OpenAI reasoning summaries."""
+    rule = _model_capability_rule(model_id)
+    return rule is not None and rule.supports_reasoning_summary
+
+
+def _supports_reasoning_effort(model_id: str) -> bool:
+    """Return whether *model_id* accepts OpenAI-compatible reasoning effort."""
+    rule = _model_capability_rule(model_id)
+    return rule is not None and rule.supports_reasoning_effort
+
+
+def _build_model_settings(
+    model_id: str,
+    reasoning_summary: ReasoningSummary = "auto",
+    reasoning_effort: ReasoningEffort = "medium",
+) -> ModelSettings:
+    """Build reasoning settings supported by the selected routed model."""
+    summary = (
+        reasoning_summary if _supports_reasoning_summary(model_id) else None
+    )
+    effort = reasoning_effort if _supports_reasoning_effort(model_id) else None
+    if summary is None and effort is None:
+        return ModelSettings()
+    return ModelSettings(reasoning=Reasoning(summary=summary, effort=effort))
+
+
+def _build_permissions(
+    *,
+    allow_bash: bool = False,
+    allow_edit: bool = False,
+    allow_web: bool = False,
+    allow_files: bool = False,
+) -> dict[str, bool]:
+    """Build benchmark-safe OpenAI-agent capability permissions.
+
+    MCP access is always available through the separately configured servers.
+    Local workspace and web tools are denied unless explicitly enabled. Bash
+    also enables workspace edits, matching the OpenCode runner.
+    """
+    return {
+        "mcp": True,
+        "files": allow_files,
+        "bash": allow_bash,
+        "edit": allow_edit or allow_bash,
+        "web": allow_web,
+    }
+
+
+def _resolve_run_dir(
+    *,
+    workspace_dir: Path | str | None,
+    permissions: Mapping[str, bool],
+) -> Path | None:
+    """Resolve the optional workspace required by local file/edit/bash tools."""
+    workspace_requested = any(
+        permissions[capability] for capability in ("files", "bash", "edit")
+    )
+    if workspace_requested and workspace_dir is None:
+        raise ValueError(
+            "workspace_dir is required when enabling files, edits, or bash"
+        )
+    if workspace_dir is None:
+        return None
+
+    run_dir = Path(workspace_dir).expanduser().resolve()
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+def _build_run_config(model_id: str) -> RunConfig:
+    """Build a RunConfig that selects the requested OpenAI API.
 
     When *model_id* starts with a proxy-router prefix (``litellm_proxy/`` or
-    ``tokenrouter/``), creates an :class:`AsyncOpenAI` client pointing at that
-    router's OpenAI-compatible endpoint (credentials from the router's env
-    vars) and wraps it in :class:`OpenAIChatCompletionsModel`.
+    ``tokenrouter/``), configures an :class:`OpenAIProvider` for that router's
+    OpenAI-compatible endpoint and credentials.
 
-    Returns ``None`` for direct OpenAI API usage.
+    ``tokenrouter/openai/gpt-5.*``, ``tokenrouter/MiniMax-M3``, and
+    ``tokenrouter/google/gemini-3.6-flash`` use the Responses API. All other
+    router-backed model IDs use Chat Completions. Unprefixed model IDs are
+    rejected so this runner never falls back to direct OpenAI credentials.
     """
     creds = resolve_router_creds(model_id)
     if creds is None:
-        return None
+        raise ValueError(
+            "OpenAIAgentRunner model IDs must start with "
+            "'litellm_proxy/' or 'tokenrouter/'"
+        )
 
-    resolved = resolve_model(model_id)
-    client = AsyncOpenAI(base_url=creds.base_url, api_key=creds.api_key)
-    set_tracing_disabled(disabled=True)
+    use_responses = _uses_responses_api(model_id)
+    provider = OpenAIProvider(
+        base_url=creds.base_url,
+        api_key=creds.api_key,
+        use_responses=use_responses,
+    )
 
-    class _LiteLLMModelProvider(ModelProvider):
-        def get_model(self, model_name: str | None):
-            return OpenAIChatCompletionsModel(
-                model=model_name or resolved,
-                openai_client=client,
-            )
-
-    return RunConfig(model_provider=_LiteLLMModelProvider())
+    return RunConfig(
+        model_provider=provider,
+        # Router credentials cannot authenticate with the OpenAI traces API.
+        # Keep this run-scoped so other Agents SDK users retain their setting.
+        tracing_disabled=True,
+        workflow_name="AssetOps Assistant",
+    )
 
 
 def _build_mcp_servers(
@@ -82,6 +253,10 @@ def _build_mcp_servers(
     Entry-point names (str without path separators) become
     ``MCPServerStdio(command="uv", args=["run", name])``.
     Path objects become ``MCPServerStdio(command="uv", args=["run", str(path)])``.
+
+    Every configured server exposes all of its MCP tools. MCP calls run without
+    interactive approval, matching the non-interactive benchmark behavior of
+    the OpenCode runner.
     """
     servers: list[MCPServerStdio] = []
     for name, spec in server_paths.items():
@@ -94,77 +269,106 @@ def _build_mcp_servers(
                     "args": ["run", cmd_arg],
                 },
                 cache_tools_list=True,
+                require_approval="never",
             )
         )
     return servers
 
 
+async def _enter_mcp_servers(
+    stack: AsyncExitStack,
+    servers: list[MCPServerStdio],
+) -> list[MCPServerStdio]:
+    """Connect all MCP servers concurrently and register them with *stack*."""
+    async with asyncio.TaskGroup() as group:
+        tasks = [
+            group.create_task(stack.enter_async_context(server)) for server in servers
+        ]
+    return [task.result() for task in tasks]
+
+
 def _build_trajectory(result) -> Trajectory:
     """Extract a Trajectory from a Runner.run result.
 
-    Walks ``result.new_items`` to collect text messages, tool calls, and
-    tool outputs.  Token usage is pulled from ``result.raw_responses``.
+    Each raw model response becomes exactly one trajectory turn. Tool outputs
+    are then joined from ``result.new_items`` by call ID. Responses reasoning
+    summaries are preserved separately from assistant text; raw chain-of-thought
+    is neither requested nor persisted.
     """
     trajectory = Trajectory()
-    turn_index = 0
-    text_parts: list[str] = []
-    tool_calls: list[ToolCall] = []
 
-    def _flush() -> None:
-        nonlocal text_parts, tool_calls, turn_index
-        if not text_parts and not tool_calls:
-            return
-        trajectory.turns.append(
-            TurnRecord(
-                index=turn_index,
-                text="".join(text_parts),
-                tool_calls=list(tool_calls),
-            )
-        )
-        turn_index += 1
-        text_parts = []
-        tool_calls = []
+    def _field(value, name: str, default=None):
+        if isinstance(value, dict):
+            return value.get(name, default)
+        return getattr(value, name, default)
 
-    for item in result.new_items:
-        item_type = getattr(item, "type", "")
-        if item_type == "message_output_item":
-            # Flush any pending tool calls from previous turn
-            _flush()
-            raw = getattr(item, "raw_item", None)
-            if raw:
-                content = getattr(raw, "content", None) or []
-                for part in content:
-                    if hasattr(part, "text"):
-                        text_parts.append(part.text)
-        elif item_type == "tool_call_item":
-            raw = getattr(item, "raw_item", None)
-            if raw:
-                tc_name = getattr(raw, "name", "") or ""
-                tc_id = getattr(raw, "call_id", "") or getattr(raw, "id", "") or ""
-                tc_args = getattr(raw, "arguments", "{}") or "{}"
+    tool_calls_by_id: dict[str, ToolCall] = {}
+    all_tool_calls: list[ToolCall] = []
+
+    for turn_index, response in enumerate(getattr(result, "raw_responses", []) or []):
+        text_parts: list[str] = []
+        reasoning_summary_parts: list[str] = []
+        turn_tool_calls: list[ToolCall] = []
+
+        for raw in _field(response, "output", []) or []:
+            raw_type = _field(raw, "type", "")
+            if raw_type == "message":
+                for part in _field(raw, "content", []) or []:
+                    text = _field(part, "text")
+                    if text:
+                        text_parts.append(text)
+            elif raw_type == "reasoning":
+                for part in _field(raw, "summary", []) or []:
+                    text = _field(part, "text")
+                    if text:
+                        reasoning_summary_parts.append(text)
+            elif raw_type == "function_call":
+                tc_name = _field(raw, "name", "") or ""
+                tc_id = _field(raw, "call_id", "") or _field(raw, "id", "") or ""
+                tc_args = _field(raw, "arguments", "{}") or "{}"
                 try:
                     tc_input = (
                         json.loads(tc_args) if isinstance(tc_args, str) else tc_args
                     )
                 except (json.JSONDecodeError, TypeError):
                     tc_input = {"raw": tc_args}
-                tool_calls.append(ToolCall(name=tc_name, input=tc_input, id=tc_id))
-        elif item_type == "tool_call_output_item":
+                tool_call = ToolCall(name=tc_name, input=tc_input, id=tc_id)
+                turn_tool_calls.append(tool_call)
+                all_tool_calls.append(tool_call)
+                if tc_id:
+                    tool_calls_by_id[tc_id] = tool_call
+
+        usage = _field(response, "usage")
+        output_token_details = _field(usage, "output_tokens_details")
+        trajectory.turns.append(
+            OpenAITurnRecord(
+                index=turn_index,
+                text="".join(text_parts),
+                tool_calls=turn_tool_calls,
+                input_tokens=_field(usage, "input_tokens", 0) or 0,
+                output_tokens=_field(usage, "output_tokens", 0) or 0,
+                reasoning_summary="\n\n".join(reasoning_summary_parts),
+                reasoning_tokens=(
+                    _field(output_token_details, "reasoning_tokens", 0) or 0
+                ),
+            )
+        )
+
+    assigned_calls: set[int] = set()
+    for item in getattr(result, "new_items", []) or []:
+        if getattr(item, "type", "") == "tool_call_output_item":
             output = getattr(item, "output", None)
-            # Attach output to the last matching tool call
-            if tool_calls:
-                tool_calls[-1].output = output
-
-    # Flush remaining
-    _flush()
-
-    # Distribute token usage from raw_responses across turns
-    raw_responses = getattr(result, "raw_responses", []) or []
-    for i, resp in enumerate(raw_responses):
-        usage = getattr(resp, "usage", None)
-        if usage and i < len(trajectory.turns):
-            trajectory.turns[i].input_tokens = getattr(usage, "input_tokens", 0) or 0
-            trajectory.turns[i].output_tokens = getattr(usage, "output_tokens", 0) or 0
+            raw = getattr(item, "raw_item", None)
+            output_call_id = _field(raw, "call_id", "") if raw else ""
+            matching_call = tool_calls_by_id.get(output_call_id)
+            if matching_call is None:
+                matching_call = next(
+                    (call for call in all_tool_calls if id(call) not in assigned_calls),
+                    None,
+                )
+            if matching_call is not None:
+                matching_call.output = output
+                assigned_calls.add(id(matching_call))
 
     return trajectory
 
@@ -175,18 +379,38 @@ class OpenAIAgentRunner(AgentRunner):
     The SDK handles tool discovery, invocation, and multi-turn conversation
     against the registered MCP servers.
 
-    Routes all requests through a LiteLLM proxy via the ``litellm_proxy/``
-    proxy-router prefix ``litellm_proxy/`` or ``tokenrouter/`` (requires the
-    matching ``*_BASE_URL`` / ``*_API_KEY`` env vars).
+    Local file, edit, Bash, and web function tools are denied by default. They
+    can be enabled independently for a dedicated workspace. These are ordinary
+    function tools so they work with both Responses and Chat Completions models.
+
+    A one-shot :meth:`run` connects and closes MCP servers automatically. For
+    repeated calls, use the runner as an async context manager to connect once
+    and reuse the active servers until :meth:`aclose`.
+
+    Router-prefixed models use the matching proxy endpoint and credentials.
+    ``tokenrouter/openai/gpt-5.*``, ``tokenrouter/MiniMax-M3``, and
+    ``tokenrouter/google/gemini-3.6-flash`` use the Responses API; all other
+    router-backed model IDs use Chat Completions. Unprefixed IDs are rejected.
 
     Args:
         llm: Unused — OpenAIAgentRunner uses the OpenAI Agents SDK directly.
              Accepted for interface compatibility with ``AgentRunner``.
         server_paths: MCP server specs identical to ``PlanExecuteRunner``.
                       Defaults to all registered servers.
-        model: LiteLLM model string with ``litellm_proxy/`` prefix
+        model: Model ID prefixed with ``litellm_proxy/`` or ``tokenrouter/``
                (default: ``litellm_proxy/azure/gpt-5.4``).
         max_turns: Maximum agentic loop turns (default: 30).
+        allow_files: Allow workspace file listing, reading, and search tools.
+        allow_bash: Allow Bash commands and workspace edits. This is not an OS
+                    sandbox; commands can reference host paths explicitly.
+        allow_edit: Allow workspace write, replace, and delete tools.
+        allow_web: Allow public web search and fetch tools.
+        workspace_dir: Dedicated workspace required by files, Bash, or edits.
+        reasoning_summary: Responses reasoning-summary detail. Defaults to
+                           ``"auto"``; use ``None`` to disable. Ignored for
+                           Chat Completions models.
+        reasoning_effort: Model reasoning effort. Defaults to ``"medium"`` and
+                          is ignored for models without verified support.
     """
 
     def __init__(
@@ -195,12 +419,79 @@ class OpenAIAgentRunner(AgentRunner):
         server_paths: dict[str, Path | str] | None = None,
         model: str = _DEFAULT_MODEL,
         max_turns: int = 30,
+        allow_bash: bool = False,
+        allow_edit: bool = False,
+        allow_web: bool = False,
+        allow_files: bool = False,
+        workspace_dir: Path | str | None = None,
+        reasoning_summary: ReasoningSummary = "auto",
+        reasoning_effort: ReasoningEffort = "medium",
     ) -> None:
         super().__init__(llm, server_paths)
         self._model_id = model
         self._model = resolve_model(model)
         self._run_config = _build_run_config(model)
+        self._model_settings = _build_model_settings(
+            model,
+            reasoning_summary,
+            reasoning_effort,
+        )
         self._max_turns = max_turns
+        self._permissions = _build_permissions(
+            allow_bash=allow_bash,
+            allow_edit=allow_edit,
+            allow_web=allow_web,
+            allow_files=allow_files,
+        )
+        self._run_dir = _resolve_run_dir(
+            workspace_dir=workspace_dir,
+            permissions=self._permissions,
+        )
+        self._local_tools = WorkspaceToolFactory(self._run_dir).build_tools(
+            allow_bash=allow_bash,
+            allow_edit=allow_edit,
+            allow_web=allow_web,
+            allow_files=allow_files,
+        )
+        self._mcp_stack: AsyncExitStack | None = None
+        self._active_mcp_servers: list[MCPServerStdio] | None = None
+        self._mcp_lock = asyncio.Lock()
+
+    async def __aenter__(self) -> Self:
+        await self._ensure_persistent_mcp_servers()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.aclose()
+
+    async def _ensure_persistent_mcp_servers(self) -> list[MCPServerStdio]:
+        async with self._mcp_lock:
+            if self._active_mcp_servers is not None:
+                return self._active_mcp_servers
+
+            stack = AsyncExitStack()
+            await stack.__aenter__()
+            try:
+                active_servers = await _enter_mcp_servers(
+                    stack,
+                    _build_mcp_servers(self._server_paths),
+                )
+            except BaseException:
+                await stack.aclose()
+                raise
+
+            self._mcp_stack = stack
+            self._active_mcp_servers = active_servers
+            return active_servers
+
+    async def aclose(self) -> None:
+        """Close MCP servers opened by the async context manager."""
+        async with self._mcp_lock:
+            stack = self._mcp_stack
+            self._mcp_stack = None
+            self._active_mcp_servers = None
+            if stack is not None:
+                await stack.aclose()
 
     async def run(self, question: str) -> AgentResult:
         """Run the OpenAI Agents SDK loop for *question*.
@@ -216,35 +507,43 @@ class OpenAIAgentRunner(AgentRunner):
         ) as span:
             run_started = time.perf_counter()
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
-            mcp_servers = _build_mcp_servers(self._server_paths)
 
-            # AsyncExitStack enters every server and closes them in LIFO order
-            # on exit (success or exception).
-            async with AsyncExitStack() as stack:
-                active_servers = [
-                    await stack.enter_async_context(s) for s in mcp_servers
-                ]
+            async def _execute(active_servers: list[MCPServerStdio]) -> AgentResult:
                 agent = Agent(
                     name="AssetOps Assistant",
-                    instructions=AGENT_SYSTEM_PROMPT,
+                    instructions=_OPENAI_AGENT_SYSTEM_PROMPT,
+                    tools=self._local_tools,
                     mcp_servers=active_servers,
+                    mcp_config={"include_server_in_tool_names": True},
                     model=self._model,
+                    model_settings=self._model_settings,
                 )
 
                 _log.info(
-                    "OpenAIAgentRunner: starting query (model=%s, servers=%d)",
+                    "OpenAIAgentRunner: starting query "
+                    "(model=%s, servers=%d, workspace=%s, permissions=%s, "
+                    "reasoning_summary=%s, reasoning_effort=%s)",
                     self._model,
                     len(active_servers),
+                    self._run_dir or "<disabled>",
+                    self._permissions,
+                    (
+                        self._model_settings.reasoning.summary
+                        if self._model_settings.reasoning is not None
+                        else "disabled"
+                    ),
+                    (
+                        self._model_settings.reasoning.effort
+                        if self._model_settings.reasoning is not None
+                        else "disabled"
+                    ),
                 )
-
-                run_kwargs: dict = dict(max_turns=self._max_turns)
-                if self._run_config is not None:
-                    run_kwargs["run_config"] = self._run_config
 
                 result = await Runner.run(
                     agent,
                     question,
-                    **run_kwargs,
+                    max_turns=self._max_turns,
+                    run_config=self._run_config,
                 )
 
                 answer = result.final_output or ""
@@ -283,3 +582,14 @@ class OpenAIAgentRunner(AgentRunner):
                     answer=answer,
                     trajectory=trajectory,
                 )
+
+            if self._active_mcp_servers is not None:
+                return await _execute(self._active_mcp_servers)
+
+            # One-shot runs connect concurrently and close on success or error.
+            async with AsyncExitStack() as stack:
+                active_servers = await _enter_mcp_servers(
+                    stack,
+                    _build_mcp_servers(self._server_paths),
+                )
+                return await _execute(active_servers)
