@@ -47,15 +47,32 @@ from .workspace_tools import WorkspaceToolFactory
 _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
-_TOKENROUTER_OPENAI_GPT5_PREFIX = "tokenrouter/openai/gpt-5."
-_TOKENROUTER_EXPLICIT_RESPONSES_MODELS = frozenset(
-    {
-        "tokenrouter/MiniMax-M3",
-        "tokenrouter/google/gemini-3.6-flash",
-    }
-)
-
 ReasoningSummary = Literal["auto", "concise", "detailed"] | None
+
+
+@dataclass(frozen=True)
+class _ResponsesModelRule:
+    """Match rule and capabilities for a Responses-routed model."""
+
+    pattern: str
+    prefix_match: bool = False
+    supports_reasoning_summary: bool = False
+
+    def matches(self, model_id: str) -> bool:
+        if self.prefix_match:
+            return model_id.startswith(self.pattern)
+        return model_id == self.pattern
+
+
+_TOKENROUTER_RESPONSES_MODEL_RULES = (
+    _ResponsesModelRule(
+        pattern="tokenrouter/openai/gpt-5.",
+        prefix_match=True,
+        supports_reasoning_summary=True,
+    ),
+    _ResponsesModelRule(pattern="tokenrouter/MiniMax-M3"),
+    _ResponsesModelRule(pattern="tokenrouter/google/gemini-3.6-flash"),
+)
 
 
 @dataclass
@@ -68,15 +85,15 @@ class OpenAITurnRecord(TurnRecord):
 
 def _uses_responses_api(model_id: str) -> bool:
     """Return whether *model_id* should use the OpenAI Responses API."""
-    return (
-        model_id.startswith(_TOKENROUTER_OPENAI_GPT5_PREFIX)
-        or model_id in _TOKENROUTER_EXPLICIT_RESPONSES_MODELS
-    )
+    return any(rule.matches(model_id) for rule in _TOKENROUTER_RESPONSES_MODEL_RULES)
 
 
 def _supports_reasoning_summary(model_id: str) -> bool:
     """Return whether *model_id* supports OpenAI reasoning summaries."""
-    return model_id.startswith(_TOKENROUTER_OPENAI_GPT5_PREFIX)
+    return any(
+        rule.supports_reasoning_summary and rule.matches(model_id)
+        for rule in _TOKENROUTER_RESPONSES_MODEL_RULES
+    )
 
 
 def _build_model_settings(
