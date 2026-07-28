@@ -1,7 +1,7 @@
 """Workspace-scoped function tools for :mod:`agent.openai_agent`.
 
 The Agents SDK's hosted shell, apply-patch, and web-search tools require the
-Responses API. AssetOpsBench also routes non-OpenAI models through Chat
+Responses API. AssetOpsBench routes models through both Responses and Chat
 Completions, so these capabilities are implemented as ordinary function tools
 that work with both API modes.
 """

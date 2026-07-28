@@ -257,11 +257,13 @@ uv run direct-llm-agent "$query"
 `tokenrouter/` prefix; unprefixed model IDs are rejected so the runner never
 falls back to direct OpenAI credentials.
 
-- `tokenrouter/openai/gpt-5.*` uses the Responses API.
+- `tokenrouter/openai/gpt-5.*`, `tokenrouter/MiniMax-M3`, and
+  `tokenrouter/google/gemini-3.6-flash` use the Responses API.
 - All other supported router-backed models use Chat Completions.
-- Responses models request a safe reasoning summary by default and persist it
-  as `reasoning_summary` on each trajectory turn. Raw chain-of-thought is not
-  exposed. Use `--reasoning-summary none` to disable summaries.
+- `tokenrouter/openai/gpt-5.*` models request a safe reasoning summary by
+  default and persist it as `reasoning_summary` on each trajectory turn. Raw
+  chain-of-thought is not exposed. Use `--reasoning-summary none` to disable
+  summaries.
 - The agent exposes configured AssetOpsBench MCP servers by default. Local file,
   Bash, edit, and web function tools are denied unless explicitly enabled.
 - Configured MCP tools execute non-interactively by default, which is suitable

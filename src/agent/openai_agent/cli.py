@@ -28,12 +28,17 @@ model-id format:
   tokenrouter/<model>     TokenRouter (e.g. tokenrouter/openai/gpt-5.6-sol)
 
 API routing:
-  tokenrouter/openai/gpt-5.*   Responses API
-  all other model IDs          Chat Completions API
+  Responses API:
+    tokenrouter/openai/gpt-5.*
+    tokenrouter/MiniMax-M3
+    tokenrouter/google/gemini-3.6-flash
+  Chat Completions API:
+    all other model IDs
 
 reasoning summaries:
-  Responses models request safe reasoning summaries by default. Raw internal
-  chain-of-thought is never exposed. Use --reasoning-summary none to disable.
+  tokenrouter/openai/gpt-5.* models request safe reasoning summaries by
+  default. Raw internal chain-of-thought is never exposed. Use
+  --reasoning-summary none to disable.
 
 permissions:
   All AssetOpsBench MCP tools are enabled. Local files, Bash, edits, and web

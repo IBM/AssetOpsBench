@@ -94,8 +94,11 @@ async def test_enter_mcp_servers_connects_concurrently():
     [
         ("tokenrouter/openai/gpt-5.5", True),
         ("tokenrouter/openai/gpt-5.6-sol", True),
+        ("tokenrouter/MiniMax-M3", True),
+        ("tokenrouter/google/gemini-3.6-flash", True),
         ("tokenrouter/openai/gpt-4.1", False),
         ("tokenrouter/anthropic/claude-opus-4.8", False),
+        ("tokenrouter/z-ai/glm-5.2", False),
         ("litellm_proxy/openai/gpt-5.5", False),
         ("gpt-5.5", False),
     ],
@@ -117,20 +120,43 @@ def test_build_run_config_litellm_prefix(monkeypatch):
     assert isinstance(model, OpenAIChatCompletionsModel)
 
 
-def test_build_run_config_tokenrouter_openai_gpt5_uses_responses(monkeypatch):
+@pytest.mark.parametrize(
+    ("model_id", "resolved_model"),
+    [
+        ("tokenrouter/openai/gpt-5.6-sol", "openai/gpt-5.6-sol"),
+        ("tokenrouter/MiniMax-M3", "MiniMax-M3"),
+        (
+            "tokenrouter/google/gemini-3.6-flash",
+            "google/gemini-3.6-flash",
+        ),
+    ],
+)
+def test_build_run_config_responses_models(monkeypatch, model_id, resolved_model):
     monkeypatch.setenv("TOKENROUTER_BASE_URL", "http://localhost:4001")
     monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
-    config = _build_run_config("tokenrouter/openai/gpt-5.6-sol")
-    model = config.model_provider.get_model("openai/gpt-5.6-sol")
+    config = _build_run_config(model_id)
+    model = config.model_provider.get_model(resolved_model)
     assert isinstance(model, OpenAIResponsesModel)
     assert config.tracing_disabled is True
 
 
-def test_build_run_config_other_tokenrouter_model_uses_chat_completions(monkeypatch):
+@pytest.mark.parametrize(
+    ("model_id", "resolved_model"),
+    [
+        (
+            "tokenrouter/anthropic/claude-opus-4.8",
+            "anthropic/claude-opus-4.8",
+        ),
+        ("tokenrouter/z-ai/glm-5.2", "z-ai/glm-5.2"),
+    ],
+)
+def test_build_run_config_chat_completions_models(
+    monkeypatch, model_id, resolved_model
+):
     monkeypatch.setenv("TOKENROUTER_BASE_URL", "http://localhost:4001")
     monkeypatch.setenv("TOKENROUTER_API_KEY", "sk-test")
-    config = _build_run_config("tokenrouter/MiniMax-M3")
-    model = config.model_provider.get_model("MiniMax-M3")
+    config = _build_run_config(model_id)
+    model = config.model_provider.get_model(resolved_model)
     assert isinstance(model, OpenAIChatCompletionsModel)
 
 
@@ -158,6 +184,21 @@ def test_build_model_settings_can_disable_responses_reasoning_summary():
 
 def test_build_model_settings_ignores_summary_for_chat_completions():
     settings = _build_model_settings("tokenrouter/anthropic/claude-opus-4.8")
+
+    assert settings.reasoning is None
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "tokenrouter/MiniMax-M3",
+        "tokenrouter/google/gemini-3.6-flash",
+    ],
+)
+def test_build_model_settings_ignores_summary_for_third_party_responses(
+    model_id,
+):
+    settings = _build_model_settings(model_id)
 
     assert settings.reasoning is None
 

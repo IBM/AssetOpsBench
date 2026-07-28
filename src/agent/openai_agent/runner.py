@@ -48,6 +48,12 @@ _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 _TOKENROUTER_OPENAI_GPT5_PREFIX = "tokenrouter/openai/gpt-5."
+_TOKENROUTER_EXPLICIT_RESPONSES_MODELS = frozenset(
+    {
+        "tokenrouter/MiniMax-M3",
+        "tokenrouter/google/gemini-3.6-flash",
+    }
+)
 
 ReasoningSummary = Literal["auto", "concise", "detailed"] | None
 
@@ -62,6 +68,14 @@ class OpenAITurnRecord(TurnRecord):
 
 def _uses_responses_api(model_id: str) -> bool:
     """Return whether *model_id* should use the OpenAI Responses API."""
+    return (
+        model_id.startswith(_TOKENROUTER_OPENAI_GPT5_PREFIX)
+        or model_id in _TOKENROUTER_EXPLICIT_RESPONSES_MODELS
+    )
+
+
+def _supports_reasoning_summary(model_id: str) -> bool:
+    """Return whether *model_id* supports OpenAI reasoning summaries."""
     return model_id.startswith(_TOKENROUTER_OPENAI_GPT5_PREFIX)
 
 
@@ -69,8 +83,8 @@ def _build_model_settings(
     model_id: str,
     reasoning_summary: ReasoningSummary = "auto",
 ) -> ModelSettings:
-    """Request safe reasoning summaries only from Responses-routed models."""
-    if not _uses_responses_api(model_id) or reasoning_summary is None:
+    """Request safe reasoning summaries only from supported OpenAI models."""
+    if not _supports_reasoning_summary(model_id) or reasoning_summary is None:
         return ModelSettings()
     return ModelSettings(reasoning=Reasoning(summary=reasoning_summary))
 
@@ -125,7 +139,8 @@ def _build_run_config(model_id: str) -> RunConfig:
     ``tokenrouter/``), configures an :class:`OpenAIProvider` for that router's
     OpenAI-compatible endpoint and credentials.
 
-    ``tokenrouter/openai/gpt-5.*`` models use the Responses API. All other
+    ``tokenrouter/openai/gpt-5.*``, ``tokenrouter/MiniMax-M3``, and
+    ``tokenrouter/google/gemini-3.6-flash`` use the Responses API. All other
     router-backed model IDs use Chat Completions. Unprefixed model IDs are
     rejected so this runner never falls back to direct OpenAI credentials.
     """
@@ -295,7 +310,8 @@ class OpenAIAgentRunner(AgentRunner):
     and reuse the active servers until :meth:`aclose`.
 
     Router-prefixed models use the matching proxy endpoint and credentials.
-    ``tokenrouter/openai/gpt-5.*`` uses the Responses API; all other
+    ``tokenrouter/openai/gpt-5.*``, ``tokenrouter/MiniMax-M3``, and
+    ``tokenrouter/google/gemini-3.6-flash`` use the Responses API; all other
     router-backed model IDs use Chat Completions. Unprefixed IDs are rejected.
 
     Args:
