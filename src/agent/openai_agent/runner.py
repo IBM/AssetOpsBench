@@ -48,15 +48,20 @@ _log = logging.getLogger(__name__)
 
 _DEFAULT_MODEL = "litellm_proxy/azure/gpt-5.4"
 ReasoningSummary = Literal["auto", "concise", "detailed"] | None
+ReasoningEffort = (
+    Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+)
 
 
 @dataclass(frozen=True)
-class _ResponsesModelRule:
-    """Match rule and capabilities for a Responses-routed model."""
+class _ModelCapabilityRule:
+    """Match rule for model-specific API and reasoning capabilities."""
 
     pattern: str
     prefix_match: bool = False
+    use_responses: bool = False
     supports_reasoning_summary: bool = False
+    supports_reasoning_effort: bool = False
 
     def matches(self, model_id: str) -> bool:
         if self.prefix_match:
@@ -64,14 +69,28 @@ class _ResponsesModelRule:
         return model_id == self.pattern
 
 
-_TOKENROUTER_RESPONSES_MODEL_RULES = (
-    _ResponsesModelRule(
+_TOKENROUTER_MODEL_CAPABILITY_RULES = (
+    _ModelCapabilityRule(
         pattern="tokenrouter/openai/gpt-5.",
         prefix_match=True,
+        use_responses=True,
         supports_reasoning_summary=True,
+        supports_reasoning_effort=True,
     ),
-    _ResponsesModelRule(pattern="tokenrouter/MiniMax-M3"),
-    _ResponsesModelRule(pattern="tokenrouter/google/gemini-3.6-flash"),
+    _ModelCapabilityRule(
+        pattern="tokenrouter/MiniMax-M3",
+        use_responses=True,
+        supports_reasoning_effort=True,
+    ),
+    _ModelCapabilityRule(
+        pattern="tokenrouter/google/gemini-3.6-flash",
+        use_responses=True,
+        supports_reasoning_effort=True,
+    ),
+    _ModelCapabilityRule(
+        pattern="tokenrouter/z-ai/glm-5.2",
+        supports_reasoning_effort=True,
+    ),
 )
 
 
@@ -83,27 +102,49 @@ class OpenAITurnRecord(TurnRecord):
     reasoning_tokens: int = 0
 
 
+def _model_capability_rule(model_id: str) -> _ModelCapabilityRule | None:
+    """Return the first capability rule matching *model_id*, if any."""
+    return next(
+        (
+            rule
+            for rule in _TOKENROUTER_MODEL_CAPABILITY_RULES
+            if rule.matches(model_id)
+        ),
+        None,
+    )
+
+
 def _uses_responses_api(model_id: str) -> bool:
     """Return whether *model_id* should use the OpenAI Responses API."""
-    return any(rule.matches(model_id) for rule in _TOKENROUTER_RESPONSES_MODEL_RULES)
+    rule = _model_capability_rule(model_id)
+    return rule is not None and rule.use_responses
 
 
 def _supports_reasoning_summary(model_id: str) -> bool:
     """Return whether *model_id* supports OpenAI reasoning summaries."""
-    return any(
-        rule.supports_reasoning_summary and rule.matches(model_id)
-        for rule in _TOKENROUTER_RESPONSES_MODEL_RULES
-    )
+    rule = _model_capability_rule(model_id)
+    return rule is not None and rule.supports_reasoning_summary
+
+
+def _supports_reasoning_effort(model_id: str) -> bool:
+    """Return whether *model_id* accepts OpenAI-compatible reasoning effort."""
+    rule = _model_capability_rule(model_id)
+    return rule is not None and rule.supports_reasoning_effort
 
 
 def _build_model_settings(
     model_id: str,
     reasoning_summary: ReasoningSummary = "auto",
+    reasoning_effort: ReasoningEffort = "medium",
 ) -> ModelSettings:
-    """Request safe reasoning summaries only from supported OpenAI models."""
-    if not _supports_reasoning_summary(model_id) or reasoning_summary is None:
+    """Build reasoning settings supported by the selected routed model."""
+    summary = (
+        reasoning_summary if _supports_reasoning_summary(model_id) else None
+    )
+    effort = reasoning_effort if _supports_reasoning_effort(model_id) else None
+    if summary is None and effort is None:
         return ModelSettings()
-    return ModelSettings(reasoning=Reasoning(summary=reasoning_summary))
+    return ModelSettings(reasoning=Reasoning(summary=summary, effort=effort))
 
 
 def _build_permissions(
@@ -348,6 +389,8 @@ class OpenAIAgentRunner(AgentRunner):
         reasoning_summary: Responses reasoning-summary detail. Defaults to
                            ``"auto"``; use ``None`` to disable. Ignored for
                            Chat Completions models.
+        reasoning_effort: Model reasoning effort. Defaults to ``"medium"`` and
+                          is ignored for models without verified support.
     """
 
     def __init__(
@@ -362,12 +405,17 @@ class OpenAIAgentRunner(AgentRunner):
         allow_files: bool = False,
         workspace_dir: Path | str | None = None,
         reasoning_summary: ReasoningSummary = "auto",
+        reasoning_effort: ReasoningEffort = "medium",
     ) -> None:
         super().__init__(llm, server_paths)
         self._model_id = model
         self._model = resolve_model(model)
         self._run_config = _build_run_config(model)
-        self._model_settings = _build_model_settings(model, reasoning_summary)
+        self._model_settings = _build_model_settings(
+            model,
+            reasoning_summary,
+            reasoning_effort,
+        )
         self._max_turns = max_turns
         self._permissions = _build_permissions(
             allow_bash=allow_bash,
@@ -454,13 +502,18 @@ class OpenAIAgentRunner(AgentRunner):
                 _log.info(
                     "OpenAIAgentRunner: starting query "
                     "(model=%s, servers=%d, workspace=%s, permissions=%s, "
-                    "reasoning_summary=%s)",
+                    "reasoning_summary=%s, reasoning_effort=%s)",
                     self._model,
                     len(active_servers),
                     self._run_dir or "<disabled>",
                     self._permissions,
                     (
                         self._model_settings.reasoning.summary
+                        if self._model_settings.reasoning is not None
+                        else "disabled"
+                    ),
+                    (
+                        self._model_settings.reasoning.effort
                         if self._model_settings.reasoning is not None
                         else "disabled"
                     ),

@@ -40,6 +40,11 @@ reasoning summaries:
   default. Raw internal chain-of-thought is never exposed. Use
   --reasoning-summary none to disable.
 
+reasoning effort:
+  Supported routed models use medium reasoning effort by default. Choose from
+  none, minimal, low, medium, high, xhigh, or max. The setting is ignored for
+  models without verified OpenAI-compatible reasoning-effort support.
+
 permissions:
   All AssetOpsBench MCP tools are enabled. Local files, Bash, edits, and web
   access are denied unless their --allow-* flags are passed. Files, Bash, and
@@ -65,6 +70,15 @@ examples:
         default=30,
         metavar="N",
         help="Maximum agentic loop turns (default: 30).",
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+        default="medium",
+        help=(
+            "Reasoning effort for supported models (default: medium). Ignored "
+            "for models without verified support."
+        ),
     )
     parser.add_argument(
         "--reasoning-summary",
@@ -128,6 +142,7 @@ async def _run(args: argparse.Namespace) -> None:
         reasoning_summary=(
             None if args.reasoning_summary == "none" else args.reasoning_summary
         ),
+        reasoning_effort=args.reasoning_effort,
     ) as runner:
         result = await runner.run(args.question)
     print_result(

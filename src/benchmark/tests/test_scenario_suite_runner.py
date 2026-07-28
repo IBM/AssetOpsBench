@@ -173,6 +173,22 @@ def test_parser_accepts_named_scenario_selector() -> None:
     )
 
     assert args.scenario_ids == "fcc+fmsr_all"
+    assert args.openai_reasoning_effort == "medium"
+
+
+def test_parser_accepts_openai_reasoning_effort() -> None:
+    args = mr._build_parser().parse_args(
+        [
+            "--scenario-ids",
+            "lite",
+            "--scenario-root",
+            "/tmp/scenarios_data",
+            "--openai-reasoning-effort",
+            "max",
+        ]
+    )
+
+    assert args.openai_reasoning_effort == "max"
 
 
 def test_scenario_dir_for_id() -> None:
@@ -326,7 +342,10 @@ def test_build_methods_uses_cli_defaults() -> None:
     assert methods["opencode_agent"].workspace_root is None
     assert methods["openai_agent"].command == "openai-agent"
     assert methods["openai_agent"].model_id == "tokenrouter/MiniMax-M3"
-    assert methods["openai_agent"].extra_args == ()
+    assert methods["openai_agent"].extra_args == (
+        "--reasoning-effort",
+        "medium",
+    )
     assert methods["openai_agent"].workspace_root is None
     assert methods["gemini_cli_agent"].command == "gemini-cli-agent"
     assert (
@@ -465,6 +484,7 @@ def test_build_methods_openai_workspace_options(tmp_path: Path) -> None:
         openai_allow_bash=True,
         openai_allow_edit=False,
         openai_allow_web=True,
+        openai_reasoning_effort="low",
         openai_reasoning_summary="detailed",
         openai_workspace_root=tmp_path / "openai-workspaces",
         gemini_allow_files=False,
@@ -490,6 +510,8 @@ def test_build_methods_openai_workspace_options(tmp_path: Path) -> None:
         "--allow-files",
         "--allow-bash",
         "--allow-web",
+        "--reasoning-effort",
+        "low",
         "--reasoning-summary",
         "detailed",
     )

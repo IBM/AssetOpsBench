@@ -260,6 +260,9 @@ falls back to direct OpenAI credentials.
 - `tokenrouter/openai/gpt-5.*`, `tokenrouter/MiniMax-M3`, and
   `tokenrouter/google/gemini-3.6-flash` use the Responses API.
 - All other supported router-backed models use Chat Completions.
+- Verified compatible models use reasoning effort `medium` by default. Override
+  it with `--reasoning-effort`; unsupported models such as Claude Opus ignore
+  the generic OpenAI-compatible setting.
 - `tokenrouter/openai/gpt-5.*` models request a safe reasoning summary by
   default and persist it as `reasoning_summary` on each trajectory turn. Raw
   chain-of-thought is not exposed. Use `--reasoning-summary none` to disable
@@ -352,6 +355,7 @@ runner = OpenAIAgentRunner(
 | `--show-plan`         | plan-execute               | Print the generated plan before execution                         |
 | `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
 | `--allow-mcp-tool SERVER/TOOL` | openai-agent | Repeatable fail-closed MCP tool allowlist                          |
+| `--reasoning-effort LEVEL` | openai-agent | Reasoning effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max` (default: `medium`) |
 | `--reasoning-summary LEVEL` | openai-agent | Responses reasoning summary: `auto`, `concise`, `detailed`, or `none` |
 | `--allow-files` / `--workspace-dir PATH` | openai-agent | Enable workspace file listing, reading, and search                 |
 | `--allow-bash` / `--allow-edit` / `--allow-web` | openai-agent | Opt into Bash plus edits, edits without Bash, or public web access |
@@ -460,6 +464,8 @@ require `--openai-workspace-root`, which must be outside the repository. Each
 scenario receives a fresh workspace nested by agent, model, and run ID.
 `--openai-reasoning-summary` applies only to `tokenrouter/openai/gpt-5.*`
 Responses models and defaults to `auto`.
+`--openai-reasoning-effort` is passed to `openai-agent` and defaults to
+`medium`; models without verified support ignore it.
 
 ---
 

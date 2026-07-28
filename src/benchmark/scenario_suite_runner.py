@@ -454,6 +454,8 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
         openai_extra_args.append("--allow-edit")
     if getattr(args, "openai_allow_web", False):
         openai_extra_args.append("--allow-web")
+    openai_reasoning_effort = getattr(args, "openai_reasoning_effort", "medium")
+    openai_extra_args.extend(["--reasoning-effort", openai_reasoning_effort])
     openai_reasoning_summary = getattr(args, "openai_reasoning_summary", "auto")
     if openai_reasoning_summary != "auto":
         openai_extra_args.extend(["--reasoning-summary", openai_reasoning_summary])
@@ -712,6 +714,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--openai-allow-web",
         action="store_true",
         help="Allow openai-agent public web search and fetch tools.",
+    )
+    parser.add_argument(
+        "--openai-reasoning-effort",
+        choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+        default="medium",
+        help=(
+            "Reasoning effort passed to openai-agent for supported models "
+            "(default: medium)."
+        ),
     )
     parser.add_argument(
         "--openai-reasoning-summary",

@@ -172,6 +172,7 @@ def test_build_model_settings_requests_responses_reasoning_summary():
 
     assert settings.reasoning is not None
     assert settings.reasoning.summary == "auto"
+    assert settings.reasoning.effort == "medium"
 
 
 def test_build_model_settings_can_disable_responses_reasoning_summary():
@@ -179,7 +180,9 @@ def test_build_model_settings_can_disable_responses_reasoning_summary():
         "tokenrouter/openai/gpt-5.6-sol", reasoning_summary=None
     )
 
-    assert settings.reasoning is None
+    assert settings.reasoning is not None
+    assert settings.reasoning.summary is None
+    assert settings.reasoning.effort == "medium"
 
 
 def test_build_model_settings_ignores_summary_for_chat_completions():
@@ -193,14 +196,27 @@ def test_build_model_settings_ignores_summary_for_chat_completions():
     [
         "tokenrouter/MiniMax-M3",
         "tokenrouter/google/gemini-3.6-flash",
+        "tokenrouter/z-ai/glm-5.2",
     ],
 )
-def test_build_model_settings_ignores_summary_for_third_party_responses(
+def test_build_model_settings_uses_effort_without_summary_for_supported_models(
     model_id,
 ):
     settings = _build_model_settings(model_id)
 
-    assert settings.reasoning is None
+    assert settings.reasoning is not None
+    assert settings.reasoning.summary is None
+    assert settings.reasoning.effort == "medium"
+
+
+def test_build_model_settings_accepts_custom_reasoning_effort():
+    settings = _build_model_settings(
+        "tokenrouter/openai/gpt-5.6-sol",
+        reasoning_effort="low",
+    )
+
+    assert settings.reasoning is not None
+    assert settings.reasoning.effort == "low"
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +334,7 @@ def test_runner_responses_model_requests_reasoning_summary(monkeypatch):
 
     assert runner._model_settings.reasoning is not None
     assert runner._model_settings.reasoning.summary == "auto"
+    assert runner._model_settings.reasoning.effort == "medium"
 
 
 def test_runner_unprefixed_model_raises():
@@ -366,6 +383,16 @@ def test_cli_collects_reasoning_summary_setting():
     args = _build_parser().parse_args(["--reasoning-summary", "detailed", "question"])
 
     assert args.reasoning_summary == "detailed"
+
+
+def test_cli_collects_reasoning_effort_setting():
+    default_args = _build_parser().parse_args(["question"])
+    custom_args = _build_parser().parse_args(
+        ["--reasoning-effort", "xhigh", "question"]
+    )
+
+    assert default_args.reasoning_effort == "medium"
+    assert custom_args.reasoning_effort == "xhigh"
 
 
 # ---------------------------------------------------------------------------
