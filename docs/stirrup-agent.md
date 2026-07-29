@@ -213,9 +213,9 @@ call and the right answer (479001600).
 
 ## Reading tool-produced files
 
-On the code track, MCP text results larger than 32,000 bytes are automatically
-written under `mcp_results/` in the active code workspace. The tool response
-returned to the model is a compact JSON handle containing the relative path,
+On the code track, MCP text results larger than 100 KiB (102,400 bytes) are
+automatically written under `mcp_results/` in the active code workspace. The
+tool response returned to the model is a compact JSON handle containing the relative path,
 tool arguments, byte count, and SHA-256 digest. `code_exec` can read that path
 directly without copying the original response through another model turn.
 The file contains the complete, unmodified MCP response—including null fields—

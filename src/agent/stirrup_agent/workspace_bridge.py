@@ -22,7 +22,7 @@ from stirrup.tools.mcp import MCPConfig, MCPToolProvider
 
 _log = logging.getLogger(__name__)
 
-DEFAULT_PERSIST_THRESHOLD_BYTES = 32_000
+DEFAULT_PERSIST_THRESHOLD_BYTES = 100 * 1024
 _ARTIFACT_DIRECTORY = "mcp_results"
 _MUTATING_TOOLS = {
     "fmsr__add_failure_modes",
