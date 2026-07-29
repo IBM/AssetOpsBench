@@ -72,8 +72,8 @@ Code execution guidance:
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace. Host filesystem paths are not
-available inside the container. The default python:3.12-slim image does not
-include scientific packages such as numpy, pandas, scipy, or matplotlib.
+available inside the container. The image might include scientific packages 
+such as numpy, pandas, scipy, or matplotlib. Verify them before relying on them.
 """
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
 The local execution workspace is a temporary directory, but commands run on the
