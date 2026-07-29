@@ -150,18 +150,29 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
 
 
 def final_answer(history: Iterable[Any], finish_params: Any) -> str:
-    """Return the finish reason, falling back to the last assistant text.
+    """Return the user-facing answer from a completed Stirrup run.
 
-    Stirrup completes a successful run by calling its ``finish`` tool, whose
-    ``reason`` field contains the authoritative result.  Assistant content on
-    that final tool-call turn is commonly empty, so preferring earlier text can
-    otherwise return a progress update instead of the completed answer.
+    ``finish.reason`` describes why the agent stopped and is not necessarily
+    the answer shown to the user.  Prefer non-empty assistant content emitted
+    alongside the ``finish`` call, while retaining the reason as a fallback for
+    agents that put no content on that turn.
     """
+    messages = _flatten(history)
+
+    for msg in reversed(messages):
+        if getattr(msg, "role", None) != "assistant":
+            continue
+        tool_calls = getattr(msg, "tool_calls", []) or []
+        if any(getattr(call, "name", None) == "finish" for call in tool_calls):
+            text = _content_text(getattr(msg, "content", "")).strip()
+            if text:
+                return text
+
     reason = getattr(finish_params, "reason", None)
     if isinstance(reason, str) and reason.strip():
         return reason.strip()
 
-    for msg in reversed(_flatten(history)):
+    for msg in reversed(messages):
         if getattr(msg, "role", None) == "assistant":
             text = _content_text(getattr(msg, "content", "")).strip()
             if text:
