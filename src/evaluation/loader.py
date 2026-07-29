@@ -13,7 +13,7 @@ _log = logging.getLogger(__name__)
 
 
 def load_trajectories(path: Path) -> list[PersistedTrajectory]:
-    """Load every ``*.json`` trajectory under ``path``.
+    """Recursively load every ``*.json`` trajectory under ``path``.
 
     ``path`` may be a directory or a single JSON file. If a trajectory has
     ``scenario_id`` set to null, the filename stem is used as a fallback.
@@ -25,7 +25,7 @@ def load_trajectories(path: Path) -> list[PersistedTrajectory]:
         return [_load_one_trajectory(p)] if p.suffix == ".json" else []
 
     out: list[PersistedTrajectory] = []
-    for child in sorted(p.glob("*.json")):
+    for child in sorted(p.rglob("*.json")):
         try:
             out.append(_load_one_trajectory(child))
         except Exception:
