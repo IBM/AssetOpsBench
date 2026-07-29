@@ -55,6 +55,31 @@ _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "python:3.12-slim")
 _RESPONSES_FALLBACK_STATUS_CODES = frozenset(
     {400, 404, 405, 415, 422, 500, 501, 502, 503, 504}
 )
+_CODE_EXEC_SYSTEM_PROMPT = """\
+Code execution guidance:
+- Treat the MCP tools as the authoritative source for asset and domain data.
+  Do not query CouchDB or other backing services directly from code.
+- Use code_exec for calculations, data transformations, workspace file
+  inspection, and result validation. Do not use it instead of an available MCP
+  tool for retrieving domain data.
+- Use relative paths within the current execution workspace. Files and other
+  workspace state persist across code_exec calls during this run.
+- Run non-interactive, bounded commands. Check that a package is installed
+  before relying on it, and use the Python standard library when practical.
+- Verify computed results before answering. Put the answer and its key evidence
+  in the finish reason; stdout and workspace files are not part of the final
+  answer by themselves.
+"""
+_DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
+The Docker execution workspace is /workspace. Host filesystem paths are not
+available inside the container. The default python:3.12-slim image does not
+include scientific packages such as numpy, pandas, scipy, or matplotlib.
+"""
+_LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
+The local execution workspace is a temporary directory, but commands run on the
+host with the current user's permissions. Keep all reads and writes inside the
+workspace and use relative paths.
+"""
 
 
 def _responses_error_status_code(exc: Exception) -> int | None:
@@ -287,6 +312,18 @@ class StirrupAgentRunner(AgentRunner):
         tools.append(self._build_mcp_provider())
         return tools
 
+    def _build_system_prompt(self) -> str:
+        """Append code-execution guidance when the code track is enabled."""
+        if not self._code_enabled:
+            return AGENT_SYSTEM_PROMPT
+
+        backend_prompt = (
+            _DOCKER_CODE_EXEC_SYSTEM_PROMPT
+            if self._code_backend == "docker"
+            else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
+        )
+        return f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+
     # -- run ---------------------------------------------------------------
 
     async def run(self, question: str) -> AgentResult:
@@ -301,7 +338,7 @@ class StirrupAgentRunner(AgentRunner):
             agent = Agent(
                 client=self._build_client(),
                 name="assetops",
-                system_prompt=AGENT_SYSTEM_PROMPT,
+                system_prompt=self._build_system_prompt(),
                 tools=self._build_tools(),
                 max_turns=self._max_turns,
             )

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from agent._prompts import AGENT_SYSTEM_PROMPT
 from agent.stirrup_agent.runner import (
     StirrupAgentRunner,
     _ResponsesThenChatClient,
@@ -99,6 +100,33 @@ def test_stirrup_runner_requires_workspace_when_preserving():
 def test_stirrup_runner_rejects_unsupported_code_backend():
     with pytest.raises(ValueError, match="code_backend"):
         StirrupAgentRunner(code_backend="e2b")
+
+
+def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
+    runner = StirrupAgentRunner(code_enabled=False)
+
+    assert runner._build_system_prompt() == AGENT_SYSTEM_PROMPT
+
+
+def test_stirrup_runner_appends_docker_code_guidance():
+    prompt = StirrupAgentRunner(code_backend="docker")._build_system_prompt()
+
+    assert prompt.startswith(AGENT_SYSTEM_PROMPT)
+    assert "Treat the MCP tools as the authoritative source" in prompt
+    assert "finish reason" in prompt
+    assert "/workspace" in prompt
+    assert "python:3.12-slim" in prompt
+    assert "host with the current user's permissions" not in prompt
+
+
+def test_stirrup_runner_appends_local_code_guidance():
+    prompt = StirrupAgentRunner(code_backend="local")._build_system_prompt()
+
+    assert prompt.startswith(AGENT_SYSTEM_PROMPT)
+    assert "code_exec" in prompt
+    assert "host with the current user's permissions" in prompt
+    assert "use relative paths" in prompt
+    assert "/workspace" not in prompt
 
 
 def test_stirrup_runner_forwards_temperature_to_litellm_client():

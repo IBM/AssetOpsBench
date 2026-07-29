@@ -141,6 +141,15 @@ Backends (`--code-backend`):
 > `local` runs model-authored code on your host with your permissions. Use it for
 > inputs you control; prefer `docker` for unattended or untrusted runs.
 
+When code execution is enabled, the runner appends backend-specific guidance to
+the shared agent prompt. It directs the model to retrieve domain data through
+the MCP tools, use `code_exec` for computation and validation, keep work inside
+the persistent execution workspace, and include verified conclusions in the
+Stirrup `finish` reason. Docker runs also identify `/workspace` and the default
+`python:3.12-slim` package limitations; local runs warn that commands execute
+with the current user's host permissions. `--no-code` keeps the shared prompt
+unchanged.
+
 ---
 
 ## Docker backend
