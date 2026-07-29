@@ -121,8 +121,8 @@ native route, `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the LiteLLM proxy, or
 
 For context management, the runner gives Stirrup a 100,000-token working-context
 budget while leaving each underlying client's 64,000 maximum-output-token default
-unchanged. The runner requests summarization at 50% of that budget, or
-approximately 50,000 tokens. This budget controls context compaction and is not
+unchanged. The runner requests summarization at 75% of that budget, or
+approximately 75,000 tokens. This budget controls context compaction and is not
 model metadata supplied by TokenRouter. When summarization occurs, the complete
 generated summary is printed during the run rather than the truncated preview
 used by Stirrup's default logger.
@@ -150,13 +150,14 @@ Backends (`--code-backend`):
 > inputs you control; prefer `docker` for unattended or untrusted runs.
 
 When code execution is enabled, the runner appends backend-specific guidance to
-the shared agent prompt. It directs the model to retrieve domain data through
-the MCP tools, prefer one inspect/analyze/verify script, avoid large workspace
-output, honor domain definitions, and follow the user's requested output format
-exactly. Docker runs also identify `/workspace` and the default image's package
-availability, including NumPy, pandas, and SciPy; local runs warn that commands
-execute with the current user's host permissions. `--no-code` keeps the shared
-prompt unchanged.
+the shared agent prompt. It directs the model to answer directly when domain
+knowledge, MCP results, or basic reasoning are sufficient; reserve `code_exec`
+for necessary computation, data processing, workspace inspection, or validation;
+and never use it for planning, comments, placeholders, or empty scripts. When
+code is needed, the prompt prefers one bounded inspect/analyze/verify script and
+small outputs. Docker runs identify `/workspace` and the installed NumPy, pandas,
+and SciPy packages; local runs warn that commands execute with the current user's
+host permissions. `--no-code` keeps the shared prompt unchanged.
 
 ---
 
@@ -178,19 +179,21 @@ Rancher Desktop must use the **dockerd (moby)** engine, not containerd.
 
 ### 2. Sandbox image with the scientific stack
 
-`python:3.12-slim` has no numpy/pandas/scipy. Build the bundled image, which adds them:
+The default image name is `assetops-code`. Build it once from the bundled
+Dockerfile, which adds NumPy, pandas, and SciPy to `python:3.12-slim`:
 
 ```bash
 docker build -f src/agent/stirrup_agent/Dockerfile.code -t assetops-code .
-export STIRRUP_CODE_IMAGE=assetops-code
 ```
+
+Set `STIRRUP_CODE_IMAGE` only when using a different tag.
 
 `Dockerfile.code`:
 
 ```dockerfile
 FROM python:3.12-slim
 RUN pip install --no-cache-dir \
-    "numpy>=1.24" "pandas>=2.0" "scipy>=1.10" "matplotlib>=3.7"
+    "numpy>=1.24" "pandas>=2.0" "scipy>=1.10"
 ```
 
 ### 3. Run
@@ -213,20 +216,23 @@ call and the right answer (479001600).
 
 ## Reading tool-produced files
 
-On the code track, MCP text results larger than 100 KiB (102,400 bytes) are
+On the code track, MCP text results larger than 100 KiB (102,400 UTF-8 bytes) are
 automatically written under `mcp_results/` in the active code workspace. The
-tool response returned to the model is a compact JSON handle containing the relative path,
-tool arguments, byte count, and SHA-256 digest. `code_exec` can read that path
-directly without copying the original response through another model turn.
+tool response returned to the model is a compact JSON handle containing the
+relative path, tool arguments, byte count, and SHA-256 digest. `code_exec` can
+read that path directly without copying the original response through another
+model turn.
 The file contains the complete, unmodified MCP response—including null fields—
 rather than a projected subset. Code should extract only the needed fields or
 aggregates and must not print the whole artifact back into model context.
 
-Identical read calls reuse the existing artifact. Successful work-order mutation
-and catalog mutation tools invalidate the read cache so later reads observe
-updated domain state. Artifacts are content-addressed, so a refreshed response
-does not overwrite an earlier snapshot. Smaller responses remain inline, and
-persistence failures safely fall back to the original inline MCP result.
+Within one agent run, identical read calls reuse an intact existing artifact.
+Successful work-order mutations, catalog mutations, and TSFM run-producing tools
+clear the read cache so later reads observe their changes. This is a run-local
+snapshot cache; it does not detect updates made externally during the run.
+Artifacts are content-addressed, so a refreshed response does not overwrite an
+earlier snapshot. Smaller responses remain inline, and persistence failures
+safely fall back to the original inline MCP result.
 
 For example:
 
@@ -351,7 +357,7 @@ uv run stirrup-agent --no-code --run-id stirrup-smoke --scenario-id 101 \
 | ------- | ----------- |
 | `docker.errors.DockerException: Error while fetching server API version ... FileNotFoundError` | SDK can't find the daemon socket. `export DOCKER_HOST=unix://<path from 'docker context inspect | grep Host'>`. |
 | Docker connects but `code_exec` hits `ModuleNotFoundError` | Sandbox image lacks the library; build/point `STIRRUP_CODE_IMAGE` at `assetops-code` (or an image with the stack). |
-| Agent's code can't open a tool-produced file path in Docker | Expected — the host path isn't in the sandbox. Use `--code-backend local` for file-reading scenarios. |
+| Agent code cannot open a server-returned dataset or result file pointer in Docker | Those host-side pointers are separate from automatically bridged `mcp_results/` snapshots. Use an MCP tool that consumes the pointer, or use `--code-backend local` when direct host-file access is required. |
 | `uv sync` fails to resolve | A pin (e.g. `litellm==...`) clashing with Stirrup's range; relax to a compatible range. |
 | `stirrup` import errors | `stirrup[mcp,litellm,docker]` not installed; re-run `uv sync`. |
 | A server missing from the tool list | Its subprocess failed to start (missing CouchDB creds for `iot`/`wo`/`vibration`, or model load for `tsfm`). |
@@ -362,7 +368,8 @@ uv run stirrup-agent --no-code --run-id stirrup-smoke --scenario-id 101 \
 
 - `src/agent/stirrup_agent/` — runner, trajectory mapping, workspace bridging,
   CLI, Docker image, and focused tests.
+- `src/agent/_prompts.py` — concise enforcement of user-requested response formats.
 - `pyproject.toml` — `stirrup[mcp,litellm,docker]` dependency and the `stirrup-agent`
   entry point.
 
-No other parts of the repo are modified; the MCP servers are unchanged.
+The MCP servers themselves are unchanged.
