@@ -47,8 +47,53 @@ def test_parse_noisy_count_answer():
     assert parse_structured_answer("The answer is 34.") == 34
 
 
+def test_parse_noisy_count_answer_prefers_final_standalone_number():
+    raw = (
+        "I checked the work orders and found no normal-operation jobs "
+        "(such as tramming or normal machine movement) that should be counted.\n\n"
+        "0"
+    )
+
+    assert parse_structured_answer(raw) == 0
+
+
+def test_count_answer_compares_final_number_not_parenthetical_text():
+    score = evaluate_static_json(
+        "0",
+        (
+            "I checked the work orders and found no normal-operation jobs "
+            "(such as tramming or normal machine movement) that should be counted.\n\n"
+            "0"
+        ),
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.f1 == 1.0
+    assert score.details[0].model_value == "0"
+
+
+def test_count_answer_with_wrong_final_number_fails_against_final_number():
+    score = evaluate_static_json(
+        "52",
+        (
+            'One work order mentions both "engine" and "motor"; this concerns '
+            "an engine (the engine fan), so it counts as an engine job.\n\n"
+            "55"
+        ),
+    )
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.details[0].model_value == "55"
+
+
 def test_parse_fault_code_as_categorical_string():
     assert parse_structured_answer("FC101") == "FC101"
+
+
+def test_parse_json_object_after_parenthetical_text():
+    raw = 'The dataset is ambiguous (no asset is specified).\n\n{"clarification": "Which asset?"}'
+
+    assert parse_structured_answer(raw) == {"clarification": "Which asset?"}
 
 
 def test_choice_answer_accepts_final_standalone_letter_after_explanation():
