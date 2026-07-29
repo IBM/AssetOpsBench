@@ -121,8 +121,8 @@ native route, `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the LiteLLM proxy, or
 
 For context management, the runner gives Stirrup a 100,000-token working-context
 budget while leaving each underlying client's 64,000 maximum-output-token default
-unchanged. The runner requests summarization at 75% of that budget, or
-approximately 75,000 tokens. This budget controls context compaction and is not
+unchanged. The runner requests summarization at 50% of that budget, or
+approximately 50,000 tokens. This budget controls context compaction and is not
 model metadata supplied by TokenRouter. When summarization occurs, the complete
 generated summary is printed during the run rather than the truncated preview
 used by Stirrup's default logger.
