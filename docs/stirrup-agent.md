@@ -223,8 +223,9 @@ relative path, tool arguments, byte count, and SHA-256 digest. `code_exec` can
 read that path directly without copying the original response through another
 model turn.
 The file contains the complete, unmodified MCP response—including null fields—
-rather than a projected subset. Code should extract only the needed fields or
-aggregates and must not print the whole artifact back into model context.
+rather than a projected subset. Code should inspect only the schema, counts, a
+small sample, or the specific rows or fields needed, then process the artifact
+in place. Artifacts larger than 1 MB must not be printed in full.
 
 Within one agent run, identical read calls reuse an intact existing artifact.
 Successful work-order mutations, catalog mutations, and TSFM run-producing tools
