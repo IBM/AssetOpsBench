@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from agent._prompts import AGENT_SYSTEM_PROMPT
+from agent.stirrup_agent.finish_tool import ASSETOPS_FINISH_TOOL
 from agent.stirrup_agent.runner import (
     StirrupAgentRunner,
     _CONTEXT_SUMMARIZATION_CUTOFF,
@@ -73,6 +74,13 @@ class _Tool:
 @dataclass
 class _Finish:
     reason: str
+
+
+@dataclass
+class _StructuredFinish:
+    answer: str
+    reason: str = ""
+    paths: list[str] = field(default_factory=list)
 
 
 def test_classify_tool():
@@ -240,6 +248,19 @@ def test_final_answer_prefers_finish_turn_content_over_finish_reason():
     )
 
 
+def test_final_answer_prefers_structured_finish_answer_over_turn_content():
+    history = [
+        [
+            _Assistant(
+                content="Task complete.",
+                tool_calls=[_TC("finish", '{"answer":"42"}', "f1")],
+            )
+        ]
+    ]
+
+    assert final_answer(history, _StructuredFinish(answer="42")) == "42"
+
+
 def test_final_answer_uses_finish_reason_when_finish_turn_content_is_empty():
     history = [
         [_Assistant(content="I will inspect the work orders.")],
@@ -298,6 +319,7 @@ async def test_run_repairs_answer_and_persists_both_fields(
     class _FakeAgent:
         def __init__(self, **kwargs):
             assert kwargs["client"] is client
+            assert kwargs["finish_tool"] is ASSETOPS_FINISH_TOOL
 
         def session(self):
             return self
@@ -332,3 +354,53 @@ async def test_run_repairs_answer_and_persists_both_fields(
     persist.assert_called_once()
     assert persist.call_args.kwargs["answer"] == result.answer
     assert persist.call_args.kwargs["answer_repair"] == '{"count":7}'
+
+
+@pytest.mark.anyio
+async def test_run_uses_structured_finish_without_repair_call(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner_module = importlib.import_module("agent.stirrup_agent.runner")
+    client = object()
+    history = [
+        [
+            _Assistant(
+                content="Task complete.",
+                tool_calls=[_TC("finish", '{"answer":"[1,2]"}', "f1")],
+            )
+        ]
+    ]
+
+    class _FakeAgent:
+        def __init__(self, **kwargs):
+            assert kwargs["client"] is client
+            assert kwargs["finish_tool"] is ASSETOPS_FINISH_TOOL
+
+        def session(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            return None
+
+        async def run(self, question):
+            return _StructuredFinish(answer="[1,2]"), history, {}
+
+    repair = AsyncMock(return_value="should not be used")
+    persist = MagicMock()
+    monkeypatch.setattr("stirrup.Agent", _FakeAgent)
+    monkeypatch.setattr(runner_module, "repair_answer", repair)
+    monkeypatch.setattr(runner_module, "persist_trajectory", persist)
+
+    runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
+    monkeypatch.setattr(runner, "_build_client", lambda: client)
+    monkeypatch.setattr(runner, "_build_tools", lambda: [])
+
+    result = await runner.run("Return a JSON array.")
+
+    assert result.answer == "[1,2]"
+    repair.assert_not_awaited()
+    assert persist.call_args.kwargs["answer"] == "[1,2]"
+    assert persist.call_args.kwargs["answer_repair"] == "[1,2]"
