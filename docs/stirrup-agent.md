@@ -119,6 +119,13 @@ Required env vars match the rest of the repo: the standard watsonx vars for the
 native route, `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the LiteLLM proxy, or
 `TOKENROUTER_BASE_URL` / `TOKENROUTER_API_KEY` for TokenRouter.
 
+For context management, the runner assumes every configured model has a
+1,000,000-token context window. A client adapter reports that value to
+Stirrup's summarization logic while leaving each underlying client's 64,000
+maximum-output-token default unchanged. The runner requests summarization at
+85% context usage, or approximately 850,000 tokens. This is a benchmark
+assumption rather than model metadata supplied by TokenRouter.
+
 ---
 
 ## Code execution tracks
@@ -146,9 +153,8 @@ the shared agent prompt. It directs the model to retrieve domain data through
 the MCP tools, use `code_exec` for computation and validation, keep work inside
 the persistent execution workspace, and include verified conclusions in the
 Stirrup `finish` reason. Docker runs also identify `/workspace` and the default
-`python:3.12-slim` package limitations; local runs warn that commands execute
-with the current user's host permissions. `--no-code` keeps the shared prompt
-unchanged.
+image's package availability; local runs warn that commands execute with the
+current user's host permissions. `--no-code` keeps the shared prompt unchanged.
 
 ---
 

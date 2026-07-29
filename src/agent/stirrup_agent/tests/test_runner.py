@@ -115,7 +115,8 @@ def test_stirrup_runner_appends_docker_code_guidance():
     assert "Treat the MCP tools as the authoritative source" in prompt
     assert "finish reason" in prompt
     assert "/workspace" in prompt
-    assert "python:3.12-slim" in prompt
+    assert "scientific packages" in prompt
+    assert "Verify them before relying on them" in prompt
     assert "host with the current user's permissions" not in prompt
 
 
@@ -138,9 +139,11 @@ def test_stirrup_runner_forwards_temperature_to_litellm_client():
 
     client = runner._build_client()
 
-    assert client._kwargs == {"temperature": 0.2}
-    assert client._reasoning_effort == "high"
-    assert client.max_tokens == 64_000
+    provider_client = client._client
+    assert provider_client._kwargs == {"temperature": 0.2}
+    assert provider_client._reasoning_effort == "high"
+    assert provider_client.max_tokens == 64_000
+    assert client.max_tokens == 1_000_000
 
 
 def test_stirrup_runner_forwards_temperature_to_router_client(
@@ -160,13 +163,15 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
     from stirrup.clients.chat_completions_client import ChatCompletionsClient
     from stirrup.clients.open_responses_client import OpenResponsesClient
 
-    assert isinstance(client._responses_client, OpenResponsesClient)
-    assert isinstance(client._chat_client, ChatCompletionsClient)
-    assert client._responses_client._kwargs == {"temperature": 0.2}
-    assert client._chat_client._kwargs == {"temperature": 0.2}
-    assert client._responses_client._reasoning_effort == "medium"
-    assert client._chat_client._reasoning_effort == "medium"
-    assert client.max_tokens == 64_000
+    router_client = client._client
+    assert isinstance(router_client._responses_client, OpenResponsesClient)
+    assert isinstance(router_client._chat_client, ChatCompletionsClient)
+    assert router_client._responses_client._kwargs == {"temperature": 0.2}
+    assert router_client._chat_client._kwargs == {"temperature": 0.2}
+    assert router_client._responses_client._reasoning_effort == "medium"
+    assert router_client._chat_client._reasoning_effort == "medium"
+    assert router_client.max_tokens == 64_000
+    assert client.max_tokens == 1_000_000
 
 
 class _FakeClient:
