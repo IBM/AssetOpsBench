@@ -119,6 +119,14 @@ Required env vars match the rest of the repo: the standard watsonx vars for the
 native route, `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the LiteLLM proxy, or
 `TOKENROUTER_BASE_URL` / `TOKENROUTER_API_KEY` for TokenRouter.
 
+For Claude models routed through `litellm_proxy/`, the runner requests provider
+prompt caching from the client side, so no LiteLLM proxy configuration is
+required. It adds cache checkpoints to the first and trailing conversation
+messages; `aws/` and `bedrock/` aliases also cache the tool configuration. The
+checkpoints use the provider's default ephemeral lifetime. Prompt caching is
+not injected for TokenRouter or Gemini/Vertex routes: Vertex explicit caching
+rejects the separate instructions and tools used by this Stirrup workflow.
+
 For context management, the runner assumes every configured model has a
 1,000,000-token context window. A client adapter reports that value to
 Stirrup's summarization logic while leaving each underlying client's 64,000
