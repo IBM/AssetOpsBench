@@ -42,6 +42,7 @@ from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
+from .answer_repair import repair_answer
 from .trajectory import build_trajectory, classify_tool, final_answer
 
 _log = logging.getLogger(__name__)
@@ -341,8 +342,9 @@ class StirrupAgentRunner(AgentRunner):
             run_started = time.perf_counter()
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
 
+            client = self._build_client()
             agent = Agent(
-                client=self._build_client(),
+                client=client,
                 name="assetops",
                 system_prompt=self._build_system_prompt(),
                 tools=self._build_tools(),
@@ -366,6 +368,12 @@ class StirrupAgentRunner(AgentRunner):
             trajectory = build_trajectory(history)
             trajectory.started_at = started_at
             answer = final_answer(history, finish_params)
+            answer_repair = await repair_answer(
+                client,
+                question=question,
+                answer=answer,
+                trajectory=trajectory,
+            )
 
             self._annotate_span(span, trajectory, answer, run_started)
             persist_trajectory(
@@ -373,6 +381,7 @@ class StirrupAgentRunner(AgentRunner):
                 model=self._model_id,
                 question=question,
                 answer=answer,
+                answer_repair=answer_repair,
                 trajectory=trajectory,
             )
             return AgentResult(question=question, answer=answer, trajectory=trajectory)

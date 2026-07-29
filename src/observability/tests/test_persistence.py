@@ -89,6 +89,7 @@ def test_persist_writes_file(monkeypatch, tmp_path: Path):
     assert record["model"] == "litellm_proxy/aws/claude-opus-4-6"
     assert record["question"] == "what sensors?"
     assert record["answer"] == "CH-6 has sensors"
+    assert "answer_repair" not in record
     assert record["trajectory"]["turns"][0]["text"] == "hello"
     assert record["trajectory"]["turns"][0]["tool_calls"][0]["name"] == "sensors"
 
@@ -116,6 +117,24 @@ def test_persist_serializes_list_trajectory(monkeypatch, tmp_path: Path):
     assert record["trajectory"] == [
         {"step_number": 1, "task": "do thing", "success": True}
     ]
+
+
+def test_persist_writes_optional_answer_repair(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("AGENT_TRAJECTORY_DIR", str(tmp_path))
+    set_run_context(run_id="repair-1")
+
+    out = persist_trajectory(
+        runner_name="stirrup-agent",
+        model="litellm_proxy/aws/claude-opus-4-8",
+        question="Return a JSON array.",
+        answer="The task is complete.",
+        answer_repair='["PMP-01"]',
+        trajectory=_FakeTrajectory(),
+    )
+
+    record = json.loads(out.read_text())
+    assert record["answer"] == "The task is complete."
+    assert record["answer_repair"] == '["PMP-01"]'
 
 
 def test_persist_skips_when_no_run_id(monkeypatch, tmp_path: Path, caplog):

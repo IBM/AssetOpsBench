@@ -7,8 +7,10 @@ they run without Stirrup, the MCP servers, Docker, or a model.
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass, field
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -269,3 +271,64 @@ def test_arguments_parsed_when_already_dict():
     ]
     traj = build_trajectory(history)
     assert traj.all_tool_calls[0].input == {"asset": "CH6"}
+
+
+@pytest.mark.anyio
+async def test_run_repairs_answer_and_persists_both_fields(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner_module = importlib.import_module("agent.stirrup_agent.runner")
+    client = object()
+    history = [
+        [
+            _Assistant(
+                content="calculating",
+                tool_calls=[_TC("code_exec", '{"cmd":"calculate"}', "c1")],
+            ),
+            _Tool(content="FINAL=7", tool_call_id="c1", name="code_exec"),
+        ],
+        [
+            _Assistant(
+                content='The requested result is {"count":7}.',
+                tool_calls=[_TC("finish", '{"reason":"done"}', "f1")],
+            )
+        ],
+    ]
+
+    class _FakeAgent:
+        def __init__(self, **kwargs):
+            assert kwargs["client"] is client
+
+        def session(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            return None
+
+        async def run(self, question):
+            assert question == "Return a JSON object."
+            return _Finish("run complete"), history, {}
+
+    repair = AsyncMock(return_value='{"count":7}')
+    persist = MagicMock()
+    monkeypatch.setattr("stirrup.Agent", _FakeAgent)
+    monkeypatch.setattr(runner_module, "repair_answer", repair)
+    monkeypatch.setattr(runner_module, "persist_trajectory", persist)
+
+    runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
+    monkeypatch.setattr(runner, "_build_client", lambda: client)
+    monkeypatch.setattr(runner, "_build_tools", lambda: [])
+
+    result = await runner.run("Return a JSON object.")
+
+    assert result.answer == 'The requested result is {"count":7}.'
+    repair.assert_awaited_once()
+    assert repair.await_args.args == (client,)
+    assert repair.await_args.kwargs["question"] == "Return a JSON object."
+    assert repair.await_args.kwargs["answer"] == result.answer
+    persist.assert_called_once()
+    assert persist.call_args.kwargs["answer"] == result.answer
+    assert persist.call_args.kwargs["answer_repair"] == '{"count":7}'

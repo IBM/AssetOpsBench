@@ -16,6 +16,7 @@ def evaluate(
     default_scoring_method: str = "llm_judge",
     judge_model: str | None = None,
     scenario_ids: Collection[str] | None = None,
+    answer_field: str = "answer",
 ) -> EvalReport:
     """Load, score, and aggregate.
 
@@ -25,6 +26,7 @@ def evaluate(
     return Evaluator(
         default_scorer=default_scoring_method,
         judge_model=judge_model,
+        answer_field=answer_field,
     ).evaluate(
         trajectories_path=trajectories_path,
         scenarios_paths=scenarios_paths,

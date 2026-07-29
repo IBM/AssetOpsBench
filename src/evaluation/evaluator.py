@@ -35,9 +35,15 @@ class Evaluator:
         self,
         default_scorer: str = "llm_judge",
         judge_model: str | None = None,
+        answer_field: str = "answer",
     ) -> None:
+        if answer_field not in {"answer", "answer_repair"}:
+            raise ValueError(
+                "answer_field must be either 'answer' or 'answer_repair'"
+            )
         self.default_scorer = default_scorer
         self.judge_model = judge_model
+        self.answer_field = answer_field
 
     def evaluate(
         self,
@@ -65,7 +71,7 @@ class Evaluator:
         scorer = self._resolve(name)
         self._validate_judge_model(name, traj)
         trajectory_text = _trajectory_to_text(traj)
-        answer = _strip_think_blocks(traj.answer)
+        answer = _strip_think_blocks(self._selected_answer(traj))
         score = scorer(scenario, answer, trajectory_text)
 
         return ScenarioResult(
@@ -79,6 +85,15 @@ class Evaluator:
             score=score,
             ops=metrics_from_trajectory(traj),
         )
+
+    def _selected_answer(self, traj: PersistedTrajectory) -> str:
+        value = getattr(traj, self.answer_field, None)
+        if not isinstance(value, str):
+            raise ValueError(
+                f"trajectory '{traj.run_id}' has no string-valued "
+                f"'{self.answer_field}' field"
+            )
+        return value
 
     @staticmethod
     def _resolve(name: str) -> Scorer:

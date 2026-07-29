@@ -62,6 +62,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "Default: llm_judge.",
     )
     p.add_argument(
+        "--answer-field",
+        choices=("answer", "answer_repair"),
+        default="answer",
+        help=(
+            "Trajectory field to score as the final answer. "
+            "Default: answer."
+        ),
+    )
+    p.add_argument(
         "--judge-model",
         default=None,
         help="Model id for the LLM-As-Judge scorer (e.g. "
@@ -124,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     report = Evaluator(
         default_scorer=args.scorer_default,
         judge_model=args.judge_model,
+        answer_field=args.answer_field,
     ).evaluate(
         trajectories_path=args.trajectories,
         scenarios_paths=list(args.scenarios),
