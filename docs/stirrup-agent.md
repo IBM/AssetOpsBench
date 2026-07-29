@@ -25,7 +25,7 @@ Unlike the other runners, Stirrup is a **code-capable** agent — it can write a
 
 - **In-process Python library**, so it integrates like `deep-agent` (no subprocess, no session-file parsing). The runner maps Stirrup's returned message history straight into the shared `Trajectory`.
 - **Native LiteLLM client**, so `watsonx/...` and other `<provider>/<model>` strings work directly; the `litellm_proxy/` prefix is also supported.
-- **Sandboxed code execution** out of the box (local / Docker / E2B).
+- **Code execution** through local or Docker backends.
 - **MCP client support**, so it connects to the same six AssetOpsBench servers as every other runner.
 
 ---
@@ -113,14 +113,18 @@ The runner's default model is
 | `--model-id` prefix     | Client                          | Notes                                                       |
 | ----------------------- | ------------------------------- | ----------------------------------------------------------- |
 | `<provider>/<model>`    | Stirrup `LiteLLMClient`         | Native LiteLLM. `watsonx/...`, `anthropic/...`, etc. work directly. |
-| `litellm_proxy/<model>` | Stirrup `ChatCompletionsClient` | Points at the LiteLLM proxy (OpenAI-compatible).            |
+| `litellm_proxy/` or `tokenrouter/` | `OpenResponsesClient`, then `ChatCompletionsClient` | Prefer Responses; fall back when unsupported or unavailable after retries. |
 
 Required env vars match the rest of the repo: the standard watsonx vars for the
-native route, or `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the proxy route.
+native route, `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the LiteLLM proxy, or
+`TOKENROUTER_BASE_URL` / `TOKENROUTER_API_KEY` for TokenRouter.
 
-> **Output-token cap.** Stirrup forwards `--max-tokens` as the completion's
-> *max output tokens*. watsonx caps new tokens at 100k, so keep `--max-tokens`
-> below that. Default is `16384`.
+For context management, the runner assumes every configured model has a
+1,000,000-token context window. A client adapter reports that value to
+Stirrup's summarization logic while leaving each underlying client's 64,000
+maximum-output-token default unchanged. The runner requests summarization at
+85% context usage, or approximately 850,000 tokens. This is a benchmark
+assumption rather than model metadata supplied by TokenRouter.
 
 ---
 
@@ -140,10 +144,17 @@ Backends (`--code-backend`):
 | -------- | --------- | ------------------------------- | ------------------------------------------------- |
 | `docker` | full      | none (container filesystem)     | unattended runs; the default                      |
 | `local`  | none      | reads host paths directly       | development / trusted inputs; fastest, no Docker  |
-| `e2b`    | full      | remote sandbox                  | hosted execution                                  |
 
 > `local` runs model-authored code on your host with your permissions. Use it for
 > inputs you control; prefer `docker` for unattended or untrusted runs.
+
+When code execution is enabled, the runner appends backend-specific guidance to
+the shared agent prompt. It directs the model to retrieve domain data through
+the MCP tools, use `code_exec` for computation and validation, keep work inside
+the persistent execution workspace, and include verified conclusions in the
+Stirrup `finish` reason. Docker runs also identify `/workspace` and the default
+image's package availability; local runs warn that commands execute with the
+current user's host permissions. `--no-code` keeps the shared prompt unchanged.
 
 ---
 
@@ -232,9 +243,9 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | --------------------- | ------------------------------------------------------------------------------------ |
 | `--code-enabled`      | Enable code execution (default). The code track.                                     |
 | `--no-code`           | Tools-only; comparable to the other runners.                                         |
-| `--code-backend`      | `docker` (default), `local`, or `e2b`.                                               |
+| `--code-backend`      | `docker` (default) or `local`.                                                        |
 | `--max-turns N`       | Max agent turns (default: 30).                                                       |
-| `--max-tokens N`      | Max output tokens per model call; keep under the provider limit (default: 16384).    |
+| `--reasoning-effort LEVEL` | Reasoning effort (`none` through `xhigh`, or `default`); provider default when omitted. |
 | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
 | `--preserve-workspace` | Copy final code-execution files into `--workspace-dir` before cleanup.              |
 
@@ -302,7 +313,6 @@ uv run stirrup-agent --no-code --run-id stirrup-smoke --scenario-id 101 \
 
 | Symptom | Cause / fix |
 | ------- | ----------- |
-| `WatsonxException ... number of new tokens 200000 ... exceeds the limit of 100000` | `--max-tokens` too high; keep under 100k (default 16384). |
 | `docker.errors.DockerException: Error while fetching server API version ... FileNotFoundError` | SDK can't find the daemon socket. `export DOCKER_HOST=unix://<path from 'docker context inspect | grep Host'>`. |
 | Docker connects but `code_exec` hits `ModuleNotFoundError` | Sandbox image lacks the library; build/point `STIRRUP_CODE_IMAGE` at `assetops-code` (or an image with the stack). |
 | Agent's code can't open a tool-produced file path in Docker | Expected — the host path isn't in the sandbox. Use `--code-backend local` for file-reading scenarios. |
