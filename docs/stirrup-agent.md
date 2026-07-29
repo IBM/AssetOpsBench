@@ -151,11 +151,12 @@ Backends (`--code-backend`):
 
 When code execution is enabled, the runner appends backend-specific guidance to
 the shared agent prompt. It directs the model to retrieve domain data through
-the MCP tools, normally limit `code_exec` to inspect/analyze/verify, avoid large
-workspace output, honor domain definitions, and follow the user's requested
-output format exactly. Docker runs also identify `/workspace` and the default
-image's package availability; local runs warn that commands execute with the
-current user's host permissions. `--no-code` keeps the shared prompt unchanged.
+the MCP tools, prefer one inspect/analyze/verify script, avoid large workspace
+output, honor domain definitions, and follow the user's requested output format
+exactly. Docker runs also identify `/workspace` and the default image's package
+availability, including NumPy, pandas, and SciPy; local runs warn that commands
+execute with the current user's host permissions. `--no-code` keeps the shared
+prompt unchanged.
 
 ---
 
