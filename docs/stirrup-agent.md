@@ -113,18 +113,19 @@ The runner's default model is
 | `--model-id` prefix     | Client                          | Notes                                                       |
 | ----------------------- | ------------------------------- | ----------------------------------------------------------- |
 | `<provider>/<model>`    | Stirrup `LiteLLMClient`         | Native LiteLLM. `watsonx/...`, `anthropic/...`, etc. work directly. |
-| `litellm_proxy/` or `tokenrouter/` | `OpenResponsesClient`, then `ChatCompletionsClient` | Prefer Responses; fall back when unsupported or unavailable after retries. |
+| `litellm_proxy/` or `tokenrouter/` | `ChatCompletionsClient` | Uses only the OpenAI-compatible Chat Completions API. |
 
 Required env vars match the rest of the repo: the standard watsonx vars for the
 native route, `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the LiteLLM proxy, or
 `TOKENROUTER_BASE_URL` / `TOKENROUTER_API_KEY` for TokenRouter.
 
-For context management, the runner assumes every configured model has a
-1,000,000-token context window. A client adapter reports that value to
-Stirrup's summarization logic while leaving each underlying client's 64,000
-maximum-output-token default unchanged. The runner requests summarization at
-85% context usage, or approximately 850,000 tokens. This is a benchmark
-assumption rather than model metadata supplied by TokenRouter.
+For context management, the runner gives Stirrup a 100,000-token working-context
+budget while leaving each underlying client's 64,000 maximum-output-token default
+unchanged. The runner requests summarization at 75% of that budget, or
+approximately 75,000 tokens. This budget controls context compaction and is not
+model metadata supplied by TokenRouter. When summarization occurs, the complete
+generated summary is printed during the run rather than the truncated preview
+used by Stirrup's default logger.
 
 ---
 
@@ -209,6 +210,40 @@ call and the right answer (479001600).
 
 ---
 
+## Reading tool-produced files
+
+On the code track, MCP text results larger than 32,000 bytes are automatically
+written under `mcp_results/` in the active code workspace. The tool response
+returned to the model is a compact JSON handle containing the relative path,
+tool arguments, byte count, and SHA-256 digest. `code_exec` can read that path
+directly without copying the original response through another model turn.
+The file contains the complete, unmodified MCP response—including null fields—
+rather than a projected subset. Code should extract only the needed fields or
+aggregates and must not print the whole artifact back into model context.
+
+Identical read calls reuse the existing artifact. Successful work-order mutation
+and catalog mutation tools invalidate the read cache so later reads observe
+updated domain state. Artifacts are content-addressed, so a refreshed response
+does not overwrite an earlier snapshot. Smaller responses remain inline, and
+persistence failures safely fall back to the original inline MCP result.
+
+For example:
+
+```bash
+python3 - <<'PY'
+import json
+
+with open("mcp_results/wo__list_workorders_<query-id>_<content-id>.json") as f:
+    result = json.load(f)
+
+print(len(result["work_orders"]))
+PY
+```
+
+The workspace is temporary unless `--preserve-workspace` is enabled.
+
+---
+
 ## Preserving code workspaces
 
 By default, Stirrup creates a temporary execution directory for `code_exec` and
@@ -249,7 +284,7 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
 | `--preserve-workspace` | Copy final code-execution files into `--workspace-dir` before cleanup.              |
 
-Environment variable: `STIRRUP_CODE_IMAGE` (Docker image; default `python:3.12-slim`).
+Environment variable: `STIRRUP_CODE_IMAGE` (Docker image; default `assetops-code`).
 
 ---
 
@@ -324,8 +359,8 @@ uv run stirrup-agent --no-code --run-id stirrup-smoke --scenario-id 101 \
 
 ## What was added
 
-- `src/agent/stirrup_agent/` — `runner.py`, `cli.py`, `trajectory.py`, `__init__.py`,
-  `Dockerfile.code`, and `tests/test_runner.py`.
+- `src/agent/stirrup_agent/` — runner, trajectory mapping, workspace bridging,
+  CLI, Docker image, and focused tests.
 - `pyproject.toml` — `stirrup[mcp,litellm,docker]` dependency and the `stirrup-agent`
   entry point.
 
