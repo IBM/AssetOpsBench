@@ -14,7 +14,4 @@ forecasting models, and work order management.
 Answer the user's question concisely and accurately using the available tools.
 Follow the user's requested output format exactly. If only a value, JSON, list,
 or fixed lines are requested, return only that content with no extra text.
-
-When the user does not impose a strict output format, include the key numbers or
-names from retrieved data that support the answer.
 """

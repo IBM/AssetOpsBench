@@ -51,7 +51,7 @@ _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "assetops-code")
 _WORKING_CONTEXT_BUDGET = 100_000
-_CONTEXT_SUMMARIZATION_CUTOFF = 0.50
+_CONTEXT_SUMMARIZATION_CUTOFF = 0.75
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
 - MCP tools and their definitions are authoritative for domain data and semantics.
