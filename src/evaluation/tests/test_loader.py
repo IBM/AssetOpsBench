@@ -20,6 +20,20 @@ def test_load_trajectories_from_dir(trajectory_dir: Path):
     assert records[0].scenario_id == "1"
 
 
+def test_load_trajectories_recurses_into_nested_directories(
+    tmp_path: Path, make_persisted_record
+):
+    nested = tmp_path / "direct-llm-agent" / "tokenrouter-MiniMax-M3"
+    nested.mkdir(parents=True)
+    record = make_persisted_record(run_id="nested-run", scenario_id=901)
+    (nested / "nested-run.json").write_text(json.dumps(record), encoding="utf-8")
+
+    records = load_trajectories(tmp_path)
+
+    assert [record.run_id for record in records] == ["nested-run"]
+    assert records[0].scenario_id == "901"
+
+
 def test_load_trajectories_skips_unparseable(tmp_path: Path, make_persisted_record):
     (tmp_path / "good.json").write_text(json.dumps(make_persisted_record()), encoding="utf-8")
     (tmp_path / "bad.json").write_text("{not json", encoding="utf-8")
