@@ -64,9 +64,10 @@ Code execution:
   equivalent experiments; correct failures directly.
 - Stay inside the execution workspace and use relative paths. Workspace state
   persists across code_exec calls.
-- For artifacts, inspect only schema, counts, or a tiny sample, then process in
-  place. Never print whole files, large record lists, or long diagnostics. Reuse
-  snapshots unless domain state changed.
+- For artifacts, inspect only the schema, counts, a small sample, or the specific
+  fields or records needed; process the full artifact in place. Never print an
+  entire artifact, large record lists, or verbose diagnostics. Reuse snapshots
+  unless domain state has changed.
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace. Host filesystem paths are not
