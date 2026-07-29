@@ -42,8 +42,7 @@ from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
-from .answer_repair import repair_answer
-from .finish_tool import ASSETOPS_FINISH_TOOL, structured_finish_answer
+from .finish_tool import ASSETOPS_FINISH_TOOL
 from .trajectory import build_trajectory, classify_tool, final_answer
 
 _log = logging.getLogger(__name__)
@@ -370,15 +369,10 @@ class StirrupAgentRunner(AgentRunner):
             trajectory = build_trajectory(history)
             trajectory.started_at = started_at
             answer = final_answer(history, finish_params)
-            if structured_finish_answer(finish_params) is not None:
-                answer_repair = answer
-            else:
-                answer_repair = await repair_answer(
-                    client,
-                    question=question,
-                    answer=answer,
-                    trajectory=trajectory,
-                )
+            # Keep the persisted field available for evaluator compatibility,
+            # but disable the post-run repair model call while the structured
+            # finish-answer contract is being evaluated.
+            answer_repair = answer
 
             self._annotate_span(span, trajectory, answer, run_started)
             persist_trajectory(

@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -295,7 +295,7 @@ def test_arguments_parsed_when_already_dict():
 
 
 @pytest.mark.anyio
-async def test_run_repairs_answer_and_persists_both_fields(
+async def test_run_copies_legacy_answer_without_repair(
     monkeypatch: pytest.MonkeyPatch,
 ):
     runner_module = importlib.import_module("agent.stirrup_agent.runner")
@@ -334,10 +334,8 @@ async def test_run_repairs_answer_and_persists_both_fields(
             assert question == "Return a JSON object."
             return _Finish("run complete"), history, {}
 
-    repair = AsyncMock(return_value='{"count":7}')
     persist = MagicMock()
     monkeypatch.setattr("stirrup.Agent", _FakeAgent)
-    monkeypatch.setattr(runner_module, "repair_answer", repair)
     monkeypatch.setattr(runner_module, "persist_trajectory", persist)
 
     runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
@@ -347,13 +345,9 @@ async def test_run_repairs_answer_and_persists_both_fields(
     result = await runner.run("Return a JSON object.")
 
     assert result.answer == 'The requested result is {"count":7}.'
-    repair.assert_awaited_once()
-    assert repair.await_args.args == (client,)
-    assert repair.await_args.kwargs["question"] == "Return a JSON object."
-    assert repair.await_args.kwargs["answer"] == result.answer
     persist.assert_called_once()
     assert persist.call_args.kwargs["answer"] == result.answer
-    assert persist.call_args.kwargs["answer_repair"] == '{"count":7}'
+    assert persist.call_args.kwargs["answer_repair"] == result.answer
 
 
 @pytest.mark.anyio
@@ -388,10 +382,8 @@ async def test_run_uses_structured_finish_without_repair_call(
         async def run(self, question):
             return _StructuredFinish(answer="[1,2]"), history, {}
 
-    repair = AsyncMock(return_value="should not be used")
     persist = MagicMock()
     monkeypatch.setattr("stirrup.Agent", _FakeAgent)
-    monkeypatch.setattr(runner_module, "repair_answer", repair)
     monkeypatch.setattr(runner_module, "persist_trajectory", persist)
 
     runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
@@ -401,6 +393,5 @@ async def test_run_uses_structured_finish_without_repair_call(
     result = await runner.run("Return a JSON array.")
 
     assert result.answer == "[1,2]"
-    repair.assert_not_awaited()
     assert persist.call_args.kwargs["answer"] == "[1,2]"
     assert persist.call_args.kwargs["answer_repair"] == "[1,2]"
