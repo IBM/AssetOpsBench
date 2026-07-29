@@ -24,7 +24,7 @@ from llm.routers import resolve_model, resolve_router_creds
 from observability import agent_run_span, persist_trajectory
 
 from .._prompts import AGENT_SYSTEM_PROMPT
-from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
+from ..models import AgentResult, ToolCall, Trajectory, TurnRecord, final_answer_from_trajectory
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)

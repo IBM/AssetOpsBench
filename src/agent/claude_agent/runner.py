@@ -33,7 +33,7 @@ from observability import agent_run_span, persist_trajectory
 
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
-from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
+from ..models import AgentResult, ToolCall, Trajectory, TurnRecord, final_answer_from_trajectory
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
@@ -222,6 +222,10 @@ class ClaudeAgentRunner(AgentRunner):
             span.set_attribute("agent.turns", len(trajectory.turns))
             span.set_attribute("agent.tool_calls", len(trajectory.all_tool_calls))
             span.set_attribute("agent.duration_ms", duration_ms)
+            # Prefer the record_final_answer tool call (if the agent made one) as the final
+            # answer, BEFORE persisting/annotating, so the saved trajectory JSON and the eval
+            # report use it too - not just the in-memory AgentResult.
+            answer = final_answer_from_trajectory(trajectory) or answer
             persist_trajectory(
                 runner_name="claude-agent",
                 model=self._model,

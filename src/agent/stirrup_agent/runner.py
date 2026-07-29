@@ -40,7 +40,7 @@ from observability import agent_run_span, persist_trajectory
 
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
-from ..models import AgentResult, Trajectory
+from ..models import AgentResult, Trajectory, final_answer_from_trajectory
 from ..runner import AgentRunner
 from .trajectory import build_trajectory, classify_tool, final_answer
 
@@ -262,6 +262,10 @@ class StirrupAgentRunner(AgentRunner):
             trajectory.started_at = started_at
             answer = final_answer(history, finish_params)
 
+            # Prefer the record_final_answer tool call (if the agent made one) as the final
+            # answer, BEFORE persisting/annotating, so the saved trajectory JSON and the eval
+            # report use it too - not just the in-memory AgentResult.
+            answer = final_answer_from_trajectory(trajectory) or answer
             self._annotate_span(span, trajectory, answer, run_started)
             persist_trajectory(
                 runner_name="stirrup-agent",
