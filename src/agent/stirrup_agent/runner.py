@@ -43,6 +43,7 @@ from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
 from .answer_repair import repair_answer
+from .finish_tool import ASSETOPS_FINISH_TOOL, structured_finish_answer
 from .trajectory import build_trajectory, classify_tool, final_answer
 
 _log = logging.getLogger(__name__)
@@ -348,6 +349,7 @@ class StirrupAgentRunner(AgentRunner):
                 name="assetops",
                 system_prompt=self._build_system_prompt(),
                 tools=self._build_tools(),
+                finish_tool=ASSETOPS_FINISH_TOOL,
                 max_turns=self._max_turns,
                 context_summarization_cutoff=_CONTEXT_SUMMARIZATION_CUTOFF,
                 logger=_build_full_summary_logger(),
@@ -368,12 +370,15 @@ class StirrupAgentRunner(AgentRunner):
             trajectory = build_trajectory(history)
             trajectory.started_at = started_at
             answer = final_answer(history, finish_params)
-            answer_repair = await repair_answer(
-                client,
-                question=question,
-                answer=answer,
-                trajectory=trajectory,
-            )
+            if structured_finish_answer(finish_params) is not None:
+                answer_repair = answer
+            else:
+                answer_repair = await repair_answer(
+                    client,
+                    question=question,
+                    answer=answer,
+                    trajectory=trajectory,
+                )
 
             self._annotate_span(span, trajectory, answer, run_started)
             persist_trajectory(
