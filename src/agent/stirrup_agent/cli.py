@@ -33,7 +33,6 @@ model-id format:
 
 Router models use the Responses API first and fall back to Chat Completions
 when Responses is unsupported or remains unavailable after retries.
-LiteLLM-proxied Claude models also request provider prompt caching client-side.
 
 tracks:
   --code-enabled (default)  Add a sandboxed code-execution tool (code track).

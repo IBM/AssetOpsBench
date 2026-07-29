@@ -173,51 +173,6 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
     assert router_client.max_tokens == 64_000
     assert client.max_tokens == 1_000_000
 
-
-def test_litellm_proxy_claude_enables_client_prompt_caching(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv("LITELLM_API_KEY", "test-key")
-    monkeypatch.setenv("LITELLM_BASE_URL", "https://litellm.example/v1")
-
-    runner = StirrupAgentRunner(
-        model="litellm_proxy/aws/claude-opus-4-8",
-        temperature=0.2,
-    )
-    client = runner._build_client()
-    router_client = client._client
-    expected_kwargs = {
-        "temperature": 0.2,
-        "extra_body": {
-            "cache_control_injection_points": [
-                {"location": "message", "index": 0},
-                {"location": "message", "index": -1},
-                {"location": "tool_config"},
-            ]
-        },
-    }
-
-    assert router_client._responses_client._kwargs == expected_kwargs
-    assert router_client._chat_client._kwargs == expected_kwargs
-
-
-def test_litellm_proxy_gemini_does_not_enable_client_prompt_caching(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv("LITELLM_API_KEY", "test-key")
-    monkeypatch.setenv("LITELLM_BASE_URL", "https://litellm.example/v1")
-
-    runner = StirrupAgentRunner(
-        model="litellm_proxy/gcp/gemini-3.6-flash",
-        temperature=0.2,
-    )
-    client = runner._build_client()
-    router_client = client._client
-
-    assert router_client._responses_client._kwargs == {"temperature": 0.2}
-    assert router_client._chat_client._kwargs == {"temperature": 0.2}
-
-
 class _FakeClient:
     def __init__(self, *, result=None, error: Exception | None = None) -> None:
         self.result = result
