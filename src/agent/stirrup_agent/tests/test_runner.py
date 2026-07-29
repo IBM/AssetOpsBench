@@ -160,10 +160,10 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
     assert client.max_tokens == 100_000
 
 
-def test_stirrup_runner_uses_75k_summarization_trigger():
+def test_stirrup_runner_uses_50k_summarization_trigger():
     assert _WORKING_CONTEXT_BUDGET == 100_000
-    assert _CONTEXT_SUMMARIZATION_CUTOFF == 0.75
-    assert _WORKING_CONTEXT_BUDGET * _CONTEXT_SUMMARIZATION_CUTOFF == 75_000
+    assert _CONTEXT_SUMMARIZATION_CUTOFF == 0.50
+    assert _WORKING_CONTEXT_BUDGET * _CONTEXT_SUMMARIZATION_CUTOFF == 50_000
 
 
 def test_full_summary_logger_does_not_truncate(capsys: pytest.CaptureFixture[str]):

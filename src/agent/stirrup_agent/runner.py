@@ -51,15 +51,15 @@ _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "assetops-code")
 _WORKING_CONTEXT_BUDGET = 100_000
-_CONTEXT_SUMMARIZATION_CUTOFF = 0.75
+_CONTEXT_SUMMARIZATION_CUTOFF = 0.50
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
 - MCP tools and their definitions are authoritative for domain data and semantics.
   Never use code to query backing services or bypass an available MCP tool.
 - Do not overuse code_exec. Answer directly from MCP results, domain knowledge,
-  and basic reasoning or arithmetic when sufficient. Use code only for necessary
-  computation, data processing, workspace inspection, or validation—never for
-  planning, comments, placeholders, or empty scripts.
+  and basic reasoning or arithmetic when sufficient. Use code_exec only for
+  necessary computation, data processing, workspace inspection, or validation.
+  Never use it for planning, comments, placeholders, or empty scripts.
 - Prefer one complete script that inspects, analyzes, and verifies. Do not repeat
   equivalent experiments; correct failures directly.
 - Stay inside the execution workspace and use relative paths. Workspace state
