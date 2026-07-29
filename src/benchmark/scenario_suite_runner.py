@@ -75,10 +75,9 @@ def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
     profile: dict[str, tuple[str, ...]] = {}
     for category in SCENARIO_CATEGORY_ORDER:
         raw_ids = raw_profile[category]
-        if not isinstance(raw_ids, list) or not raw_ids:
+        if not isinstance(raw_ids, list):
             raise ValueError(
-                f"Scenario profile category {category!r} must be a non-empty list: "
-                f"{path}"
+                f"Scenario profile category {category!r} must be a list: {path}"
             )
 
         scenario_ids: list[str] = []
@@ -99,6 +98,11 @@ def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
                 f"Duplicate scenario ids in category {category!r}: {path}"
             )
         profile[category] = tuple(scenario_ids)
+
+    if not any(profile.values()):
+        raise ValueError(
+            f"Scenario profile must contain at least one scenario id: {path}"
+        )
 
     return profile
 
