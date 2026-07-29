@@ -52,6 +52,8 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "python:3.12-slim")
+_ASSUMED_CONTEXT_WINDOW = 1_000_000
+_CONTEXT_SUMMARIZATION_CUTOFF = 0.85
 _RESPONSES_FALLBACK_STATUS_CODES = frozenset(
     {400, 404, 405, 415, 422, 500, 501, 502, 503, 504}
 )
@@ -72,7 +74,7 @@ Code execution guidance:
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace. Host filesystem paths are not
-available inside the container. The image might include scientific packages 
+available inside the container. The image might include scientific packages
 such as numpy, pandas, scipy, or matplotlib. Verify them before relying on them.
 """
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
@@ -94,6 +96,33 @@ def _responses_error_status_code(exc: Exception) -> int | None:
     nested = last_attempt.exception()
     nested_status = getattr(nested, "status_code", None)
     return nested_status if isinstance(nested_status, int) else None
+
+
+class _ContextWindowClient:
+    """Report the assumed context size without changing the output-token cap.
+
+    Stirrup currently reads ``LLMClient.max_tokens`` both when configuring the
+    provider's maximum output and when deciding whether to summarize context.
+    Keeping the provider client behind this adapter lets it retain its native
+    64k output default while the agent loop uses the benchmark's 1M-context
+    assumption.
+    """
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    @property
+    def max_tokens(self) -> int:
+        return _ASSUMED_CONTEXT_WINDOW
+
+    @property
+    def model_slug(self) -> str:
+        return self._client.model_slug
+
+    async def generate(
+        self, messages: list[Any], tools: dict[str, Any]
+    ) -> Any:
+        return await self._client.generate(messages, tools)
 
 
 class _ResponsesThenChatClient:
@@ -248,17 +277,19 @@ class StirrupAgentRunner(AgentRunner):
                 "reasoning_effort": self._reasoning_effort,
                 "kwargs": client_kwargs,
             }
-            return _ResponsesThenChatClient(
+            client = _ResponsesThenChatClient(
                 responses_client=OpenResponsesClient(**common_kwargs),
                 chat_client=ChatCompletionsClient(**common_kwargs),
             )
-        from stirrup.clients.litellm_client import LiteLLMClient
+        else:
+            from stirrup.clients.litellm_client import LiteLLMClient
 
-        return LiteLLMClient(
-            model=self._model_id,
-            reasoning_effort=self._reasoning_effort,
-            kwargs=client_kwargs,
-        )
+            client = LiteLLMClient(
+                model=self._model_id,
+                reasoning_effort=self._reasoning_effort,
+                kwargs=client_kwargs,
+            )
+        return _ContextWindowClient(client)
 
     def _build_mcp_provider(self):
         """Build a Stirrup ``MCPToolProvider`` for the AssetOpsBench servers.
@@ -341,6 +372,7 @@ class StirrupAgentRunner(AgentRunner):
                 system_prompt=self._build_system_prompt(),
                 tools=self._build_tools(),
                 max_turns=self._max_turns,
+                context_summarization_cutoff=_CONTEXT_SUMMARIZATION_CUTOFF,
             )
 
             _log.info(
