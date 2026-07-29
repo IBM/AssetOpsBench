@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from agent.stirrup_agent.runner import StirrupAgentRunner, _copy_workspace_contents
+from agent.stirrup_agent.runner import (
+    StirrupAgentRunner,
+    _ResponsesThenChatClient,
+    _copy_workspace_contents,
+)
 from agent.stirrup_agent.trajectory import (
     build_trajectory,
     classify_tool,
@@ -101,11 +105,13 @@ def test_stirrup_runner_forwards_temperature_to_litellm_client():
     runner = StirrupAgentRunner(
         model="watsonx/ibm/granite-4-h-small",
         temperature=0.2,
+        reasoning_effort="high",
     )
 
     client = runner._build_client()
 
     assert client._kwargs == {"temperature": 0.2}
+    assert client._reasoning_effort == "high"
     assert client.max_tokens == 64_000
 
 
@@ -118,12 +124,101 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
     runner = StirrupAgentRunner(
         model="tokenrouter/MiniMax-M3",
         temperature=0.2,
+        reasoning_effort="medium",
     )
 
     client = runner._build_client()
 
-    assert client._kwargs == {"temperature": 0.2}
+    from stirrup.clients.chat_completions_client import ChatCompletionsClient
+    from stirrup.clients.open_responses_client import OpenResponsesClient
+
+    assert isinstance(client._responses_client, OpenResponsesClient)
+    assert isinstance(client._chat_client, ChatCompletionsClient)
+    assert client._responses_client._kwargs == {"temperature": 0.2}
+    assert client._chat_client._kwargs == {"temperature": 0.2}
+    assert client._responses_client._reasoning_effort == "medium"
+    assert client._chat_client._reasoning_effort == "medium"
     assert client.max_tokens == 64_000
+
+
+class _FakeClient:
+    def __init__(self, *, result=None, error: Exception | None = None) -> None:
+        self.result = result
+        self.error = error
+        self.calls = 0
+        self.max_tokens = 64_000
+        self.model_slug = "test-model"
+
+    async def generate(self, messages, tools):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+class _StatusError(Exception):
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"HTTP {status_code}")
+        self.status_code = status_code
+
+
+class _LastAttempt:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    def exception(self) -> Exception:
+        return self._error
+
+
+class _RetryError(Exception):
+    def __init__(self, error: Exception) -> None:
+        super().__init__("retries exhausted")
+        self.last_attempt = _LastAttempt(error)
+
+
+@pytest.mark.anyio
+async def test_router_client_prefers_open_responses():
+    responses = _FakeClient(result="responses result")
+    chat = _FakeClient(result="chat response")
+    client = _ResponsesThenChatClient(responses, chat)
+
+    assert await client.generate([], {}) == "responses result"
+    assert responses.calls == 1
+    assert chat.calls == 0
+
+
+@pytest.mark.anyio
+async def test_router_client_falls_back_to_chat_and_sticks_to_it():
+    responses = _FakeClient(error=_StatusError(404))
+    chat = _FakeClient(result="chat response")
+    client = _ResponsesThenChatClient(responses, chat)
+
+    assert await client.generate([], {}) == "chat response"
+    assert await client.generate([], {}) == "chat response"
+    assert responses.calls == 1
+    assert chat.calls == 2
+
+
+@pytest.mark.anyio
+async def test_router_client_falls_back_after_retried_server_error():
+    responses = _FakeClient(error=_RetryError(_StatusError(500)))
+    chat = _FakeClient(result="chat response")
+    client = _ResponsesThenChatClient(responses, chat)
+
+    assert await client.generate([], {}) == "chat response"
+    assert responses.calls == 1
+    assert chat.calls == 1
+
+
+@pytest.mark.anyio
+async def test_router_client_does_not_mask_non_interface_errors():
+    responses = _FakeClient(error=RuntimeError("request failed"))
+    chat = _FakeClient(result="chat response")
+    client = _ResponsesThenChatClient(responses, chat)
+
+    with pytest.raises(RuntimeError, match="request failed"):
+        await client.generate([], {})
+    assert chat.calls == 0
 
 
 def test_build_trajectory_maps_turns_calls_and_outputs():

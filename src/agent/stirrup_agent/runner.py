@@ -7,8 +7,9 @@ the agent loop, and map the returned message history onto the shared
 :class:`~agent.models.Trajectory`.
 
 Model routing:
-  * ``litellm_proxy/<model>``  -> Stirrup ``ChatCompletionsClient`` pointed at
-    the LiteLLM proxy (OpenAI-compatible), matching the other runners.
+  * OpenAI-compatible router prefixes -> Stirrup ``OpenResponsesClient`` first,
+    with a sticky fallback to ``ChatCompletionsClient`` when the endpoint does
+    not support the Responses interface.
   * ``<provider>/<model>``     -> Stirrup ``LiteLLMClient``, which reaches
     Anthropic, watsonx, Bedrock, etc. natively through LiteLLM.  This means
     ``watsonx/...`` models work directly here, without the proxy detour Goose
@@ -35,6 +36,7 @@ import os
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 from observability import agent_run_span, persist_trajectory
 
@@ -50,6 +52,61 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "python:3.12-slim")
+_RESPONSES_FALLBACK_STATUS_CODES = frozenset(
+    {400, 404, 405, 415, 422, 500, 501, 502, 503, 504}
+)
+
+
+def _responses_error_status_code(exc: Exception) -> int | None:
+    """Return an HTTP status, including errors wrapped by Tenacity retries."""
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+
+    last_attempt = getattr(exc, "last_attempt", None)
+    if last_attempt is None:
+        return None
+    nested = last_attempt.exception()
+    nested_status = getattr(nested, "status_code", None)
+    return nested_status if isinstance(nested_status, int) else None
+
+
+class _ResponsesThenChatClient:
+    """Prefer Open Responses, then stick to Chat Completions if unavailable."""
+
+    def __init__(self, responses_client: Any, chat_client: Any) -> None:
+        self._responses_client = responses_client
+        self._chat_client = chat_client
+        self._use_chat_completions = False
+
+    @property
+    def max_tokens(self) -> int:
+        return self._responses_client.max_tokens
+
+    @property
+    def model_slug(self) -> str:
+        return self._responses_client.model_slug
+
+    async def generate(
+        self, messages: list[Any], tools: dict[str, Any]
+    ) -> Any:
+        if self._use_chat_completions:
+            return await self._chat_client.generate(messages, tools)
+
+        try:
+            return await self._responses_client.generate(messages, tools)
+        except Exception as exc:
+            status_code = _responses_error_status_code(exc)
+            if status_code not in _RESPONSES_FALLBACK_STATUS_CODES:
+                raise
+            self._use_chat_completions = True
+            _log.warning(
+                "Responses API unavailable for model %s (HTTP %s); "
+                "using Chat Completions for the remainder of the run",
+                self.model_slug,
+                status_code,
+            )
+            return await self._chat_client.generate(messages, tools)
 
 
 def _copy_workspace_contents(source: Path, destination: Path) -> None:
@@ -107,6 +164,7 @@ class StirrupAgentRunner(AgentRunner):
         preserve_workspace: Copy final code-execution files back into ``workspace_dir``.
         max_turns: Stirrup agent loop bound.
         temperature: Optional sampling temperature passed to the Stirrup client.
+        reasoning_effort: Optional reasoning effort passed to the Stirrup client.
     """
 
     def __init__(
@@ -120,6 +178,7 @@ class StirrupAgentRunner(AgentRunner):
         preserve_workspace: bool = False,
         max_turns: int = 30,
         temperature: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         super().__init__(llm, server_paths)
         if code_backend not in {"docker", "local"}:
@@ -141,6 +200,7 @@ class StirrupAgentRunner(AgentRunner):
         self._preserve_workspace = preserve_workspace
         self._max_turns = max_turns
         self._temperature = temperature
+        self._reasoning_effort = reasoning_effort
 
     # -- client / tools ----------------------------------------------------
 
@@ -154,17 +214,24 @@ class StirrupAgentRunner(AgentRunner):
         creds = resolve_router_creds(self._model_id)
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
+            from stirrup.clients.open_responses_client import OpenResponsesClient
 
-            return ChatCompletionsClient(
-                model=resolve_model(self._model_id),
-                base_url=creds.base_url.rstrip("/"),
-                api_key=creds.api_key,
-                kwargs=client_kwargs,
+            common_kwargs = {
+                "model": resolve_model(self._model_id),
+                "base_url": creds.base_url.rstrip("/"),
+                "api_key": creds.api_key,
+                "reasoning_effort": self._reasoning_effort,
+                "kwargs": client_kwargs,
+            }
+            return _ResponsesThenChatClient(
+                responses_client=OpenResponsesClient(**common_kwargs),
+                chat_client=ChatCompletionsClient(**common_kwargs),
             )
         from stirrup.clients.litellm_client import LiteLLMClient
 
         return LiteLLMClient(
             model=self._model_id,
+            reasoning_effort=self._reasoning_effort,
             kwargs=client_kwargs,
         )
 

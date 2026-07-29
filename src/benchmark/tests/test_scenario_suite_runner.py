@@ -331,6 +331,7 @@ def test_build_methods_uses_cli_defaults() -> None:
         openclaw_thinking="off",
         openclaw_workspace_root=None,
         temperature=None,
+        reasoning_effort=None,
     )
 
     methods = mr.build_methods(args)
@@ -381,6 +382,7 @@ def test_build_methods_stirrup_workspace_options(tmp_path: Path) -> None:
         openclaw_thinking="off",
         openclaw_workspace_root=None,
         temperature=0.2,
+        reasoning_effort="high",
     )
 
     methods = mr.build_methods(args)
@@ -389,6 +391,8 @@ def test_build_methods_stirrup_workspace_options(tmp_path: Path) -> None:
     assert stirrup.extra_args == (
         "--temperature",
         "0.2",
+        "--reasoning-effort",
+        "high",
         "--preserve-workspace",
     )
     assert stirrup.workspace_root == tmp_path / "stirrup-workspaces"

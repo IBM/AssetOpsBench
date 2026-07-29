@@ -418,6 +418,9 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     temperature = getattr(args, "temperature", None)
     if temperature is not None:
         stirrup_extra_args.extend(["--temperature", str(temperature)])
+    reasoning_effort = getattr(args, "reasoning_effort", None)
+    if reasoning_effort is not None:
+        stirrup_extra_args.extend(["--reasoning-effort", reasoning_effort])
     if getattr(args, "preserve_workspaces", False) and getattr(
         args, "stirrup_workspace_root", None
     ) is not None:
@@ -527,6 +530,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Sampling temperature for stirrup_agent model calls. Omitted by "
+            "default, so the provider/client default is used."
+        ),
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=[
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "default",
+        ],
+        default=None,
+        help=(
+            "Reasoning effort for stirrup_agent model calls. Omitted by "
             "default, so the provider/client default is used."
         ),
     )

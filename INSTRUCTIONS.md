@@ -271,6 +271,7 @@ uv run direct-llm-agent "$query"
 | `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
 | `--code-enabled` / `--no-code` | stirrup-agent | Enable (default) / disable code execution — selects the code track |
 | `--code-backend B`             | stirrup-agent | Code backend: `docker` (default) or `local`                        |
+| `--reasoning-effort LEVEL`     | stirrup-agent | Optional reasoning effort passed to the model client              |
 | `--max-steps N`                | opencode-agent | Max OpenCode agentic iterations (default: 30)                      |
 | `--attach URL`                 | opencode-agent | Attach to a running `opencode serve` instance                      |
 | `--allow-files` / `--workspace-dir PATH` | opencode-agent | Enable local file inspection in a dedicated workspace              |

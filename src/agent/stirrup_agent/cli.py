@@ -25,10 +25,14 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 model-id format:
-  litellm_proxy/<model>   LiteLLM proxy (e.g. litellm_proxy/aws/claude-opus-4-6)
+  litellm_proxy/<model>   OpenAI-compatible LiteLLM proxy
+  tokenrouter/<model>     OpenAI-compatible TokenRouter
   <provider>/<model>      Native via Stirrup's LiteLLMClient. watsonx works
                           directly here, e.g.
                           watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
+
+Router models use the Responses API first and fall back to Chat Completions
+when Responses is unsupported or remains unavailable after retries.
 
 tracks:
   --code-enabled (default)  Add a sandboxed code-execution tool (code track).
@@ -87,6 +91,24 @@ examples:
         ),
     )
     parser.add_argument(
+        "--reasoning-effort",
+        choices=[
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "default",
+        ],
+        default=None,
+        metavar="LEVEL",
+        help=(
+            "Reasoning effort forwarded to the Stirrup model client. "
+            "Omitted by default, so the provider/client default is used."
+        ),
+    )
+    parser.add_argument(
         "--workspace-dir",
         type=Path,
         default=None,
@@ -118,6 +140,7 @@ async def _run(args: argparse.Namespace) -> None:
         preserve_workspace=args.preserve_workspace,
         max_turns=args.max_turns,
         temperature=args.temperature,
+        reasoning_effort=args.reasoning_effort,
     )
     result = await runner.run(args.question)
     print_result(

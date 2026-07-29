@@ -113,10 +113,11 @@ The runner's default model is
 | `--model-id` prefix     | Client                          | Notes                                                       |
 | ----------------------- | ------------------------------- | ----------------------------------------------------------- |
 | `<provider>/<model>`    | Stirrup `LiteLLMClient`         | Native LiteLLM. `watsonx/...`, `anthropic/...`, etc. work directly. |
-| `litellm_proxy/<model>` | Stirrup `ChatCompletionsClient` | Points at the LiteLLM proxy (OpenAI-compatible).            |
+| `litellm_proxy/` or `tokenrouter/` | `OpenResponsesClient`, then `ChatCompletionsClient` | Prefer Responses; fall back when unsupported or unavailable after retries. |
 
 Required env vars match the rest of the repo: the standard watsonx vars for the
-native route, or `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the proxy route.
+native route, `LITELLM_BASE_URL` / `LITELLM_API_KEY` for the LiteLLM proxy, or
+`TOKENROUTER_BASE_URL` / `TOKENROUTER_API_KEY` for TokenRouter.
 
 ---
 
@@ -229,6 +230,7 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--no-code`           | Tools-only; comparable to the other runners.                                         |
 | `--code-backend`      | `docker` (default) or `local`.                                                        |
 | `--max-turns N`       | Max agent turns (default: 30).                                                       |
+| `--reasoning-effort LEVEL` | Reasoning effort (`none` through `xhigh`, or `default`); provider default when omitted. |
 | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
 | `--preserve-workspace` | Copy final code-execution files into `--workspace-dir` before cleanup.              |
 
