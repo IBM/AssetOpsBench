@@ -340,10 +340,35 @@ def test_build_trajectory_maps_turns_calls_and_outputs():
     assert final_answer(history, None) == "there are 7 open work orders"
 
 
-def test_final_answer_prefers_finish_reason_over_earlier_assistant_text():
+def test_final_answer_prefers_finish_turn_content_over_finish_reason():
+    history = [
+        [
+            _Assistant(
+                content='{"response":"FORMAT_OK"}',
+                tool_calls=[_TC("finish", '{"reason":"done","paths":[]}', "f1")],
+            )
+        ]
+    ]
+    assert (
+        final_answer(
+            history,
+            _Finish(
+                "Returned the exact required JSON object without calling any tools."
+            ),
+        )
+        == '{"response":"FORMAT_OK"}'
+    )
+
+
+def test_final_answer_uses_finish_reason_when_finish_turn_content_is_empty():
     history = [
         [_Assistant(content="I will inspect the work orders.")],
-        [_Assistant(content="")],
+        [
+            _Assistant(
+                content="",
+                tool_calls=[_TC("finish", '{"reason":"done","paths":[]}', "f1")],
+            )
+        ],
     ]
     assert (
         final_answer(history, _Finish("computed RUL = 142 days"))
