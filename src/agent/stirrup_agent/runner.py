@@ -54,21 +54,23 @@ _WORKING_CONTEXT_BUDGET = 100_000
 _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
-- MCP tools are the sole authority for domain data; never query backing services
-  from code or replace an available MCP read with code_exec.
-- Use code_exec only when needed for computation, data processing, workspace
-  probing, file inspection, or validation. Never use it for planning, comments,
-  placeholders, or empty scripts. Combine calls and stop after verification.
+- MCP tools are the sole authority for domain data. Never query backing services
+  or replace an available MCP read with code_exec.
+- Use code_exec only for necessary computation, data processing, workspace
+  probing/file inspection, or validation—never planning, comments, placeholders,
+  or empty scripts.
+- Normally use at most three calls: inspect, analyze, verify. Prefer one complete
+  script; do not repeat equivalent experiments. Correct failures directly.
 - Stay inside the execution workspace and use relative paths. Workspace state
   persists across code_exec calls.
-- Large MCP results may arrive as workspace artifact handles. Process the file in
-  place and print only needed fields or aggregates; never dump the whole file.
-  Do not repeat the MCP read unless its underlying domain state changed.
-- Run non-interactive, bounded commands. Check that a package is installed
-  before relying on it, and use the Python standard library when practical.
-- Verify computed results before answering. Put the answer and its key evidence
-  in the finish reason; stdout and workspace files are not part of the final
-  answer by themselves.
+- For artifacts, inspect only schema, counts, or a tiny sample, then process in
+  place. Never print whole files, large lists, or long diagnostics. Reuse
+  snapshots unless domain state changed.
+- Apply MCP domain definitions as constraints; use similarity or statistics only
+  to disambiguate. Check dependencies before use; prefer the standard library
+  and bounded, non-interactive commands.
+- Verify, then follow the user's requested output format exactly. Include
+  evidence only when compatible.
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace. Host filesystem paths are not
