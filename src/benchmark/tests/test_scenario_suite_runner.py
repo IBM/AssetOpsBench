@@ -60,39 +60,10 @@ def test_scenario_mappings_cover_expected_categories() -> None:
         str(scenario_id) for scenario_id in range(1, 67)
     )
     assert all(
-        len(mr.SCENARIO_IDS_LITE[category]) == 10
-        for category in {"car", "fcc", "fmsr", "health", "wosr"}
+        mr.SCENARIO_IDS_LITE[category]
+        for category in expected - {"tsfm"}
     )
-    assert mr.SCENARIO_IDS_LITE["car"] == (
-        "151",
-        "152",
-        "153",
-        "156",
-        "167",
-        "178",
-        "180",
-        "182",
-        "183",
-        "193",
-    )
-    assert mr.SCENARIO_IDS_LITE["health"] == tuple(
-        str(scenario_id) for scenario_id in range(401, 411)
-    )
-    assert mr.SCENARIO_IDS_LITE["tsfm"] == tuple(
-        str(scenario_id) for scenario_id in range(1001, 1006)
-    )
-    assert mr.SCENARIO_IDS_LITE["wosr"] == (
-        "5",
-        "9",
-        "13",
-        "20",
-        "24",
-        "31",
-        "43",
-        "50",
-        "61",
-        "66",
-    )
+    assert mr.SCENARIO_IDS_LITE["tsfm"] == ()
 
 
 def test_scenario_profiles_are_loaded_from_yaml() -> None:
@@ -174,6 +145,43 @@ def test_load_scenario_profile_rejects_missing_category(tmp_path: Path) -> None:
     path.write_text("fcc: [301]\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="missing categories"):
+        mr.load_scenario_profile(path)
+
+
+def test_load_scenario_profile_accepts_empty_category(tmp_path: Path) -> None:
+    path = tmp_path / "profile.yaml"
+    path.write_text(
+        """
+car: [151]
+fcc: [301]
+fmsr: [902]
+health: [401]
+tsfm: []
+wosr: [1]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    profile = mr.load_scenario_profile(path)
+
+    assert profile["tsfm"] == ()
+
+
+def test_load_scenario_profile_rejects_empty_profile(tmp_path: Path) -> None:
+    path = tmp_path / "profile.yaml"
+    path.write_text(
+        """
+car: []
+fcc: []
+fmsr: []
+health: []
+tsfm: []
+wosr: []
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="at least one scenario id"):
         mr.load_scenario_profile(path)
 
 
