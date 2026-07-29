@@ -54,28 +54,28 @@ _WORKING_CONTEXT_BUDGET = 100_000
 _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
-- MCP tools are the sole authority for domain data. Never query backing services
-  or replace an available MCP read with code_exec.
-- Use code_exec only for necessary computation, data processing, workspace
-  probing/file inspection, or validation—never planning, comments, placeholders,
-  or empty scripts.
-- Normally use at most three calls: inspect, analyze, verify. Prefer one complete
-  script; do not repeat equivalent experiments. Correct failures directly.
+- MCP tools and their definitions are authoritative for domain data and semantics.
+  Never use code to query backing services or bypass an available MCP tool.
+- Use code_exec only when necessary for computation, data processing, workspace
+  probing/file inspection, or validation—never for planning, comments,
+  placeholders, or empty scripts.
+- Prefer one complete script that inspects, analyzes, and verifies. Do not repeat
+  equivalent experiments; correct failures directly.
 - Stay inside the execution workspace and use relative paths. Workspace state
   persists across code_exec calls.
 - For artifacts, inspect only schema, counts, or a tiny sample, then process in
-  place. Never print whole files, large lists, or long diagnostics. Reuse
+  place. Never print whole files, large record lists, or long diagnostics. Reuse
   snapshots unless domain state changed.
-- Apply MCP domain definitions as constraints; use similarity or statistics only
-  to disambiguate. Check dependencies before use; prefer the standard library
-  and bounded, non-interactive commands.
-- Verify, then follow the user's requested output format exactly. Include
-  evidence only when compatible.
+- Use similarity or statistics only to disambiguate MCP-defined labels. Check
+  dependencies before use; prefer the standard library and bounded,
+  non-interactive commands.
+- Follow the user's requested output format exactly; include evidence only when
+  compatible with that format.
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace. Host filesystem paths are not
-available inside the container. The image might include scientific packages
-such as numpy, pandas, scipy, or matplotlib. Verify them before relying on them.
+available inside the container. NumPy, pandas, and SciPy are installed; check
+availability before using other packages.
 """
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
 The local execution workspace is a temporary directory, but commands run on the
