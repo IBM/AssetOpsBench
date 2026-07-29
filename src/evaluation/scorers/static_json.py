@@ -125,26 +125,10 @@ def _strip_markdown_fence(content: str) -> str:
     return content
 
 
-def _extract_balanced_structure(content: str) -> str:
-    """Extract first balanced {...}, [...], or (...) from noisy text."""
-    content = content.strip()
-
-    candidates = [
-        (content.find("{"), "{", "}"),
-        (content.find("["), "[", "]"),
-        (content.find("("), "(", ")"),
-    ]
-    candidates = [
-        (idx, open_ch, close_ch)
-        for idx, open_ch, close_ch in candidates
-        if idx != -1
-    ]
-
-    if not candidates:
-        return content
-
-    start, open_ch, close_ch = min(candidates, key=lambda item: item[0])
-
+def _balanced_from_index(
+    content: str, start: int, open_ch: str, close_ch: str
+) -> str | None:
+    """Return the balanced structure starting at ``start``, if present."""
     depth = 0
     in_string = False
     quote_char = ""
@@ -174,7 +158,55 @@ def _extract_balanced_structure(content: str) -> str:
             if depth == 0:
                 return content[start : index + 1].strip()
 
-    return content[start:].strip()
+    return None
+
+
+def _extract_balanced_structures(content: str) -> list[str]:
+    """Extract parseable-looking {...}, [...], and (...) candidates from noisy text."""
+    content = content.strip()
+    candidates: list[tuple[int, int, str]] = []
+
+    for priority, (open_ch, close_ch) in enumerate(
+        [("{", "}"), ("[", "]"), ("(", ")")]
+    ):
+        start = content.find(open_ch)
+        while start != -1:
+            candidate = _balanced_from_index(content, start, open_ch, close_ch)
+            if candidate is not None:
+                candidates.append((priority, start, candidate))
+                break
+            start = content.find(open_ch, start + 1)
+
+    return [candidate for _, _, candidate in sorted(candidates)]
+
+
+def _extract_balanced_structure(content: str) -> str:
+    """Extract the first balanced {...}, [...], or (...) candidate from noisy text."""
+    candidates = _extract_balanced_structures(content)
+    return candidates[0] if candidates else content.strip()
+
+
+_PARSE_MISSING = object()
+
+
+def _parse_json_or_python(content: str) -> Any:
+    """Parse JSON/Python literal text, returning a sentinel on failure."""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        return ast.literal_eval(content)
+    except (ValueError, SyntaxError):
+        pass
+
+    try:
+        return json.loads(content.replace("'", '"'))
+    except json.JSONDecodeError:
+        pass
+
+    return _PARSE_MISSING
 
 
 def _extract_count_from_text(content: str) -> int | float | None:
@@ -194,6 +226,32 @@ def _extract_count_from_text(content: str) -> int | float | None:
     if len(numbers) == 1:
         number = numbers[0]
         return float(number) if "." in number else int(number)
+
+    return None
+
+
+def _extract_final_count_from_text(content: str) -> int | float | None:
+    """Extract a final standalone count from a noisy scalar answer."""
+    stripped = content.strip()
+    count = _extract_count_from_text(stripped)
+    if count is not None:
+        return count
+
+    final_number = re.compile(
+        r"^\s*(?:"
+        r"(?:final\s+answer|answer|count|result)\s*(?:is|:)?\s*"
+        r")?(-?\d+(?:\.\d+)?)\s*\.?\s*$",
+        flags=re.IGNORECASE,
+    )
+    for line in reversed(stripped.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        match = final_number.fullmatch(line)
+        if match:
+            number = match.group(1)
+            return float(number) if "." in number else int(number)
+        break
 
     return None
 
@@ -268,22 +326,18 @@ def parse_structured_answer(value: Any) -> Any:
     content = extract_answer_text(value)
     content = _strip_markdown_fence(content)
 
-    content = _extract_balanced_structure(content)
+    parsed = _parse_json_or_python(content)
+    if parsed is not _PARSE_MISSING:
+        return parsed
 
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
+    for candidate in _extract_balanced_structures(content):
+        parsed = _parse_json_or_python(candidate)
+        if parsed is not _PARSE_MISSING:
+            return parsed
 
-    try:
-        return ast.literal_eval(content)
-    except (ValueError, SyntaxError):
-        pass
-
-    try:
-        return json.loads(content.replace("'", '"'))
-    except json.JSONDecodeError:
-        pass
+    count = _extract_final_count_from_text(content)
+    if count is not None:
+        return count
 
     count = _extract_count_from_text(content)
     if count is not None:
