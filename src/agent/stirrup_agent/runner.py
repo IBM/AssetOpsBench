@@ -56,9 +56,10 @@ _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
 - MCP tools and their definitions are authoritative for domain data and semantics.
   Never use code to query backing services or bypass an available MCP tool.
-- Use code_exec only when necessary for computation, data processing, workspace
-  probing/file inspection, or validation—never for planning, comments,
-  placeholders, or empty scripts.
+- Do not overuse code_exec. Answer directly from MCP results, domain knowledge,
+  and basic reasoning or arithmetic when sufficient. Use code only for necessary
+  computation, data processing, workspace inspection, or validation—never for
+  planning, comments, placeholders, or empty scripts.
 - Prefer one complete script that inspects, analyzes, and verifies. Do not repeat
   equivalent experiments; correct failures directly.
 - Stay inside the execution workspace and use relative paths. Workspace state
@@ -66,11 +67,6 @@ Code execution:
 - For artifacts, inspect only schema, counts, or a tiny sample, then process in
   place. Never print whole files, large record lists, or long diagnostics. Reuse
   snapshots unless domain state changed.
-- Use similarity or statistics only to disambiguate MCP-defined labels. Check
-  dependencies before use; prefer the standard library and bounded,
-  non-interactive commands.
-- Follow the user's requested output format exactly; include evidence only when
-  compatible with that format.
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace. Host filesystem paths are not
