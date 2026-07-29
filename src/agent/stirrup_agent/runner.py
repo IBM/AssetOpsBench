@@ -40,7 +40,7 @@ from typing import Any
 
 from observability import agent_run_span, persist_trajectory
 
-from llm.routers import LITELLM_PREFIX, resolve_model, resolve_router_creds
+from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
@@ -96,35 +96,6 @@ def _responses_error_status_code(exc: Exception) -> int | None:
     nested = last_attempt.exception()
     nested_status = getattr(nested, "status_code", None)
     return nested_status if isinstance(nested_status, int) else None
-
-
-def _prompt_cache_injection_points(model_id: str) -> list[dict[str, Any]]:
-    """Return client-side LiteLLM cache checkpoints for compatible Claude routes.
-
-    Stirrup sends its system prompt through the Responses ``instructions``
-    field, so there is no system-role input message for LiteLLM to annotate.
-    Marking the first message caches the stable tools/instructions/question
-    prefix, while marking the trailing message lets the cache advance with the
-    agent conversation. Bedrock routes can additionally cache tool definitions
-    through their native ``toolConfig`` cache point.
-
-    Vertex Gemini is deliberately excluded: its explicit cached-content API
-    rejects the separate instructions and tools used by the Stirrup workflow.
-    """
-    if not model_id.startswith(LITELLM_PREFIX):
-        return []
-
-    proxy_model = resolve_model(model_id).lower()
-    if "claude" not in proxy_model:
-        return []
-
-    points: list[dict[str, Any]] = [
-        {"location": "message", "index": 0},
-        {"location": "message", "index": -1},
-    ]
-    if proxy_model.startswith(("aws/", "bedrock/")):
-        points.append({"location": "tool_config"})
-    return points
 
 
 class _ContextWindowClient:
@@ -289,27 +260,23 @@ class StirrupAgentRunner(AgentRunner):
 
     def _build_client(self):
         """Build a Stirrup LLM client for the configured model id."""
-        client_kwargs: dict[str, Any] = {}
-        if self._temperature is not None:
-            client_kwargs["temperature"] = self._temperature
+        client_kwargs = (
+            {"temperature": self._temperature}
+            if self._temperature is not None
+            else None
+        )
 
         creds = resolve_router_creds(self._model_id)
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
             from stirrup.clients.open_responses_client import OpenResponsesClient
 
-            cache_points = _prompt_cache_injection_points(self._model_id)
-            if cache_points:
-                client_kwargs["extra_body"] = {
-                    "cache_control_injection_points": cache_points
-                }
-
             common_kwargs = {
                 "model": resolve_model(self._model_id),
                 "base_url": creds.base_url.rstrip("/"),
                 "api_key": creds.api_key,
                 "reasoning_effort": self._reasoning_effort,
-                "kwargs": client_kwargs or None,
+                "kwargs": client_kwargs,
             }
             client = _ResponsesThenChatClient(
                 responses_client=OpenResponsesClient(**common_kwargs),
@@ -321,7 +288,7 @@ class StirrupAgentRunner(AgentRunner):
             client = LiteLLMClient(
                 model=self._model_id,
                 reasoning_effort=self._reasoning_effort,
-                kwargs=client_kwargs or None,
+                kwargs=client_kwargs,
             )
         return _ContextWindowClient(client)
 
