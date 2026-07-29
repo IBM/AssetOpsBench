@@ -25,10 +25,14 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 model-id format:
-  litellm_proxy/<model>   LiteLLM proxy (e.g. litellm_proxy/aws/claude-opus-4-6)
+  litellm_proxy/<model>   OpenAI-compatible LiteLLM proxy
+  tokenrouter/<model>     OpenAI-compatible TokenRouter
   <provider>/<model>      Native via Stirrup's LiteLLMClient. watsonx works
                           directly here, e.g.
                           watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
+
+Router models use the Responses API first and fall back to Chat Completions
+when Responses is unsupported or remains unavailable after retries.
 
 tracks:
   --code-enabled (default)  Add a sandboxed code-execution tool (code track).
@@ -65,7 +69,7 @@ examples:
     )
     parser.add_argument(
         "--code-backend",
-        choices=["docker", "local", "e2b"],
+        choices=["docker", "local"],
         default="docker",
         help="Code-execution sandbox backend (default: docker).",
     )
@@ -77,20 +81,30 @@ examples:
         help="Maximum agent turns (default: 30).",
     )
     parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=16_384,
-        metavar="N",
-        help="Max output tokens per model call; must stay under the provider "
-        "limit (watsonx caps new tokens at 100k). Default: 16384.",
-    )
-    parser.add_argument(
         "--temperature",
         type=float,
         default=None,
         metavar="T",
         help=(
             "Sampling temperature forwarded to the Stirrup model client. "
+            "Omitted by default, so the provider/client default is used."
+        ),
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=[
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "default",
+        ],
+        default=None,
+        metavar="LEVEL",
+        help=(
+            "Reasoning effort forwarded to the Stirrup model client. "
             "Omitted by default, so the provider/client default is used."
         ),
     )
@@ -125,8 +139,8 @@ async def _run(args: argparse.Namespace) -> None:
         workspace_dir=args.workspace_dir,
         preserve_workspace=args.preserve_workspace,
         max_turns=args.max_turns,
-        max_tokens=args.max_tokens,
         temperature=args.temperature,
+        reasoning_effort=args.reasoning_effort,
     )
     result = await runner.run(args.question)
     print_result(
