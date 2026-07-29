@@ -27,10 +27,10 @@ def _avg(values: list[float]) -> float | None:
 
 
 def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
-    """Aggregate static_json-style score.details across all results.
+    """Aggregate static_json-style score.details across one result group.
 
     Per-scenario key-level details stay in each result. Here we summarize the
-    numeric metrics and count totals across the full batch.
+    numeric metrics and count totals across the runner/model group.
     """
     metric_names = [
         "partial_match_accuracy",
@@ -133,6 +133,20 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
     }
 
 
+def _score_summaries_by_runner_model(
+    results: list[ScenarioResult],
+) -> dict[str, dict[str, Any]]:
+    """Group score summaries under ``<runner>_<model>`` keys."""
+    grouped: dict[str, list[ScenarioResult]] = defaultdict(list)
+    for result in results:
+        grouped[f"{result.runner}_{result.model}"].append(result)
+
+    return {
+        key: _aggregate_score_summary(grouped[key])
+        for key in sorted(grouped)
+    }
+
+
 def build_report(results: list[ScenarioResult]) -> EvalReport:
     total = len(results)
     passed = sum(1 for r in results if r.score.passed)
@@ -163,7 +177,7 @@ def build_report(results: list[ScenarioResult]) -> EvalReport:
         },
         by_scenario_type=breakdown,
         ops=aggregate_ops(results),
-        score_summary=_aggregate_score_summary(results),
+        score_summary=_score_summaries_by_runner_model(results),
         results=results,
     )
 
@@ -176,23 +190,9 @@ def write_report(report: EvalReport, output: Path) -> Path:
 
 
 def write_reports_dir(report: EvalReport, reports_dir: Path) -> Path:
-    """Write one JSON file per result (``<run_id>.json``) plus an aggregate.
-
-    Results without a ``run_id`` fall back to ``<scenario_id>.json`` so
-    nothing is dropped. Returns the directory path.
-    """
+    """Write only the aggregate report and return its directory path."""
     reports_dir = Path(reports_dir)
     reports_dir.mkdir(parents=True, exist_ok=True)
-
-    used: dict[str, int] = {}
-    for r in report.results:
-        stem = r.run_id or f"scenario-{r.scenario_id}"
-        suffix = used.get(stem, 0)
-        used[stem] = suffix + 1
-        name = stem if suffix == 0 else f"{stem}-{suffix}"
-        (reports_dir / f"{name}.json").write_text(
-            r.model_dump_json(indent=2), encoding="utf-8"
-        )
 
     (reports_dir / _AGGREGATE_FILENAME).write_text(
         report.model_dump_json(indent=2), encoding="utf-8"
@@ -210,62 +210,11 @@ def render_summary(report: EvalReport) -> str:
     )
 
     if report.score_summary:
-        s = report.score_summary
         lines.append("")
-        lines.append("Static JSON summary:")
-        if s.get("score_avg") is not None:
-            lines.append(f"  score_avg:                  {s['score_avg']:.4f}")
-        if s.get("score_min") is not None:
-            lines.append(f"  score_min:                  {s['score_min']:.4f}")
-        if s.get("score_max") is not None:
-            lines.append(f"  score_max:                  {s['score_max']:.4f}")
-        if s.get("partial_match_accuracy_avg") is not None:
-            lines.append(
-                f"  partial_match_avg:           {s['partial_match_accuracy_avg']:.4f}"
-            )
-        if s.get("partial_exact_match_accuracy_avg") is not None:
-            lines.append(
-                f"  partial_exact_match_avg:     {s['partial_exact_match_accuracy_avg']:.4f}"
-            )
-        if s.get("strict_exact_match_accuracy_avg") is not None:
-            lines.append(
-                f"  strict_exact_match_avg:      {s['strict_exact_match_accuracy_avg']:.4f}"
-            )
-        if s.get("partial_similarity_score_avg") is not None:
-            lines.append(
-                f"  partial_similarity_avg:      {s['partial_similarity_score_avg']:.4f}"
-            )
-        if s.get("partial_numeric_match_accuracy_avg") is not None:
-            lines.append(
-                f"  partial_numeric_match_avg:   {s['partial_numeric_match_accuracy_avg']:.4f}"
-            )
-        if s.get("range_match_accuracy_avg") is not None:
-            lines.append(
-                f"  range_match_avg:             {s['range_match_accuracy_avg']:.4f}"
-            )
-        if s.get("delta_1_match_accuracy_avg") is not None:
-            lines.append(
-                f"  delta_1_match_avg:           {s['delta_1_match_accuracy_avg']:.4f}"
-            )
-        if s.get("precision_avg") is not None:
-            lines.append(f"  precision_avg:               {s['precision_avg']:.4f}")
-        if s.get("recall_avg") is not None:
-            lines.append(f"  recall_avg:                  {s['recall_avg']:.4f}")
-        if s.get("f1_avg") is not None:
-            lines.append(f"  f1_avg:                      {s['f1_avg']:.4f}")
-        if s.get("total_gold_keys_avg") is not None:
-            lines.append(f"  total_gold_keys_avg:         {s['total_gold_keys_avg']:.4f}")
-        if s.get("total_model_keys_avg") is not None:
-            lines.append(f"  total_model_keys_avg:        {s['total_model_keys_avg']:.4f}")
-        if s.get("matched_keys_avg") is not None:
-            lines.append(f"  matched_keys_avg:            {s['matched_keys_avg']:.4f}")
-        if s.get("exact_value_matches_avg") is not None:
-            lines.append(
-                f"  exact_value_matches_avg:     {s['exact_value_matches_avg']:.4f}"
-            )
-        lines.append(f"  missing_keys_total:          {s.get('missing_keys_total', 0)}")
-        lines.append(f"  extra_keys_total:            {s.get('extra_keys_total', 0)}")
-        lines.append(f"  detail_entries_total:        {s.get('detail_entries_total', 0)}")
+        lines.append("Score summary by runner/model:")
+        for key, summary in sorted(report.score_summary.items()):
+            lines.append(f"  {key}:")
+            _append_score_summary(lines, summary, indent="    ")
 
     if report.by_scenario_type:
         lines.append("")
@@ -288,6 +237,41 @@ def render_summary(report: EvalReport) -> str:
     if o.est_cost_usd_total is not None:
         lines.append(f"  est_cost_usd:      ${o.est_cost_usd_total:.4f}")
     return "\n".join(lines)
+
+
+def _append_score_summary(
+    lines: list[str], summary: dict[str, Any], *, indent: str
+) -> None:
+    """Append one runner/model score summary to rendered CLI output."""
+    metric_labels = {
+        "score_avg": "score_avg",
+        "score_min": "score_min",
+        "score_max": "score_max",
+        "partial_match_accuracy_avg": "partial_match_avg",
+        "partial_exact_match_accuracy_avg": "partial_exact_match_avg",
+        "strict_exact_match_accuracy_avg": "strict_exact_match_avg",
+        "partial_similarity_score_avg": "partial_similarity_avg",
+        "partial_numeric_match_accuracy_avg": "partial_numeric_match_avg",
+        "range_match_accuracy_avg": "range_match_avg",
+        "delta_1_match_accuracy_avg": "delta_1_match_avg",
+        "precision_avg": "precision_avg",
+        "recall_avg": "recall_avg",
+        "f1_avg": "f1_avg",
+        "total_gold_keys_avg": "total_gold_keys_avg",
+        "total_model_keys_avg": "total_model_keys_avg",
+        "matched_keys_avg": "matched_keys_avg",
+        "exact_value_matches_avg": "exact_value_matches_avg",
+    }
+    for metric, label in metric_labels.items():
+        value = summary.get(metric)
+        if value is not None:
+            lines.append(f"{indent}{label}: {value:.4f}")
+
+    lines.append(f"{indent}missing_keys_total: {summary.get('missing_keys_total', 0)}")
+    lines.append(f"{indent}extra_keys_total: {summary.get('extra_keys_total', 0)}")
+    lines.append(
+        f"{indent}detail_entries_total: {summary.get('detail_entries_total', 0)}"
+    )
 
 
 def report_to_json(report: EvalReport) -> str:

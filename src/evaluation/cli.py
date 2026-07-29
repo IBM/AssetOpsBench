@@ -24,22 +24,33 @@ def _build_parser() -> argparse.ArgumentParser:
         "--trajectories",
         type=Path,
         required=True,
-        help="Directory of {run_id}.json trajectory files (or a single file).",
+        help=(
+            "Directory recursively containing trajectory JSON files "
+            "(or a single JSON file)."
+        ),
     )
     p.add_argument(
         "--scenarios",
         type=Path,
         nargs="+",
         required=True,
-        help="One or more scenario JSON / JSONL files.",
+        help="One or more scenario JSON / JSONL files or scenario directories.",
+    )
+    p.add_argument(
+        "--scenario-ids",
+        default=None,
+        metavar="SELECTOR",
+        help=(
+            "Optional benchmark YAML selector such as fcc_lite or "
+            "fcc+fmsr_all. Only matching scenario IDs are evaluated."
+        ),
     )
     p.add_argument(
         "--reports-dir",
         type=Path,
         default=Path("reports"),
         help=(
-            "Directory to write per-run JSON reports (one file per run, "
-            "named '<run_id>.json'), plus '_aggregate.json' for the rollup. "
+            "Directory to write the combined '_aggregate.json' report. "
             "Default: reports/."
         ),
     )
@@ -85,13 +96,28 @@ def _validate_scorer_default(name: str) -> None:
         raise SystemExit(str(exc))
 
 
+def _resolve_scenario_ids(selector: str | None) -> set[str] | None:
+    """Resolve an optional benchmark scenario selector from all/lite YAML."""
+    if selector is None:
+        return None
+
+    from benchmark.scenario_suite_runner import scenario_ids_for_selector
+
+    return set(scenario_ids_for_selector(selector))
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    try:
+        scenario_ids = _resolve_scenario_ids(args.scenario_ids)
+    except (FileNotFoundError, ValueError) as exc:
+        parser.error(str(exc))
     _maybe_install_judge(args.judge_model)
     _validate_scorer_default(args.scorer_default)
 
@@ -101,12 +127,12 @@ def main(argv: list[str] | None = None) -> int:
     ).evaluate(
         trajectories_path=args.trajectories,
         scenarios_paths=list(args.scenarios),
+        scenario_ids=scenario_ids,
     )
 
     out_dir = write_reports_dir(report, args.reports_dir)
     print(render_summary(report))
-    print(f"\nReports written: {out_dir}/<run_id>.json ({len(report.results)} files)")
-    print(f"Aggregate:       {out_dir}/_aggregate.json")
+    print(f"\nAggregate report written: {out_dir}/_aggregate.json")
     return 0
 
 
