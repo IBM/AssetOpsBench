@@ -225,7 +225,8 @@ model turn.
 The file contains the complete, unmodified MCP response—including null fields—
 rather than a projected subset. Code should inspect only the schema, counts, a
 small sample, or the specific rows or fields needed, then process the artifact
-in place. Artifacts larger than 1 MB must not be printed in full.
+in place. For artifacts larger than 200 KiB, extract and process the relevant
+subset in bounded batches instead of printing the full payload.
 
 Within one agent run, identical read calls reuse an intact existing artifact.
 Successful work-order mutations, catalog mutations, and TSFM run-producing tools

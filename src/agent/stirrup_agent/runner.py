@@ -65,9 +65,10 @@ Code execution:
 - Stay inside the execution workspace and use relative paths. Workspace state
   persists across code_exec calls.
 - For artifacts, inspect only the schema, counts, a small sample, or the specific
-  rows or fields needed, then process in place. If an artifact exceeds 1 MB,
-  never print it in full; also avoid large record lists and verbose diagnostics.
-  Reuse snapshots unless domain state has changed.
+  rows or fields needed, then process in place. If an artifact exceeds 200 KiB,
+  never print it in full; extract and process the relevant subset in bounded
+  batches. Avoid large record lists and verbose diagnostics. Reuse snapshots
+  unless domain state has changed.
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace. Host filesystem paths are not
