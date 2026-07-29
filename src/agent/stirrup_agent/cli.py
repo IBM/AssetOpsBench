@@ -31,8 +31,7 @@ model-id format:
                           directly here, e.g.
                           watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
 
-Router models use the Responses API first and fall back to Chat Completions
-when Responses is unsupported or remains unavailable after retries.
+Router models use the Chat Completions API.
 
 tracks:
   --code-enabled (default)  Add a sandboxed code-execution tool (code track).

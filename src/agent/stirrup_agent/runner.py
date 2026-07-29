@@ -7,9 +7,7 @@ the agent loop, and map the returned message history onto the shared
 :class:`~agent.models.Trajectory`.
 
 Model routing:
-  * OpenAI-compatible router prefixes -> Stirrup ``OpenResponsesClient`` first,
-    with a sticky fallback to ``ChatCompletionsClient`` when the endpoint does
-    not support the Responses interface.
+  * OpenAI-compatible router prefixes -> Stirrup ``ChatCompletionsClient``.
   * ``<provider>/<model>``     -> Stirrup ``LiteLLMClient``, which reaches
     Anthropic, watsonx, Bedrock, etc. natively through LiteLLM.  This means
     ``watsonx/...`` models work directly here, without the proxy detour Goose
@@ -51,21 +49,21 @@ _log = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
-_DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "python:3.12-slim")
-_ASSUMED_CONTEXT_WINDOW = 1_000_000
-_CONTEXT_SUMMARIZATION_CUTOFF = 0.85
-_RESPONSES_FALLBACK_STATUS_CODES = frozenset(
-    {400, 404, 405, 415, 422, 500, 501, 502, 503, 504}
-)
+_DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "assetops-code")
+_WORKING_CONTEXT_BUDGET = 100_000
+_CONTEXT_SUMMARIZATION_CUTOFF = 0.75
 _CODE_EXEC_SYSTEM_PROMPT = """\
-Code execution guidance:
-- Treat the MCP tools as the authoritative source for asset and domain data.
-  Do not query CouchDB or other backing services directly from code.
-- Use code_exec for calculations, data transformations, workspace file
-  inspection, and result validation. Do not use it instead of an available MCP
-  tool for retrieving domain data.
-- Use relative paths within the current execution workspace. Files and other
-  workspace state persist across code_exec calls during this run.
+Code execution:
+- MCP tools are the sole authority for domain data; never query backing services
+  from code or replace an available MCP read with code_exec.
+- Use code_exec only when needed for computation, data processing, workspace
+  probing, file inspection, or validation. Never use it for planning, comments,
+  placeholders, or empty scripts. Combine calls and stop after verification.
+- Stay inside the execution workspace and use relative paths. Workspace state
+  persists across code_exec calls.
+- Large MCP results may arrive as workspace artifact handles. Process the file in
+  place and print only needed fields or aggregates; never dump the whole file.
+  Do not repeat the MCP read unless its underlying domain state changed.
 - Run non-interactive, bounded commands. Check that a package is installed
   before relying on it, and use the Python standard library when practical.
 - Verify computed results before answering. Put the answer and its key evidence
@@ -84,28 +82,14 @@ workspace and use relative paths.
 """
 
 
-def _responses_error_status_code(exc: Exception) -> int | None:
-    """Return an HTTP status, including errors wrapped by Tenacity retries."""
-    status_code = getattr(exc, "status_code", None)
-    if isinstance(status_code, int):
-        return status_code
-
-    last_attempt = getattr(exc, "last_attempt", None)
-    if last_attempt is None:
-        return None
-    nested = last_attempt.exception()
-    nested_status = getattr(nested, "status_code", None)
-    return nested_status if isinstance(nested_status, int) else None
-
-
 class _ContextWindowClient:
-    """Report the assumed context size without changing the output-token cap.
+    """Report the working context budget without changing the output-token cap.
 
     Stirrup currently reads ``LLMClient.max_tokens`` both when configuring the
     provider's maximum output and when deciding whether to summarize context.
     Keeping the provider client behind this adapter lets it retain its native
-    64k output default while the agent loop uses the benchmark's 1M-context
-    assumption.
+    64k output default while the agent loop uses a lower working-context budget
+    for earlier summarization.
     """
 
     def __init__(self, client: Any) -> None:
@@ -113,7 +97,7 @@ class _ContextWindowClient:
 
     @property
     def max_tokens(self) -> int:
-        return _ASSUMED_CONTEXT_WINDOW
+        return _WORKING_CONTEXT_BUDGET
 
     @property
     def model_slug(self) -> str:
@@ -125,42 +109,19 @@ class _ContextWindowClient:
         return await self._client.generate(messages, tools)
 
 
-class _ResponsesThenChatClient:
-    """Prefer Open Responses, then stick to Chat Completions if unavailable."""
+def _build_full_summary_logger():
+    """Return a Stirrup logger that displays generated summaries without truncation."""
+    from rich.text import Text
+    from stirrup.utils.logging import AgentLogger, console
 
-    def __init__(self, responses_client: Any, chat_client: Any) -> None:
-        self._responses_client = responses_client
-        self._chat_client = chat_client
-        self._use_chat_completions = False
+    class _FullSummaryLogger(AgentLogger):
+        def context_summarization_complete(
+            self, summary: str, bridge: str
+        ) -> None:
+            console.print(Text("✓ Summary Generated", style="bold green"))
+            console.print(summary, markup=False, soft_wrap=True)
 
-    @property
-    def max_tokens(self) -> int:
-        return self._responses_client.max_tokens
-
-    @property
-    def model_slug(self) -> str:
-        return self._responses_client.model_slug
-
-    async def generate(
-        self, messages: list[Any], tools: dict[str, Any]
-    ) -> Any:
-        if self._use_chat_completions:
-            return await self._chat_client.generate(messages, tools)
-
-        try:
-            return await self._responses_client.generate(messages, tools)
-        except Exception as exc:
-            status_code = _responses_error_status_code(exc)
-            if status_code not in _RESPONSES_FALLBACK_STATUS_CODES:
-                raise
-            self._use_chat_completions = True
-            _log.warning(
-                "Responses API unavailable for model %s (HTTP %s); "
-                "using Chat Completions for the remainder of the run",
-                self.model_slug,
-                status_code,
-            )
-            return await self._chat_client.generate(messages, tools)
+    return _FullSummaryLogger()
 
 
 def _copy_workspace_contents(source: Path, destination: Path) -> None:
@@ -269,7 +230,6 @@ class StirrupAgentRunner(AgentRunner):
         creds = resolve_router_creds(self._model_id)
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
-            from stirrup.clients.open_responses_client import OpenResponsesClient
 
             common_kwargs = {
                 "model": resolve_model(self._model_id),
@@ -278,10 +238,7 @@ class StirrupAgentRunner(AgentRunner):
                 "reasoning_effort": self._reasoning_effort,
                 "kwargs": client_kwargs,
             }
-            client = _ResponsesThenChatClient(
-                responses_client=OpenResponsesClient(**common_kwargs),
-                chat_client=ChatCompletionsClient(**common_kwargs),
-            )
+            client = ChatCompletionsClient(**common_kwargs)
         else:
             from stirrup.clients.litellm_client import LiteLLMClient
 
@@ -292,13 +249,13 @@ class StirrupAgentRunner(AgentRunner):
             )
         return _ContextWindowClient(client)
 
-    def _build_mcp_provider(self):
-        """Build a Stirrup ``MCPToolProvider`` for the AssetOpsBench servers.
+    def _build_mcp_config(self):
+        """Build the Stirrup MCP configuration for AssetOpsBench servers.
 
         Each server is a stdio process launched exactly as the other runners
         launch it: ``uv run --directory <repo> <entry-point>``.
         """
-        from stirrup.tools.mcp import MCPConfig, MCPToolProvider
+        from stirrup.tools.mcp import MCPConfig
 
         servers: dict[str, dict] = {}
         for name, spec in self._server_paths.items():
@@ -308,8 +265,22 @@ class StirrupAgentRunner(AgentRunner):
                 "args": ["run", "--directory", str(_REPO_ROOT), cmd_arg],
                 "cwd": str(_REPO_ROOT),
             }
-        config = MCPConfig.model_validate({"mcpServers": servers})
-        return MCPToolProvider(config=config)
+        return MCPConfig.model_validate({"mcpServers": servers})
+
+    def _build_mcp_provider(self, *, exec_env=None):
+        """Build the MCP provider, bridging large results when code is enabled."""
+        config = self._build_mcp_config()
+        if exec_env is None:
+            from stirrup.tools.mcp import MCPToolProvider
+
+            return MCPToolProvider(config=config)
+
+        from .workspace_bridge import WorkspaceBridgedMCPToolProvider
+
+        return WorkspaceBridgedMCPToolProvider(
+            config=config,
+            exec_env=exec_env,
+        )
 
     def _build_code_provider(self):
         """Build the sandboxed code-execution provider for the code track."""
@@ -338,11 +309,14 @@ class StirrupAgentRunner(AgentRunner):
         )
 
     def _build_tools(self) -> list:
-        tools: list = []
-        if self._code_enabled:
-            tools.append(self._build_code_provider())
-        tools.append(self._build_mcp_provider())
-        return tools
+        if not self._code_enabled:
+            return [self._build_mcp_provider()]
+
+        code_provider = self._build_code_provider()
+        return [
+            code_provider,
+            self._build_mcp_provider(exec_env=code_provider),
+        ]
 
     def _build_system_prompt(self) -> str:
         """Append code-execution guidance when the code track is enabled."""
@@ -374,6 +348,7 @@ class StirrupAgentRunner(AgentRunner):
                 tools=self._build_tools(),
                 max_turns=self._max_turns,
                 context_summarization_cutoff=_CONTEXT_SUMMARIZATION_CUTOFF,
+                logger=_build_full_summary_logger(),
             )
 
             _log.info(
