@@ -13,8 +13,9 @@ class AssetOpsFinishParams(BaseModel):
     answer: str = Field(
         min_length=1,
         description=(
-            "Exact user-facing answer to the original question. Follow the "
-            "requested output format exactly and include no completion summary."
+            "Final answer to send directly to the user. Follow the output format "
+            "requested in the original question exactly. Include no completion "
+            "summary, reasoning, or extra text unless the user requested it."
         ),
     )
     reason: str = Field(
