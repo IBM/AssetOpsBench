@@ -24,7 +24,7 @@ from typing import Any, Iterable
 
 from ..models import ToolCall, Trajectory, TurnRecord
 
-# Stirrup's built-in code-execution tool name (LocalCodeExec / Docker / E2B all
+# Stirrup's built-in code-execution tool name (LocalCodeExec and Docker both
 # register under this name by default).  A call to it = "the agent ran code".
 _CODE_TOOL_NAMES = {"code_exec"}
 # Default web tools, if ever attached; counted as "other", never domain.
@@ -150,11 +150,31 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
 
 
 def final_answer(history: Iterable[Any], finish_params: Any) -> str:
-    """Final answer: last non-empty assistant text, else the finish reason."""
-    for msg in reversed(_flatten(history)):
+    """Return the user-facing answer from a completed Stirrup run.
+
+    ``finish.reason`` describes why the agent stopped and is not necessarily
+    the answer shown to the user.  Prefer non-empty assistant content emitted
+    alongside the ``finish`` call, while retaining the reason as a fallback for
+    agents that put no content on that turn.
+    """
+    messages = _flatten(history)
+
+    for msg in reversed(messages):
+        if getattr(msg, "role", None) != "assistant":
+            continue
+        tool_calls = getattr(msg, "tool_calls", []) or []
+        if any(getattr(call, "name", None) == "finish" for call in tool_calls):
+            text = _content_text(getattr(msg, "content", "")).strip()
+            if text:
+                return text
+
+    reason = getattr(finish_params, "reason", None)
+    if isinstance(reason, str) and reason.strip():
+        return reason.strip()
+
+    for msg in reversed(messages):
         if getattr(msg, "role", None) == "assistant":
             text = _content_text(getattr(msg, "content", "")).strip()
             if text:
                 return text
-    reason = getattr(finish_params, "reason", None)
-    return reason if isinstance(reason, str) else ""
+    return ""

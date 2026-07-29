@@ -7,8 +7,9 @@ the agent loop, and map the returned message history onto the shared
 :class:`~agent.models.Trajectory`.
 
 Model routing:
-  * ``litellm_proxy/<model>``  -> Stirrup ``ChatCompletionsClient`` pointed at
-    the LiteLLM proxy (OpenAI-compatible), matching the other runners.
+  * OpenAI-compatible router prefixes -> Stirrup ``OpenResponsesClient`` first,
+    with a sticky fallback to ``ChatCompletionsClient`` when the endpoint does
+    not support the Responses interface.
   * ``<provider>/<model>``     -> Stirrup ``LiteLLMClient``, which reaches
     Anthropic, watsonx, Bedrock, etc. natively through LiteLLM.  This means
     ``watsonx/...`` models work directly here, without the proxy detour Goose
@@ -35,6 +36,7 @@ import os
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 from observability import agent_run_span, persist_trajectory
 
@@ -50,6 +52,115 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "python:3.12-slim")
+_ASSUMED_CONTEXT_WINDOW = 1_000_000
+_CONTEXT_SUMMARIZATION_CUTOFF = 0.85
+_RESPONSES_FALLBACK_STATUS_CODES = frozenset(
+    {400, 404, 405, 415, 422, 500, 501, 502, 503, 504}
+)
+_CODE_EXEC_SYSTEM_PROMPT = """\
+Code execution guidance:
+- Treat the MCP tools as the authoritative source for asset and domain data.
+  Do not query CouchDB or other backing services directly from code.
+- Use code_exec for calculations, data transformations, workspace file
+  inspection, and result validation. Do not use it instead of an available MCP
+  tool for retrieving domain data.
+- Use relative paths within the current execution workspace. Files and other
+  workspace state persist across code_exec calls during this run.
+- Run non-interactive, bounded commands. Check that a package is installed
+  before relying on it, and use the Python standard library when practical.
+- Verify computed results before answering. Put the answer and its key evidence
+  in the finish reason; stdout and workspace files are not part of the final
+  answer by themselves.
+"""
+_DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
+The Docker execution workspace is /workspace. Host filesystem paths are not
+available inside the container. The image might include scientific packages
+such as numpy, pandas, scipy, or matplotlib. Verify them before relying on them.
+"""
+_LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
+The local execution workspace is a temporary directory, but commands run on the
+host with the current user's permissions. Keep all reads and writes inside the
+workspace and use relative paths.
+"""
+
+
+def _responses_error_status_code(exc: Exception) -> int | None:
+    """Return an HTTP status, including errors wrapped by Tenacity retries."""
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+
+    last_attempt = getattr(exc, "last_attempt", None)
+    if last_attempt is None:
+        return None
+    nested = last_attempt.exception()
+    nested_status = getattr(nested, "status_code", None)
+    return nested_status if isinstance(nested_status, int) else None
+
+
+class _ContextWindowClient:
+    """Report the assumed context size without changing the output-token cap.
+
+    Stirrup currently reads ``LLMClient.max_tokens`` both when configuring the
+    provider's maximum output and when deciding whether to summarize context.
+    Keeping the provider client behind this adapter lets it retain its native
+    64k output default while the agent loop uses the benchmark's 1M-context
+    assumption.
+    """
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    @property
+    def max_tokens(self) -> int:
+        return _ASSUMED_CONTEXT_WINDOW
+
+    @property
+    def model_slug(self) -> str:
+        return self._client.model_slug
+
+    async def generate(
+        self, messages: list[Any], tools: dict[str, Any]
+    ) -> Any:
+        return await self._client.generate(messages, tools)
+
+
+class _ResponsesThenChatClient:
+    """Prefer Open Responses, then stick to Chat Completions if unavailable."""
+
+    def __init__(self, responses_client: Any, chat_client: Any) -> None:
+        self._responses_client = responses_client
+        self._chat_client = chat_client
+        self._use_chat_completions = False
+
+    @property
+    def max_tokens(self) -> int:
+        return self._responses_client.max_tokens
+
+    @property
+    def model_slug(self) -> str:
+        return self._responses_client.model_slug
+
+    async def generate(
+        self, messages: list[Any], tools: dict[str, Any]
+    ) -> Any:
+        if self._use_chat_completions:
+            return await self._chat_client.generate(messages, tools)
+
+        try:
+            return await self._responses_client.generate(messages, tools)
+        except Exception as exc:
+            status_code = _responses_error_status_code(exc)
+            if status_code not in _RESPONSES_FALLBACK_STATUS_CODES:
+                raise
+            self._use_chat_completions = True
+            _log.warning(
+                "Responses API unavailable for model %s (HTTP %s); "
+                "using Chat Completions for the remainder of the run",
+                self.model_slug,
+                status_code,
+            )
+            return await self._chat_client.generate(messages, tools)
 
 
 def _copy_workspace_contents(source: Path, destination: Path) -> None:
@@ -102,12 +213,12 @@ class StirrupAgentRunner(AgentRunner):
         server_paths: MCP server specs (defaults to all registered servers).
         model: ``litellm_proxy/<provider>/<model>`` or native ``<provider>/<model>``.
         code_enabled: Add a sandboxed code-execution tool (the code track).
-        code_backend: ``"docker"`` (sandboxed, default), ``"local"``, or ``"e2b"``.
+        code_backend: ``"docker"`` (sandboxed, default) or ``"local"``.
         workspace_dir: Optional host base directory for Docker/local code execution.
         preserve_workspace: Copy final code-execution files back into ``workspace_dir``.
         max_turns: Stirrup agent loop bound.
-        max_tokens: Context window hint passed to the client.
         temperature: Optional sampling temperature passed to the Stirrup client.
+        reasoning_effort: Optional reasoning effort passed to the Stirrup client.
     """
 
     def __init__(
@@ -120,10 +231,12 @@ class StirrupAgentRunner(AgentRunner):
         workspace_dir: Path | str | None = None,
         preserve_workspace: bool = False,
         max_turns: int = 30,
-        max_tokens: int = 16_384,
         temperature: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         super().__init__(llm, server_paths)
+        if code_backend not in {"docker", "local"}:
+            raise ValueError("code_backend must be 'docker' or 'local'")
         self._model_id = model
         self._code_enabled = code_enabled
         self._code_backend = code_backend
@@ -140,8 +253,8 @@ class StirrupAgentRunner(AgentRunner):
             )
         self._preserve_workspace = preserve_workspace
         self._max_turns = max_turns
-        self._max_tokens = max_tokens
         self._temperature = temperature
+        self._reasoning_effort = reasoning_effort
 
     # -- client / tools ----------------------------------------------------
 
@@ -152,24 +265,32 @@ class StirrupAgentRunner(AgentRunner):
             if self._temperature is not None
             else None
         )
+
         creds = resolve_router_creds(self._model_id)
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
+            from stirrup.clients.open_responses_client import OpenResponsesClient
 
-            return ChatCompletionsClient(
-                model=resolve_model(self._model_id),
-                base_url=creds.base_url.rstrip("/"),
-                api_key=creds.api_key,
-                max_tokens=self._max_tokens,
+            common_kwargs = {
+                "model": resolve_model(self._model_id),
+                "base_url": creds.base_url.rstrip("/"),
+                "api_key": creds.api_key,
+                "reasoning_effort": self._reasoning_effort,
+                "kwargs": client_kwargs,
+            }
+            client = _ResponsesThenChatClient(
+                responses_client=OpenResponsesClient(**common_kwargs),
+                chat_client=ChatCompletionsClient(**common_kwargs),
+            )
+        else:
+            from stirrup.clients.litellm_client import LiteLLMClient
+
+            client = LiteLLMClient(
+                model=self._model_id,
+                reasoning_effort=self._reasoning_effort,
                 kwargs=client_kwargs,
             )
-        from stirrup.clients.litellm_client import LiteLLMClient
-
-        return LiteLLMClient(
-            model=self._model_id,
-            max_tokens=self._max_tokens,
-            kwargs=client_kwargs,
-        )
+        return _ContextWindowClient(client)
 
     def _build_mcp_provider(self):
         """Build a Stirrup ``MCPToolProvider`` for the AssetOpsBench servers.
@@ -201,10 +322,6 @@ class StirrupAgentRunner(AgentRunner):
                 provider_cls = _preserving_provider_class(provider_cls)
                 kwargs["preserve_dir"] = self._workspace_dir
             return provider_cls(**kwargs)
-        if self._code_backend == "e2b":
-            from stirrup.tools.code_backends.e2b import E2BCodeExecToolProvider
-
-            return E2BCodeExecToolProvider()
         from stirrup.tools.code_backends.docker import DockerCodeExecToolProvider
 
         if self._preserve_workspace:
@@ -227,6 +344,18 @@ class StirrupAgentRunner(AgentRunner):
         tools.append(self._build_mcp_provider())
         return tools
 
+    def _build_system_prompt(self) -> str:
+        """Append code-execution guidance when the code track is enabled."""
+        if not self._code_enabled:
+            return AGENT_SYSTEM_PROMPT
+
+        backend_prompt = (
+            _DOCKER_CODE_EXEC_SYSTEM_PROMPT
+            if self._code_backend == "docker"
+            else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
+        )
+        return f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+
     # -- run ---------------------------------------------------------------
 
     async def run(self, question: str) -> AgentResult:
@@ -241,9 +370,10 @@ class StirrupAgentRunner(AgentRunner):
             agent = Agent(
                 client=self._build_client(),
                 name="assetops",
-                system_prompt=AGENT_SYSTEM_PROMPT,
+                system_prompt=self._build_system_prompt(),
                 tools=self._build_tools(),
                 max_turns=self._max_turns,
+                context_summarization_cutoff=_CONTEXT_SUMMARIZATION_CUTOFF,
             )
 
             _log.info(
