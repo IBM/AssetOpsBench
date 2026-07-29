@@ -151,9 +151,9 @@ Backends (`--code-backend`):
 
 When code execution is enabled, the runner appends backend-specific guidance to
 the shared agent prompt. It directs the model to retrieve domain data through
-the MCP tools, use `code_exec` for computation and validation, keep work inside
-the persistent execution workspace, and include verified conclusions in the
-Stirrup `finish` reason. Docker runs also identify `/workspace` and the default
+the MCP tools, normally limit `code_exec` to inspect/analyze/verify, avoid large
+workspace output, honor domain definitions, and follow the user's requested
+output format exactly. Docker runs also identify `/workspace` and the default
 image's package availability; local runs warn that commands execute with the
 current user's host permissions. `--no-code` keeps the shared prompt unchanged.
 

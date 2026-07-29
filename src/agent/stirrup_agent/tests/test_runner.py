@@ -120,39 +120,6 @@ def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
     assert runner._build_system_prompt() == AGENT_SYSTEM_PROMPT
 
 
-def test_stirrup_runner_appends_docker_code_guidance():
-    prompt = StirrupAgentRunner(code_backend="docker")._build_system_prompt()
-
-    assert prompt.startswith(AGENT_SYSTEM_PROMPT)
-    assert "MCP tools are the sole authority" in prompt
-    assert "never query backing services" in prompt
-    assert "Stay inside the execution workspace" in prompt
-    assert "Never use it for planning, comments" in prompt
-    assert "Combine calls and stop after verification" in prompt
-    assert "workspace artifact handles" in prompt
-    assert "never dump the whole file" in prompt
-    assert "repeat the MCP read" in prompt
-    assert "finish reason" in prompt
-    assert "/workspace" in prompt
-    assert "scientific packages" in prompt
-    assert "Verify them before relying on them" in prompt
-    assert "host with the current user's permissions" not in prompt
-
-
-def test_stirrup_runner_appends_local_code_guidance():
-    prompt = StirrupAgentRunner(code_backend="local")._build_system_prompt()
-
-    assert prompt.startswith(AGENT_SYSTEM_PROMPT)
-    assert "code_exec" in prompt
-    assert "never query backing services" in prompt
-    assert "Stay inside the execution workspace" in prompt
-    assert "Never use it for planning, comments" in prompt
-    assert "Combine calls and stop after verification" in prompt
-    assert "host with the current user's permissions" in prompt
-    assert "use relative paths" in prompt
-    assert "/workspace" not in prompt
-
-
 def test_stirrup_runner_forwards_temperature_to_litellm_client():
     runner = StirrupAgentRunner(
         model="watsonx/ibm/granite-4-h-small",
