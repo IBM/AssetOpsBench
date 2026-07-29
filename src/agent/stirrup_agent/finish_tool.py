@@ -1,4 +1,4 @@
-"""AssetOps-specific Stirrup finish tool with an explicit answer contract."""
+"""Custom Stirrup finish tool that captures the final response explicitly."""
 
 from __future__ import annotations
 
@@ -8,28 +8,29 @@ from stirrup.core.models import Tool, ToolResult, ToolUseCountMetadata
 
 
 class AssetOpsFinishParams(BaseModel):
-    """Structured result returned when an AssetOps task is complete."""
+    """Arguments the agent supplies when ending an AssetOps task."""
 
     answer: str = Field(
         min_length=1,
         description=(
-            "Final answer to send directly to the user. Follow the output format "
-            "requested in the original question exactly. Include no completion "
-            "summary, reasoning, or extra text unless the user requested it."
+            "Complete response to send directly to the user. Match any output "
+            "format specified in the original request. Include only the requested "
+            "content, with no status update, internal reasoning, or additional "
+            "commentary unless the user asked for it."
         ),
     )
     reason: str = Field(
         default="",
         description=(
-            "Optional internal explanation of why the task is complete. "
-            "Do not place the user-facing answer here."
+            "Optional internal note explaining why the run is ending. "
+            "This is operational metadata and is not shown to the user."
         ),
     )
     paths: list[str] = Field(
         default_factory=list,
         description=(
-            "Files created or modified by the task. Include files only, not "
-            "directories."
+            "Paths of files created or modified for the user. List individual "
+            "files only; do not list directories."
         ),
     )
 
@@ -37,14 +38,14 @@ class AssetOpsFinishParams(BaseModel):
     @classmethod
     def _answer_must_contain_content(cls, value: str) -> str:
         if not value.strip():
-            raise ValueError("answer must contain non-whitespace content")
+            raise ValueError("answer must include at least one non-whitespace character")
         return value
 
 
 async def _finish_executor(
     params: AssetOpsFinishParams,
 ) -> ToolResult[ToolUseCountMetadata]:
-    """Validate reported output files before accepting task completion."""
+    """Accept completion only when every reported output file exists."""
     from stirrup.core.agent import _SESSION_STATE
 
     try:
@@ -58,8 +59,8 @@ async def _finish_executor(
         if missing:
             return ToolResult(
                 content=(
-                    f"ERROR: Files do not exist: {missing}. Verify paths and "
-                    "ensure files were saved."
+                    f"Cannot finish: reported output files do not exist: {missing}. "
+                    "Check each path and save the files before trying again."
                 ),
                 metadata=ToolUseCountMetadata(),
                 success=False,
@@ -75,9 +76,10 @@ async def _finish_executor(
 ASSETOPS_FINISH_TOOL: Tool[AssetOpsFinishParams, ToolUseCountMetadata] = Tool(
     name=DEFAULT_FINISH_TOOL_NAME,
     description=(
-        "Finish the task and provide the exact user-facing answer separately "
-        "from any internal completion reason. Call this only when the task is "
-        "complete; a separate turn is required to finish."
+        "End the task when all available work is complete or no further progress "
+        "is possible. Put the complete response for the user in answer, an "
+        "optional internal completion note in reason, and any created or modified "
+        "file paths in paths. Call this tool alone on the final turn."
     ),
     parameters=AssetOpsFinishParams,
     executor=_finish_executor,
@@ -85,7 +87,7 @@ ASSETOPS_FINISH_TOOL: Tool[AssetOpsFinishParams, ToolUseCountMetadata] = Tool(
 
 
 def structured_finish_answer(finish_params: object) -> str | None:
-    """Extract a non-empty answer from custom finish parameters."""
+    """Return the final response, or ``None`` for non-custom finish data."""
     answer = getattr(finish_params, "answer", None)
     if isinstance(answer, str) and answer.strip():
         return answer.strip()
