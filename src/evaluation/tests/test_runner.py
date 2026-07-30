@@ -74,34 +74,6 @@ def test_evaluate_function_filters_scenario_ids(tmp_path: Path, make_persisted_r
     assert [result.scenario_id for result in report.results] == ["2"]
 
 
-def test_evaluate_function_uses_repaired_answer_field(
-    tmp_path: Path, make_persisted_record
-):
-    rec = make_persisted_record(
-        run_id="run-a",
-        scenario_id=1,
-        answer="original",
-        answer_repair="repaired",
-    )
-    (tmp_path / "run-a.json").write_text(json.dumps(rec), encoding="utf-8")
-
-    scenarios_path = tmp_path / "scenarios.json"
-    scenarios_path.write_text(
-        json.dumps([{"id": 1, "text": "Q1", "type": "iot"}]),
-        encoding="utf-8",
-    )
-
-    registry.register("stub", _always_pass_scorer)
-    report = evaluate(
-        trajectories_path=tmp_path,
-        scenarios_paths=[scenarios_path],
-        default_scoring_method="stub",
-        answer_field="answer_repair",
-    )
-
-    assert report.results[0].answer == "repaired"
-
-
 def _always_fail_scorer(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerResult:
     return ScorerResult(scorer="stub-fail", passed=False, score=0.0)
 

@@ -89,17 +89,7 @@ uv run evaluate \
   --judge-model litellm_proxy/azure/gpt-5.4
 ```
 
-By default, evaluation scores the top-level `answer` field in each trajectory.
-To score a post-processed `answer_repair` field instead, pass:
-
-```bash
-uv run evaluate \
-  --trajectories traces/trajectories \
-  --scenarios groundtruth/101.json \
-  --answer-field answer_repair
-```
-
-Every selected trajectory must contain a string-valued field with that name.
+Evaluation scores the top-level `answer` field in each trajectory.
 
 Output:
 
