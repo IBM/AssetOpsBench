@@ -77,7 +77,6 @@ def persist_trajectory(
         "answer": answer,
         "trajectory": _serialize_trajectory(trajectory),
     }
-
     try:
         out_path.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
     except OSError:

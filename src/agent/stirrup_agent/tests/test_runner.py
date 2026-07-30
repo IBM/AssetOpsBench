@@ -7,15 +7,20 @@ they run without Stirrup, the MCP servers, Docker, or a model.
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass, field
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from agent._prompts import AGENT_SYSTEM_PROMPT
+from agent.stirrup_agent.finish_tool import ASSETOPS_FINISH_TOOL
 from agent.stirrup_agent.runner import (
     StirrupAgentRunner,
-    _ResponsesThenChatClient,
+    _CONTEXT_SUMMARIZATION_CUTOFF,
+    _WORKING_CONTEXT_BUDGET,
+    _build_full_summary_logger,
     _copy_workspace_contents,
 )
 from agent.stirrup_agent.trajectory import (
@@ -23,6 +28,7 @@ from agent.stirrup_agent.trajectory import (
     classify_tool,
     final_answer,
 )
+from agent.stirrup_agent.workspace_bridge import WorkspaceBridgedMCPToolProvider
 
 _DOMAIN = {"iot", "utilities", "fmsr", "tsfm", "wo", "vibration"}
 
@@ -70,6 +76,13 @@ class _Finish:
     reason: str
 
 
+@dataclass
+class _StructuredFinish:
+    answer: str
+    reason: str = ""
+    paths: list[str] = field(default_factory=list)
+
+
 def test_classify_tool():
     assert classify_tool("wo__get_work_order", _DOMAIN) == "domain"
     assert classify_tool("vibration__compute_fft", _DOMAIN) == "domain"
@@ -102,32 +115,19 @@ def test_stirrup_runner_rejects_unsupported_code_backend():
         StirrupAgentRunner(code_backend="e2b")
 
 
+def test_stirrup_runner_bridges_mcp_results_when_code_is_enabled():
+    runner = StirrupAgentRunner(code_backend="local")
+
+    code_provider, mcp_provider = runner._build_tools()
+
+    assert isinstance(mcp_provider, WorkspaceBridgedMCPToolProvider)
+    assert mcp_provider._exec_env is code_provider
+
+
 def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
     runner = StirrupAgentRunner(code_enabled=False)
 
     assert runner._build_system_prompt() == AGENT_SYSTEM_PROMPT
-
-
-def test_stirrup_runner_appends_docker_code_guidance():
-    prompt = StirrupAgentRunner(code_backend="docker")._build_system_prompt()
-
-    assert prompt.startswith(AGENT_SYSTEM_PROMPT)
-    assert "Treat the MCP tools as the authoritative source" in prompt
-    assert "finish reason" in prompt
-    assert "/workspace" in prompt
-    assert "scientific packages" in prompt
-    assert "Verify them before relying on them" in prompt
-    assert "host with the current user's permissions" not in prompt
-
-
-def test_stirrup_runner_appends_local_code_guidance():
-    prompt = StirrupAgentRunner(code_backend="local")._build_system_prompt()
-
-    assert prompt.startswith(AGENT_SYSTEM_PROMPT)
-    assert "code_exec" in prompt
-    assert "host with the current user's permissions" in prompt
-    assert "use relative paths" in prompt
-    assert "/workspace" not in prompt
 
 
 def test_stirrup_runner_forwards_temperature_to_litellm_client():
@@ -143,7 +143,7 @@ def test_stirrup_runner_forwards_temperature_to_litellm_client():
     assert provider_client._kwargs == {"temperature": 0.2}
     assert provider_client._reasoning_effort == "high"
     assert provider_client.max_tokens == 64_000
-    assert client.max_tokens == 1_000_000
+    assert client.max_tokens == 100_000
 
 
 def test_stirrup_runner_forwards_temperature_to_router_client(
@@ -161,96 +161,29 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
     client = runner._build_client()
 
     from stirrup.clients.chat_completions_client import ChatCompletionsClient
-    from stirrup.clients.open_responses_client import OpenResponsesClient
 
     router_client = client._client
-    assert isinstance(router_client._responses_client, OpenResponsesClient)
-    assert isinstance(router_client._chat_client, ChatCompletionsClient)
-    assert router_client._responses_client._kwargs == {"temperature": 0.2}
-    assert router_client._chat_client._kwargs == {"temperature": 0.2}
-    assert router_client._responses_client._reasoning_effort == "medium"
-    assert router_client._chat_client._reasoning_effort == "medium"
+    assert isinstance(router_client, ChatCompletionsClient)
+    assert router_client._kwargs == {"temperature": 0.2}
+    assert router_client._reasoning_effort == "medium"
     assert router_client.max_tokens == 64_000
-    assert client.max_tokens == 1_000_000
-
-class _FakeClient:
-    def __init__(self, *, result=None, error: Exception | None = None) -> None:
-        self.result = result
-        self.error = error
-        self.calls = 0
-        self.max_tokens = 64_000
-        self.model_slug = "test-model"
-
-    async def generate(self, messages, tools):
-        self.calls += 1
-        if self.error is not None:
-            raise self.error
-        return self.result
+    assert client.max_tokens == 100_000
 
 
-class _StatusError(Exception):
-    def __init__(self, status_code: int) -> None:
-        super().__init__(f"HTTP {status_code}")
-        self.status_code = status_code
+def test_stirrup_runner_uses_75k_summarization_trigger():
+    assert _WORKING_CONTEXT_BUDGET == 100_000
+    assert _CONTEXT_SUMMARIZATION_CUTOFF == 0.75
+    assert _WORKING_CONTEXT_BUDGET * _CONTEXT_SUMMARIZATION_CUTOFF == 75_000
 
 
-class _LastAttempt:
-    def __init__(self, error: Exception) -> None:
-        self._error = error
+def test_full_summary_logger_does_not_truncate(capsys: pytest.CaptureFixture[str]):
+    marker = "SUMMARY_END_MARKER_1234567890"
+    summary = "x" * 900 + marker
 
-    def exception(self) -> Exception:
-        return self._error
+    logger = _build_full_summary_logger()
+    logger.context_summarization_complete(summary, "unused bridge")
 
-
-class _RetryError(Exception):
-    def __init__(self, error: Exception) -> None:
-        super().__init__("retries exhausted")
-        self.last_attempt = _LastAttempt(error)
-
-
-@pytest.mark.anyio
-async def test_router_client_prefers_open_responses():
-    responses = _FakeClient(result="responses result")
-    chat = _FakeClient(result="chat response")
-    client = _ResponsesThenChatClient(responses, chat)
-
-    assert await client.generate([], {}) == "responses result"
-    assert responses.calls == 1
-    assert chat.calls == 0
-
-
-@pytest.mark.anyio
-async def test_router_client_falls_back_to_chat_and_sticks_to_it():
-    responses = _FakeClient(error=_StatusError(404))
-    chat = _FakeClient(result="chat response")
-    client = _ResponsesThenChatClient(responses, chat)
-
-    assert await client.generate([], {}) == "chat response"
-    assert await client.generate([], {}) == "chat response"
-    assert responses.calls == 1
-    assert chat.calls == 2
-
-
-@pytest.mark.anyio
-async def test_router_client_falls_back_after_retried_server_error():
-    responses = _FakeClient(error=_RetryError(_StatusError(500)))
-    chat = _FakeClient(result="chat response")
-    client = _ResponsesThenChatClient(responses, chat)
-
-    assert await client.generate([], {}) == "chat response"
-    assert responses.calls == 1
-    assert chat.calls == 1
-
-
-@pytest.mark.anyio
-async def test_router_client_does_not_mask_non_interface_errors():
-    responses = _FakeClient(error=RuntimeError("request failed"))
-    chat = _FakeClient(result="chat response")
-    client = _ResponsesThenChatClient(responses, chat)
-
-    with pytest.raises(RuntimeError, match="request failed"):
-        await client.generate([], {})
-    assert chat.calls == 0
+    assert marker in capsys.readouterr().out
 
 
 def test_build_trajectory_maps_turns_calls_and_outputs():
@@ -315,6 +248,19 @@ def test_final_answer_prefers_finish_turn_content_over_finish_reason():
     )
 
 
+def test_final_answer_prefers_structured_finish_answer_over_turn_content():
+    history = [
+        [
+            _Assistant(
+                content="Task complete.",
+                tool_calls=[_TC("finish", '{"answer":"42"}', "f1")],
+            )
+        ]
+    ]
+
+    assert final_answer(history, _StructuredFinish(answer="42")) == "42"
+
+
 def test_final_answer_uses_finish_reason_when_finish_turn_content_is_empty():
     history = [
         [_Assistant(content="I will inspect the work orders.")],
@@ -346,3 +292,104 @@ def test_arguments_parsed_when_already_dict():
     ]
     traj = build_trajectory(history)
     assert traj.all_tool_calls[0].input == {"asset": "CH6"}
+
+
+@pytest.mark.anyio
+async def test_run_persists_legacy_final_answer(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner_module = importlib.import_module("agent.stirrup_agent.runner")
+    client = object()
+    history = [
+        [
+            _Assistant(
+                content="calculating",
+                tool_calls=[_TC("code_exec", '{"cmd":"calculate"}', "c1")],
+            ),
+            _Tool(content="FINAL=7", tool_call_id="c1", name="code_exec"),
+        ],
+        [
+            _Assistant(
+                content='The requested result is {"count":7}.',
+                tool_calls=[_TC("finish", '{"reason":"done"}', "f1")],
+            )
+        ],
+    ]
+
+    class _FakeAgent:
+        def __init__(self, **kwargs):
+            assert kwargs["client"] is client
+            assert kwargs["finish_tool"] is ASSETOPS_FINISH_TOOL
+
+        def session(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            return None
+
+        async def run(self, question):
+            assert question == "Return a JSON object."
+            return _Finish("run complete"), history, {}
+
+    persist = MagicMock()
+    monkeypatch.setattr("stirrup.Agent", _FakeAgent)
+    monkeypatch.setattr(runner_module, "persist_trajectory", persist)
+
+    runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
+    monkeypatch.setattr(runner, "_build_client", lambda: client)
+    monkeypatch.setattr(runner, "_build_tools", lambda: [])
+
+    result = await runner.run("Return a JSON object.")
+
+    assert result.answer == 'The requested result is {"count":7}.'
+    persist.assert_called_once()
+    assert persist.call_args.kwargs["answer"] == result.answer
+
+
+@pytest.mark.anyio
+async def test_run_uses_structured_finish_without_repair_call(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner_module = importlib.import_module("agent.stirrup_agent.runner")
+    client = object()
+    history = [
+        [
+            _Assistant(
+                content="Task complete.",
+                tool_calls=[_TC("finish", '{"answer":"[1,2]"}', "f1")],
+            )
+        ]
+    ]
+
+    class _FakeAgent:
+        def __init__(self, **kwargs):
+            assert kwargs["client"] is client
+            assert kwargs["finish_tool"] is ASSETOPS_FINISH_TOOL
+
+        def session(self):
+            return self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            return None
+
+        async def run(self, question):
+            return _StructuredFinish(answer="[1,2]"), history, {}
+
+    persist = MagicMock()
+    monkeypatch.setattr("stirrup.Agent", _FakeAgent)
+    monkeypatch.setattr(runner_module, "persist_trajectory", persist)
+
+    runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
+    monkeypatch.setattr(runner, "_build_client", lambda: client)
+    monkeypatch.setattr(runner, "_build_tools", lambda: [])
+
+    result = await runner.run("Return a JSON array.")
+
+    assert result.answer == "[1,2]"
+    assert persist.call_args.kwargs["answer"] == "[1,2]"

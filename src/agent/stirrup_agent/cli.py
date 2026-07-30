@@ -31,8 +31,7 @@ model-id format:
                           directly here, e.g.
                           watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
 
-Router models use the Responses API first and fall back to Chat Completions
-when Responses is unsupported or remains unavailable after retries.
+Router models use the Chat Completions API.
 
 tracks:
   --code-enabled (default)  Add a sandboxed code-execution tool (code track).
@@ -44,7 +43,7 @@ environment variables:
   TOKENROUTER_API_KEY   TokenRouter API key  (for tokenrouter/* models)
   TOKENROUTER_BASE_URL  TokenRouter base URL (e.g. https://api.tokenrouter.com/v1)
   WATSONX_APIKEY/...    Standard LiteLLM watsonx vars (for watsonx/* models)
-  STIRRUP_CODE_IMAGE    Docker image for the code track (default python:3.12-slim)
+  STIRRUP_CODE_IMAGE    Docker image for the code track (default assetops-code)
 
 examples:
   stirrup-agent "What assets are at site MAIN?"
@@ -99,6 +98,7 @@ examples:
             "medium",
             "high",
             "xhigh",
+            "max",
             "default",
         ],
         default=None,

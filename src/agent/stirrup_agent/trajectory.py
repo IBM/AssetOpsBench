@@ -152,11 +152,16 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
 def final_answer(history: Iterable[Any], finish_params: Any) -> str:
     """Return the user-facing answer from a completed Stirrup run.
 
-    ``finish.reason`` describes why the agent stopped and is not necessarily
-    the answer shown to the user.  Prefer non-empty assistant content emitted
-    alongside the ``finish`` call, while retaining the reason as a fallback for
-    agents that put no content on that turn.
+    Prefer the explicit ``finish.answer`` supplied by the AssetOps finish tool.
+    For legacy/default finish tools, ``finish.reason`` describes why the agent
+    stopped and is not necessarily the answer shown to the user, so prefer
+    non-empty assistant content emitted alongside the ``finish`` call while
+    retaining the reason as a fallback.
     """
+    structured_answer = getattr(finish_params, "answer", None)
+    if isinstance(structured_answer, str) and structured_answer.strip():
+        return structured_answer.strip()
+
     messages = _flatten(history)
 
     for msg in reversed(messages):
