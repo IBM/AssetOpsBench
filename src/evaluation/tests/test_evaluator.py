@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from evaluation import scorers as registry
 from evaluation.evaluator import Evaluator
 from evaluation.models import Scenario, ScorerResult

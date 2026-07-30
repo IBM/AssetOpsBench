@@ -123,3 +123,25 @@ def test_load_scenarios_from_groundtruth_folders(tmp_path):
     assert scenarios[0].id == "11"
     assert scenarios[0].expected_answer == "{'energy': 14, 'material': 48}"
     assert scenarios[0].scoring_method == "static_json"
+
+
+def test_load_scenarios_reads_groundtruth_eval_metadata(tmp_path):
+    scenario_dir = tmp_path / "scenario_151"
+    scenario_dir.mkdir()
+    (scenario_dir / "groundtruth.txt").write_text(
+        '{"clarification": "Which asset do you mean by the main unit?"}',
+        encoding="utf-8",
+    )
+    (scenario_dir / "groundtruth_eval.json").write_text(
+        '{"mode": "clarification", "required_terms": ["main unit"]}',
+        encoding="utf-8",
+    )
+
+    scenarios = load_scenarios(tmp_path)
+
+    assert len(scenarios) == 1
+    assert scenarios[0].id == "151"
+    assert scenarios[0].evaluation_metadata == {
+        "mode": "clarification",
+        "required_terms": ["main unit"],
+    }

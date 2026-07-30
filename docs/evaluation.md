@@ -89,6 +89,8 @@ uv run evaluate \
   --judge-model litellm_proxy/azure/gpt-5.4
 ```
 
+Evaluation scores the top-level `answer` field in each trajectory.
+
 Output:
 
 ```

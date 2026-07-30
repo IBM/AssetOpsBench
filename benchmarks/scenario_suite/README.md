@@ -19,12 +19,16 @@ profile contains:
 
 | Category | Scenario IDs |
 | -------- | ------------ |
-| CAR | 151, 152, 153, 156, 167, 178, 180, 182, 183, 193 |
+| CAR | 151, 152, 153, 156 |
 | FCC | 301, 303, 305, 308, 314, 316, 320, 323, 325, 327 |
-| FMSR | 902, 904, 905, 906, 915, 916, 920, 923, 928, 932 |
-| Health | 401–410 |
-| TSFM | 1001–1005 |
-| WOSR | 5, 9, 13, 20, 24, 31, 43, 50, 61, 66 |
+| FMSR | 902, 904, 905, 906 |
+| Health | 401–404 |
+| TSFM | `[]` (none) |
+| WOSR | 5, 9, 13, 20 |
+
+Individual categories may use an empty list, such as `tsfm: []`; the profile as
+a whole must contain at least one scenario ID. Profile shorthands such as `lite`
+simply skip empty categories.
 
 Examples:
 
