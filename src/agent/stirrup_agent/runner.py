@@ -369,10 +369,6 @@ class StirrupAgentRunner(AgentRunner):
             trajectory = build_trajectory(history)
             trajectory.started_at = started_at
             answer = final_answer(history, finish_params)
-            # Keep the persisted field available for evaluator compatibility,
-            # but disable the post-run repair model call while the structured
-            # finish-answer contract is being evaluated.
-            answer_repair = answer
 
             self._annotate_span(span, trajectory, answer, run_started)
             persist_trajectory(
@@ -380,7 +376,6 @@ class StirrupAgentRunner(AgentRunner):
                 model=self._model_id,
                 question=question,
                 answer=answer,
-                answer_repair=answer_repair,
                 trajectory=trajectory,
             )
             return AgentResult(question=question, answer=answer, trajectory=trajectory)

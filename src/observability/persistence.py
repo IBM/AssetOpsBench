@@ -43,7 +43,6 @@ def persist_trajectory(
     question: str,
     answer: str,
     trajectory: Any,
-    answer_repair: str | None = None,
 ) -> Path | None:
     """Write a per-run evaluation record when ``AGENT_TRAJECTORY_DIR`` is set.
 
@@ -78,9 +77,6 @@ def persist_trajectory(
         "answer": answer,
         "trajectory": _serialize_trajectory(trajectory),
     }
-    if answer_repair is not None:
-        record["answer_repair"] = answer_repair
-
     try:
         out_path.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
     except OSError:

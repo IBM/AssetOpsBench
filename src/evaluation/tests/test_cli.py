@@ -18,22 +18,6 @@ def test_cli_accepts_optional_scenario_selector() -> None:
     )
 
     assert args.scenario_ids == "fcc+fmsr_all"
-    assert args.answer_field == "answer"
-
-
-def test_cli_accepts_repaired_answer_field() -> None:
-    args = _build_parser().parse_args(
-        [
-            "--trajectories",
-            "trajectories",
-            "--scenarios",
-            "scenarios",
-            "--answer-field",
-            "answer_repair",
-        ]
-    )
-
-    assert args.answer_field == "answer_repair"
 
 
 def test_resolve_scenario_ids_loads_all_yaml_categories() -> None:

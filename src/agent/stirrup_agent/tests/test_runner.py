@@ -295,7 +295,7 @@ def test_arguments_parsed_when_already_dict():
 
 
 @pytest.mark.anyio
-async def test_run_copies_legacy_answer_without_repair(
+async def test_run_persists_legacy_final_answer(
     monkeypatch: pytest.MonkeyPatch,
 ):
     runner_module = importlib.import_module("agent.stirrup_agent.runner")
@@ -347,7 +347,6 @@ async def test_run_copies_legacy_answer_without_repair(
     assert result.answer == 'The requested result is {"count":7}.'
     persist.assert_called_once()
     assert persist.call_args.kwargs["answer"] == result.answer
-    assert persist.call_args.kwargs["answer_repair"] == result.answer
 
 
 @pytest.mark.anyio
@@ -394,4 +393,3 @@ async def test_run_uses_structured_finish_without_repair_call(
 
     assert result.answer == "[1,2]"
     assert persist.call_args.kwargs["answer"] == "[1,2]"
-    assert persist.call_args.kwargs["answer_repair"] == "[1,2]"
