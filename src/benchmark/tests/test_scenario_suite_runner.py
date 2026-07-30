@@ -203,6 +203,19 @@ def test_parser_accepts_named_scenario_selector() -> None:
     assert args.scenario_ids == "fcc+fmsr_all"
 
 
+def test_parser_accepts_max_stirrup_reasoning_effort() -> None:
+    args = mr._build_parser().parse_args(
+        [
+            "--scenario-root",
+            "/tmp/scenarios_data",
+            "--reasoning-effort",
+            "max",
+        ]
+    )
+
+    assert args.reasoning_effort == "max"
+
+
 def test_scenario_dir_for_id() -> None:
     root = Path("/tmp/scenarios_data")
     assert mr.scenario_dir_for_id(root, "11") == root / "scenario_11"

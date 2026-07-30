@@ -546,6 +546,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "medium",
             "high",
             "xhigh",
+            "max",
             "default",
         ],
         default=None,
