@@ -98,6 +98,7 @@ examples:
             "medium",
             "high",
             "xhigh",
+            "max",
             "default",
         ],
         default=None,

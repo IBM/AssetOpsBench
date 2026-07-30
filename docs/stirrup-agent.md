@@ -289,7 +289,7 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--no-code`           | Tools-only; comparable to the other runners.                                         |
 | `--code-backend`      | `docker` (default) or `local`.                                                        |
 | `--max-turns N`       | Max agent turns (default: 30).                                                       |
-| `--reasoning-effort LEVEL` | Reasoning effort (`none` through `xhigh`, or `default`); provider default when omitted. |
+| `--reasoning-effort LEVEL` | Reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default`); provider default when omitted. |
 | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
 | `--preserve-workspace` | Copy final code-execution files into `--workspace-dir` before cleanup.              |
 
