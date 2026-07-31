@@ -8,7 +8,8 @@ attributes directly.
 
 Mapping:
   * each ``AssistantMessage`` -> one :class:`~agent.models.TurnRecord`
-    (its ``content`` text, ``tool_calls``, ``token_usage``, request timing);
+    (its ``content`` text, ``reasoning``, ``tool_calls``, ``token_usage``,
+    request timing);
   * each ``ToolMessage`` -> the ``output`` of the matching :class:`ToolCall`,
     joined by ``tool_call_id``.
 
@@ -20,6 +21,7 @@ runner) labels each call domain / code / other for the bypass metric.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any, Iterable
 
 from ..models import ToolCall, Trajectory, TurnRecord
@@ -29,6 +31,13 @@ from ..models import ToolCall, Trajectory, TurnRecord
 _CODE_TOOL_NAMES = {"code_exec"}
 # Default web tools, if ever attached; counted as "other", never domain.
 _WEB_TOOL_NAMES = {"web_search", "web_fetch"}
+
+
+@dataclass
+class StirrupTurnRecord(TurnRecord):
+    """A shared turn record plus Stirrup's optional reasoning payload."""
+
+    reasoning: dict[str, Any] | None = None
 
 
 def classify_tool(tool_name: str, domain_servers: set[str]) -> str:
@@ -79,6 +88,16 @@ def _parse_arguments(arguments: Any) -> dict:
     return {}
 
 
+def _reasoning_payload(reasoning: Any) -> dict[str, Any] | None:
+    """Return Stirrup ``AssistantMessage.reasoning`` in JSON-friendly form."""
+    if reasoning is None:
+        return None
+    return {
+        "signature": getattr(reasoning, "signature", None),
+        "content": getattr(reasoning, "content", "") or "",
+    }
+
+
 def _ms(start: float | None, end: float | None) -> float | None:
     if start is None or end is None:
         return None
@@ -123,7 +142,7 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
             out_tok = getattr(usage, "output", 0) if usage else 0
 
             trajectory.turns.append(
-                TurnRecord(
+                StirrupTurnRecord(
                     index=turn_index,
                     text=_content_text(getattr(msg, "content", "")),
                     tool_calls=tool_calls,
@@ -133,6 +152,7 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
                         getattr(msg, "request_start_time", None),
                         getattr(msg, "request_end_time", None),
                     ),
+                    reasoning=_reasoning_payload(getattr(msg, "reasoning", None)),
                 )
             )
             turn_index += 1
