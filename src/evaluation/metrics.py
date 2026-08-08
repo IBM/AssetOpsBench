@@ -31,7 +31,12 @@ def metrics_from_trajectory(record: PersistedTrajectory) -> OpsMetrics:
     if isinstance(traj, dict) and "turns" in traj:
         return _from_sdk_trajectory(traj, record.model)
     if isinstance(traj, list):
-        return _from_plan_execute(traj, record.model)
+        return _from_plan_execute(
+            traj,
+            record.model,
+            tokens_in=getattr(record, "tokens_in", None) or 0,
+            tokens_out=getattr(record, "tokens_out", None) or 0,
+        )
     return OpsMetrics()
 
 
@@ -128,10 +133,13 @@ def _usage_from_raw_events(events: list[Any]) -> tuple[int, int]:
     return input_tokens or sdk_input_tokens, output_tokens or sdk_output_tokens
 
 
-def _from_plan_execute(steps: list[Any], model: str) -> OpsMetrics:
+def _from_plan_execute(
+    steps: list[Any], model: str, tokens_in: int = 0, tokens_out: int = 0
+) -> OpsMetrics:
     # plan-execute persists ``list[StepResult]``; the dataclass exposes
     # ``server`` / ``tool`` / ``response`` fields but no per-step token
-    # counts, so we surface what is available and leave the rest at zero.
+    # counts, so the run-level totals the runner threaded onto the record
+    # (``tokens_in``/``tokens_out``) are the only source for these.
     tool_names = [
         s.get("tool")
         for s in steps
@@ -141,7 +149,9 @@ def _from_plan_execute(steps: list[Any], model: str) -> OpsMetrics:
         turn_count=len(steps),
         tool_call_count=len(tool_names),
         unique_tools=sorted(set(tool_names)),
-        est_cost_usd=_estimate_cost(model, 0, 0),
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        est_cost_usd=_estimate_cost(model, tokens_in, tokens_out),
     )
 
 

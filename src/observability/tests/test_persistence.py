@@ -116,6 +116,29 @@ def test_persist_serializes_list_trajectory(monkeypatch, tmp_path: Path):
     assert record["trajectory"] == [
         {"step_number": 1, "task": "do thing", "success": True}
     ]
+    assert "tokens_in" not in record
+    assert "tokens_out" not in record
+
+
+def test_persist_includes_run_level_tokens_when_given(monkeypatch, tmp_path: Path):
+    """plan-execute's trajectory has no per-turn token fields, so the runner
+    passes the meter's totals separately; they must land on the record."""
+    monkeypatch.setenv("AGENT_TRAJECTORY_DIR", str(tmp_path))
+    set_run_context(run_id="r4")
+
+    out = persist_trajectory(
+        runner_name="plan-execute",
+        model="watsonx/model",
+        question="q",
+        answer="a",
+        trajectory=[],
+        tokens_in=42,
+        tokens_out=17,
+    )
+
+    record = json.loads(out.read_text())
+    assert record["tokens_in"] == 42
+    assert record["tokens_out"] == 17
 
 
 def test_persist_skips_when_no_run_id(monkeypatch, tmp_path: Path, caplog):

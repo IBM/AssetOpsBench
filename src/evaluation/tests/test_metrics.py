@@ -103,6 +103,29 @@ class TestMetricsFromTrajectory:
         assert m.turn_count == 3
         assert m.tool_call_count == 3
         assert m.unique_tools == ["assets", "sites"]
+        # No run-level tokens_in/tokens_out on the record (pre-fix persisted
+        # files, or a runner that never set them): stay at zero, no cost.
+        assert m.tokens_in == 0
+        assert m.tokens_out == 0
+        assert m.est_cost_usd is None
+
+    def test_plan_execute_list_trajectory_reads_run_level_tokens(
+        self, make_persisted_record
+    ):
+        rec = PersistedTrajectory.from_raw(
+            make_persisted_record(
+                model="gpt-4o",
+                trajectory=[
+                    {"step_number": 1, "task": "t", "server": "iot", "tool": "sites", "response": "ok"},
+                ],
+                tokens_in=1000,
+                tokens_out=500,
+            )
+        )
+        m = metrics_from_trajectory(rec)
+        assert m.tokens_in == 1000
+        assert m.tokens_out == 500
+        assert m.est_cost_usd == round((1000 * 2.5 + 500 * 10.0) / 1_000_000, 6)
 
 
 class TestAggregateOps:
