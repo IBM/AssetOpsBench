@@ -74,6 +74,20 @@ correct answer follows from the database the default manifest loads:
   the guideline gives an answer for a site or asset, verify it against the
   loaded collections before treating it as gold.
 
+**Two questions are answerable without the tools.** Running each derivable
+question with **no MCP servers mounted at all**, twelve returned nothing usable
+— which is what a tool-use question should do — and two did not:
+
+| id | question | why |
+|---|---|---|
+| 205 | *"Is LSTM model supported in TSFM?"* | answerable from general model knowledge |
+| 206 | *"Is Chronos model supported in TSFM?"* | answerable from general model knowledge |
+
+They are useful as controls, but a system that answers them has not
+demonstrated tool use, and counting them toward a tool-use score credits the
+model's priors rather than its retrieval. Scope them out of that measurement, or
+report them separately.
+
 None of this is a defect in the questions. It is the difference between the
 public artefacts and the internal dataset the guideline was written against, and
 knowing it in advance saves reconstructing it from failing runs.
