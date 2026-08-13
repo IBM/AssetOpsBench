@@ -34,6 +34,50 @@ The vocabulary follows MLflow's evaluation split:
 - **Evaluator** — orchestrates a batch: loads scenarios + trajectories,
   joins on `scenario_id`, dispatches to scorers, aggregates results.
 
+## What the public data supports
+
+**The public artefacts are not scoreable end-to-end for most scenario
+questions.** The ground truth referenced by the design guideline is the
+*AssetOpsBench Ground Truth Dataset (IBM Internal)*; the public HuggingFace
+dataset ships questions only. This section states what can and cannot be graded
+against the data this repository loads, so that gap is discovered here rather
+than after a run.
+
+Taking every scenario question in the utterance set and asking whether the
+correct answer follows from the database the default manifest loads:
+
+| disposition | n | meaning |
+|---|---|---|
+| **derivable** | **14** | the answer follows from the loaded data |
+| identifier mismatch | 12 | identifiers in the question match none in the data |
+| entity absent | 10 | the question names equipment the data does not contain |
+| input file absent | 8 | a file the question depends on is not in the repository |
+| ambiguous source | 6 | two shipped sources answer the same question differently |
+| answer shape | 3 | the expected answer cannot be expressed unambiguously |
+| window absent | 2 | the time window asked about is not in the series |
+| | **55** | |
+
+**Practical consequences when evaluating against the public data:**
+
+- **An aggregate over all scenario questions is dominated by questions that
+  cannot be graded**, not by model performance. Scope any reported score to the
+  subset you verified as derivable.
+- **Ambiguous-source questions are the ones to watch**, because they fail
+  silently. Absent data produces an obvious error; two shipped sources
+  disagreeing produces a confident wrong grade.
+- **The MCQA pools carry answer keys and are therefore attractive for automated
+  evaluation, but none of their questions reference a loaded database entity.**
+  They test general engineering knowledge. A system evaluated on that pool is
+  not being evaluated on its tool use, and an experiment varying tool access
+  will find no effect there.
+- **Documented example answers may not match the shipped sample data.** Where
+  the guideline gives an answer for a site or asset, verify it against the
+  loaded collections before treating it as gold.
+
+None of this is a defect in the questions. It is the difference between the
+public artefacts and the internal dataset the guideline was written against, and
+knowing it in advance saves reconstructing it from failing runs.
+
 ## Inputs
 
 ### Scenario file
