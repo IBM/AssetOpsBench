@@ -36,12 +36,12 @@ The vocabulary follows MLflow's evaluation split:
 
 ## What the public data supports
 
-**The public artefacts are not scoreable end-to-end for most scenario
-questions.** The ground truth referenced by the design guideline is the
-*AssetOpsBench Ground Truth Dataset (IBM Internal)*; the public HuggingFace
-dataset ships questions only. This section states what can and cannot be graded
-against the data this repository loads, so that gap is discovered here rather
-than after a run.
+**As shipped, most scenario questions cannot be graded against the data this
+repository loads.** Whether that is intended is a separate question: the design
+guideline references an *AssetOpsBench Ground Truth Dataset (IBM Internal)*, and
+the public HuggingFace dataset ships questions only. This section records what
+can and cannot be graded against the loaded data, so the gap is found here
+rather than after a run.
 
 Taking every scenario question in the utterance set and asking whether the
 correct answer follows from the database the default manifest loads:
@@ -67,9 +67,12 @@ correct answer follows from the database the default manifest loads:
   disagreeing produces a confident wrong grade.
 - **The MCQA pools carry answer keys and are therefore attractive for automated
   evaluation, but none of their questions reference a loaded database entity.**
-  They test general engineering knowledge. A system evaluated on that pool is
-  not being evaluated on its tool use, and an experiment varying tool access
-  will find no effect there.
+  Counted at dataset revision `5e25bb7f`: **0 of 2,667** FailureSensorIQ
+  questions name any asset, site or model present in the loaded collections —
+  under an exact match and under one that ignores separators, so `Chiller 6`
+  and `CHILLER6` count as the same name. They test general engineering
+  knowledge. A system evaluated on that pool is not being evaluated on its tool
+  use, and an experiment varying tool access will find no effect there.
 - **Documented example answers may not match the shipped sample data.** Where
   the guideline gives an answer for a site or asset, verify it against the
   loaded collections before treating it as gold.
