@@ -1,0 +1,448 @@
+# AssetOpsBench MCP Environment
+
+This directory contains the MCP servers and infrastructure for the AssetOpsBench project.
+
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Environment Variables](#environment-variables)
+- [MCP Servers](#mcp-servers) — full reference in [docs/mcp-servers.md](docs/mcp-servers.md)
+- [Python client (mcphub)](#python-client-mcphub)
+- [Example queries](#example-queries)
+- [Agents](#agents)
+- [Observability](#observability)
+- [Evaluation](#evaluation)
+- [Running Tests](#running-tests)
+- [Architecture](#architecture)
+
+---
+
+## Prerequisites
+
+- **Python 3.12+** — required by `pyproject.toml`
+- **[uv](https://docs.astral.sh/uv/)** — dependency and environment manager
+
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh   # macOS / Linux
+  # or: brew install uv
+  ```
+
+- **Docker** — for running CouchDB (IoT data store)
+
+## Quick Start
+
+### 1. Install dependencies
+
+Run from the **repo root**:
+
+```bash
+uv sync
+```
+
+`uv sync` creates a virtual environment at `.venv/`, installs all dependencies,
+and registers the CLI entry points (`plan-execute`, `*-agent`, `*-mcp-server`).
+You can either prefix commands with `uv run` (no activation needed) or activate
+the venv once for your shell session:
+
+```bash
+source .venv/bin/activate   # macOS / Linux
+```
+
+### 2. Configure environment
+
+Copy `.env.public` to `.env` and fill in the required values (see [Environment Variables](#environment-variables)):
+
+```bash
+cp .env.public .env
+# Then edit .env and set WATSONX_APIKEY, WATSONX_PROJECT_ID
+# CouchDB defaults work out of the box with the Docker setup
+```
+
+### 3. Start CouchDB
+
+```bash
+docker compose -f src/couchdb/docker-compose.yaml up -d
+```
+
+Verify CouchDB is running:
+
+```bash
+curl -X GET http://localhost:5984/
+```
+
+### 4. Run an agent
+
+Servers are stdio processes spawned on-demand by the agent CLIs — no manual startup needed. Pick a runner and pass it a question:
+
+```bash
+uv run plan-execute "What sensors are on Chiller 6?"
+```
+
+See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](docs/mcp-servers.md) for launching a server directly.
+
+---
+
+## Environment Variables
+
+**Database-backed servers** — shared database connection and per-server database names
+
+| Variable                   | Default                 | Description                        |
+| -------------------------- | ----------------------- | ---------------------------------- |
+| `COUCHDB_URL`              | `http://localhost:5984` | CouchDB connection URL             |
+| `COUCHDB_USERNAME`         | `admin`                 | CouchDB admin username             |
+| `COUCHDB_PASSWORD`         | `password`              | CouchDB admin password             |
+| `IOT_DBNAME`               | `iot`                   | IoT sensor database name           |
+| `ASSET_DBNAME`             | `asset`                 | IoT asset registry database name   |
+| `WO_DBNAME`                | `workorder`             | Work order database name           |
+| `FAILURE_CODE_DBNAME`      | `failure_code`          | FCC failure-code database name     |
+| `FAILURE_MODE_DBNAME`      | `failure_mode`          | FMSR failure-mode database name    |
+| `VIBRATION_DBNAME`         | `vibration`             | Vibration sensor database name     |
+| `CATALOG_DBNAME`           | `catalog`               | Shared sensor/asset/failure-mode catalog database name |
+| `MODEL_CATALOG_DBNAME`     | `model_catalog`         | TSFM model catalog database name   |
+| `FEATURE_CATALOG_DBNAME`   | `feature_catalog`       | TSFM feature catalog database name |
+| `TSFM_STORE`               | `couch`                 | TSFM storage backend; set to `memory` for hermetic tests |
+| `TSFM_WORKDIR`             | `/tmp/tsfm_work`        | Local directory for TSFM file-pointer payloads |
+
+**WatsonX** — plan-execute runner and WatsonX-backed agent routes
+
+| Variable             | Default                             | Description                 |
+| -------------------- | ----------------------------------- | --------------------------- |
+| `WATSONX_APIKEY`     | _(required)_                        | IBM WatsonX API key         |
+| `WATSONX_PROJECT_ID` | _(required)_                        | IBM WatsonX project ID      |
+| `WATSONX_URL`        | `https://us-south.ml.cloud.ibm.com` | WatsonX endpoint (optional) |
+
+**LiteLLM proxy** — used by every runner whenever `--model-id` carries the `litellm_proxy/` prefix
+
+| Variable           | Default      | Description                                                          |
+| ------------------ | ------------ | -------------------------------------------------------------------- |
+| `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
+| `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
+
+**TokenRouter** — OpenAI-compatible gateway, used whenever `--model-id` carries the `tokenrouter/` prefix
+
+| Variable               | Default                  | Description                                                         |
+| ---------------------- | ------------------------ | ------------------------------------------------------------------- |
+| `TOKENROUTER_API_KEY`  | _(tokenrouter/* models)_ | TokenRouter API key                                                 |
+| `TOKENROUTER_BASE_URL` | _(tokenrouter/* models)_ | TokenRouter base URL, e.g. `https://api.tokenrouter.com/v1`         |
+
+**OpenCode direct providers** — `opencode-agent` with direct provider routes
+
+| Variable            | Default                    | Description                                      |
+| ------------------- | -------------------------- | ------------------------------------------------ |
+| `OPENAI_API_KEY`    | _(openai/* models)_        | OpenAI API key, or configure through OpenCode    |
+| `ANTHROPIC_API_KEY` | _(anthropic/* models)_     | Anthropic API key, or configure through OpenCode |
+
+**Stirrup code track** — `stirrup-agent` with `--code-backend docker`
+
+| Variable             | Default            | Description                                                                |
+| -------------------- | ------------------ | -------------------------------------------------------------------------- |
+| `STIRRUP_CODE_IMAGE` | `assetops-code`    | Docker image for the Stirrup code sandbox; build the bundled image for NumPy, pandas, and SciPy |
+| `DOCKER_HOST`        | *(SDK default)*    | Daemon socket if non-default (e.g. Rancher: `unix:///<home>/.rd/docker.sock`) |
+
+---
+
+## MCP Servers
+
+Six FastMCP servers cover IoT data, TSFM model/feature catalogs and recipes, work orders, vibration diagnostics, failure-mode reasoning, and utility tools. They speak MCP over stdio and are spawned on-demand by the agent runners — no manual startup needed.
+
+| Server      | Tools | Categories               | Backing service                        |
+| ----------- | ----- | ------------------------ | -------------------------------------- |
+| `iot`       | 12    | read                     | CouchDB  (telemetry + asset registry)  |
+| `utilities` | 6     | read                     | CouchDB catalog for catalog lookups; none for JSON/time tools |
+| `fmsr`      | 4     | read, write, LLM-use     | CouchDB + LLM credentials for generation |
+| `wo`        | 15    | read, write              | CouchDB                                |
+| `tsfm`      | 41    | read, write, cpu-centric | CouchDB model/feature catalogs, run/result collections, and `TSFM_WORKDIR` payload files |
+| `vibration` | 8     | read, cpu-centric        | CouchDB + numpy/scipy DSP              |
+
+Tool signatures, required env vars, and how to launch a server directly: **[docs/mcp-servers.md](docs/mcp-servers.md)**.
+
+---
+
+## Python client (mcphub)
+
+`src/mcphub/` calls the MCP tools directly from Python — the same servers the
+agents use, but without an LLM in the loop. It exposes a ToolUniverse-style
+`load_tools → run` interface and adds no dependencies beyond the `mcp` client the
+project already requires.
+
+```python
+from mcphub import ToolUniverse
+
+tu = ToolUniverse()                                   # 1. init
+tu.load_tools()                                       # 2. connect + discover
+result = tu.run({                                     # 3. run
+    "name": "iot.sensors",
+    "arguments": {"site_name": "MAIN", "asset_id": "Chiller 6"},
+})
+tu.close()
+```
+
+- Tools are namespaced `<server>.<tool>` (e.g. `iot.sensors`,
+  `wo.generate_work_order`); a bare name works when unambiguous.
+- `load_tools(servers=["iot", "fmsr"])` limits the set; no args loads all six.
+- Discovery: `tu.find_tools("failure mode")`, `tu.list_tools()`,
+  `tu.tool_specification("iot.sensors")`.
+- Servers are spawned via `uv run <server>-mcp-server` and inherit your `.env`.
+  Run inside the project (`uv run python ...`) or an activated venv. Override the
+  launch table with `ToolUniverse(servers={...})`.
+
+**Workflows** — multi-tool routines are plain functions registered under a name
+and invoked through the same entrypoint:
+
+```python
+tu.run({"name": "chiller_triage", "arguments": {"asset_id": "Chiller 6"}})
+```
+
+Built in: `chiller_triage` (sensors → failure modes → mapping → work order) and
+`sensor_inventory_gap` (installed vs measured sensors). Add your own in
+`src/mcphub/workflows.py`. Runnable example:
+`uv run python examples/quickstart_tooluniverse.py`.
+
+Reach for `mcphub` when you want deterministic, scripted tool orchestration
+(pipelines, tests, data prep); use the agent runners when you want LLM-driven
+planning.
+
+---
+
+## Example queries
+
+The CLI examples below use a `$query` shell variable so you can swap in any question without editing the commands. Pick one of these to get started:
+
+```bash
+# Simple single-server queries
+query="What sensors are on Chiller 6?"
+query="Is LSTM model supported in TSFM?"
+query="Get the work order of equipment CWC04013 for year 2017."
+
+# Multi-step / multi-server queries
+query="What is the current date and time? Also list assets at site MAIN. Also get sensor list and failure mode list for any of the chiller at site MAIN."
+```
+
+## Agents
+
+Seven runners are available as CLIs registered by `uv sync`; six use MCP tools,
+while `direct-llm-agent` is a model-only baseline that makes a direct LiteLLM
+call without MCP tools, planning, retrieval, or code execution. Each takes a
+single positional `question` argument and spawns the MCP servers as stdio
+subprocesses on demand.
+
+| Runner         | Source                       | Loop                                                          | Default model                                               |
+| -------------- | ---------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------- |
+| `plan-execute` | `src/agent/plan_execute/`    | Custom plan → execute → summarise (no SDK)                    | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8` |
+| `claude-agent` | `src/agent/claude_agent/`    | [`claude-agent-sdk`](https://github.com/anthropics/claude-agent-sdk-python) agentic loop | `litellm_proxy/aws/claude-opus-4-6` |
+| `openai-agent` | `src/agent/openai_agent/`    | [`openai-agents`](https://github.com/openai/openai-agents-python) SDK Runner | `litellm_proxy/azure/gpt-5.4` |
+| `deep-agent`   | `src/agent/deep_agent/`      | [LangChain deep-agents](https://docs.langchain.com/oss/python/deepagents/overview) (LangGraph), MCP bridged via `langchain-mcp-adapters` | `litellm_proxy/aws/claude-opus-4-6` |
+| `stirrup-agent` | `src/agent/stirrup_agent/` | [Stirrup](https://github.com/ArtificialAnalysis/Stirrup) agent loop (in-process), MCP via its `MCPToolProvider`; **code-capable** (writes/runs Python) | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8` |
+| `opencode-agent` | `src/agent/opencode_agent/` | [OpenCode](https://opencode.ai/docs/) CLI agent loop, MCP via generated OpenCode config; MCP-only by default with optional CLI workspace mode | `opencode/gpt-5.1-codex` |
+| `direct-llm-agent` | `src/agent/direct_llm_agent/` | Single direct LLM call, no MCP tools, planning, retrieval, or code execution | `litellm_proxy/Azure/gpt-5-mini-2025-08-07` |
+
+- [Agents](#agents) — Stirrup specifics in [docs/stirrup-agent.md](docs/stirrup-agent.md); OpenCode specifics in [docs/opencode-agent.md](docs/opencode-agent.md)
+
+### Usage
+
+```bash
+uv run plan-execute "$query"
+uv run claude-agent "$query"
+uv run openai-agent "$query"
+uv run deep-agent   "$query"
+uv run stirrup-agent "$query"
+uv run opencode-agent "$query"
+uv run direct-llm-agent "$query"
+```
+
+### Common flags
+
+| Flag                  | Description                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `--model-id MODEL_ID` | Provider-prefixed model string (defaults in the runner table above)                          |
+| `--show-trajectory`   | Print each turn / step (text, tool calls, token usage)                                       |
+| `--json`              | Emit the trajectory as JSON                                                                  |
+| `--verbose`           | Show INFO-level logs on stderr                                                               |
+| `--run-id ID`         | Persist the run under this ID (auto-UUID4 if omitted) — see [Observability](#observability)  |
+| `--scenario-id ID`    | Tag the run for benchmark grouping                                                           |
+
+### Runner-specific flags
+
+| Flag                  | Runner                     | Description                                                       |
+| --------------------- | -------------------------- | ----------------------------------------------------------------- |
+| `--show-plan`         | plan-execute               | Print the generated plan before execution                         |
+| `--max-turns N`       | claude-agent, openai-agent | Max agentic-loop turns (default: 30)                              |
+| `--recursion-limit N` | deep-agent                 | Max LangGraph recursion steps (default: 100)                      |
+| `--code-enabled` / `--no-code` | stirrup-agent | Enable (default) / disable code execution — selects the code track |
+| `--code-backend B`             | stirrup-agent | Code backend: `docker` (default) or `local`                        |
+| `--reasoning-effort LEVEL`     | stirrup-agent | Optional reasoning effort passed to the model client              |
+| `--max-steps N`                | opencode-agent | Max OpenCode agentic iterations (default: 30)                      |
+| `--attach URL`                 | opencode-agent | Attach to a running `opencode serve` instance                      |
+| `--allow-files` / `--workspace-dir PATH` | opencode-agent | Enable local file inspection in a dedicated workspace              |
+| `--allow-bash` / `--allow-edit` / `--allow-web` | opencode-agent | Opt into shell plus workspace writes, workspace writes without shell, or web access; all denied by default |
+
+### Examples
+
+```bash
+# Inspect the plan-execute plan before running
+uv run plan-execute --show-plan --model-id watsonx/ibm/granite-3-3-8b-instruct "$query"
+
+# Stream a claude-agent run and pipe to jq
+uv run claude-agent --json "$query" | jq .turns
+
+# Direct Anthropic API (no proxy) for claude-agent
+uv run claude-agent --model-id claude-opus-4-6 "$query"
+
+# Persist a deep-agent run for benchmark evaluation
+AGENT_TRAJECTORY_DIR=./traces/trajectories OTEL_TRACES_FILE=./traces/traces.jsonl \
+  uv run deep-agent --run-id bench-001 --scenario-id 304 "$query"
+
+# Stirrup tools-only run (comparable to the other runners), native watsonx route
+uv run stirrup-agent --no-code --show-trajectory \
+  --model-id watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 "$query"
+
+# Stirrup code track in a Docker sandbox (writes and runs Python)
+STIRRUP_CODE_IMAGE=assetops-code \
+  uv run stirrup-agent --code-backend docker "$query"
+
+# OpenCode MCP-only CLI-backed agent, using TokenRouter
+uv run opencode-agent --model-id tokenrouter/MiniMax-M3 --show-trajectory "$query"
+
+# OpenCode CLI workspace mode, allowing file inspection, workspace writes, and bash
+uv run opencode-agent \
+  --model-id tokenrouter/MiniMax-M3 \
+  --workspace-dir /tmp/assetopsbench-opencode/smoke \
+  --allow-files \
+  --allow-bash \
+  --show-trajectory \
+  "$query"
+
+# Direct model-only baseline, no MCP tools
+uv run direct-llm-agent --model-id litellm_proxy/Azure/gpt-5-mini-2025-08-07 \
+  'Return only JSON: {"test": 1}'
+```
+
+### OpenCode scenario-suite workspace mode
+
+The scenario-suite runner can create one workspace per OpenCode run and pass
+optional CLI capabilities through to `opencode-agent`:
+
+```bash
+uv run python -m benchmark.scenario_suite_runner \
+  --scenario-ids benchmarks/scenario_suite/scenarios.txt \
+  --scenario-root /path/to/scenarios_data \
+  --agent_name opencode_agent \
+  --model-id tokenrouter/MiniMax-M3 \
+  --opencode-workspace-root /tmp/assetopsbench-opencode/workspaces \
+  --opencode-allow-files \
+  --opencode-allow-bash
+```
+
+For scenario `401`, this creates a workspace like:
+
+```text
+/tmp/assetopsbench-opencode/workspaces/opencode_agent/tokenrouter-MiniMax-M3/opencode_agent_401
+```
+
+`--opencode-allow-files`, `--opencode-allow-bash`, and
+`--opencode-allow-edit` are opt-in. `--opencode-allow-bash` also permits
+workspace file writes so agents can save output artifacts. If any of them are enabled,
+`--opencode-workspace-root` is required and must be outside the repository.
+
+> `--opencode-allow-bash` is not a hard OS-level sandbox. For strict filesystem
+> isolation, run the benchmark inside Docker or another sandbox.
+
+---
+
+## Observability
+
+Each agent run can persist two artifacts joined by `run_id`:
+
+- **Trace** — OpenTelemetry root span with metadata + aggregate metrics (runner, model, IDs, span duration, token totals, turn / tool-call counts).
+- **Trajectory** — per-run JSON with per-turn content (text, tool inputs/outputs, per-turn tokens and timing).
+
+Install the optional deps and set either / both / neither env var:
+
+```bash
+uv sync --group otel
+
+AGENT_TRAJECTORY_DIR=./traces/trajectories \
+OTEL_TRACES_FILE=./traces/traces.jsonl \
+  uv run deep-agent --run-id bench-001 --scenario-id 304 "$query"
+```
+
+`--run-id` (auto-UUID4 if omitted) and `--scenario-id` are available on every runner. With nothing set, runs work normally with zero persistence overhead.
+
+See [docs/observability.md](docs/observability.md) for span attribute reference, trajectory layout, `jq` recipes, log rotation, and optional Jaeger / Collector replay.
+
+---
+
+## Evaluation
+
+Offline scoring of saved trajectories against ground-truth scenarios. Three-stage flow:
+
+```
+agent run  →  trajectory (run_id)  →  uv run evaluate  →  reports/<run_id>.json
+```
+
+End-to-end against a ground-truth file:
+
+```bash
+# 1. Persist trajectories
+export AGENT_TRAJECTORY_DIR=$(pwd)/traces/trajectories
+uv run claude-agent "List all failure modes of asset Chiller." --scenario-id 101
+
+# 2. Score with LLM-As-Judge
+uv run evaluate \
+  --trajectories traces/trajectories \
+  --scenarios groundtruth/101.json \
+  --scorer-default llm_judge \
+  --judge-model litellm_proxy/azure/gpt-5.4
+```
+
+Output lands under `reports/` — one `<run_id>.json` per trajectory plus `_aggregate.json` for the rollup.
+
+> [!NOTE]
+> If `llm_judge` is used, `--judge-model` must not match the trajectory's `model`
+> for any evaluated run. The evaluator now rejects self-judging rows with a clear error.
+
+Scorer families follow MLflow's evaluator/scorer split: `llm_judge` is wired up; `exact_string_match`, `numeric_match`, and `semantic_similarity` ship as skeletons (raise `NotImplementedError`).
+
+Full reference — scenario schema, report layout, custom scorers, looping over ground-truth: **[docs/evaluation.md](docs/evaluation.md)**.
+
+---
+
+## Running Tests
+
+```bash
+uv run pytest src/ -k "not integration"   # unit tests only — no services required
+uv run pytest src/                        # full suite — integration tests auto-skip if their service is unavailable
+```
+
+Each integration suite is gated by a `skipif` mark; missing service ⇒ silently skipped, not failed:
+
+| Suite              | Skip unless                                                                  |
+| ------------------ | ---------------------------------------------------------------------------- |
+| iot, wo, vibration | CouchDB reachable — `docker compose -f src/couchdb/docker-compose.yaml up -d` |
+| fmsr               | `WATSONX_APIKEY`, `WATSONX_PROJECT_ID` set in `.env`                          |
+| tsfm               | Model and feature catalog databases loaded, or `TSFM_STORE=memory` for hermetic tests |
+
+Narrow scope by path or name pattern:
+
+```bash
+uv run pytest src/servers/wo/tests/                # one package's full suite
+uv run pytest src/servers/wo/tests/test_integration.py -v   # one file
+uv run pytest src/ -k "integration"                # only files / tests with "integration" in the name
+```
+
+---
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                  agent runners              mcphub (Python client)      │
+│   PlanExecute · Claude · OpenAI · Deep · Stirrup · OpenCode · DirectLLM  │
+└──────────────────────────────┬─────────────────────────────────────────┘
+                               │ MCP protocol (stdio)
+         ┌─────────────────────┼───────────┬──────────┬──────┬───────────┐
+         ▼                     ▼           ▼          ▼      ▼           ▼
+        iot               utilities      fmsr       tsfm    wo      vibration
+      (tools)              (tools)      (tools)   (tools) (tools)    (tools)
+```

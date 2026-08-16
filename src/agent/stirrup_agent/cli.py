@@ -1,0 +1,156 @@
+"""CLI entry point for the StirrupAgentRunner.
+
+Usage:
+    stirrup-agent "What sensors are on Chiller 6?"
+    stirrup-agent --model-id litellm_proxy/aws/claude-opus-4-6 "Summarise WO backlog"
+    stirrup-agent --no-code "List failure modes for pumps"          # tools-only track
+    stirrup-agent --code-backend local --show-trajectory "Generate a work order"
+    stirrup-agent --json "What is the current time?"
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from .._cli_common import add_common_args, print_result, run_sdk_cli
+
+_DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="stirrup-agent",
+        description="Run a question through a Stirrup agent with AssetOpsBench MCP servers.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+model-id format:
+  litellm_proxy/<model>   OpenAI-compatible LiteLLM proxy
+  tokenrouter/<model>     OpenAI-compatible TokenRouter
+  <provider>/<model>      Native via Stirrup's LiteLLMClient. watsonx works
+                          directly here, e.g.
+                          watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
+
+Router models use the Chat Completions API.
+
+tracks:
+  --code-enabled (default)  Add a sandboxed code-execution tool (code track).
+  --no-code                 Tools-only: directly comparable to the other runners.
+
+environment variables:
+  LITELLM_API_KEY       LiteLLM API key    (required for litellm_proxy/* models)
+  LITELLM_BASE_URL      LiteLLM base URL   (required for litellm_proxy/* models)
+  TOKENROUTER_API_KEY   TokenRouter API key  (for tokenrouter/* models)
+  TOKENROUTER_BASE_URL  TokenRouter base URL (e.g. https://api.tokenrouter.com/v1)
+  WATSONX_APIKEY/...    Standard LiteLLM watsonx vars (for watsonx/* models)
+  STIRRUP_CODE_IMAGE    Docker image for the code track (default assetops-code)
+
+examples:
+  stirrup-agent "What assets are at site MAIN?"
+  stirrup-agent --no-code --show-trajectory "List sensors on Chiller 6"
+  stirrup-agent --json "Cross-reference open work orders against forecasted anomalies"
+""",
+    )
+    add_common_args(parser, default_model=_DEFAULT_MODEL)
+    code_group = parser.add_mutually_exclusive_group()
+    code_group.add_argument(
+        "--code-enabled",
+        dest="code_enabled",
+        action="store_true",
+        default=True,
+        help="Enable a sandboxed code-execution tool so the agent can run code (default).",
+    )
+    code_group.add_argument(
+        "--no-code",
+        dest="code_enabled",
+        action="store_false",
+        help="Tools-only run; disable code execution for 1:1 comparison.",
+    )
+    parser.add_argument(
+        "--code-backend",
+        choices=["docker", "local"],
+        default="docker",
+        help="Code-execution sandbox backend (default: docker).",
+    )
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=30,
+        metavar="N",
+        help="Maximum agent turns (default: 30).",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        metavar="T",
+        help=(
+            "Sampling temperature forwarded to the Stirrup model client. "
+            "Omitted by default, so the provider/client default is used."
+        ),
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=[
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "default",
+        ],
+        default=None,
+        metavar="LEVEL",
+        help=(
+            "Reasoning effort forwarded to the Stirrup model client. "
+            "Omitted by default, so the provider/client default is used."
+        ),
+    )
+    parser.add_argument(
+        "--workspace-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Host directory used as the Stirrup code-execution workspace base. "
+            "Docker/local backends create their execution directory under this path."
+        ),
+    )
+    parser.add_argument(
+        "--preserve-workspace",
+        action="store_true",
+        help=(
+            "Copy final code-execution files into --workspace-dir before cleanup. "
+            "Supported with docker/local backends."
+        ),
+    )
+    return parser
+
+
+async def _run(args: argparse.Namespace) -> None:
+    from agent.stirrup_agent.runner import StirrupAgentRunner
+
+    runner = StirrupAgentRunner(
+        model=args.model_id,
+        code_enabled=args.code_enabled,
+        code_backend=args.code_backend,
+        workspace_dir=args.workspace_dir,
+        preserve_workspace=args.preserve_workspace,
+        max_turns=args.max_turns,
+        temperature=args.temperature,
+        reasoning_effort=args.reasoning_effort,
+    )
+    result = await runner.run(args.question)
+    print_result(
+        result, show_trajectory=args.show_trajectory, output_json=args.output_json
+    )
+
+
+def main() -> None:
+    run_sdk_cli("stirrup-agent", _build_parser, _run)
+
+
+if __name__ == "__main__":
+    main()
