@@ -561,7 +561,7 @@ Thanks to these wonderful people ✨
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=IBM/AssetOpsBench&type=Date)](https://star-history.com/#IBM/AssetOpsBench&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=IBM/AssetOpsBench&type=Date)](https://star-history.dera.page/#IBM/AssetOpsBench&Date)
 
 ---
 
