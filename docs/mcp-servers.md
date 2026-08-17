@@ -1,6 +1,6 @@
 # MCP Servers
 
-Six FastMCP servers expose the AssetOpsBench domain logic. Each is a standalone stdio process spawned on-demand by clients (`plan-execute`, `claude-agent`, `openai-agent`, `deep-agent`, Claude Desktop). Backing services and credentials are listed per-server below.
+Six FastMCP servers — five domain servers (`iot`, `fmsr`, `wo`, `tsfm`, `vibration`) plus one shared utility server (`utilities`) — expose the AssetOpsBench domain logic. Each is a standalone stdio process spawned on-demand by clients (`plan-execute`, `claude-agent`, `openai-agent`, `deep-agent`, Claude Desktop). Backing services and credentials are listed per-server below.
 
 ## Contents
 
@@ -72,36 +72,119 @@ Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based
 
 ## wo — Work Order
 
-**Path:** `src/servers/wo/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME`, `FAILURE_CODE_DBNAME`)
-**Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on every start — database is dropped and reloaded each time)
+Work-order lifecycle for industrial assets, backed by CouchDB. Query, create, approve, assign,
+close, and cancel work orders; compute KPIs, costs, and schedules.
 
-Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-centric**. Tools are registered centrally in `main.py`; set `AOB_READONLY=1` to expose only the read tools (9). The default exposes all 15 (9 read + 6 write).
+**Path:** `src/servers/wo/main.py`
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `WO_DBNAME` (default `workorder`), `FAILURE_CODE_DBNAME` (default `failure_code`))
+**Data init:** Handled automatically by `docker compose -f src/couchdb/docker-compose.yaml up` (runs `src/couchdb/init_wo.py` inside the CouchDB container on every start — database is dropped and reloaded each time)
+**Sample data:** `src/couchdb/scenarios_data/shared/work_order/workorders.csv`
+
+Documents use IBM Maximo `mxwo` field names (`wonum`, `siteid`, `assetnum`, `wopriority`,
+`worktype`, `status`, `reportdate`, `actlabhrs`, `wplabor`, …), so a scenario written against
+this server transfers to a live Maximo with only the transport swapped. Every document has a
+deterministic `_id` of the form `wo:{SITEID}:{WONUM}` — which is why each single-work-order tool
+takes **both** `wonum` and `site_id`: the pair *is* the primary key, and there is no
+`wonum`-only lookup path.
+
+Tools fall into several categories: **read**, **write**, **LLM-use**, and **CPU-centric**.
+Tools are registered centrally in `main.py`. The default surface is **15 tools** (9 read + 6
+write); setting `AOB_READONLY=1` registers the read tools only, so the write half is invisible
+to the client rather than merely refused.
 
 ### Read tools
 
 | Tool                                | Category | Arguments                                                                            | Description                                                                |
 | ----------------------------------- | -------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| `list_workorders`                   | read     | `site_id?`, `status?`, `asset_num?`, `priority?`, `date_from?`, `date_to?`, `page_size?`, `page_num?` | List work orders with optional filters; `page_size=0` returns all matches  |
+| `list_workorders`                   | read     | `site_id?`, `status?`, `asset_num?`, `priority?`, `date_from?`, `date_to?`, `page_size=50`, `page_num=1` | List work orders with optional filters. `status` takes one status **or** the pseudo-values `OPEN` / `APPROVED_PENDING`; `page_size=0` returns all matches in one call. Sorted by `reportdate` descending. |
 | `get_workorder`                     | read     | `wonum`, `site_id`                                                                   | Get a single work order by number and site                                 |
-| `get_workorder_tasks`               | read     | `wonum`, `site_id`                                                                   | List the child tasks of a parent work order                                |
-| `get_workorder_costs`               | read     | `wonum`, `site_id`                                                                   | Actual labor/material/service/tool cost breakdown for a work order         |
-| `get_workorder_actuals_vs_planned`  | read     | `wonum`, `site_id`                                                                   | Estimated vs actual hours and cost variance for a work order               |
-| `get_workorder_kpis`                | read     | `site_id`, `period_months?`                                                          | Site KPIs: totals, backlog, overdue, avg completion, priority/asset splits |
-| `get_schedule_calendar`             | read     | `site_id`, `date_from?`, `date_to?`, `group_by?`                                     | Scheduled (non-terminal) work orders in a date window, bucketed by day     |
-| `get_my_assigned_workorders`        | read     | `labor_code`, `site_id?`, `open_only?`                                               | Work orders assigned to a given technician (labor code)                    |
-| `get_failure_codes`                 | read     | `code?`                                                                               | List FCC failure-code references or fetch one exact code from CouchDB      |
+| `get_workorder_tasks`               | read     | `wonum`, `site_id`                                                                   | List the child tasks (`parent == wonum`) of a parent work order, ordered by `taskid` |
+| `get_workorder_costs`               | read     | `wonum`, `site_id`                                                                   | Actual labor/material/service/tool cost breakdown, each with its share of the total |
+| `get_workorder_actuals_vs_planned`  | read     | `wonum`, `site_id`                                                                   | Estimated vs actual hours and cost variance (absolute, percent, over-budget flag) per category |
+| `get_workorder_kpis`                | read     | `site_id`, `period_months=3`                                                         | Site KPIs: totals, backlog, overdue, avg completion hours, priority breakdown, top 5 assets by WO count |
+| `get_schedule_calendar`             | read     | `site_id`, `date_from?`, `date_to?`, `group_by="date"`                               | Scheduled (non-terminal) work orders in a date window, bucketed by day     |
+| `get_my_assigned_workorders`        | read     | `labor_code`, `site_id?`, `open_only=True`                                           | Work orders carrying a `wplabor` line for the given technician (labor code) |
+| `get_failure_codes`                 | read     | `code?`                                                                              | List FCC failure-code references, or fetch one exact code (e.g. `FC001`) from CouchDB |
+
+Notes on the read surface:
+
+- **`list_workorders` filters are AND-combined.** `date_from` / `date_to` bound `reportdate` as an
+  inclusive `$gte` / `$lte` range on the ISO string. Sorting happens client-side, so no Mango index
+  is required.
+- **`get_workorder_kpis` uses a 30-day month.** The window is `now - (period_months × 30) days`, not
+  calendar months. `backlog` counts work orders whose status is not terminal; `overdue` is the
+  subset of backlog whose `targcompdate` is in the past. `avg_completion_hrs` averages
+  `actfinish - reportdate` over `COMP` work orders only.
+- **`get_schedule_calendar` defaults to a two-week look-ahead** — `date_from` defaults to today and
+  `date_to` to today + 14 days (UTC). A work order enters the window on `schedstart`, falling back
+  to `targstartdate`; those with neither are skipped, as is anything in a terminal status.
+  `group_by="date"` returns `by_date` buckets; any other value returns a flat `workorders` list.
+- **`get_failure_codes` is the one annotated tool** — it carries MCP `ToolAnnotations`
+  (`readOnlyHint`, `idempotentHint`, non-destructive, open-world). Code matching is
+  case-insensitive and whitespace-trimmed; the catalog listing is capped at 1000 rows.
 
 ### Write tools
 
 | Tool                  | Category | Arguments                                                                                                   | Description                                                       |
 | --------------------- | -------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `generate_work_order` | write    | `description`, `asset_num`, `site_id`, `priority?`, `work_type?`, `reported_by?`, `location?`, `notes?`, `wonum?`, `aob_source?` | Create a work order (status WAPPR); attach `aob_source` provenance |
-| `update_workorder`    | write    | `wonum`, `site_id`, `description?`, `priority?`, `location?`, `asset_num?`, `notes?`                         | Update mutable fields on a work order                             |
-| `approve_workorder`   | write    | `wonum`, `site_id`                                                                                          | Approve a work order (-> APPR)                                    |
-| `assign_technician`   | write    | `wonum`, `site_id`, `labor_code`, `craft?`, `start_date?`, `hours_planned?`                                 | Assign a technician (adds a wplabor line)                         |
-| `close_workorder`     | write    | `wonum`, `site_id`, `actual_hours?`, `failure_code?`, `resolution_notes?`                                   | Close a work order (-> COMP) with actuals and resolution          |
-| `cancel_workorder`    | write    | `wonum`, `site_id`, `reason?`                                                                               | Cancel a work order (-> CAN)                                      |
+| `generate_work_order` | write    | `description`, `asset_num`, `site_id`, `priority=3`, `work_type="CM"`, `reported_by?`, `location?`, `notes?`, `wonum?`, `aob_source?` | Create a work order (status `WAPPR`); attach `aob_source` provenance |
+| `update_workorder`    | write    | `wonum`, `site_id`, `description?`, `priority?`, `location?`, `asset_num?`, `notes?`, `failure_code?`        | Update mutable fields on a work order                             |
+| `approve_workorder`   | write    | `wonum`, `site_id`                                                                                          | Approve a work order (→ `APPR`)                                   |
+| `assign_technician`   | write    | `wonum`, `site_id`, `labor_code`, `craft?`, `start_date?`, `hours_planned=8.0`                              | Assign a technician (appends a `wplabor` line)                    |
+| `close_workorder`     | write    | `wonum`, `site_id`, `actual_hours=0.0`, `failure_code?`, `resolution_notes?`                                | Close a work order (→ `COMP`) with actuals, failure code, and `actfinish` stamp |
+| `cancel_workorder`    | write    | `wonum`, `site_id`, `reason?`                                                                               | Cancel a work order (→ `CAN`)                                     |
+
+### Status and work-type vocabulary
+
+These are the accepted values for the `status` filter and the `work_type` argument.
+
+| Group | Values | Used by |
+| ----- | ------ | ------- |
+| Open | `WAPPR`, `APPR`, `WMATL`, `WSCH`, `INPRG`, `WPCOND` | `status="OPEN"` expands to this set |
+| Approved-pending | `APPR`, `WMATL`, `WSCH`, `INPRG`, `WPCOND` | `status="APPROVED_PENDING"` expands to this set |
+| Terminal | `COMP`, `CLOSE`, `CAN` | Excluded from backlog, schedule, and `open_only` results |
+| Work types | `CM`, `PM`, `EM`, `PdM`, `CAL`, `INSP`, `GEN` | `work_type` on `generate_work_order` |
+
+Priorities are integers `1`–`5` (`wopriority`), 1 being most urgent.
+
+### Validation and write semantics
+
+- `generate_work_order` rejects a missing `description` / `asset_num` / `site_id`, a `priority`
+  outside 1–5, or a `work_type` outside the list above, each with `VALIDATION_ERROR`. It
+  truncates `description` to 100 characters (Maximo's `mxwo` limit) and puts the long text in
+  `description_longdescription`.
+- `wonum` is optional on create: omit it to let the server allocate the next number for the site,
+  or pin it for reproducible grading. `site_id` is upper-cased into the `_id`.
+- `aob_source` is a free-form dict for provenance — which agent, trigger, and evidence produced
+  the work order. Use it to trace an auto-generated WO back to the anomaly that caused it.
+- **There is no status-transition guard.** `approve_workorder`, `close_workorder`, and
+  `cancel_workorder` apply their target status from *any* current state; they do not enforce
+  `WAPPR → APPR → COMP`. Scenarios that need to test illegal transitions must assert on the
+  sequence themselves.
+- Every status change stamps `status_date`; `close_workorder` additionally sets `actlabhrs` and
+  `actfinish`.
+- `notes` (create/update), `reason` (cancel), and `resolution_notes` (close) all write the same
+  `description_longdescription` field — a later call overwrites the earlier text.
+- `assign_technician` **appends** to `wplabor`; calling it twice for the same technician creates
+  two lines rather than updating one.
+
+### Response envelope and error codes
+
+Internal functions in `workorders.py` return a `{success, data, metadata}` / `{success, error,
+error_code}` envelope (Maximo-MCP compatible); `main.py` converts each into a typed Pydantic
+result model — `WorkOrdersResult`, `WorkOrderResult`, `TasksResult`, `CostsResult`,
+`ActualsVsPlannedResult`, `KpiResult`, `ScheduleResult`, `FailureCodesResult`, and
+`WorkOrderMutationResult` — every one carrying a human-readable `message`. All `WorkOrderItem`
+fields are optional, so documents missing columns convert cleanly. CouchDB's `_rev` is stripped
+before a document reaches the agent.
+
+Failures return `ErrorResult` with an `error` field. Error codes raised by this server:
+
+| Code | Raised when |
+| ---- | ----------- |
+| `NOT_FOUND` | No document at `wo:{SITEID}:{WONUM}` for the given `wonum` + `site_id` |
+| `VALIDATION_ERROR` | Missing required create fields, `priority` outside 1–5, unknown `work_type`, or a missing `labor_code` on assignment |
+| `DATABASE_ERROR` | The failure-code catalog could not be read — CouchDB is down, or `FAILURE_CODE_DBNAME` points at an unloaded database |
 
 ### LLM-use tools
 
@@ -109,7 +192,9 @@ _None — the WO server makes no LLM calls; all tools are direct CouchDB operati
 
 ### CPU-centric tools
 
-_None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `GET` / `PUT`), with no heavy computation._
+_None — all tools are lightweight CouchDB queries/mutations (Mango `_find` / `GET` / `PUT`), with
+no heavy computation. Sorting, paging, and KPI aggregation are done in Python over bounded result
+sets._
 
 ## tsfm — Time Series Model and Feature Catalogs
 
