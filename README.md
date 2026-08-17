@@ -41,7 +41,7 @@
   <tr>
     <td align="center" width="16%"><b>9</b><br><sub>Asset classes</sub></td>
     <td align="center" width="16%"><b>141+</b><br><sub>Scenarios</sub></td>
-    <td align="center" width="16%"><b>5</b><br><sub>Domain agents</sub></td>
+    <td align="center" width="16%"><b>5 + 1</b><br><sub>Domain agents + utility server</sub></td>
     <td align="center" width="16%"><b>2</b><br><sub>Orchestration frameworks</sub></td>
     <td align="center" width="16%"><b>20+</b><br><sub>University extensions</sub></td>
     <td align="center" width="16%"><b>500+</b><br><sub>Competition submissions</sub></td>
@@ -84,14 +84,19 @@ AssetOpsBench is a **unified framework for developing, orchestrating, and evalua
 
 | MCP Servers | Important tools |
 |---|---|
-| **IoT** | `sites`, `asset_ids`, `asset_detail`, `assets`, `find_assets_by_sensors`, `installed_sensors`, `measured_sensors` |
+| **IoT** | `sites`, `asset_ids`, `asset_detail`, `assets`, `find_assets_by_sensors`, `installed_sensors`, `measured_sensors`, `latest_reading`, `history`, `sensor_stats` |
 | **FMSR** | `get_failure_modes`, `generate_failure_modes`, `add_failure_modes` |
 | **TSFM** | Tasks/evidence: `list_tasks`, `profile_series`, `characterize_series`, `data_quality`; model catalog: `list_models`, `search_models`, `find_models`, `resolve_model`, `model_template`, `register_model`, `register_finetuned`, `hf_stats`; feature catalog: `list_features`, `search_features`, `extract_features`, `select_features`; run/eval ledger: `recipe_template`, `run_recipe`, `run_tabular_recipe`, `run_plan`, `evaluate`, `list_runs`, `list_results` |
-| **WO** | `get_work_order_distribution`, `predict_next_work_order`, ... |
-| **Vibration** | `compute_fft_spectrum`, `compute_envelope_spectrum`, ... |
-| **...** | **...** |
+| **WO** | Read: `list_workorders`, `get_workorder`, `get_workorder_tasks`, `get_workorder_costs`, `get_workorder_actuals_vs_planned`, `get_workorder_kpis`, `get_schedule_calendar`, `get_my_assigned_workorders`, `get_failure_codes`; write: `generate_work_order`, `update_workorder`, `approve_workorder`, `assign_technician`, `close_workorder`, `cancel_workorder` |
+| **Vibration** | `get_vibration_data`, `list_vibration_sensors`, `compute_fft_spectrum`, `compute_envelope_spectrum`, `assess_vibration_severity`, `calculate_bearing_frequencies`, `diagnose_vibration` |
+| *Shared utility server* | |
+| **Utilities** | `json_reader`, `get_sensor_catalog`, `get_asset_catalog`, `get_failure_mode_catalog`, `current_date_time`, `current_time_english` |
+
+Five domain servers (IoT, FMSR, TSFM, WO, Vibration) plus one shared utility server, documented in full — arguments, categories, and backing services — in **[docs/mcp-servers.md](./docs/mcp-servers.md)**.
 
 The full TSFM MCP surface currently contains 41 tools covering model cards, feature cards, recipe execution, evaluation, and result/run lookup. See [docs/mcp-servers.md](./docs/mcp-servers.md#tsfm--time-series-model-and-feature-catalogs) for the complete reference.
+
+The WO MCP surface contains 15 tools (9 read + 6 write) covering the full Maximo-style work-order lifecycle — query, create, approve, assign, close, cancel — plus costs, KPIs, and scheduling, backed by CouchDB with IBM Maximo `mxwo` field names. Set `AOB_READONLY=1` to expose the 9 read tools only. See [docs/mcp-servers.md](./docs/mcp-servers.md#wo--work-order) for the complete reference.
 
 ### Agent Frameworks
 
