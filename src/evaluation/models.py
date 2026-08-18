@@ -97,6 +97,8 @@ class ScenarioResult(BaseModel):
 class AggregateOps(BaseModel):
     tokens_in_total: int = 0
     tokens_out_total: int = 0
+    est_input_cost_usd_total: float | None = None
+    est_output_cost_usd_total: float | None = None
     duration_ms_p50: float | None = None
     duration_ms_p95: float | None = None
     tool_calls_total: int = 0
