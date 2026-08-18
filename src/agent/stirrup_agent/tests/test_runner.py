@@ -130,6 +130,19 @@ def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
     assert runner._build_system_prompt() == AGENT_SYSTEM_PROMPT
 
 
+def test_stirrup_runner_uses_minimal_code_exec_guidance():
+    runner = StirrupAgentRunner(code_backend="local")
+
+    prompt = runner._build_system_prompt()
+    normalized_prompt = " ".join(prompt.split())
+
+    assert "Prefer one complete script" in normalized_prompt
+    assert "Keep all reads and writes inside the workspace" in normalized_prompt
+    assert "MCP tools and their definitions are authoritative" not in normalized_prompt
+    assert "Do not overuse code_exec" not in normalized_prompt
+    assert "If an artifact exceeds" not in normalized_prompt
+
+
 def test_stirrup_runner_forwards_temperature_to_litellm_client():
     runner = StirrupAgentRunner(
         model="watsonx/ibm/granite-4-h-small",
