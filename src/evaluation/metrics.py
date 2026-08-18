@@ -11,11 +11,17 @@ from .models import AggregateOps, OpsMetrics, PersistedTrajectory, ScenarioResul
 # only for the optional ``est_cost_usd`` rollup; consumers should treat
 # it as an estimate, not a billing source of truth.
 _PRICE_PER_1M: dict[str, tuple[float, float]] = {
+    "claude-opus-5": (5.0, 25.0),
+    # Introductory public price through 2026-08-31; update after it expires.
+    "claude-sonnet-5": (2.0, 10.0),
     "claude-opus-4-5": (15.0, 75.0),
     "claude-opus-4-1": (15.0, 75.0),
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-haiku-4-5": (1.0, 5.0),
     "gpt-5": (10.0, 30.0),
+    "gpt-5.6-sol": (5.0, 30.0),
+    "gemini-3.6-flash": (1.5, 7.5),
+    "minimax-m3": (0.3, 1.2),
     "gpt-4.1": (3.0, 12.0),
     "gpt-4o": (2.5, 10.0),
     "llama-4-maverick": (0.27, 0.85),
@@ -146,6 +152,16 @@ def _from_plan_execute(steps: list[Any], model: str) -> OpsMetrics:
 
 
 def _estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float | None:
+    components = _estimate_cost_components(model, tokens_in, tokens_out)
+    if components is None:
+        return None
+    input_cost, output_cost = components
+    return round(input_cost + output_cost, 6)
+
+
+def _estimate_cost_components(
+    model: str, tokens_in: int, tokens_out: int
+) -> tuple[float, float] | None:
     if not model or (tokens_in == 0 and tokens_out == 0):
         return None
     key = _normalize_model(model)
@@ -153,7 +169,7 @@ def _estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float | None:
     if rate is None:
         return None
     in_rate, out_rate = rate
-    return round((tokens_in * in_rate + tokens_out * out_rate) / 1_000_000, 6)
+    return tokens_in * in_rate / 1_000_000, tokens_out * out_rate / 1_000_000
 
 
 def _normalize_model(model: str) -> str:
@@ -171,15 +187,37 @@ def aggregate_ops(results: list[ScenarioResult]) -> AggregateOps:
         return AggregateOps()
 
     durations = [r.ops.duration_ms for r in results if r.ops.duration_ms is not None]
-    costs = [r.ops.est_cost_usd for r in results if r.ops.est_cost_usd is not None]
+    input_costs: list[float] = []
+    output_costs: list[float] = []
+    fallback_costs: list[float] = []
+    for result in results:
+        components = _estimate_cost_components(
+            result.model, result.ops.tokens_in, result.ops.tokens_out
+        )
+        if components is not None:
+            input_cost, output_cost = components
+            input_costs.append(input_cost)
+            output_costs.append(output_cost)
+        elif result.ops.est_cost_usd is not None:
+            fallback_costs.append(result.ops.est_cost_usd)
+
+    estimated_costs = input_costs + output_costs + fallback_costs
 
     return AggregateOps(
         tokens_in_total=sum(r.ops.tokens_in for r in results),
         tokens_out_total=sum(r.ops.tokens_out for r in results),
+        est_input_cost_usd_total=(
+            round(sum(input_costs), 6) if input_costs else None
+        ),
+        est_output_cost_usd_total=(
+            round(sum(output_costs), 6) if output_costs else None
+        ),
         duration_ms_p50=_percentile(durations, 50),
         duration_ms_p95=_percentile(durations, 95),
         tool_calls_total=sum(r.ops.tool_call_count for r in results),
-        est_cost_usd_total=round(sum(costs), 6) if costs else None,
+        est_cost_usd_total=(
+            round(sum(estimated_costs), 6) if estimated_costs else None
+        ),
     )
 
 

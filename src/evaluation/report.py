@@ -68,6 +68,8 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
     extra_keys_total = 0
     detail_entries_total = 0
     scored_results = 0
+    passed = sum(1 for result in results if result.score.passed)
+    total = len(results)
 
     for result in results:
         # Top-level score field, if present
@@ -98,7 +100,24 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
         if isinstance(per_key_details, list):
             detail_entries_total += len(per_key_details)
 
+    ops = aggregate_ops(results).model_dump()
+    estimated_cost = ops["est_cost_usd_total"]
+
     return {
+        "total": total,
+        "passed": passed,
+        "pass_rate": round(passed / total, 4) if total else 0.0,
+        "ops": ops,
+        "est_cost_per_scenario_usd": (
+            round(estimated_cost / total, 6)
+            if estimated_cost is not None and total
+            else None
+        ),
+        "est_cost_per_pass_usd": (
+            round(estimated_cost / passed, 6)
+            if estimated_cost is not None and passed
+            else None
+        ),
         "scored_results": scored_results,
         "score_avg": _avg(score_values["score"]),
         "score_min": round(min(score_values["score"]), 4) if score_values["score"] else None,
@@ -268,6 +287,10 @@ def _append_score_summary(
         "matched_keys_avg": "matched_keys_avg",
         "exact_value_matches_avg": "exact_value_matches_avg",
     }
+    lines.append(
+        f"{indent}passed: {summary.get('passed', 0)}/{summary.get('total', 0)} "
+        f"({summary.get('pass_rate', 0):.1%})"
+    )
     for metric, label in metric_labels.items():
         value = summary.get(metric)
         if value is not None:
