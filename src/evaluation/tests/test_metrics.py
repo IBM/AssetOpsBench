@@ -133,6 +133,26 @@ class TestAggregateOps:
         agg = aggregate_ops(results)
         assert agg.est_cost_usd_total == 0.03
 
+    def test_cost_components_use_model_token_rates(self):
+        results = [
+            ScenarioResult(
+                scenario_id="1",
+                scenario_type="structured",
+                runner="stirrup-agent",
+                model="litellm_proxy/azure/gpt-5.6-sol",
+                question="q",
+                answer="a",
+                score=ScorerResult(scorer="static_json", passed=True),
+                ops=OpsMetrics(tokens_in=1_000_000, tokens_out=100_000),
+            )
+        ]
+
+        agg = aggregate_ops(results)
+
+        assert agg.est_input_cost_usd_total == 5.0
+        assert agg.est_output_cost_usd_total == 3.0
+        assert agg.est_cost_usd_total == 8.0
+
 
 class TestNormalizeModel:
     def test_strips_provider_prefix(self):

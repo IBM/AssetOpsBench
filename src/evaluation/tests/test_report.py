@@ -50,6 +50,17 @@ def test_build_report_totals_and_breakdown():
     assert report.by_scenario_type["iot"].passed == 1
     assert report.by_scenario_type["tsfm"].pass_rate == 1.0
     assert report.ops.tokens_in_total == 38
+    summary_ops = report.score_summary["plan-execute_watsonx/ibm/granite"]["ops"]
+    assert summary_ops == {
+        "tokens_in_total": 38,
+        "tokens_out_total": 19,
+        "est_input_cost_usd_total": None,
+        "est_output_cost_usd_total": None,
+        "duration_ms_p50": None,
+        "duration_ms_p95": None,
+        "tool_calls_total": 0,
+        "est_cost_usd_total": None,
+    }
 
 
 def test_build_report_handles_empty():
@@ -82,6 +93,11 @@ def test_write_reports_dir_writes_only_aggregate(tmp_path: Path):
     agg = json.loads((out_dir / "_aggregate.json").read_text())
     assert agg["totals"]["scenarios"] == 2
     assert set(agg["score_summary"]) == {"plan-execute_watsonx/ibm/granite"}
+    score_summary = agg["score_summary"]["plan-execute_watsonx/ibm/granite"]
+    assert score_summary["total"] == 2
+    assert score_summary["passed"] == 1
+    assert score_summary["pass_rate"] == 0.5
+    assert score_summary["ops"]["tokens_in_total"] == 0
     assert len(agg["results"]) == 2
 
 
@@ -93,6 +109,7 @@ def test_render_summary_includes_headlines():
     text = render_summary(build_report(results))
     assert "Pass rate" in text
     assert "plan-execute_watsonx/ibm/granite" in text
+    assert "passed: 1/2 (50.0%)" in text
     assert "iot" in text
     assert "tokens_in_total" in text
 
@@ -145,6 +162,9 @@ def test_build_report_includes_score_summary():
 
     assert report.score_summary is not None
     summary = report.score_summary["direct-llm-agent_tokenrouter/MiniMax-M3"]
+    assert summary["total"] == 1
+    assert summary["passed"] == 0
+    assert summary["pass_rate"] == 0.0
     assert summary["partial_exact_match_accuracy_avg"] == 0.0
     assert summary["strict_exact_match_accuracy_avg"] == 0.0
     assert summary["missing_keys_total"] == 0
