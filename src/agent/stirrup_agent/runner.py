@@ -44,6 +44,7 @@ from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
 from .finish_tool import ASSETOPS_FINISH_TOOL
 from .trajectory import build_trajectory, classify_tool, final_answer
+from .handoff_tools import build_handoff_tools
 
 _log = logging.getLogger(__name__)
 
@@ -316,6 +317,7 @@ class StirrupAgentRunner(AgentRunner):
         code_provider = self._build_code_provider()
         return [
             code_provider,
+            *build_handoff_tools(code_provider),
             self._build_mcp_provider(exec_env=code_provider),
         ]
 
