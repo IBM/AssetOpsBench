@@ -15,14 +15,7 @@ agent_name=stirrup_agent
 scenario_ids=open
 
 model_configs=(
-  "litellm_proxy/gcp/gemini-3.6-flash high"
-  "litellm_proxy/azure/gpt-5.6-sol xhigh"
-  "tokenrouter/z-ai/glm-5.2 high"
-  "tokenrouter/MiniMax-M3 high"
   "litellm_proxy/aws/claude-opus-5 high"
-  "litellm_proxy/azure/DeepSeek-V4-Flash high"
-  "litellm_proxy/aws/gpt-oss-120b high"
-  "litellm_proxy/aws/claude-sonnet-5 xhigh"
 )
 
 for model_config in "${model_configs[@]}"; do
@@ -40,6 +33,5 @@ for model_config in "${model_configs[@]}"; do
     --reports-root "$leaderboard_dir/assetopsbench-reports" \
     --stirrup-workspace-root "$leaderboard_dir/assetopsbench-stirrup-workspaces" \
     --preserve-workspaces \
-    --skip-existing \
     --continue-on-error
 done

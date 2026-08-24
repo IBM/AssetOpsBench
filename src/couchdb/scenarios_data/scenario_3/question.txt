@@ -1,0 +1,34 @@
+A reliability engineer at the MAIN site is triaging an open work order that was raised
+against a chiller but has not yet been approved for execution. The work order text
+reports a suspected anomaly on one specific process measurement, and before approving
+field work the engineer wants that sensor history checked with a time-series anomaly
+detector rather than assessed by eye.
+
+Carry out that check end to end:
+
+1. Find the work order at the MAIN site that is still awaiting approval and asks for an
+   anomaly to be investigated. Identify the asset it concerns and the exact measurement
+   its description names.
+2. Look up that asset in the asset registry and use the name recorded there.
+3. Retrieve the full available sensor history for that asset, limited to that single
+   measurement.
+4. Write the retrieved series to a file on disk in a form the time-series tooling can
+   read. Do not paste the series into your reasoning or into a tool argument.
+5. Run a time-series anomaly-detection recipe over that file and obtain dense anomaly
+   labels for the series.
+6. Report the outcome.
+
+Count as observations only those records that carry a value for that measurement;
+records where it is absent are not part of the analysed series.
+
+Return only a single JSON object with exactly these keys and no other text:
+
+{
+  "work_order": "<work order number>",
+  "asset": "<asset name as recorded in the asset registry>",
+  "sensor": "<exact sensor name>",
+  "observations": <number of observations analysed, integer>,
+  "start": "<first timestamp, ISO 8601>",
+  "end": "<last timestamp, ISO 8601>",
+  "anomalies_found": <true or false>
+}
