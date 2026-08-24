@@ -46,8 +46,8 @@ SCENARIO_CATEGORY_ORDER = ("car", "fcc", "fmsr", "health", "tsfm", "wosr")
 SCENARIO_PROFILE_PATHS = {
     "all": REPO_ROOT / "benchmarks/scenario_suite/all.yaml",
     "lite": REPO_ROOT / "benchmarks/scenario_suite/lite.yaml",
+    "open": REPO_ROOT / "benchmarks/scenario_suite/open.yaml",
 }
-
 
 def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
     """Load and validate a category-to-scenario-ids YAML profile."""
@@ -109,9 +109,11 @@ def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
 
 SCENARIO_IDS_ALL = load_scenario_profile(SCENARIO_PROFILE_PATHS["all"])
 SCENARIO_IDS_LITE = load_scenario_profile(SCENARIO_PROFILE_PATHS["lite"])
+SCENARIO_IDS_OPEN = load_scenario_profile(SCENARIO_PROFILE_PATHS["open"])
 SCENARIO_ID_PROFILES = {
     "all": SCENARIO_IDS_ALL,
     "lite": SCENARIO_IDS_LITE,
+    "open": SCENARIO_IDS_OPEN,
 }
 
 
@@ -183,8 +185,8 @@ def _scenario_selector_error(selector: str) -> ValueError:
     categories = ", ".join(SCENARIO_CATEGORY_ORDER)
     return ValueError(
         f"Invalid scenario selector {selector!r}. Use "
-        f"<category>[+<category>...]_<all|lite>; categories: {categories}. "
-        "The shorthands 'all' and 'lite' select every category."
+        f"<category>[+<category>...]_<all|lite|open>; categories: {categories}. "
+        "The shorthands 'all', 'lite', 'open' select every category."
     )
 
 
