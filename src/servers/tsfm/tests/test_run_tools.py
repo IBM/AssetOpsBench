@@ -87,6 +87,7 @@ def test_run_recipe_fits_and_backtests():
     assert r["run_id"].startswith("run:")
     assert r["metric"] and isinstance(r["backtest_score"], (int, float))
     assert r["results_file"].startswith("file://")
+    assert r["results"] == json.load(open(refs._path(r["results_file"])))
 
 
 def test_run_recipe_validates_the_recipe():
@@ -119,6 +120,7 @@ def test_run_tabular_recipe_classifies():
     assert r["status"] == "success" and r["task"] == "tsfm_classification"
     assert r["metric"] == "accuracy" and r["cv_score"] > 0.5
     assert r["n_features"] > 0                       # FLOps features were extracted
+    assert r["results"] == json.load(open(refs._path(r["results_file"])))
 
 
 def test_run_tabular_recipe_validates():
@@ -296,6 +298,8 @@ def test_anomaly_run_indexes_its_result():
                               "recipe": {"task": "tsfm_anomaly_detection",
                                          "estimator": {"model_id": "idx_sublof"}}})
     assert run["status"] == "success"
+    assert run["results"]["labels"]
+    assert len(run["results"]["labels"]) == run["results"]["n_observations"]
     listed = call("list_results", {"task_type": "tsfm_anomaly_detection",
                                    "asset_id": "idx_ad"})["results"]
     assert listed

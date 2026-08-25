@@ -1587,10 +1587,10 @@ def run_recipe(
         parent_run_id: Optional id of a parent run, for chaining within a plan.
 
     Returns:
-        RecipeResult: `status`, `run_id`, a `results_file` pointer to the full payload,
-        `training_regime`, `folds`, and either `backtest_score`/`metric` (forecasting) or
-        `n_anomalies`/`n_observations` (anomaly). Carries `checkpoint_path` when the
-        recipe used `save_to`. Returns ErrorResult on empty inputs or a run failure.
+        RecipeResult: `status`, `run_id`, the engine's full `results` payload, a `results_file`
+        pointer, `training_regime`, `folds`, and either `backtest_score`/`metric` (forecasting)
+        or `n_anomalies`/`n_observations` (anomaly). Carries `checkpoint_path` when the recipe
+        used `save_to`. Returns ErrorResult on empty inputs or a run failure.
     """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
@@ -1607,7 +1607,7 @@ def run_recipe(
         if res.get("task") == "tsfm_anomaly_detection":  # detector path
             results_file = refs.write_json(
                 {
-                    "anomaly_label": res.pop("labels"),
+                    "anomaly_label": res["labels"],
                     "n_anomalies": res["n_anomalies"],
                     "anomaly_indices": res["anomaly_indices_head"],
                 },
@@ -1622,6 +1622,7 @@ def run_recipe(
             return RecipeResult(
                 status="success",
                 run_id=res["run_id"],
+                results=res,
                 results_file=results_file,
                 training_regime=res["training_regime"],
                 n_anomalies=res["n_anomalies"],
@@ -1649,6 +1650,7 @@ def run_recipe(
         return RecipeResult(
             status="success",
             run_id=res["run_id"],
+            results=res,
             results_file=results_file,
             metric=res["metric"],
             backtest_score=res["backtest_score"],
@@ -1684,9 +1686,9 @@ def run_tabular_recipe(
         asset_id: Asset this run belongs to; used to group runs and results.
 
     Returns:
-        TabularResult: `status`, `run_id`, a `results_file` pointer, the `task`, `metric`,
-        `cv_score`, and `n_features`. Returns ErrorResult on a bad recipe, a missing
-        `label_column`, or a run failure.
+        TabularResult: `status`, `run_id`, the engine's full `results` payload, a `results_file`
+        pointer, the `task`, `metric`, `cv_score`, and `n_features`. Returns ErrorResult on a bad
+        recipe, a missing `label_column`, or a run failure.
     """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
@@ -1715,6 +1717,7 @@ def run_tabular_recipe(
         return TabularResult(
             status="success",
             run_id=res["run_id"],
+            results=res,
             results_file=results_file,
             task=res["task"],
             metric=res["metric"],
