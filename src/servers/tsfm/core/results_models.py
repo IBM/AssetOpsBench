@@ -76,7 +76,7 @@ class RecipeResult(BaseModel):
     model_config = ConfigDict(extra="allow")
     status: str
     run_id: str
-    res: dict
+    results: dict
     results_file: (
         str  # file pointer to the run record (forecast/intervals OR anomaly labels)
     )
@@ -89,7 +89,7 @@ class RecipeResult(BaseModel):
 class TabularResult(BaseModel):
     status: str
     run_id: str
-    res: dict
+    results: dict
     results_file: str
     task: str
     metric: str
