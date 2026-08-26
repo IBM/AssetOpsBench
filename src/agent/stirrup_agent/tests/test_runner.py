@@ -29,6 +29,7 @@ from agent.stirrup_agent.trajectory import (
     classify_tool,
     final_answer,
 )
+from agent.stirrup_agent.gateway import MCPGatewayToolProvider
 from agent.stirrup_agent.workspace_bridge import WorkspaceBridgedMCPToolProvider
 
 _DOMAIN = {"iot", "utilities", "fmsr", "tsfm", "wo", "vibration"}
@@ -119,10 +120,43 @@ def test_stirrup_runner_rejects_unsupported_code_backend():
 def test_stirrup_runner_bridges_mcp_results_when_code_is_enabled():
     runner = StirrupAgentRunner(code_backend="local")
 
-    code_provider, mcp_provider = runner._build_tools()
+    # The code track is [code_provider, *handoff_tools, mcp_provider]; the
+    # handoff tools in the middle are why this cannot unpack to a fixed pair.
+    code_provider, *rest = runner._build_tools()
+    mcp_provider = rest[-1]
 
     assert isinstance(mcp_provider, WorkspaceBridgedMCPToolProvider)
     assert mcp_provider._exec_env is code_provider
+    # Flat topology connects every registered server through one provider.
+    assert mcp_provider._server_names is None
+
+
+def test_gateway_topology_wraps_the_bridged_provider():
+    runner = StirrupAgentRunner(code_backend="local", topology="gateway")
+
+    code_provider, *rest = runner._build_tools()
+    gateway = rest[-1]
+
+    # The gateway must sit on top of the bridge, not replace it, or oversized
+    # MCP results stop spilling into the workspace and land in the context.
+    assert isinstance(gateway, MCPGatewayToolProvider)
+    assert isinstance(gateway._inner, WorkspaceBridgedMCPToolProvider)
+    assert gateway._inner._exec_env is code_provider
+
+
+def test_gateway_topology_works_without_code_execution():
+    # Unlike a delegated topology, the gateway needs no execution environment,
+    # so it can be compared with flat on the same track as the other runners.
+    runner = StirrupAgentRunner(code_enabled=False, topology="gateway")
+
+    (gateway,) = runner._build_tools()
+
+    assert isinstance(gateway, MCPGatewayToolProvider)
+
+
+def test_unknown_topology_is_rejected_at_construction():
+    with pytest.raises(ValueError, match="topology"):
+        StirrupAgentRunner(topology="subagent")
 
 
 def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
