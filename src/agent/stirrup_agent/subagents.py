@@ -51,7 +51,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 if TYPE_CHECKING:  # pragma: no cover - import cost only matters at runtime
     from stirrup.core.models import Tool
@@ -154,13 +154,57 @@ when you finish:
 # --------------------------------------------------------------------------
 # Typed finish params
 # --------------------------------------------------------------------------
+#
+# These models are deliberately permissive, and that is a correctness decision
+# rather than sloppiness. When a tool's Pydantic model raises, Stirrup catches
+# the ValidationError and hands the model back the fixed string "Tool arguments
+# are not valid"; the actual reason goes only to a debug log
+# (``Agent.run_tool``). The agent therefore learns nothing about what it got
+# wrong and typically reissues the same malformed call until ``max_turns``,
+# burning the scenario.
+#
+# So: accept every shape a model plausibly emits and normalize it here, and put
+# the real requirements in the executor, which returns a message we control and
+# the agent can act on. After this, the only way to reach "Tool arguments are
+# not valid" is malformed JSON, which is unambiguously the model's fault.
+
+
+# Models emit a bare path string about as often as the object, and name the
+# path field half a dozen different ways. All of it means the same thing.
+# Module scope, not a class attribute: a leading underscore inside a
+# BaseModel becomes a Pydantic private attribute and is not iterable.
+_ARTIFACT_PATH_ALIASES = (
+    "path",
+    "file",
+    "filename",
+    "workspace_path",
+    "artifact",
+    "file_path",
+)
+
+
+def _as_text(value: Any) -> str:
+    """Flatten whatever a model emitted into a single line of text."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        return ", ".join(_as_text(item) for item in value if item is not None)
+    if isinstance(value, dict):
+        return ", ".join(f"{k}={_as_text(v)}" for k, v in value.items())
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 class DomainArtifact(BaseModel):
     """A workspace file handle produced by an MCP tool during a sub-agent run."""
 
+    model_config = ConfigDict(extra="ignore")
+
     workspace_file: str = Field(
-        min_length=1,
+        default="",
         description=(
             "Path of the artifact inside the shared code-execution workspace, "
             "copied verbatim from the tool result (for example "
@@ -181,12 +225,46 @@ class DomainArtifact(BaseModel):
         description="Content hash, copied verbatim from the tool result.",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_loose_shapes(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {"workspace_file": data}
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        if not normalized.get("workspace_file"):
+            for alias in _ARTIFACT_PATH_ALIASES:
+                if normalized.get(alias):
+                    normalized["workspace_file"] = normalized[alias]
+                    break
+        for key in ("workspace_file", "tool", "sha256"):
+            if key in normalized:
+                normalized[key] = _as_text(normalized[key])
+        size = normalized.get("bytes")
+        if size is not None and not isinstance(size, bool):
+            try:
+                normalized["bytes"] = max(0, int(float(size)))
+            except (TypeError, ValueError):
+                normalized["bytes"] = 0
+        else:
+            normalized.pop("bytes", None)
+        return normalized
+
 
 class DomainFinishParams(BaseModel):
-    """What a domain sub-agent hands back to the root agent."""
+    """What a domain sub-agent hands back to the root agent.
+
+    Every field has a default and every field coerces, so validation does not
+    fail. ``build_domain_finish_tool`` enforces the real contract.
+    """
+
+    # Keep unrecognised keys so the executor can say "you put your answer under
+    # `result`" instead of "answer is required" when a model invents a schema.
+    model_config = ConfigDict(extra="allow")
 
     answer: str = Field(
-        min_length=1,
+        default="",
         description=(
             "Result of the delegated task, in the format the task requested. "
             "Content only: no status commentary, no description of your process."
@@ -212,12 +290,47 @@ class DomainFinishParams(BaseModel):
         description="Optional internal note on why the run ended. Not shown to the user.",
     )
 
-    @field_validator("answer")
+    @field_validator("answer", "reason", mode="before")
     @classmethod
-    def _answer_must_contain_content(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("answer must include at least one non-whitespace character")
-        return value
+    def _coerce_text(cls, value: Any) -> str:
+        return _as_text(value)
+
+    @field_validator("entities", mode="before")
+    @classmethod
+    def _flatten_entities(cls, value: Any) -> dict[str, str]:
+        # Nested objects and list values are the common failures here: a model
+        # writes {"sensors": ["A", "B"]} or {"asset": {"id": "Chiller6"}}, and a
+        # strict dict[str, str] rejects both.
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return {str(k): _as_text(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            flattened: dict[str, str] = {}
+            for item in value:
+                if isinstance(item, dict) and len(item) == 1:
+                    key, val = next(iter(item.items()))
+                    flattened[str(key)] = _as_text(val)
+                elif isinstance(item, dict):
+                    name = item.get("name") or item.get("key") or item.get("type")
+                    val = item.get("value") or item.get("id")
+                    if name is not None:
+                        flattened[str(name)] = _as_text(val)
+            if flattened:
+                return flattened
+            return {"items": _as_text(value)}
+        return {"value": _as_text(value)}
+
+    @field_validator("artifacts", mode="before")
+    @classmethod
+    def _listify_artifacts(cls, value: Any) -> list:
+        if value is None:
+            return []
+        if isinstance(value, (str, dict)):
+            return [value]
+        if isinstance(value, (list, tuple)):
+            return [item for item in value if item is not None]
+        return []
 
 
 def build_domain_finish_tool(exec_env: "CodeExecToolProvider | None") -> "Tool":
@@ -232,7 +345,40 @@ def build_domain_finish_tool(exec_env: "CodeExecToolProvider | None") -> "Tool":
     """
     from stirrup.core.models import Tool, ToolResult, ToolUseCountMetadata
 
+    def _reject(message: str) -> "ToolResult[ToolUseCountMetadata]":
+        return ToolResult(
+            content=message, success=False, metadata=ToolUseCountMetadata()
+        )
+
     async def executor(params: DomainFinishParams) -> "ToolResult[ToolUseCountMetadata]":
+        _log.debug("Domain sub-agent finish params: %r", params.model_dump())
+
+        if not params.answer.strip():
+            # Name the keys the model actually sent. "answer is required" is
+            # useless when the model put its result under `result` or `summary`
+            # and cannot see the difference between its call and the schema.
+            extras = sorted((params.model_extra or {}).keys())
+            hint = (
+                f" You sent these unrecognised fields instead: {extras}. "
+                "Move the result text into `answer`."
+                if extras
+                else " Call finish again with the result text in `answer`."
+            )
+            return _reject(
+                "`answer` was empty. It is the only field carrying your result "
+                "back to the caller, which cannot see your tool calls." + hint
+            )
+
+        # Drop entries the model invented without a path rather than failing the
+        # call over them: the answer is still worth returning.
+        pathless = [a for a in params.artifacts if not a.workspace_file.strip()]
+        if pathless:
+            params.artifacts = [a for a in params.artifacts if a.workspace_file.strip()]
+            _log.warning(
+                "Dropped %d sub-agent artifact entries with no workspace_file",
+                len(pathless),
+            )
+
         if exec_env is not None and params.artifacts:
             missing = []
             for artifact in params.artifacts:
@@ -248,15 +394,11 @@ def build_domain_finish_tool(exec_env: "CodeExecToolProvider | None") -> "Tool":
                 if not exists:
                     missing.append(artifact.workspace_file)
             if missing:
-                return ToolResult(
-                    content=(
-                        "These artifact paths do not exist in the workspace: "
-                        f"{missing}. Copy workspace_file verbatim from the tool "
-                        "result that produced it, or drop the entry, then finish "
-                        "again."
-                    ),
-                    success=False,
-                    metadata=ToolUseCountMetadata(),
+                return _reject(
+                    "These artifact paths do not exist in the workspace: "
+                    f"{missing}. Copy `workspace_file` verbatim from the tool "
+                    "result that produced it, or drop the entry, then call "
+                    "finish again. Do not invent a path."
                 )
         return ToolResult(content="", metadata=ToolUseCountMetadata())
 
