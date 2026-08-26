@@ -288,7 +288,9 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--code-enabled`      | Enable code execution (default). The code track.                                     |
 | `--no-code`           | Tools-only; comparable to the other runners.                                         |
 | `--code-backend`      | `docker` (default) or `local`.                                                        |
-| `--max-turns N`       | Max agent turns (default: 30).                                                       |
+| `--topology`          | `flat` (default) or `subagent`. See [Tool-surface topology](#tool-surface-topology). |
+| `--max-turns N`       | Max root-agent turns (default: 30).                                                  |
+| `--subagent-max-turns N` | Max turns per domain sub-agent under `--topology subagent` (default: 12).         |
 | `--reasoning-effort LEVEL` | Reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default`); provider default when omitted. |
 | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
 | `--preserve-workspace` | Copy final code-execution files into `--workspace-dir` before cleanup.              |
@@ -309,9 +311,107 @@ were routed, as span attributes on the run:
 | `agent.domain_tool_calls`  | Count of MCP (`{server}__{tool}`) calls.                 |
 | `agent.code_tool_calls`    | Count of `code_exec` calls.                              |
 | `agent.tool_bypass`        | `true` if it used code but **no** domain tools.          |
+| `agent.topology`           | `flat` or `subagent`.                                    |
+| `agent.root_turns`         | Turns taken by the root agent alone.                     |
+| `agent.root_input_tokens`  | Input tokens billed to root turns only.                  |
+| `agent.root_peak_context_tokens` | Largest single root request — the context-pressure number. |
+| `agent.subagent_input_tokens` | Input tokens billed inside delegations.               |
+| `agent.subagent_calls`     | Number of delegations made.                              |
+
+Under `--topology subagent` the domain calls happen one level down, so
+sub-agent turns are spliced into the trajectory directly after the root turn
+that invoked them. `agent.domain_tool_calls` and `agent.tool_bypass` therefore
+stay tree-wide and remain comparable with a flat run; the `root_*` attributes
+are the same trajectory filtered to `depth == 0`.
 
 This quantifies how often the agent abandoned the grounded tools — a reportable
 measurement, not a bug. See [docs/observability.md](observability.md) for reading spans.
+
+---
+
+## Tool-surface topology
+
+`--topology` controls how the MCP servers reach the agent. It is orthogonal to
+the code track and is recorded on every run as `agent.topology`.
+
+**`flat` (default).** Every registered MCP server is attached to the root agent.
+All domain tool schemas sit in the root context on every turn, which is the same
+shape `claude-agent`, `openai-agent` and `deep-agent` use, so this is the
+configuration to report against them.
+
+**`subagent`.** Each domain server (`iot`, `fmsr`, `tsfm`, `wo`, `vibration`)
+gets its own single-server sub-agent, and the root sees one delegation tool per
+domain instead of that domain's tools. `utilities` stays on the root: six
+trivial tools every domain needs, where siloing would cost a delegation hop to
+ask the date.
+
+The rule is uniform, one server per sub-agent with no per-scenario grouping,
+deliberately. Hand-grouping domains that tend to co-occur would encode prior
+knowledge about the scenarios into the topology, which is a routing leak.
+
+Three properties the implementation depends on:
+
+1. **Sub-agents never run code.** Each gets exactly one tool provider, the
+   workspace-bridged MCP provider for its own server. Do not reach for
+   `Agent(share_parent_exec_env=True)`: it borrows the parent's environment and
+   then hands the sub-agent a `code_exec` tool, which is the thing being
+   excluded.
+2. **Large results still land in one workspace.**
+   `WorkspaceBridgedMCPToolProvider` takes the root's `CodeExecToolProvider` as
+   a constructor argument, not as a tool, so a sub-agent can spill a large
+   sensor history into `mcp_results/` in the root's workspace while being unable
+   to execute a line of Python. The root then reads it with `code_exec` by path.
+   Because sub-agents own no environment of their own, Stirrup's cross-
+   environment file transfer never runs and there is only ever one copy.
+3. **Only typed finish params cross back.** `Agent.to_tool` composes the result
+   the root sees from the sub-agent's last assistant message plus a
+   `model_dump()` of its finish params; the full message history goes to run
+   metadata and never enters the root's context. That is where the context
+   saving comes from, and it is why domain sub-agents use their own finish tool
+   (`DomainFinishParams`) with explicit `artifacts` and `entities` fields. A
+   free-text summary would destroy every workspace handle and identifier the
+   sub-agent found, and the root cannot re-run its tools to recover them.
+
+`--topology subagent` requires the code track. Without an execution environment
+there is nowhere for the bridge to spill, so every oversized result would land
+inline in the root context and the topology would cost more than `flat`. The
+runner rejects the combination at construction rather than degrading silently.
+
+### Running it from the benchmark
+
+`benchmarks/run_tiny.sh` is the usual entry point, and the topology is selected
+by method name rather than by a flag:
+
+```bash
+AGENTS="stirrup_agent stirrup_agent_subagent" \
+  ./benchmarks/run_tiny.sh "$SCENARIO_DIR" "$LEADERBOARD_DIR"
+```
+
+`stirrup_agent` and `stirrup_agent_subagent` are the same runner, model and
+scenarios; only the tool surface differs. They are separate method names
+deliberately. `scenario_suite_runner` nests trajectories, reports and
+workspaces as `<root>/<agent_name>/<model>/` and names runs
+`{agent_name}_{scenario_id}`, so a shared name would have the second topology
+overwrite the first one's outputs, destroying the comparison. Distinct names
+also make them distinct leaderboard entries, which is what they are.
+
+Two consequences worth knowing: `--agent_name all` now includes the sub-agent
+variant, so `all` costs one extra Stirrup pass; and
+`--stirrup-subagent-max-turns N` bounds each domain sub-agent, which bounds the
+delegation tree rather than just the root.
+
+### What to measure
+
+The topology trades total tokens for root context headroom, and those move in
+opposite directions. Report both:
+
+- `agent.root_peak_context_tokens` should fall substantially, since the root
+  carries delegation tools instead of every domain schema.
+- `gen_ai.usage.input_tokens` will likely *rise*, because each delegation
+  re-pays its server's schemas and its own system prompt.
+- Scenario accuracy on multi-domain scenarios is the tiebreaker: the root now
+  has to carry identifiers between domains itself, which is where a delegated
+  topology loses information a flat one keeps.
 
 ---
 
