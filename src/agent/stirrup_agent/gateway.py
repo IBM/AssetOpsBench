@@ -1,7 +1,7 @@
 """An MCP gateway: dynamic tool routing with deferred schema disclosure.
 
-Third topology, alongside ``flat`` and ``subagent``. Where delegation partitions
-the *agent*, the gateway partitions the *tool manifest*: every MCP server stays
+Second topology, alongside flat. Where a flat surface pins every tool
+schema into the context on every turn, the gateway partitions the manifest: every MCP server stays
 behind one provider, the root keeps a single context and a single trajectory,
 and full JSON Schemas are disclosed only for the tools a step actually needs.
 
