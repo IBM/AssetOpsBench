@@ -432,6 +432,20 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     ) is not None:
         stirrup_extra_args.append("--preserve-workspace")
 
+    # The sub-agent topology is registered as its own method rather than as a
+    # flag on `stirrup_agent`, because output paths and run ids are keyed on
+    # agent_name (`<root>/<agent_name>/<model>/` and `{agent_name}_{scenario}`).
+    # A shared name would make the second topology silently overwrite the first
+    # one's trajectories and reports, which is exactly the comparison being run.
+    # A distinct name also keeps the two as distinct leaderboard entries, which
+    # is what they are.
+    stirrup_subagent_extra_args = [*stirrup_extra_args, "--topology", "subagent"]
+    subagent_max_turns = getattr(args, "stirrup_subagent_max_turns", None)
+    if subagent_max_turns is not None:
+        stirrup_subagent_extra_args.extend(
+            ["--subagent-max-turns", str(subagent_max_turns)]
+        )
+
     opencode_extra_args: list[str] = []
     if args.opencode_allow_files:
         opencode_extra_args.append("--allow-files")
@@ -483,6 +497,16 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             command="stirrup-agent",
             model_id=args.model_id,
             extra_args=tuple(stirrup_extra_args),
+            workspace_root=getattr(args, "stirrup_workspace_root", None),
+        ),
+        # Same runner, same model, same scenarios; every MCP domain server
+        # reached through its own sub-agent instead of attached to the root.
+        # See docs/stirrup-agent.md "Tool-surface topology".
+        "stirrup_agent_subagent": MethodConfig(
+            agent_name="stirrup_agent_subagent",
+            command="stirrup-agent",
+            model_id=args.model_id,
+            extra_args=tuple(stirrup_subagent_extra_args),
             workspace_root=getattr(args, "stirrup_workspace_root", None),
         ),
         "opencode_agent": MethodConfig(
@@ -540,6 +564,16 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--stirrup-subagent-max-turns",
+        type=int,
+        default=None,
+        help=(
+            "Turn budget for each domain sub-agent under stirrup_agent_subagent. "
+            "Bounds the delegation tree, not just the root. Omitted by default, "
+            "so the runner's own default applies."
+        ),
+    )
+    parser.add_argument(
         "--reasoning-effort",
         choices=[
             "none",
@@ -577,13 +611,18 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=[
             "direct_llm",
             "stirrup_agent",
+            "stirrup_agent_subagent",
             "opencode_agent",
             "gemini_cli_agent",
             "openclaw_cli_agent",
             "all",
         ],
         default="direct_llm",
-        help="Which agent to run.",
+        help=(
+            "Which agent to run. 'stirrup_agent' and 'stirrup_agent_subagent' "
+            "are the same runner under the two tool-surface topologies; note "
+            "that 'all' now runs both."
+        ),
     )
     parser.add_argument(
         "--trajectory-root",
