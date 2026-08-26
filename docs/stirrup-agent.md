@@ -288,6 +288,9 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
 | `--code-enabled`      | Enable code execution (default). The code track.                                     |
 | `--no-code`           | Tools-only; comparable to the other runners.                                         |
 | `--code-backend`      | `docker` (default) or `local`.                                                        |
+| `--topology`          | `flat` (default) or `gateway`. See [Tool-surface topology](#tool-surface-topology).   |
+| `--gateway-mode`      | `index` (default) or `search`, under `--topology gateway`.                           |
+| `--gateway-top-k K`   | Candidates returned by the gateway's `search_tools` (default: 3).                     |
 | `--max-turns N`       | Max agent turns (default: 30).                                                       |
 | `--reasoning-effort LEVEL` | Reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default`); provider default when omitted. |
 | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
@@ -312,6 +315,98 @@ were routed, as span attributes on the run:
 
 This quantifies how often the agent abandoned the grounded tools — a reportable
 measurement, not a bug. See [docs/observability.md](observability.md) for reading spans.
+
+---
+
+## Tool-surface topology
+
+Attaching every MCP server to one agent pins the whole tool manifest into the
+context on every turn, whether or not a scenario touches those domains.
+`--topology` controls that, orthogonally to the code track, and is recorded on
+every run as `agent.topology`.
+
+**`flat` (default).** Every registered server is attached directly. This is the
+shape `claude-agent`, `openai-agent` and `deep-agent` use, so it is the
+configuration to report against them.
+
+**`gateway`.** Every server sits behind three routing tools, so the agent sees a
+handful of entries instead of the full catalogue while keeping one context and
+one trajectory:
+
+- `search_tools(query, k)` ranks the catalogue by BM25 and returns the top `k`
+  as `{name, server, summary}`.
+- `describe_tools(names)` returns full parameter schemas on demand.
+- `call_tool(name, arguments)` validates against the real tool's model and runs it.
+
+Two modes separate two different savings. `--gateway-mode index` pins a compact
+one-line-per-tool catalogue into `describe_tools`' description, so it is re-sent
+every turn: the agent always knows what exists and pays only for schema
+deferral. `--gateway-mode search` withholds the catalogue too, so discovery
+becomes a hard dependency on retrieval quality. Reporting both isolates how much
+of any saving comes from deferring schemas versus from withholding the
+catalogue, which one mode alone cannot tell you.
+
+Retrieval is lexical BM25, implemented in-repo with no model and no network.
+That is a reproducibility decision: a benchmark arm whose retrieval quality is
+an unpinned variable cannot be replayed. Ranking ties break on tool name, so a
+run is byte-reproducible. The BM25 constants are fixed rather than tuned, since
+tuning them against the scenarios would leak the evaluation set into the routing
+layer.
+
+Three implementation notes worth knowing:
+
+1. **The gateway wraps whichever provider the track built.** On the code track
+   that is `WorkspaceBridgedMCPToolProvider`, so oversized results keep spilling
+   into `mcp_results/` exactly as under `flat`. It works on the no-code track
+   too, so the gateway can be compared against the flat baseline on the same
+   track as the other runners.
+2. **`MCPGatewayToolProvider` must subclass Stirrup's `ToolProvider`.**
+   `Agent.__init__` decides what to connect with `isinstance(t, ToolProvider)`,
+   so a gateway that did not subclass it would silently never connect and the
+   agent would start with no domain tools. `test_gateway.py` asserts this.
+3. **Argument errors are recoverable here.** The gateway's own parameters always
+   validate, so a bad inner argument reaches our executor rather than being
+   replaced by Stirrup's fixed `"Tool arguments are not valid"`, whose real
+   reason goes only to a debug log. `call_tool` returns the actual validation
+   error plus the schema, so the agent can correct itself in one turn instead of
+   reissuing the same call until `max_turns`.
+
+### Running it from the benchmark
+
+`benchmarks/run_tiny.sh` selects the topology by method name:
+
+```bash
+AGENTS="stirrup_agent stirrup_agent_gateway stirrup_agent_gateway_search" \
+  ./benchmarks/run_tiny.sh "$SCENARIO_DIR" "$LEADERBOARD_DIR"
+```
+
+The three are the same runner, model and scenarios; only the tool surface
+differs. They are separate method names deliberately: `scenario_suite_runner`
+nests outputs as `<root>/<agent_name>/<model>/` and names runs
+`{agent_name}_{scenario_id}`, so a shared name would have each run overwrite the
+last. `--agent_name all` now includes both gateway variants.
+
+### What to measure
+
+Gateway runs record `agent.gateway_mode`, `agent.gateway_discovery_calls`,
+`agent.gateway_tool_count` and `agent.gateway_schemas_disclosed`. Domain calls
+are still credited to the underlying server, because `classify_tool` reads the
+`name` argument of a `call_tool` invocation, so `agent.domain_tool_calls` and
+`agent.tool_bypass` stay comparable with a flat run.
+
+The topology trades total tokens for context headroom, and those move in
+opposite directions. Report both:
+
+- `agent.peak_context_tokens` should fall sharply, since the agent carries three
+  routing tools instead of every schema.
+- `gen_ai.usage.input_tokens` may rise, because discovery costs turns and
+  described schemas re-appear in history.
+- `agent.gateway_discovery_calls` against `agent.domain_tool_calls` is the
+  overhead ratio, and the number that decides whether the topology pays for
+  itself.
+
+`scripts/measure_topology_context.py` reports the per-turn static cost of every
+topology against the real servers without calling a model.
 
 ---
 

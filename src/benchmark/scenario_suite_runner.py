@@ -432,6 +432,19 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     ) is not None:
         stirrup_extra_args.append("--preserve-workspace")
 
+    # One method per gateway mode. They are separate method names rather than a
+    # flag on stirrup_agent because outputs are keyed on agent_name
+    # (`<root>/<agent_name>/<model>/` and `{agent_name}_{scenario}`), so a
+    # shared name would have one configuration overwrite another's
+    # trajectories and reports, destroying the comparison being run.
+    gateway_top_k = getattr(args, "stirrup_gateway_top_k", None)
+
+    def _gateway_args(mode: str) -> list[str]:
+        extra = [*stirrup_extra_args, "--topology", "gateway", "--gateway-mode", mode]
+        if gateway_top_k is not None:
+            extra.extend(["--gateway-top-k", str(gateway_top_k)])
+        return extra
+
     opencode_extra_args: list[str] = []
     if args.opencode_allow_files:
         opencode_extra_args.append("--allow-files")
@@ -485,6 +498,20 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             extra_args=tuple(stirrup_extra_args),
             workspace_root=getattr(args, "stirrup_workspace_root", None),
         ),
+        "stirrup_agent_gateway": MethodConfig(
+            agent_name="stirrup_agent_gateway",
+            command="stirrup-agent",
+            model_id=args.model_id,
+            extra_args=tuple(_gateway_args("index")),
+            workspace_root=getattr(args, "stirrup_workspace_root", None),
+        ),
+        "stirrup_agent_gateway_search": MethodConfig(
+            agent_name="stirrup_agent_gateway_search",
+            command="stirrup-agent",
+            model_id=args.model_id,
+            extra_args=tuple(_gateway_args("search")),
+            workspace_root=getattr(args, "stirrup_workspace_root", None),
+        ),
         "opencode_agent": MethodConfig(
             agent_name="opencode_agent",
             command="opencode-agent",
@@ -529,6 +556,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scenario_suite_runner",
         description="Run benchmark scenarios sequentially.",
+    )
+    parser.add_argument(
+        "--stirrup-gateway-top-k",
+        type=int,
+        default=None,
+        metavar="K",
+        help=(
+            "Candidates returned by the gateway's search_tools under the "
+            "stirrup_agent_gateway* methods. Omitted by default, so the "
+            "runner's own default applies."
+        ),
     )
     parser.add_argument(
         "--temperature",
@@ -577,13 +615,20 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=[
             "direct_llm",
             "stirrup_agent",
+            "stirrup_agent_gateway",
+            "stirrup_agent_gateway_search",
             "opencode_agent",
             "gemini_cli_agent",
             "openclaw_cli_agent",
             "all",
         ],
         default="direct_llm",
-        help="Which agent to run.",
+        help=(
+            "Which agent to run. The three stirrup_agent* methods are the same "
+            "runner under different tool surfaces: flat, gateway with a pinned "
+            "catalogue, and gateway with search only. Note that 'all' runs "
+            "every one of them."
+        ),
     )
     parser.add_argument(
         "--trajectory-root",

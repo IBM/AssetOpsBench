@@ -21,6 +21,17 @@ Tracks (the code switch):
     Report on its own leaderboard track; the bypass metric records whether it
     did so instead of calling the domain tools.
 
+Topology (the tool-surface switch):
+  * ``topology="flat"``    -> every MCP server is attached to the root agent, so
+    all domain tool schemas sit in the root context on every turn. The default,
+    and the shape the other runners use.
+  * ``topology="gateway"`` -> every server sits behind three routing tools
+    (``search_tools`` / ``describe_tools`` / ``call_tool``), so the root carries
+    a handful of entries instead of the full manifest while keeping one context
+    and one trajectory. See :mod:`.gateway`. Works on both tracks: on the code
+    track the gateway wraps the workspace-bridged provider, so oversized results
+    still spill into ``mcp_results/``.
+
 Stirrup's web/default tools are deliberately NOT attached: the environment
 under test is the MCP servers (plus, on the code track, code execution), so
 adding web search would contaminate the benchmark.
@@ -43,6 +54,12 @@ from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
 from .finish_tool import ASSETOPS_FINISH_TOOL
+from .gateway import (
+    DEFAULT_TOP_K,
+    GATEWAY_DISCOVERY_TOOLS,
+    GATEWAY_MODES,
+    MCPGatewayToolProvider,
+)
 from .trajectory import build_trajectory, classify_tool, final_answer
 from .handoff_tools import build_handoff_tools
 
@@ -52,7 +69,15 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "assetops-code")
-_WORKING_CONTEXT_BUDGET = 100_000
+TOPOLOGIES = ("flat", "gateway")
+
+# Stirrup 0.2.0 takes the working-context budget as an explicit client argument
+# (``context_window_tokens``) instead of reading ``max_tokens`` for both the
+# provider output cap and the summarization trigger, so the adapter this module
+# used to carry is gone. ``max_tokens`` must stay <= ``context_window_tokens``;
+# the client constructor validates the pair.
+_ROOT_CONTEXT_WINDOW_TOKENS = 100_000
+_ROOT_MAX_OUTPUT_TOKENS = 64_000
 _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
@@ -77,38 +102,22 @@ The Docker execution workspace is /workspace. Host filesystem paths are not
 available inside the container. NumPy, pandas, and SciPy are installed; check
 availability before using other packages.
 """
+_GATEWAY_SYSTEM_PROMPT = """\
+Tool routing:
+- Your domain tools are behind a gateway. You do not see them until you ask.
+- search_tools(query) ranks the catalogue against what you are doing now.
+  describe_tools(names) returns full parameter schemas. call_tool(name,
+  arguments) runs one.
+- Describe a tool once, then call it as often as you need; do not re-describe a
+  schema you already have in this conversation.
+- If call_tool rejects your arguments it returns the real error and the schema.
+  Correct them from that rather than guessing or searching again.
+"""
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
 The local execution workspace is a temporary directory, but commands run on the
 host with the current user's permissions. Keep all reads and writes inside the
 workspace and use relative paths.
 """
-
-
-class _ContextWindowClient:
-    """Report the working context budget without changing the output-token cap.
-
-    Stirrup currently reads ``LLMClient.max_tokens`` both when configuring the
-    provider's maximum output and when deciding whether to summarize context.
-    Keeping the provider client behind this adapter lets it retain its native
-    64k output default while the agent loop uses a lower working-context budget
-    for earlier summarization.
-    """
-
-    def __init__(self, client: Any) -> None:
-        self._client = client
-
-    @property
-    def max_tokens(self) -> int:
-        return _WORKING_CONTEXT_BUDGET
-
-    @property
-    def model_slug(self) -> str:
-        return self._client.model_slug
-
-    async def generate(
-        self, messages: list[Any], tools: dict[str, Any]
-    ) -> Any:
-        return await self._client.generate(messages, tools)
 
 
 def _build_full_summary_logger():
@@ -177,6 +186,12 @@ class StirrupAgentRunner(AgentRunner):
         model: ``litellm_proxy/<provider>/<model>`` or native ``<provider>/<model>``.
         code_enabled: Add a sandboxed code-execution tool (the code track).
         code_backend: ``"docker"`` (sandboxed, default) or ``"local"``.
+        topology: ``"flat"`` (all servers on the root) or ``"gateway"`` (all
+            servers behind routing tools, single context).
+        gateway_mode: ``"index"`` pins a compact catalogue into the root
+            context and defers only schemas; ``"search"`` withholds the
+            catalogue too. Ignored unless ``topology="gateway"``.
+        gateway_top_k: Default candidates returned by ``search_tools``.
         workspace_dir: Optional host base directory for Docker/local code execution.
         preserve_workspace: Copy final code-execution files back into ``workspace_dir``.
         max_turns: Stirrup agent loop bound.
@@ -191,6 +206,9 @@ class StirrupAgentRunner(AgentRunner):
         model: str = _DEFAULT_MODEL,
         code_enabled: bool = True,
         code_backend: str = "docker",
+        topology: str = "flat",
+        gateway_mode: str = "index",
+        gateway_top_k: int = DEFAULT_TOP_K,
         workspace_dir: Path | str | None = None,
         preserve_workspace: bool = False,
         max_turns: int = 30,
@@ -200,9 +218,17 @@ class StirrupAgentRunner(AgentRunner):
         super().__init__(llm, server_paths)
         if code_backend not in {"docker", "local"}:
             raise ValueError("code_backend must be 'docker' or 'local'")
+        if topology not in TOPOLOGIES:
+            raise ValueError(f"topology must be one of {TOPOLOGIES}")
+        if gateway_mode not in GATEWAY_MODES:
+            raise ValueError(f"gateway_mode must be one of {GATEWAY_MODES}")
         self._model_id = model
         self._code_enabled = code_enabled
         self._code_backend = code_backend
+        self._topology = topology
+        self._gateway_mode = gateway_mode
+        self._gateway_top_k = gateway_top_k
+        self._gateway: MCPGatewayToolProvider | None = None
         self._workspace_dir = (
             Path(workspace_dir).expanduser().resolve()
             if workspace_dir is not None
@@ -221,8 +247,18 @@ class StirrupAgentRunner(AgentRunner):
 
     # -- client / tools ----------------------------------------------------
 
-    def _build_client(self):
-        """Build a Stirrup LLM client for the configured model id."""
+    def _build_client(
+        self,
+        *,
+        context_window_tokens: int = _ROOT_CONTEXT_WINDOW_TOKENS,
+        max_output_tokens: int = _ROOT_MAX_OUTPUT_TOKENS,
+    ):
+        """Build a Stirrup LLM client for the configured model id.
+
+        ``context_window_tokens`` is the working-context budget the agent loop
+        uses to decide when to summarize; it is intentionally lower than the
+        provider's real window so long runs compact early.
+        """
         client_kwargs = (
             {"temperature": self._temperature}
             if self._temperature is not None
@@ -233,23 +269,25 @@ class StirrupAgentRunner(AgentRunner):
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
 
-            common_kwargs = {
-                "model": resolve_model(self._model_id),
-                "base_url": creds.base_url.rstrip("/"),
-                "api_key": creds.api_key,
-                "reasoning_effort": self._reasoning_effort,
-                "kwargs": client_kwargs,
-            }
-            client = ChatCompletionsClient(**common_kwargs)
-        else:
-            from stirrup.clients.litellm_client import LiteLLMClient
-
-            client = LiteLLMClient(
-                model=self._model_id,
+            return ChatCompletionsClient(
+                model=resolve_model(self._model_id),
+                max_tokens=max_output_tokens,
+                context_window_tokens=context_window_tokens,
+                base_url=creds.base_url.rstrip("/"),
+                api_key=creds.api_key,
                 reasoning_effort=self._reasoning_effort,
                 kwargs=client_kwargs,
             )
-        return _ContextWindowClient(client)
+
+        from stirrup.clients.litellm_client import LiteLLMClient
+
+        return LiteLLMClient(
+            model=self._model_id,
+            max_tokens=max_output_tokens,
+            context_window_tokens=context_window_tokens,
+            reasoning_effort=self._reasoning_effort,
+            kwargs=client_kwargs,
+        )
 
     def _build_mcp_config(self):
         """Build the Stirrup MCP configuration for AssetOpsBench servers.
@@ -269,20 +307,33 @@ class StirrupAgentRunner(AgentRunner):
             }
         return MCPConfig.model_validate({"mcpServers": servers})
 
-    def _build_mcp_provider(self, *, exec_env=None):
+    def _build_mcp_provider(self, *, exec_env=None, server_names: list[str] | None = None):
         """Build the MCP provider, bridging large results when code is enabled."""
         config = self._build_mcp_config()
         if exec_env is None:
             from stirrup.tools.mcp import MCPToolProvider
 
-            return MCPToolProvider(config=config)
+            return MCPToolProvider(config=config, server_names=server_names)
 
         from .workspace_bridge import WorkspaceBridgedMCPToolProvider
 
         return WorkspaceBridgedMCPToolProvider(
             config=config,
             exec_env=exec_env,
+            server_names=server_names,
         )
+
+    def _wrap_in_gateway(self, provider):
+        """Put every MCP server behind the routing gateway.
+
+        The gateway wraps the provider the track already built, so on the code
+        track it wraps the workspace-bridged provider and oversized results keep
+        spilling into ``mcp_results/`` exactly as they do under ``flat``.
+        """
+        self._gateway = MCPGatewayToolProvider(
+            provider, mode=self._gateway_mode, top_k=self._gateway_top_k
+        )
+        return self._gateway
 
     def _build_code_provider(self):
         """Build the sandboxed code-execution provider for the code track."""
@@ -312,18 +363,26 @@ class StirrupAgentRunner(AgentRunner):
 
     def _build_tools(self) -> list:
         if not self._code_enabled:
-            return [self._build_mcp_provider()]
+            provider = self._build_mcp_provider()
+            if self._topology == "gateway":
+                return [self._wrap_in_gateway(provider)]
+            return [provider]
 
         code_provider = self._build_code_provider()
+        mcp_provider = self._build_mcp_provider(exec_env=code_provider)
+        if self._topology == "gateway":
+            mcp_provider = self._wrap_in_gateway(mcp_provider)
         return [
             code_provider,
             *build_handoff_tools(code_provider),
-            self._build_mcp_provider(exec_env=code_provider),
+            mcp_provider,
         ]
 
     def _build_system_prompt(self) -> str:
         """Append code-execution guidance when the code track is enabled."""
         if not self._code_enabled:
+            if self._topology == "gateway":
+                return f"{AGENT_SYSTEM_PROMPT}\n{_GATEWAY_SYSTEM_PROMPT}"
             return AGENT_SYSTEM_PROMPT
 
         backend_prompt = (
@@ -331,7 +390,10 @@ class StirrupAgentRunner(AgentRunner):
             if self._code_backend == "docker"
             else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
         )
-        return f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+        parts = [AGENT_SYSTEM_PROMPT, _CODE_EXEC_SYSTEM_PROMPT, backend_prompt]
+        if self._topology == "gateway":
+            parts.append(_GATEWAY_SYSTEM_PROMPT)
+        return "\n".join(parts)
 
     # -- run ---------------------------------------------------------------
 
@@ -344,9 +406,8 @@ class StirrupAgentRunner(AgentRunner):
             run_started = time.perf_counter()
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
 
-            client = self._build_client()
             agent = Agent(
-                client=client,
+                client=self._build_client(),
                 name="assetops",
                 system_prompt=self._build_system_prompt(),
                 tools=self._build_tools(),
@@ -387,8 +448,11 @@ class StirrupAgentRunner(AgentRunner):
     ) -> None:
         domain_servers = set(self._server_paths)
         counts = {"domain": 0, "code": 0, "other": 0}
+        discovery_calls = 0
         for tc in trajectory.all_tool_calls:
-            counts[classify_tool(tc.name, domain_servers)] += 1
+            counts[classify_tool(tc.name, domain_servers, tc.input)] += 1
+            if tc.name in GATEWAY_DISCOVERY_TOOLS:
+                discovery_calls += 1
         total_tools = sum(counts.values())
         bypass = self._code_enabled and counts["code"] > 0 and counts["domain"] == 0
 
@@ -402,11 +466,31 @@ class StirrupAgentRunner(AgentRunner):
         span.set_attribute("agent.domain_tool_calls", counts["domain"])
         span.set_attribute("agent.code_tool_calls", counts["code"])
         span.set_attribute("agent.tool_bypass", bypass)
+        span.set_attribute("agent.topology", self._topology)
+        # Peak single-request input is the context-pressure number the topology
+        # comparison turns on; total input tokens move the other way.
+        span.set_attribute(
+            "agent.peak_context_tokens",
+            max((t.input_tokens for t in trajectory.turns), default=0),
+        )
+        if self._topology == "gateway":
+            # Discovery is the gateway's characteristic cost: turns spent
+            # finding and reading schemas rather than doing domain work.
+            span.set_attribute("agent.gateway_mode", self._gateway_mode)
+            span.set_attribute("agent.gateway_discovery_calls", discovery_calls)
+            if self._gateway is not None:
+                span.set_attribute("agent.gateway_tool_count", self._gateway.tool_count)
+                span.set_attribute(
+                    "agent.gateway_schemas_disclosed", len(self._gateway.described)
+                )
 
         _log.info(
-            "StirrupAgentRunner: done (turns=%d, domain=%d, code=%d, bypass=%s)",
+            "StirrupAgentRunner: done (topology=%s, turns=%d, domain=%d, "
+            "code=%d, discovery=%d, bypass=%s)",
+            self._topology,
             len(trajectory.turns),
             counts["domain"],
             counts["code"],
+            discovery_calls,
             bypass,
         )

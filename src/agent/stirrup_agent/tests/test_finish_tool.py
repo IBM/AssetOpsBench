@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 from stirrup import Agent
-from stirrup.core.models import AssistantMessage, ToolCall
+from stirrup.core.models import AssistantMessage, TextBlock, ToolCall
 
 from agent.stirrup_agent.finish_tool import (
     ASSETOPS_FINISH_TOOL,
@@ -58,21 +58,27 @@ def test_structured_finish_answer_strips_boundary_whitespace():
 @pytest.mark.anyio
 async def test_stirrup_agent_returns_custom_finish_params():
     class _Client:
-        max_tokens = 100_000
+        max_tokens = 64_000
+        # Stirrup 0.2 reads the working-context budget from the client and
+        # validates it as a positive int in Agent.__init__, so a stand-in that
+        # only carries max_tokens no longer constructs an Agent.
+        context_window_tokens = 100_000
         model_slug = "fake/custom-finish"
 
         async def generate(self, messages, tools):
             assert tools["finish"].parameters is AssetOpsFinishParams
+            # 0.2 assistant messages are block-based; `content` / `tool_calls`
+            # survive only as deprecated read-only projections.
             return AssistantMessage(
-                content="",
-                tool_calls=[
+                blocks=[
+                    TextBlock(text=""),
                     ToolCall(
                         name="finish",
                         arguments=(
                             '{"answer":"[1,2]","reason":"done","paths":[]}'
                         ),
                         tool_call_id="finish-1",
-                    )
+                    ),
                 ],
             )
 
