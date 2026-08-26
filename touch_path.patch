@@ -1,0 +1,918 @@
+diff --git a/docs/stirrup-agent.md b/docs/stirrup-agent.md
+index 3692d65..8f281f2 100644
+--- a/docs/stirrup-agent.md
++++ b/docs/stirrup-agent.md
+@@ -288,7 +288,9 @@ In addition to the [common flags](../INSTRUCTIONS.md#common-flags) (`--model-id`
+ | `--code-enabled`      | Enable code execution (default). The code track.                                     |
+ | `--no-code`           | Tools-only; comparable to the other runners.                                         |
+ | `--code-backend`      | `docker` (default) or `local`.                                                        |
+-| `--max-turns N`       | Max agent turns (default: 30).                                                       |
++| `--topology`          | `flat` (default) or `subagent`. See [Tool-surface topology](#tool-surface-topology). |
++| `--max-turns N`       | Max root-agent turns (default: 30).                                                  |
++| `--subagent-max-turns N` | Max turns per domain sub-agent under `--topology subagent` (default: 12).         |
+ | `--reasoning-effort LEVEL` | Reasoning effort (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, or `default`); provider default when omitted. |
+ | `--workspace-dir PATH` | Host base directory for Docker/local code-execution workspaces.                     |
+ | `--preserve-workspace` | Copy final code-execution files into `--workspace-dir` before cleanup.              |
+@@ -309,12 +311,110 @@ were routed, as span attributes on the run:
+ | `agent.domain_tool_calls`  | Count of MCP (`{server}__{tool}`) calls.                 |
+ | `agent.code_tool_calls`    | Count of `code_exec` calls.                              |
+ | `agent.tool_bypass`        | `true` if it used code but **no** domain tools.          |
++| `agent.topology`           | `flat` or `subagent`.                                    |
++| `agent.root_turns`         | Turns taken by the root agent alone.                     |
++| `agent.root_input_tokens`  | Input tokens billed to root turns only.                  |
++| `agent.root_peak_context_tokens` | Largest single root request — the context-pressure number. |
++| `agent.subagent_input_tokens` | Input tokens billed inside delegations.               |
++| `agent.subagent_calls`     | Number of delegations made.                              |
++
++Under `--topology subagent` the domain calls happen one level down, so
++sub-agent turns are spliced into the trajectory directly after the root turn
++that invoked them. `agent.domain_tool_calls` and `agent.tool_bypass` therefore
++stay tree-wide and remain comparable with a flat run; the `root_*` attributes
++are the same trajectory filtered to `depth == 0`.
+ 
+ This quantifies how often the agent abandoned the grounded tools — a reportable
+ measurement, not a bug. See [docs/observability.md](observability.md) for reading spans.
+ 
+ ---
+ 
++## Tool-surface topology
++
++`--topology` controls how the MCP servers reach the agent. It is orthogonal to
++the code track and is recorded on every run as `agent.topology`.
++
++**`flat` (default).** Every registered MCP server is attached to the root agent.
++All domain tool schemas sit in the root context on every turn, which is the same
++shape `claude-agent`, `openai-agent` and `deep-agent` use, so this is the
++configuration to report against them.
++
++**`subagent`.** Each domain server (`iot`, `fmsr`, `tsfm`, `wo`, `vibration`)
++gets its own single-server sub-agent, and the root sees one delegation tool per
++domain instead of that domain's tools. `utilities` stays on the root: six
++trivial tools every domain needs, where siloing would cost a delegation hop to
++ask the date.
++
++The rule is uniform, one server per sub-agent with no per-scenario grouping,
++deliberately. Hand-grouping domains that tend to co-occur would encode prior
++knowledge about the scenarios into the topology, which is a routing leak.
++
++Three properties the implementation depends on:
++
++1. **Sub-agents never run code.** Each gets exactly one tool provider, the
++   workspace-bridged MCP provider for its own server. Do not reach for
++   `Agent(share_parent_exec_env=True)`: it borrows the parent's environment and
++   then hands the sub-agent a `code_exec` tool, which is the thing being
++   excluded.
++2. **Large results still land in one workspace.**
++   `WorkspaceBridgedMCPToolProvider` takes the root's `CodeExecToolProvider` as
++   a constructor argument, not as a tool, so a sub-agent can spill a large
++   sensor history into `mcp_results/` in the root's workspace while being unable
++   to execute a line of Python. The root then reads it with `code_exec` by path.
++   Because sub-agents own no environment of their own, Stirrup's cross-
++   environment file transfer never runs and there is only ever one copy.
++3. **Only typed finish params cross back.** `Agent.to_tool` composes the result
++   the root sees from the sub-agent's last assistant message plus a
++   `model_dump()` of its finish params; the full message history goes to run
++   metadata and never enters the root's context. That is where the context
++   saving comes from, and it is why domain sub-agents use their own finish tool
++   (`DomainFinishParams`) with explicit `artifacts` and `entities` fields. A
++   free-text summary would destroy every workspace handle and identifier the
++   sub-agent found, and the root cannot re-run its tools to recover them.
++
++`--topology subagent` requires the code track. Without an execution environment
++there is nowhere for the bridge to spill, so every oversized result would land
++inline in the root context and the topology would cost more than `flat`. The
++runner rejects the combination at construction rather than degrading silently.
++
++### Running it from the benchmark
++
++`benchmarks/run_tiny.sh` is the usual entry point, and the topology is selected
++by method name rather than by a flag:
++
++```bash
++AGENTS="stirrup_agent stirrup_agent_subagent" \
++  ./benchmarks/run_tiny.sh "$SCENARIO_DIR" "$LEADERBOARD_DIR"
++```
++
++`stirrup_agent` and `stirrup_agent_subagent` are the same runner, model and
++scenarios; only the tool surface differs. They are separate method names
++deliberately. `scenario_suite_runner` nests trajectories, reports and
++workspaces as `<root>/<agent_name>/<model>/` and names runs
++`{agent_name}_{scenario_id}`, so a shared name would have the second topology
++overwrite the first one's outputs, destroying the comparison. Distinct names
++also make them distinct leaderboard entries, which is what they are.
++
++Two consequences worth knowing: `--agent_name all` now includes the sub-agent
++variant, so `all` costs one extra Stirrup pass; and
++`--stirrup-subagent-max-turns N` bounds each domain sub-agent, which bounds the
++delegation tree rather than just the root.
++
++### What to measure
++
++The topology trades total tokens for root context headroom, and those move in
++opposite directions. Report both:
++
++- `agent.root_peak_context_tokens` should fall substantially, since the root
++  carries delegation tools instead of every domain schema.
++- `gen_ai.usage.input_tokens` will likely *rise*, because each delegation
++  re-pays its server's schemas and its own system prompt.
++- Scenario accuracy on multi-domain scenarios is the tiebreaker: the root now
++  has to carry identifiers between domains itself, which is where a delegated
++  topology loses information a flat one keeps.
++
++---
++
+ ## Validation runs
+ 
+ A reproducible checklist a teammate can follow to confirm a working setup:
+diff --git a/scripts/check_stirrup_subagent_contract.py b/scripts/check_stirrup_subagent_contract.py
+new file mode 100644
+index 0000000..60486e8
+--- /dev/null
++++ b/scripts/check_stirrup_subagent_contract.py
+@@ -0,0 +1,129 @@
++#!/usr/bin/env python
++"""Assert the Stirrup APIs the sub-agent topology depends on.
++
++The topology was implemented against Stirrup main at 247f24d5, which the
++changelog described as "0.2.0 (unreleased)". The released 0.2.0 may not be that
++commit exactly, so this checks the handful of behaviours the design actually
++rests on, rather than trusting the version string.
++
++Run it once after installing or upgrading Stirrup:
++
++    uv run python scripts/check_stirrup_subagent_contract.py
++
++It touches no network, no model, no MCP server, and no Docker: it reads the
++installed package's own source and signatures.
++"""
++
++from __future__ import annotations
++
++import inspect
++import sys
++
++
++def _fail(message: str) -> None:
++    print(f"FAIL  {message}")
++
++
++def _ok(message: str) -> None:
++    print(f"ok    {message}")
++
++
++def main() -> int:
++    failures = 0
++
++    import stirrup
++    from stirrup import Agent
++    from stirrup.core.agent import SubAgentParams
++    from stirrup.core.models import SubAgentMetadata
++    from stirrup.tools.mcp import MCPToolProvider
++
++    version = getattr(stirrup, "__version__", "unknown")
++    print(f"stirrup {version}\n")
++
++    # 1. The client carries the working-context budget explicitly. The runner
++    #    dropped its `max_tokens` adapter because of this.
++    sig = inspect.signature(Agent.__init__)
++    from stirrup.clients.litellm_client import LiteLLMClient
++
++    if "context_window_tokens" in inspect.signature(LiteLLMClient.__init__).parameters:
++        _ok("LLM clients take context_window_tokens")
++    else:
++        _fail(
++            "LiteLLMClient has no context_window_tokens parameter; runner.py's "
++            "_build_client will not construct. Reinstate a client adapter that "
++            "reports the working-context budget."
++        )
++        failures += 1
++
++    # 2. share_parent_exec_env exists and is NOT what we want. subagents.py sets
++    #    it False deliberately; if the parameter vanished, the comment explaining
++    #    why is stale and someone will re-derive the trap.
++    if "share_parent_exec_env" in sig.parameters:
++        _ok("Agent(share_parent_exec_env=...) present (we pass False on purpose)")
++    else:
++        _fail(
++            "Agent no longer takes share_parent_exec_env; re-read how a sub-agent "
++            "acquires an exec env before trusting subagents.py's invariant 1."
++        )
++        failures += 1
++
++    # 3. The whole context saving rests on this: to_tool must return the
++    #    sub-agent's message history as tool *metadata*, not as tool content.
++    src = inspect.getsource(Agent.to_tool)
++    history_in_metadata = "SubAgentMetadata(" in src and "metadata=sub_metadata" in src
++    content_is_composed = "result_content" in src and "<sub_agent_result>" in src
++    if history_in_metadata and content_is_composed:
++        _ok("to_tool returns message_history via metadata, not in tool content")
++    else:
++        _fail(
++            "to_tool no longer separates history from tool content. If the full "
++            "history now reaches the parent's context, --topology subagent saves "
++            "nothing and the design needs revisiting."
++        )
++        failures += 1
++
++    # 4. Only the last assistant text and a model_dump() of finish params cross
++    #    back, which is why DomainFinishParams is typed.
++    if "finish_params.model_dump()" in src:
++        _ok("finish params reach the parent via model_dump()")
++    else:
++        _fail(
++            "to_tool no longer dumps finish params into the result. Domain "
++            "sub-agents would lose their artifact handles and entity ids."
++        )
++        failures += 1
++
++    # 5. Per-server scoping is how one sub-agent gets exactly one MCP server.
++    if "server_names" in inspect.signature(MCPToolProvider.__init__).parameters:
++        _ok("MCPToolProvider takes server_names")
++    else:
++        _fail(
++            "MCPToolProvider has no server_names parameter; workspace_bridge.py "
++            "cannot scope a provider to one server."
++        )
++        failures += 1
++
++    # 6. Field names the recorder and trajectory splicing read.
++    for field in ("message_history", "run_metadata"):
++        if field in SubAgentMetadata.model_fields:
++            _ok(f"SubAgentMetadata.{field}")
++        else:
++            _fail(f"SubAgentMetadata has no {field}; SubAgentHistoryRecorder breaks.")
++            failures += 1
++
++    if "task" in SubAgentParams.model_fields:
++        _ok("SubAgentParams.task")
++    else:
++        _fail("SubAgentParams has no task field.")
++        failures += 1
++
++    print()
++    if failures:
++        print(f"{failures} contract check(s) failed. Do not trust a sweep until resolved.")
++        return 1
++    print("All sub-agent contract checks passed.")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/src/agent/claude_agent/tests/test_runner_1.py b/src/agent/claude_agent/tests/test_runner_1.py
+deleted file mode 100644
+index 18ffc8c..0000000
+--- a/src/agent/claude_agent/tests/test_runner_1.py
++++ /dev/null
+@@ -1,399 +0,0 @@
+-"""Unit tests for the Stirrup -> AssetOpsBench trajectory mapping.
+-
+-These use lightweight stand-ins that mimic Stirrup's message attribute surface
+-(``role``, ``content``, ``tool_calls``, ``token_usage``, ``tool_call_id``), so
+-they run without Stirrup, the MCP servers, Docker, or a model.
+-"""
+-
+-from __future__ import annotations
+-
+-import importlib
+-from dataclasses import dataclass, field
+-from pathlib import Path
+-from unittest.mock import MagicMock
+-
+-import pytest
+-
+-from agent._prompts import AGENT_SYSTEM_PROMPT
+-from agent.stirrup_agent.finish_tool import ASSETOPS_FINISH_TOOL
+-from agent.stirrup_agent.runner import (
+-    StirrupAgentRunner,
+-    _CONTEXT_SUMMARIZATION_CUTOFF,
+-    _ROOT_CONTEXT_WINDOW_TOKENS,
+-    _ROOT_MAX_OUTPUT_TOKENS,
+-    _build_full_summary_logger,
+-    _copy_workspace_contents,
+-)
+-from agent.stirrup_agent.trajectory import (
+-    build_trajectory,
+-    classify_tool,
+-    final_answer,
+-)
+-from agent.stirrup_agent.workspace_bridge import WorkspaceBridgedMCPToolProvider
+-
+-_DOMAIN = {"iot", "utilities", "fmsr", "tsfm", "wo", "vibration"}
+-
+-
+-@dataclass
+-class _Usage:
+-    input: int = 0
+-    answer: int = 0
+-    reasoning: int = 0
+-
+-    @property
+-    def output(self) -> int:
+-        return self.answer + self.reasoning
+-
+-
+-@dataclass
+-class _TC:
+-    name: str
+-    arguments: str
+-    tool_call_id: str
+-
+-
+-@dataclass
+-class _Assistant:
+-    content: str
+-    tool_calls: list = field(default_factory=list)
+-    token_usage: _Usage = field(default_factory=_Usage)
+-    request_start_time: float | None = None
+-    request_end_time: float | None = None
+-    role: str = "assistant"
+-
+-
+-@dataclass
+-class _Tool:
+-    content: str
+-    tool_call_id: str
+-    name: str
+-    tool_start_time: float | None = None
+-    tool_end_time: float | None = None
+-    role: str = "tool"
+-
+-
+-@dataclass
+-class _Finish:
+-    reason: str
+-
+-
+-@dataclass
+-class _StructuredFinish:
+-    answer: str
+-    reason: str = ""
+-    paths: list[str] = field(default_factory=list)
+-
+-
+-def test_classify_tool():
+-    assert classify_tool("wo__get_work_order", _DOMAIN) == "domain"
+-    assert classify_tool("vibration__compute_fft", _DOMAIN) == "domain"
+-    assert classify_tool("code_exec", _DOMAIN) == "code"
+-    assert classify_tool("web_search", _DOMAIN) == "other"
+-    assert classify_tool("calculator", _DOMAIN) == "other"
+-
+-
+-def test_copy_workspace_contents_preserves_nested_outputs(tmp_path: Path):
+-    destination = tmp_path / "stirrup_agent_1001"
+-    source = destination / "docker_exec_env_abc"
+-    nested = source / "nested"
+-    nested.mkdir(parents=True)
+-    (source / "answer.txt").write_text("done", encoding="utf-8")
+-    (nested / "plot.csv").write_text("x,y\n1,2\n", encoding="utf-8")
+-
+-    _copy_workspace_contents(source, destination)
+-
+-    assert (destination / "answer.txt").read_text(encoding="utf-8") == "done"
+-    assert (destination / "nested" / "plot.csv").exists()
+-
+-
+-def test_stirrup_runner_requires_workspace_when_preserving():
+-    with pytest.raises(ValueError, match="workspace_dir"):
+-        StirrupAgentRunner(preserve_workspace=True)
+-
+-
+-def test_stirrup_runner_rejects_unsupported_code_backend():
+-    with pytest.raises(ValueError, match="code_backend"):
+-        StirrupAgentRunner(code_backend="e2b")
+-
+-
+-def test_stirrup_runner_bridges_mcp_results_when_code_is_enabled():
+-    runner = StirrupAgentRunner(code_backend="local")
+-
+-    code_provider, *rest = runner._build_tools()
+-    mcp_provider = rest[-1]
+-
+-    assert isinstance(mcp_provider, WorkspaceBridgedMCPToolProvider)
+-    assert mcp_provider._exec_env is code_provider
+-    # Flat topology connects every registered server through one provider.
+-    assert mcp_provider._server_names is None
+-
+-
+-def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
+-    runner = StirrupAgentRunner(code_enabled=False)
+-
+-    assert runner._build_system_prompt() == AGENT_SYSTEM_PROMPT
+-
+-
+-def test_stirrup_runner_forwards_temperature_to_litellm_client():
+-    runner = StirrupAgentRunner(
+-        model="watsonx/ibm/granite-4-h-small",
+-        temperature=0.2,
+-        reasoning_effort="high",
+-    )
+-
+-    client = runner._build_client()
+-
+-    assert client._kwargs == {"temperature": 0.2}
+-    assert client._reasoning_effort == "high"
+-    assert client.max_tokens == 64_000
+-    assert client.context_window_tokens == 100_000
+-
+-
+-def test_stirrup_runner_forwards_temperature_to_router_client(
+-    monkeypatch: pytest.MonkeyPatch,
+-):
+-    monkeypatch.setenv("TOKENROUTER_API_KEY", "test-key")
+-    monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://api.tokenrouter.example/v1")
+-
+-    runner = StirrupAgentRunner(
+-        model="tokenrouter/MiniMax-M3",
+-        temperature=0.2,
+-        reasoning_effort="medium",
+-    )
+-
+-    client = runner._build_client()
+-
+-    from stirrup.clients.chat_completions_client import ChatCompletionsClient
+-
+-    assert isinstance(client, ChatCompletionsClient)
+-    assert client._kwargs == {"temperature": 0.2}
+-    assert client._reasoning_effort == "medium"
+-    assert client.max_tokens == 64_000
+-    assert client.context_window_tokens == 100_000
+-
+-
+-def test_stirrup_runner_uses_75k_summarization_trigger():
+-    assert _ROOT_CONTEXT_WINDOW_TOKENS == 100_000
+-    assert _CONTEXT_SUMMARIZATION_CUTOFF == 0.75
+-    assert _ROOT_CONTEXT_WINDOW_TOKENS * _CONTEXT_SUMMARIZATION_CUTOFF == 75_000
+-    # Stirrup validates this pair in the client constructor.
+-    assert _ROOT_MAX_OUTPUT_TOKENS <= _ROOT_CONTEXT_WINDOW_TOKENS
+-
+-
+-def test_full_summary_logger_does_not_truncate(capsys: pytest.CaptureFixture[str]):
+-    marker = "SUMMARY_END_MARKER_1234567890"
+-    summary = "x" * 900 + marker
+-
+-    logger = _build_full_summary_logger()
+-    logger.context_summarization_complete(summary, "unused bridge")
+-
+-    assert marker in capsys.readouterr().out
+-
+-
+-def test_build_trajectory_maps_turns_calls_and_outputs():
+-    # history is list[list[ChatMessage]] (per-turn grouping)
+-    history = [
+-        [
+-            _Assistant(
+-                content="let me check work orders",
+-                tool_calls=[_TC("wo__get_work_order", '{"asset": "CWC04013"}', "t1")],
+-                token_usage=_Usage(input=20, answer=8, reasoning=2),
+-                request_start_time=1.0,
+-                request_end_time=2.5,
+-            ),
+-            _Tool(
+-                content="[{'wo': 7}]",
+-                tool_call_id="t1",
+-                name="wo__get_work_order",
+-                tool_start_time=2.5,
+-                tool_end_time=3.0,
+-            ),
+-        ],
+-        [
+-            _Assistant(
+-                content="there are 7 open work orders",
+-                token_usage=_Usage(input=5, answer=6),
+-            ),
+-        ],
+-    ]
+-    traj = build_trajectory(history)
+-
+-    assert len(traj.turns) == 2
+-    assert traj.total_input_tokens == 25
+-    assert traj.total_output_tokens == 16  # (8+2) + (6+0)
+-
+-    call = traj.all_tool_calls[0]
+-    assert call.name == "wo__get_work_order"
+-    assert call.input == {"asset": "CWC04013"}  # JSON string parsed
+-    assert call.output == "[{'wo': 7}]"
+-    assert call.duration_ms == 500.0  # (3.0 - 2.5) * 1000
+-    assert traj.turns[0].duration_ms == 1500.0  # (2.5 - 1.0) * 1000
+-
+-    assert final_answer(history, None) == "there are 7 open work orders"
+-
+-
+-def test_final_answer_prefers_finish_turn_content_over_finish_reason():
+-    history = [
+-        [
+-            _Assistant(
+-                content='{"response":"FORMAT_OK"}',
+-                tool_calls=[_TC("finish", '{"reason":"done","paths":[]}', "f1")],
+-            )
+-        ]
+-    ]
+-    assert (
+-        final_answer(
+-            history,
+-            _Finish(
+-                "Returned the exact required JSON object without calling any tools."
+-            ),
+-        )
+-        == '{"response":"FORMAT_OK"}'
+-    )
+-
+-
+-def test_final_answer_prefers_structured_finish_answer_over_turn_content():
+-    history = [
+-        [
+-            _Assistant(
+-                content="Task complete.",
+-                tool_calls=[_TC("finish", '{"answer":"42"}', "f1")],
+-            )
+-        ]
+-    ]
+-
+-    assert final_answer(history, _StructuredFinish(answer="42")) == "42"
+-
+-
+-def test_final_answer_uses_finish_reason_when_finish_turn_content_is_empty():
+-    history = [
+-        [_Assistant(content="I will inspect the work orders.")],
+-        [
+-            _Assistant(
+-                content="",
+-                tool_calls=[_TC("finish", '{"reason":"done","paths":[]}', "f1")],
+-            )
+-        ],
+-    ]
+-    assert (
+-        final_answer(history, _Finish("computed RUL = 142 days"))
+-        == "computed RUL = 142 days"
+-    )
+-
+-
+-def test_final_answer_falls_back_to_assistant_text_without_finish_reason():
+-    history = [[_Assistant(content="The pump is healthy.")]]
+-    assert final_answer(history, None) == "The pump is healthy."
+-
+-
+-def test_arguments_parsed_when_already_dict():
+-    history = [
+-        [
+-            _Assistant(
+-                content="x", tool_calls=[_TC("iot__get_sensors", {"asset": "CH6"}, "a")]
+-            )
+-        ]
+-    ]
+-    traj = build_trajectory(history)
+-    assert traj.all_tool_calls[0].input == {"asset": "CH6"}
+-
+-
+-@pytest.mark.anyio
+-async def test_run_persists_legacy_final_answer(
+-    monkeypatch: pytest.MonkeyPatch,
+-):
+-    runner_module = importlib.import_module("agent.stirrup_agent.runner")
+-    client = object()
+-    history = [
+-        [
+-            _Assistant(
+-                content="calculating",
+-                tool_calls=[_TC("code_exec", '{"cmd":"calculate"}', "c1")],
+-            ),
+-            _Tool(content="FINAL=7", tool_call_id="c1", name="code_exec"),
+-        ],
+-        [
+-            _Assistant(
+-                content='The requested result is {"count":7}.',
+-                tool_calls=[_TC("finish", '{"reason":"done"}', "f1")],
+-            )
+-        ],
+-    ]
+-
+-    class _FakeAgent:
+-        def __init__(self, **kwargs):
+-            assert kwargs["client"] is client
+-            assert kwargs["finish_tool"] is ASSETOPS_FINISH_TOOL
+-
+-        def session(self):
+-            return self
+-
+-        async def __aenter__(self):
+-            return self
+-
+-        async def __aexit__(self, exc_type, exc_value, traceback):
+-            return None
+-
+-        async def run(self, question):
+-            assert question == "Return a JSON object."
+-            return _Finish("run complete"), history, {}
+-
+-    persist = MagicMock()
+-    monkeypatch.setattr("stirrup.Agent", _FakeAgent)
+-    monkeypatch.setattr(runner_module, "persist_trajectory", persist)
+-
+-    runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
+-    monkeypatch.setattr(runner, "_build_client", lambda: client)
+-    monkeypatch.setattr(runner, "_build_tools", lambda: [])
+-
+-    result = await runner.run("Return a JSON object.")
+-
+-    assert result.answer == 'The requested result is {"count":7}.'
+-    persist.assert_called_once()
+-    assert persist.call_args.kwargs["answer"] == result.answer
+-
+-
+-@pytest.mark.anyio
+-async def test_run_uses_structured_finish_without_repair_call(
+-    monkeypatch: pytest.MonkeyPatch,
+-):
+-    runner_module = importlib.import_module("agent.stirrup_agent.runner")
+-    client = object()
+-    history = [
+-        [
+-            _Assistant(
+-                content="Task complete.",
+-                tool_calls=[_TC("finish", '{"answer":"[1,2]"}', "f1")],
+-            )
+-        ]
+-    ]
+-
+-    class _FakeAgent:
+-        def __init__(self, **kwargs):
+-            assert kwargs["client"] is client
+-            assert kwargs["finish_tool"] is ASSETOPS_FINISH_TOOL
+-
+-        def session(self):
+-            return self
+-
+-        async def __aenter__(self):
+-            return self
+-
+-        async def __aexit__(self, exc_type, exc_value, traceback):
+-            return None
+-
+-        async def run(self, question):
+-            return _StructuredFinish(answer="[1,2]"), history, {}
+-
+-    persist = MagicMock()
+-    monkeypatch.setattr("stirrup.Agent", _FakeAgent)
+-    monkeypatch.setattr(runner_module, "persist_trajectory", persist)
+-
+-    runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
+-    monkeypatch.setattr(runner, "_build_client", lambda: client)
+-    monkeypatch.setattr(runner, "_build_tools", lambda: [])
+-
+-    result = await runner.run("Return a JSON array.")
+-
+-    assert result.answer == "[1,2]"
+-    assert persist.call_args.kwargs["answer"] == "[1,2]"
+\ No newline at end of file
+diff --git a/src/agent/models.py b/src/agent/models.py
+index f8b0215..ac80564 100644
+--- a/src/agent/models.py
++++ b/src/agent/models.py
+@@ -41,6 +41,15 @@ class TurnRecord:
+     duration_ms: float | None = None
+     """Wall-clock time from turn start to turn end.  ``None`` when the
+     runner cannot observe per-turn boundaries cleanly."""
++    agent: str = "root"
++    """Which agent produced this turn.  ``"root"`` for a single-agent run, or
++    the delegation tool's name (for example ``"tsfm_agent"``) for a turn taken
++    inside a sub-agent.  Runners that do not delegate leave the default."""
++    depth: int = 0
++    """Delegation depth.  ``0`` is the root agent, ``1`` a sub-agent it called.
++    Sub-agent turns are spliced into :attr:`Trajectory.turns` directly after the
++    root turn that invoked them, so tool counts and token totals stay tree-wide
++    by default and root-only accounting is a filter on this field."""
+ 
+ 
+ @dataclass
+diff --git a/src/agent/stirrup_agent/models.py b/src/agent/stirrup_agent/models.py
+deleted file mode 100644
+index ffc028d..0000000
+--- a/src/agent/stirrup_agent/models.py
++++ /dev/null
+@@ -1,83 +0,0 @@
+-"""Top-level data models for the agent orchestration layer.
+-
+-The trajectory types (:class:`ToolCall`, :class:`TurnRecord`,
+-:class:`Trajectory`) are shared across every SDK-driven runner
+-(:class:`~agent.claude_agent.ClaudeAgentRunner`,
+-:class:`~agent.openai_agent.OpenAIAgentRunner`,
+-:class:`~agent.deep_agent.DeepAgentRunner`) because each SDK reports the
+-same per-turn shape: some text, zero or more tool calls, and token usage.
+-The plan-execute runner uses its own plan-shaped models in
+-:mod:`agent.plan_execute.models`.
+-"""
+-
+-from __future__ import annotations
+-
+-from dataclasses import dataclass, field
+-from typing import Any
+-
+-
+-@dataclass
+-class ToolCall:
+-    """A single tool invocation made by the agent."""
+-
+-    name: str
+-    input: dict
+-    id: str = ""
+-    output: object = None
+-    duration_ms: float | None = None
+-    """Wall-clock time spent inside the tool.  ``None`` when the runner's
+-    SDK does not expose per-tool timing hooks."""
+-
+-
+-@dataclass
+-class TurnRecord:
+-    """One assistant turn: text output, tool calls, and token usage."""
+-
+-    index: int
+-    text: str
+-    tool_calls: list[ToolCall] = field(default_factory=list)
+-    input_tokens: int = 0
+-    output_tokens: int = 0
+-    duration_ms: float | None = None
+-    """Wall-clock time from turn start to turn end.  ``None`` when the
+-    runner cannot observe per-turn boundaries cleanly."""
+-    agent: str = "root"
+-    """Which agent produced this turn.  ``"root"`` for a single-agent run, or
+-    the delegation tool's name (for example ``"tsfm_agent"``) for a turn taken
+-    inside a sub-agent.  Runners that do not delegate leave the default."""
+-    depth: int = 0
+-    """Delegation depth.  ``0`` is the root agent, ``1`` a sub-agent it called.
+-    Sub-agent turns are spliced into :attr:`Trajectory.turns` directly after the
+-    root turn that invoked them, so tool counts and token totals stay tree-wide
+-    by default and root-only accounting is a filter on this field."""
+-
+-
+-@dataclass
+-class Trajectory:
+-    """Full execution trace across all agent turns."""
+-
+-    turns: list[TurnRecord] = field(default_factory=list)
+-    started_at: str | None = None
+-    """ISO-8601 UTC timestamp of when ``run()`` began, for replay
+-    alignment with the corresponding trace.  Populated by the runner."""
+-
+-    @property
+-    def total_input_tokens(self) -> int:
+-        return sum(t.input_tokens for t in self.turns)
+-
+-    @property
+-    def total_output_tokens(self) -> int:
+-        return sum(t.output_tokens for t in self.turns)
+-
+-    @property
+-    def all_tool_calls(self) -> list[ToolCall]:
+-        return [tc for turn in self.turns for tc in turn.tool_calls]
+-
+-
+-@dataclass
+-class AgentResult:
+-    """Result returned by any AgentRunner."""
+-
+-    question: str
+-    answer: str
+-    trajectory: Any
+\ No newline at end of file
+diff --git a/src/agent/stirrup_agent/tests/test_finish_tool.py b/src/agent/stirrup_agent/tests/test_finish_tool.py
+index 0f66c33..076b86d 100644
+--- a/src/agent/stirrup_agent/tests/test_finish_tool.py
++++ b/src/agent/stirrup_agent/tests/test_finish_tool.py
+@@ -5,7 +5,7 @@ from __future__ import annotations
+ import pytest
+ from pydantic import ValidationError
+ from stirrup import Agent
+-from stirrup.core.models import AssistantMessage, ToolCall
++from stirrup.core.models import AssistantMessage, TextBlock, ToolCall
+ 
+ from agent.stirrup_agent.finish_tool import (
+     ASSETOPS_FINISH_TOOL,
+@@ -58,21 +58,27 @@ def test_structured_finish_answer_strips_boundary_whitespace():
+ @pytest.mark.anyio
+ async def test_stirrup_agent_returns_custom_finish_params():
+     class _Client:
+-        max_tokens = 100_000
++        max_tokens = 64_000
++        # Stirrup 0.2 reads the working-context budget from the client and
++        # validates it as a positive int in Agent.__init__, so a stand-in that
++        # only carries max_tokens no longer constructs an Agent.
++        context_window_tokens = 100_000
+         model_slug = "fake/custom-finish"
+ 
+         async def generate(self, messages, tools):
+             assert tools["finish"].parameters is AssetOpsFinishParams
++            # 0.2 assistant messages are block-based; `content` / `tool_calls`
++            # survive only as deprecated read-only projections.
+             return AssistantMessage(
+-                content="",
+-                tool_calls=[
++                blocks=[
++                    TextBlock(text=""),
+                     ToolCall(
+                         name="finish",
+                         arguments=(
+                             '{"answer":"[1,2]","reason":"done","paths":[]}'
+                         ),
+                         tool_call_id="finish-1",
+-                    )
++                    ),
+                 ],
+             )
+ 
+diff --git a/src/benchmark/tests/test_scenario_suite_runner.py b/src/benchmark/tests/test_scenario_suite_runner.py
+index ab8cb3c..c9eca0c 100644
+--- a/src/benchmark/tests/test_scenario_suite_runner.py
++++ b/src/benchmark/tests/test_scenario_suite_runner.py
+@@ -877,3 +877,91 @@ def test_run_evaluation_dry_run_does_not_call_subprocess(
+     )
+ 
+     assert called is False
++
++
++def _base_args(**overrides) -> Namespace:
++    """Minimal Namespace accepted by build_methods, with overrides applied."""
++    base = dict(
++        model_id="tokenrouter/MiniMax-M3",
++        gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
++        openclaw_model_id="tokenrouter/MiniMax-M3",
++        opencode_allow_files=False,
++        opencode_allow_bash=False,
++        opencode_allow_edit=False,
++        opencode_workspace_root=None,
++        gemini_allow_files=False,
++        gemini_allow_bash=False,
++        gemini_allow_edit=False,
++        gemini_allow_web=False,
++        gemini_sandbox=False,
++        gemini_workspace_root=None,
++        openclaw_allow_files=False,
++        openclaw_allow_bash=False,
++        openclaw_allow_edit=False,
++        openclaw_allow_web=False,
++        openclaw_thinking="off",
++        openclaw_workspace_root=None,
++        temperature=None,
++        reasoning_effort=None,
++    )
++    base.update(overrides)
++    return Namespace(**base)
++
++
++def test_subagent_topology_is_registered_as_its_own_method() -> None:
++    methods = mr.build_methods(_base_args())
++
++    subagent = methods["stirrup_agent_subagent"]
++    assert subagent.command == "stirrup-agent"
++    assert subagent.extra_args == ("--topology", "subagent")
++
++    # Distinct agent names keep the two topologies from writing over each
++    # other: output paths and run ids are both keyed on agent_name.
++    assert subagent.agent_name != methods["stirrup_agent"].agent_name
++
++
++def test_subagent_method_inherits_shared_stirrup_args(tmp_path: Path) -> None:
++    args = _base_args(
++        temperature=0.2,
++        reasoning_effort="high",
++        stirrup_workspace_root=tmp_path / "stirrup-workspaces",
++        preserve_workspaces=True,
++        stirrup_subagent_max_turns=8,
++    )
++
++    methods = mr.build_methods(args)
++
++    assert methods["stirrup_agent_subagent"].extra_args == (
++        "--temperature",
++        "0.2",
++        "--reasoning-effort",
++        "high",
++        "--preserve-workspace",
++        "--topology",
++        "subagent",
++        "--subagent-max-turns",
++        "8",
++    )
++    # The flat method must not pick up the sub-agent-only flags.
++    assert "--topology" not in methods["stirrup_agent"].extra_args
++
++
++def test_topologies_write_to_separate_output_trees(tmp_path: Path) -> None:
++    methods = mr.build_methods(
++        _base_args(stirrup_workspace_root=tmp_path / "ws", preserve_workspaces=True)
++    )
++
++    flat = mr.method_output_paths(
++        trajectory_root=tmp_path / "traj",
++        reports_root=tmp_path / "rep",
++        method=methods["stirrup_agent"],
++    )
++    sub = mr.method_output_paths(
++        trajectory_root=tmp_path / "traj",
++        reports_root=tmp_path / "rep",
++        method=methods["stirrup_agent_subagent"],
++    )
++
++    assert flat[0] != sub[0]  # trajectories
++    assert flat[1] != sub[1]  # reports
++    assert flat[2] != sub[2]  # workspaces

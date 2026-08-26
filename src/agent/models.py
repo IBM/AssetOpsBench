@@ -41,6 +41,15 @@ class TurnRecord:
     duration_ms: float | None = None
     """Wall-clock time from turn start to turn end.  ``None`` when the
     runner cannot observe per-turn boundaries cleanly."""
+    agent: str = "root"
+    """Which agent produced this turn.  ``"root"`` for a single-agent run, or
+    the delegation tool's name (for example ``"tsfm_agent"``) for a turn taken
+    inside a sub-agent.  Runners that do not delegate leave the default."""
+    depth: int = 0
+    """Delegation depth.  ``0`` is the root agent, ``1`` a sub-agent it called.
+    Sub-agent turns are spliced into :attr:`Trajectory.turns` directly after the
+    root turn that invoked them, so tool counts and token totals stay tree-wide
+    by default and root-only accounting is a filter on this field."""
 
 
 @dataclass

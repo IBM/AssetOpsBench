@@ -877,3 +877,91 @@ def test_run_evaluation_dry_run_does_not_call_subprocess(
     )
 
     assert called is False
+
+
+def _base_args(**overrides) -> Namespace:
+    """Minimal Namespace accepted by build_methods, with overrides applied."""
+    base = dict(
+        model_id="tokenrouter/MiniMax-M3",
+        gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
+        openclaw_model_id="tokenrouter/MiniMax-M3",
+        opencode_allow_files=False,
+        opencode_allow_bash=False,
+        opencode_allow_edit=False,
+        opencode_workspace_root=None,
+        gemini_allow_files=False,
+        gemini_allow_bash=False,
+        gemini_allow_edit=False,
+        gemini_allow_web=False,
+        gemini_sandbox=False,
+        gemini_workspace_root=None,
+        openclaw_allow_files=False,
+        openclaw_allow_bash=False,
+        openclaw_allow_edit=False,
+        openclaw_allow_web=False,
+        openclaw_thinking="off",
+        openclaw_workspace_root=None,
+        temperature=None,
+        reasoning_effort=None,
+    )
+    base.update(overrides)
+    return Namespace(**base)
+
+
+def test_subagent_topology_is_registered_as_its_own_method() -> None:
+    methods = mr.build_methods(_base_args())
+
+    subagent = methods["stirrup_agent_subagent"]
+    assert subagent.command == "stirrup-agent"
+    assert subagent.extra_args == ("--topology", "subagent")
+
+    # Distinct agent names keep the two topologies from writing over each
+    # other: output paths and run ids are both keyed on agent_name.
+    assert subagent.agent_name != methods["stirrup_agent"].agent_name
+
+
+def test_subagent_method_inherits_shared_stirrup_args(tmp_path: Path) -> None:
+    args = _base_args(
+        temperature=0.2,
+        reasoning_effort="high",
+        stirrup_workspace_root=tmp_path / "stirrup-workspaces",
+        preserve_workspaces=True,
+        stirrup_subagent_max_turns=8,
+    )
+
+    methods = mr.build_methods(args)
+
+    assert methods["stirrup_agent_subagent"].extra_args == (
+        "--temperature",
+        "0.2",
+        "--reasoning-effort",
+        "high",
+        "--preserve-workspace",
+        "--topology",
+        "subagent",
+        "--subagent-max-turns",
+        "8",
+    )
+    # The flat method must not pick up the sub-agent-only flags.
+    assert "--topology" not in methods["stirrup_agent"].extra_args
+
+
+def test_topologies_write_to_separate_output_trees(tmp_path: Path) -> None:
+    methods = mr.build_methods(
+        _base_args(stirrup_workspace_root=tmp_path / "ws", preserve_workspaces=True)
+    )
+
+    flat = mr.method_output_paths(
+        trajectory_root=tmp_path / "traj",
+        reports_root=tmp_path / "rep",
+        method=methods["stirrup_agent"],
+    )
+    sub = mr.method_output_paths(
+        trajectory_root=tmp_path / "traj",
+        reports_root=tmp_path / "rep",
+        method=methods["stirrup_agent_subagent"],
+    )
+
+    assert flat[0] != sub[0]  # trajectories
+    assert flat[1] != sub[1]  # reports
+    assert flat[2] != sub[2]  # workspaces
