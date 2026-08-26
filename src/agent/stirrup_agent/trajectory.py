@@ -12,6 +12,12 @@ Mapping:
   * each ``ToolMessage`` -> the ``output`` of the matching :class:`ToolCall`,
     joined by ``tool_call_id``.
 
+Stirrup 0.2.0 made assistant messages block-based: ``blocks`` is the stored
+content and ``content`` / ``tool_calls`` survive only as deprecated read-only
+projections. :func:`_assistant_text` and :func:`_assistant_tool_calls` read
+blocks when present and fall back to the projections, so this module works
+against both shapes and emits no deprecation warnings on 0.2.
+
 Stirrup exposes MCP tools as ``{server}__{tool}`` and the code-execution tool
 as ``code_exec``, so :func:`classify_tool` (shared shape with the Goose
 runner) labels each call domain / code / other for the bypass metric.
@@ -23,6 +29,7 @@ import json
 from typing import Any, Iterable
 
 from ..models import ToolCall, Trajectory, TurnRecord
+from .gateway import GATEWAY_CALL_TOOL, GATEWAY_DISCOVERY_TOOLS
 
 # Stirrup's built-in code-execution tool name (LocalCodeExec and Docker both
 # register under this name by default).  A call to it = "the agent ran code".
@@ -31,15 +38,35 @@ _CODE_TOOL_NAMES = {"code_exec"}
 _WEB_TOOL_NAMES = {"web_search", "web_fetch"}
 
 
-def classify_tool(tool_name: str, domain_servers: set[str]) -> str:
+def classify_tool(
+    tool_name: str,
+    domain_servers: set[str],
+    arguments: dict | None = None,
+) -> str:
     """Label a Stirrup tool call ``"domain"`` / ``"code"`` / ``"other"``.
 
     MCP tools arrive as ``{server}__{tool}``; ``code_exec`` is code execution;
-    anything else (web, finish, calculator, ...) is ``"other"``.
+    anything else (web, finish, discovery, ...) is ``"other"``.
+
+    Under ``--topology gateway`` every domain call arrives as ``call_tool`` with
+    the real tool in its ``name`` argument. Without ``arguments`` that would
+    classify as "other", zeroing ``agent.domain_tool_calls`` and making
+    ``tool_bypass`` read true on every gateway run. Pass the call's arguments
+    and the underlying server is credited instead, so the counts stay
+    comparable with a flat run.
     """
     if tool_name in _CODE_TOOL_NAMES:
         return "code"
     if tool_name in _WEB_TOOL_NAMES:
+        return "other"
+    if tool_name == GATEWAY_CALL_TOOL:
+        inner = (arguments or {}).get("name")
+        if isinstance(inner, str) and inner.split("__", 1)[0] in domain_servers:
+            return "domain"
+        return "other"
+    if tool_name in GATEWAY_DISCOVERY_TOOLS:
+        # Discovery is overhead the gateway pays and flat does not. Counted
+        # separately rather than as domain work.
         return "other"
     prefix = tool_name.split("__", 1)[0]
     if prefix in domain_servers:
@@ -64,6 +91,28 @@ def _content_text(content: Any) -> str:
                     parts.append(text)
         return "".join(parts)
     return str(content)
+
+
+def _assistant_text(msg: Any) -> str:
+    """Text of an assistant message, preferring 0.2 blocks over projections."""
+    blocks = getattr(msg, "blocks", None)
+    if blocks:
+        parts = [
+            block.text
+            for block in blocks
+            if getattr(block, "kind", None) == "text"
+            and isinstance(getattr(block, "text", None), str)
+        ]
+        return "".join(parts)
+    return _content_text(getattr(msg, "content", ""))
+
+
+def _assistant_tool_calls(msg: Any) -> list[Any]:
+    """Tool calls of an assistant message, in emission order."""
+    blocks = getattr(msg, "blocks", None)
+    if blocks:
+        return [b for b in blocks if getattr(b, "kind", None) == "tool_call"]
+    return list(getattr(msg, "tool_calls", []) or [])
 
 
 def _parse_arguments(arguments: Any) -> dict:
@@ -108,7 +157,7 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
 
         if role == "assistant":
             tool_calls: list[ToolCall] = []
-            for tc in getattr(msg, "tool_calls", []) or []:
+            for tc in _assistant_tool_calls(msg):
                 call = ToolCall(
                     name=getattr(tc, "name", "") or "",
                     input=_parse_arguments(getattr(tc, "arguments", "")),
@@ -125,7 +174,7 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
             trajectory.turns.append(
                 TurnRecord(
                     index=turn_index,
-                    text=_content_text(getattr(msg, "content", "")),
+                    text=_assistant_text(msg),
                     tool_calls=tool_calls,
                     input_tokens=int(in_tok or 0),
                     output_tokens=int(out_tok or 0),
@@ -167,9 +216,11 @@ def final_answer(history: Iterable[Any], finish_params: Any) -> str:
     for msg in reversed(messages):
         if getattr(msg, "role", None) != "assistant":
             continue
-        tool_calls = getattr(msg, "tool_calls", []) or []
-        if any(getattr(call, "name", None) == "finish" for call in tool_calls):
-            text = _content_text(getattr(msg, "content", "")).strip()
+        if any(
+            getattr(call, "name", None) == "finish"
+            for call in _assistant_tool_calls(msg)
+        ):
+            text = _assistant_text(msg).strip()
             if text:
                 return text
 
@@ -179,7 +230,7 @@ def final_answer(history: Iterable[Any], finish_params: Any) -> str:
 
     for msg in reversed(messages):
         if getattr(msg, "role", None) == "assistant":
-            text = _content_text(getattr(msg, "content", "")).strip()
+            text = _assistant_text(msg).strip()
             if text:
                 return text
     return ""

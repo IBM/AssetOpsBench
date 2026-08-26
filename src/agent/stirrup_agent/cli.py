@@ -37,6 +37,12 @@ tracks:
   --code-enabled (default)  Add a sandboxed code-execution tool (code track).
   --no-code                 Tools-only: directly comparable to the other runners.
 
+topology:
+  --topology flat (default) Every MCP server attached directly.
+  --topology gateway        Every server behind search_tools / describe_tools /
+                            call_tool. Works on both tracks. Pair with
+                            --gateway-mode index|search.
+
 environment variables:
   LITELLM_API_KEY       LiteLLM API key    (required for litellm_proxy/* models)
   LITELLM_BASE_URL      LiteLLM base URL   (required for litellm_proxy/* models)
@@ -71,6 +77,35 @@ examples:
         choices=["docker", "local"],
         default="docker",
         help="Code-execution sandbox backend (default: docker).",
+    )
+    parser.add_argument(
+        "--topology",
+        choices=["flat", "gateway"],
+        default="flat",
+        help=(
+            "Tool surface for the agent. 'flat' attaches every MCP server "
+            "directly (default, matches the other runners). 'gateway' puts "
+            "every server behind search_tools / describe_tools / call_tool, "
+            "keeping one context and one trajectory."
+        ),
+    )
+    parser.add_argument(
+        "--gateway-mode",
+        choices=["index", "search"],
+        default="index",
+        help=(
+            "Under --topology gateway: 'index' pins a compact one-line "
+            "catalogue of every tool into the context and defers only the "
+            "schemas; 'search' withholds the catalogue too, so the agent must "
+            "search before it can act (default: index)."
+        ),
+    )
+    parser.add_argument(
+        "--gateway-top-k",
+        type=int,
+        default=3,
+        metavar="K",
+        help="Default candidates returned by search_tools (default: 3).",
     )
     parser.add_argument(
         "--max-turns",
@@ -136,6 +171,9 @@ async def _run(args: argparse.Namespace) -> None:
         model=args.model_id,
         code_enabled=args.code_enabled,
         code_backend=args.code_backend,
+        topology=args.topology,
+        gateway_mode=args.gateway_mode,
+        gateway_top_k=args.gateway_top_k,
         workspace_dir=args.workspace_dir,
         preserve_workspace=args.preserve_workspace,
         max_turns=args.max_turns,

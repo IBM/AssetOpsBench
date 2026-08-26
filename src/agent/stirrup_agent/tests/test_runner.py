@@ -19,7 +19,8 @@ from agent.stirrup_agent.finish_tool import ASSETOPS_FINISH_TOOL
 from agent.stirrup_agent.runner import (
     StirrupAgentRunner,
     _CONTEXT_SUMMARIZATION_CUTOFF,
-    _WORKING_CONTEXT_BUDGET,
+    _ROOT_CONTEXT_WINDOW_TOKENS,
+    _ROOT_MAX_OUTPUT_TOKENS,
     _build_full_summary_logger,
     _copy_workspace_contents,
 )
@@ -139,11 +140,10 @@ def test_stirrup_runner_forwards_temperature_to_litellm_client():
 
     client = runner._build_client()
 
-    provider_client = client._client
-    assert provider_client._kwargs == {"temperature": 0.2}
-    assert provider_client._reasoning_effort == "high"
-    assert provider_client.max_tokens == 64_000
-    assert client.max_tokens == 100_000
+    assert client._kwargs == {"temperature": 0.2}
+    assert client._reasoning_effort == "high"
+    assert client.max_tokens == 64_000
+    assert client.context_window_tokens == 100_000
 
 
 def test_stirrup_runner_forwards_temperature_to_router_client(
@@ -162,18 +162,19 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
 
     from stirrup.clients.chat_completions_client import ChatCompletionsClient
 
-    router_client = client._client
-    assert isinstance(router_client, ChatCompletionsClient)
-    assert router_client._kwargs == {"temperature": 0.2}
-    assert router_client._reasoning_effort == "medium"
-    assert router_client.max_tokens == 64_000
-    assert client.max_tokens == 100_000
+    assert isinstance(client, ChatCompletionsClient)
+    assert client._kwargs == {"temperature": 0.2}
+    assert client._reasoning_effort == "medium"
+    assert client.max_tokens == 64_000
+    assert client.context_window_tokens == 100_000
 
 
 def test_stirrup_runner_uses_75k_summarization_trigger():
-    assert _WORKING_CONTEXT_BUDGET == 100_000
+    assert _ROOT_CONTEXT_WINDOW_TOKENS == 100_000
     assert _CONTEXT_SUMMARIZATION_CUTOFF == 0.75
-    assert _WORKING_CONTEXT_BUDGET * _CONTEXT_SUMMARIZATION_CUTOFF == 75_000
+    assert _ROOT_CONTEXT_WINDOW_TOKENS * _CONTEXT_SUMMARIZATION_CUTOFF == 75_000
+    # Stirrup validates this pair in the client constructor.
+    assert _ROOT_MAX_OUTPUT_TOKENS <= _ROOT_CONTEXT_WINDOW_TOKENS
 
 
 def test_full_summary_logger_does_not_truncate(capsys: pytest.CaptureFixture[str]):

@@ -877,3 +877,79 @@ def test_run_evaluation_dry_run_does_not_call_subprocess(
     )
 
     assert called is False
+
+
+
+def _base_args(**overrides) -> Namespace:
+    """Minimal Namespace accepted by build_methods, with overrides applied."""
+    base = dict(
+        model_id="tokenrouter/MiniMax-M3",
+        gemini_model_id="tokenrouter_gemini/google/gemma-4-26b-a4b-it",
+        openclaw_model_id="tokenrouter/MiniMax-M3",
+        opencode_allow_files=False,
+        opencode_allow_bash=False,
+        opencode_allow_edit=False,
+        opencode_workspace_root=None,
+        gemini_allow_files=False,
+        gemini_allow_bash=False,
+        gemini_allow_edit=False,
+        gemini_allow_web=False,
+        gemini_sandbox=False,
+        gemini_workspace_root=None,
+        openclaw_allow_files=False,
+        openclaw_allow_bash=False,
+        openclaw_allow_edit=False,
+        openclaw_allow_web=False,
+        openclaw_thinking="off",
+        openclaw_workspace_root=None,
+        temperature=None,
+        reasoning_effort=None,
+    )
+    base.update(overrides)
+    return Namespace(**base)
+
+
+def test_gateway_topologies_are_registered_as_their_own_methods() -> None:
+    methods = mr.build_methods(_base_args())
+
+    assert methods["stirrup_agent_gateway"].command == "stirrup-agent"
+    assert methods["stirrup_agent_gateway"].extra_args == (
+        "--topology",
+        "gateway",
+        "--gateway-mode",
+        "index",
+    )
+    assert methods["stirrup_agent_gateway_search"].extra_args == (
+        "--topology",
+        "gateway",
+        "--gateway-mode",
+        "search",
+    )
+    # The flat baseline must not pick up gateway-only flags.
+    assert "--topology" not in methods["stirrup_agent"].extra_args
+
+
+def test_gateway_top_k_is_forwarded_when_set() -> None:
+    methods = mr.build_methods(_base_args(stirrup_gateway_top_k=5))
+
+    assert "--gateway-top-k" in methods["stirrup_agent_gateway"].extra_args
+    assert "5" in methods["stirrup_agent_gateway"].extra_args
+    assert "--gateway-top-k" not in methods["stirrup_agent"].extra_args
+
+
+def test_topologies_write_to_separate_output_trees(tmp_path: Path) -> None:
+    methods = mr.build_methods(_base_args())
+    names = ["stirrup_agent", "stirrup_agent_gateway", "stirrup_agent_gateway_search"]
+
+    trees = {
+        mr.method_output_paths(
+            trajectory_root=tmp_path / "traj",
+            reports_root=tmp_path / "rep",
+            method=methods[name],
+        )[0]
+        for name in names
+    }
+
+    # Three configurations, three trajectory directories: sharing one would
+    # have each run overwrite the last, which is the comparison itself.
+    assert len(trees) == len(names)
