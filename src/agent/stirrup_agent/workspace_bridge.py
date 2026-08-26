@@ -115,11 +115,23 @@ class WorkspaceBridgedMCPToolProvider(MCPToolProvider):
         config: MCPConfig,
         *,
         exec_env: CodeExecToolProvider,
+        server_names: list[str] | None = None,
         persist_threshold_bytes: int = DEFAULT_PERSIST_THRESHOLD_BYTES,
     ) -> None:
+        """Bridge oversized MCP results into ``exec_env``.
+
+        ``server_names`` restricts this provider to a subset of the servers in
+        ``config``; ``None`` connects to all of them. That subset is how a
+        domain sub-agent gets exactly one server without needing its own
+        config object.
+
+        ``exec_env`` is a constructor argument, never a tool. A sub-agent given
+        this provider can therefore spill a large result into the root's
+        workspace while having no ability to execute code itself.
+        """
         if persist_threshold_bytes <= 0:
             raise ValueError("persist_threshold_bytes must be positive")
-        super().__init__(config=config)
+        super().__init__(config=config, server_names=server_names)
         self._exec_env = exec_env
         self._persist_threshold_bytes = persist_threshold_bytes
         self._artifacts: dict[str, MCPResultArtifact] = {}

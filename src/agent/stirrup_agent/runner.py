@@ -21,6 +21,18 @@ Tracks (the code switch):
     Report on its own leaderboard track; the bypass metric records whether it
     did so instead of calling the domain tools.
 
+Topology (the tool-surface switch):
+  * ``topology="flat"``     -> every MCP server is attached to the root agent,
+    so all domain tool schemas sit in the root context on every turn.  This is
+    the default and the shape the other four runners use.
+  * ``topology="subagent"`` -> each domain server is attached to its own
+    single-server sub-agent (see :mod:`.subagents`) and the root sees one
+    delegation tool per domain instead.  ``utilities`` stays on the root.
+    Requires the code track: the workspace bridge needs an execution
+    environment to spill into, and without it a sub-agent would return
+    oversized results straight into the root context, which is strictly worse
+    than flat.
+
 Stirrup's web/default tools are deliberately NOT attached: the environment
 under test is the MCP servers (plus, on the code track, code execution), so
 adding web search would contaminate the benchmark.
@@ -43,6 +55,15 @@ from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
 from .finish_tool import ASSETOPS_FINISH_TOOL
+from .subagents import (
+    ROOT_SERVERS,
+    SUBAGENT_CONTEXT_WINDOW_TOKENS,
+    SUBAGENT_MAX_OUTPUT_TOKENS,
+    SUBAGENT_MAX_TURNS,
+    SUBAGENT_SERVERS,
+    SubAgentHistoryRecorder,
+    build_subagent_tools,
+)
 from .trajectory import build_trajectory, classify_tool, final_answer
 from .handoff_tools import build_handoff_tools
 
@@ -52,8 +73,18 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "assetops-code")
-_WORKING_CONTEXT_BUDGET = 100_000
+
+TOPOLOGIES = ("flat", "subagent")
+
+# Stirrup 0.2.0 takes the working-context budget as an explicit client argument
+# (``context_window_tokens``) instead of reading ``max_tokens`` for both the
+# provider output cap and the summarization trigger, so the adapter this module
+# used to carry is gone.  ``max_tokens`` must stay <= ``context_window_tokens``;
+# the client constructor validates the pair.
+_ROOT_CONTEXT_WINDOW_TOKENS = 100_000
+_ROOT_MAX_OUTPUT_TOKENS = 64_000
 _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
+
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
 - MCP tools and their definitions are authoritative for domain data and semantics.
@@ -82,44 +113,33 @@ The local execution workspace is a temporary directory, but commands run on the
 host with the current user's permissions. Keep all reads and writes inside the
 workspace and use relative paths.
 """
-
-
-class _ContextWindowClient:
-    """Report the working context budget without changing the output-token cap.
-
-    Stirrup currently reads ``LLMClient.max_tokens`` both when configuring the
-    provider's maximum output and when deciding whether to summarize context.
-    Keeping the provider client behind this adapter lets it retain its native
-    64k output default while the agent loop uses a lower working-context budget
-    for earlier summarization.
-    """
-
-    def __init__(self, client: Any) -> None:
-        self._client = client
-
-    @property
-    def max_tokens(self) -> int:
-        return _WORKING_CONTEXT_BUDGET
-
-    @property
-    def model_slug(self) -> str:
-        return self._client.model_slug
-
-    async def generate(
-        self, messages: list[Any], tools: dict[str, Any]
-    ) -> Any:
-        return await self._client.generate(messages, tools)
+_SUBAGENT_SYSTEM_PROMPT = """\
+Domain delegation:
+- You have no domain tools of your own. Each domain (iot, fmsr, tsfm, wo,
+  vibration) is reached by delegating one self-contained task to its sub-agent.
+- A sub-agent cannot see this conversation. Spell out every identifier it needs
+  (asset ids, sensor names, sites, time ranges, model ids) in the task itself.
+- A sub-agent returns an answer, the identifiers it found, and handles for any
+  workspace files its tools produced. Those files are in your own workspace, so
+  read them with code_exec by their workspace_file path.
+- Carry identifiers forward yourself. Two sub-agents never talk to each other.
+- Delegate one domain at a time and use what comes back; do not ask a sub-agent
+  to speculate about another domain's data.
+"""
 
 
 def _build_full_summary_logger():
-    """Return a Stirrup logger that displays generated summaries without truncation."""
+    """Return a fresh Stirrup logger that displays summaries without truncation.
+
+    A new instance per agent: ``Agent.to_tool`` mutates ``logger.depth`` on the
+    sub-agent's session, so sharing one logger across the root and its
+    sub-agents would corrupt the indentation of concurrent-looking output.
+    """
     from rich.text import Text
     from stirrup.utils.logging import AgentLogger, console
 
     class _FullSummaryLogger(AgentLogger):
-        def context_summarization_complete(
-            self, summary: str, bridge: str
-        ) -> None:
+        def context_summarization_complete(self, summary: str, bridge: str) -> None:
             console.print(Text("✓ Summary Generated", style="bold green"))
             console.print(summary, markup=False, soft_wrap=True)
 
@@ -177,9 +197,13 @@ class StirrupAgentRunner(AgentRunner):
         model: ``litellm_proxy/<provider>/<model>`` or native ``<provider>/<model>``.
         code_enabled: Add a sandboxed code-execution tool (the code track).
         code_backend: ``"docker"`` (sandboxed, default) or ``"local"``.
+        topology: ``"flat"`` (all servers on the root) or ``"subagent"``
+            (one sub-agent per domain server). ``"subagent"`` requires
+            ``code_enabled=True``.
         workspace_dir: Optional host base directory for Docker/local code execution.
         preserve_workspace: Copy final code-execution files back into ``workspace_dir``.
-        max_turns: Stirrup agent loop bound.
+        max_turns: Stirrup agent loop bound for the root agent.
+        subagent_max_turns: Loop bound for each domain sub-agent.
         temperature: Optional sampling temperature passed to the Stirrup client.
         reasoning_effort: Optional reasoning effort passed to the Stirrup client.
     """
@@ -191,18 +215,31 @@ class StirrupAgentRunner(AgentRunner):
         model: str = _DEFAULT_MODEL,
         code_enabled: bool = True,
         code_backend: str = "docker",
+        topology: str = "flat",
         workspace_dir: Path | str | None = None,
         preserve_workspace: bool = False,
         max_turns: int = 30,
+        subagent_max_turns: int = SUBAGENT_MAX_TURNS,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
     ) -> None:
         super().__init__(llm, server_paths)
         if code_backend not in {"docker", "local"}:
             raise ValueError("code_backend must be 'docker' or 'local'")
+        if topology not in TOPOLOGIES:
+            raise ValueError(f"topology must be one of {TOPOLOGIES}")
+        if topology == "subagent" and not code_enabled:
+            raise ValueError(
+                "topology='subagent' requires code_enabled=True. Domain sub-agents "
+                "spill oversized MCP results into the root's code-execution "
+                "workspace; with no execution environment there is nowhere to "
+                "spill, so every large result would land inline in the root "
+                "context and the topology would cost more context than flat."
+            )
         self._model_id = model
         self._code_enabled = code_enabled
         self._code_backend = code_backend
+        self._topology = topology
         self._workspace_dir = (
             Path(workspace_dir).expanduser().resolve()
             if workspace_dir is not None
@@ -216,13 +253,26 @@ class StirrupAgentRunner(AgentRunner):
             )
         self._preserve_workspace = preserve_workspace
         self._max_turns = max_turns
+        self._subagent_max_turns = subagent_max_turns
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
+        self._recorder = SubAgentHistoryRecorder()
 
     # -- client / tools ----------------------------------------------------
 
-    def _build_client(self):
-        """Build a Stirrup LLM client for the configured model id."""
+    def _build_client(
+        self,
+        *,
+        context_window_tokens: int = _ROOT_CONTEXT_WINDOW_TOKENS,
+        max_output_tokens: int = _ROOT_MAX_OUTPUT_TOKENS,
+    ):
+        """Build a Stirrup LLM client for the configured model id.
+
+        ``context_window_tokens`` is the working-context budget the agent loop
+        uses to decide when to summarize; it is intentionally lower than the
+        provider's real window so long runs compact early. Domain sub-agents get
+        a smaller budget than the root so a single domain cannot hoard.
+        """
         client_kwargs = (
             {"temperature": self._temperature}
             if self._temperature is not None
@@ -233,29 +283,39 @@ class StirrupAgentRunner(AgentRunner):
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
 
-            common_kwargs = {
-                "model": resolve_model(self._model_id),
-                "base_url": creds.base_url.rstrip("/"),
-                "api_key": creds.api_key,
-                "reasoning_effort": self._reasoning_effort,
-                "kwargs": client_kwargs,
-            }
-            client = ChatCompletionsClient(**common_kwargs)
-        else:
-            from stirrup.clients.litellm_client import LiteLLMClient
-
-            client = LiteLLMClient(
-                model=self._model_id,
+            return ChatCompletionsClient(
+                model=resolve_model(self._model_id),
+                max_tokens=max_output_tokens,
+                context_window_tokens=context_window_tokens,
+                base_url=creds.base_url.rstrip("/"),
+                api_key=creds.api_key,
                 reasoning_effort=self._reasoning_effort,
                 kwargs=client_kwargs,
             )
-        return _ContextWindowClient(client)
+
+        from stirrup.clients.litellm_client import LiteLLMClient
+
+        return LiteLLMClient(
+            model=self._model_id,
+            max_tokens=max_output_tokens,
+            context_window_tokens=context_window_tokens,
+            reasoning_effort=self._reasoning_effort,
+            kwargs=client_kwargs,
+        )
+
+    def _build_subagent_client(self):
+        return self._build_client(
+            context_window_tokens=SUBAGENT_CONTEXT_WINDOW_TOKENS,
+            max_output_tokens=SUBAGENT_MAX_OUTPUT_TOKENS,
+        )
 
     def _build_mcp_config(self):
         """Build the Stirrup MCP configuration for AssetOpsBench servers.
 
         Each server is a stdio process launched exactly as the other runners
-        launch it: ``uv run --directory <repo> <entry-point>``.
+        launch it: ``uv run --directory <repo> <entry-point>``.  Every server is
+        always present in the config; which of them a given provider connects to
+        is decided per provider via ``server_names``.
         """
         from stirrup.tools.mcp import MCPConfig
 
@@ -269,19 +329,20 @@ class StirrupAgentRunner(AgentRunner):
             }
         return MCPConfig.model_validate({"mcpServers": servers})
 
-    def _build_mcp_provider(self, *, exec_env=None):
-        """Build the MCP provider, bridging large results when code is enabled."""
+    def _build_mcp_provider(self, *, exec_env=None, server_names: list[str] | None = None):
+        """Build an MCP provider, bridging large results when code is enabled."""
         config = self._build_mcp_config()
         if exec_env is None:
             from stirrup.tools.mcp import MCPToolProvider
 
-            return MCPToolProvider(config=config)
+            return MCPToolProvider(config=config, server_names=server_names)
 
         from .workspace_bridge import WorkspaceBridgedMCPToolProvider
 
         return WorkspaceBridgedMCPToolProvider(
             config=config,
             exec_env=exec_env,
+            server_names=server_names,
         )
 
     def _build_code_provider(self):
@@ -310,28 +371,69 @@ class StirrupAgentRunner(AgentRunner):
             temp_base_dir=self._workspace_dir,
         )
 
+    def _partition_servers(self) -> tuple[list[str], list[str]]:
+        """Split registered servers into (root-attached, delegated-to-sub-agents).
+
+        A registered server that is in neither set stays on the root: a new
+        server should show up in the root's tool list rather than disappearing
+        from the run because nobody added it to :data:`SUBAGENT_SERVERS`.
+        """
+        delegated = [n for n in self._server_paths if n in SUBAGENT_SERVERS]
+        root = [n for n in self._server_paths if n not in SUBAGENT_SERVERS]
+        unclassified = [n for n in root if n not in ROOT_SERVERS]
+        if unclassified:
+            _log.warning(
+                "MCP servers %s are not classified in subagents.py; keeping them "
+                "on the root agent.",
+                unclassified,
+            )
+        return root, delegated
+
     def _build_tools(self) -> list:
         if not self._code_enabled:
             return [self._build_mcp_provider()]
 
         code_provider = self._build_code_provider()
-        return [
-            code_provider,
-            *build_handoff_tools(code_provider),
-            self._build_mcp_provider(exec_env=code_provider),
-        ]
+        base = [code_provider, *build_handoff_tools(code_provider)]
+
+        if self._topology == "flat":
+            return [*base, self._build_mcp_provider(exec_env=code_provider)]
+
+        root_servers, delegated = self._partition_servers()
+        subagent_tools = build_subagent_tools(
+            delegated,
+            client_factory=self._build_subagent_client,
+            provider_factory=lambda server: self._build_mcp_provider(
+                exec_env=code_provider, server_names=[server]
+            ),
+            exec_env=code_provider,
+            recorder=self._recorder,
+            max_turns=self._subagent_max_turns,
+            logger=_build_full_summary_logger(),
+        )
+        tools = list(base)
+        if root_servers:
+            tools.append(
+                self._build_mcp_provider(
+                    exec_env=code_provider, server_names=root_servers
+                )
+            )
+        tools.extend(subagent_tools)
+        return tools
 
     def _build_system_prompt(self) -> str:
-        """Append code-execution guidance when the code track is enabled."""
-        if not self._code_enabled:
-            return AGENT_SYSTEM_PROMPT
-
-        backend_prompt = (
-            _DOCKER_CODE_EXEC_SYSTEM_PROMPT
-            if self._code_backend == "docker"
-            else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
-        )
-        return f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+        """Append code-execution and delegation guidance to the shared prompt."""
+        parts = [AGENT_SYSTEM_PROMPT]
+        if self._code_enabled:
+            parts.append(_CODE_EXEC_SYSTEM_PROMPT)
+            parts.append(
+                _DOCKER_CODE_EXEC_SYSTEM_PROMPT
+                if self._code_backend == "docker"
+                else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
+            )
+        if self._topology == "subagent":
+            parts.append(_SUBAGENT_SYSTEM_PROMPT)
+        return "\n".join(parts)
 
     # -- run ---------------------------------------------------------------
 
@@ -344,9 +446,9 @@ class StirrupAgentRunner(AgentRunner):
             run_started = time.perf_counter()
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
 
-            client = self._build_client()
+            self._recorder = SubAgentHistoryRecorder()
             agent = Agent(
-                client=client,
+                client=self._build_client(),
                 name="assetops",
                 system_prompt=self._build_system_prompt(),
                 tools=self._build_tools(),
@@ -357,10 +459,12 @@ class StirrupAgentRunner(AgentRunner):
             )
 
             _log.info(
-                "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s, workspace=%s, preserve=%s)",
+                "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s, "
+                "topology=%s, workspace=%s, preserve=%s)",
                 self._model_id,
                 self._code_enabled,
                 self._code_backend,
+                self._topology,
                 self._workspace_dir,
                 self._preserve_workspace,
             )
@@ -368,7 +472,9 @@ class StirrupAgentRunner(AgentRunner):
             async with agent.session() as session:
                 finish_params, history, _metadata = await session.run(question)
 
-            trajectory = build_trajectory(history)
+            trajectory = build_trajectory(
+                history, sub_histories=self._recorder.histories
+            )
             trajectory.started_at = started_at
             answer = final_answer(history, finish_params)
 
@@ -392,6 +498,15 @@ class StirrupAgentRunner(AgentRunner):
         total_tools = sum(counts.values())
         bypass = self._code_enabled and counts["code"] > 0 and counts["domain"] == 0
 
+        # Root-only vs tree-wide accounting. Under --topology subagent these
+        # diverge, and the divergence is the experiment: the topology buys root
+        # context headroom by re-paying schemas and system prompts inside each
+        # delegation, so cost and context move in opposite directions.
+        root_turns = [t for t in trajectory.turns if t.depth == 0]
+        root_input = sum(t.input_tokens for t in root_turns)
+        root_peak = max((t.input_tokens for t in root_turns), default=0)
+        sub_input = trajectory.total_input_tokens - root_input
+
         span.set_attribute("agent.answer.length", len(answer))
         span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
         span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
@@ -399,14 +514,27 @@ class StirrupAgentRunner(AgentRunner):
         span.set_attribute("agent.tool_calls", total_tools)
         span.set_attribute("agent.duration_ms", (time.perf_counter() - started) * 1000)
         span.set_attribute("agent.code_track", self._code_enabled)
+        span.set_attribute("agent.topology", self._topology)
         span.set_attribute("agent.domain_tool_calls", counts["domain"])
         span.set_attribute("agent.code_tool_calls", counts["code"])
         span.set_attribute("agent.tool_bypass", bypass)
+        span.set_attribute("agent.root_turns", len(root_turns))
+        span.set_attribute("agent.root_input_tokens", root_input)
+        span.set_attribute("agent.root_peak_context_tokens", root_peak)
+        span.set_attribute("agent.subagent_input_tokens", sub_input)
+        span.set_attribute("agent.subagent_calls", self._recorder.call_count)
 
         _log.info(
-            "StirrupAgentRunner: done (turns=%d, domain=%d, code=%d, bypass=%s)",
+            "StirrupAgentRunner: done (topology=%s, turns=%d, root_turns=%d, "
+            "domain=%d, code=%d, subagent_calls=%d, root_peak_ctx=%d, "
+            "total_in=%d, bypass=%s)",
+            self._topology,
             len(trajectory.turns),
+            len(root_turns),
             counts["domain"],
             counts["code"],
+            self._recorder.call_count,
+            root_peak,
+            trajectory.total_input_tokens,
             bypass,
         )
