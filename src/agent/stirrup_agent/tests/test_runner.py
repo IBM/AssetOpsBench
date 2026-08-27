@@ -52,8 +52,15 @@ class _TC:
 
 
 @dataclass
+class _Reasoning:
+    content: str
+    signature: str | None = None
+
+
+@dataclass
 class _Assistant:
     content: str
+    reasoning: _Reasoning | None = None
     tool_calls: list = field(default_factory=list)
     token_usage: _Usage = field(default_factory=_Usage)
     request_start_time: float | None = None
@@ -192,6 +199,10 @@ def test_build_trajectory_maps_turns_calls_and_outputs():
         [
             _Assistant(
                 content="let me check work orders",
+                reasoning=_Reasoning(
+                    content="I should query the work-order tool.",
+                    signature="sig-1",
+                ),
                 tool_calls=[_TC("wo__get_work_order", '{"asset": "CWC04013"}', "t1")],
                 token_usage=_Usage(input=20, answer=8, reasoning=2),
                 request_start_time=1.0,
@@ -217,6 +228,11 @@ def test_build_trajectory_maps_turns_calls_and_outputs():
     assert len(traj.turns) == 2
     assert traj.total_input_tokens == 25
     assert traj.total_output_tokens == 16  # (8+2) + (6+0)
+    assert traj.turns[0].reasoning == {
+        "signature": "sig-1",
+        "content": "I should query the work-order tool.",
+    }
+    assert traj.turns[1].reasoning is None
 
     call = traj.all_tool_calls[0]
     assert call.name == "wo__get_work_order"
