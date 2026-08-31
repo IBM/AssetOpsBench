@@ -4,11 +4,11 @@ Stirrup's :meth:`Agent.run` returns ``(finish_params, history, metadata)``
 where ``history`` is a ``list[list[ChatMessage]]`` (a list of turns, each a
 list of messages).  Stirrup's message objects are strongly typed pydantic
 models, so unlike the Goose path there is no fragile JSONL parsing: we read
-attributes directly.
+the ordered 0.2 message blocks directly.
 
 Mapping:
   * each ``AssistantMessage`` -> one :class:`~agent.models.TurnRecord`
-    (its ``content`` text, ``tool_calls``, ``token_usage``, request timing);
+    (its text/tool-call blocks, ``token_usage``, and request timing);
   * each ``ToolMessage`` -> the ``output`` of the matching :class:`ToolCall`,
     joined by ``tool_call_id``.
 
@@ -66,6 +66,27 @@ def _content_text(content: Any) -> str:
     return str(content)
 
 
+def _assistant_text(message: Any) -> str:
+    """Read answer text from Stirrup 0.2 blocks or a legacy test double."""
+    blocks = getattr(message, "blocks", None)
+    if isinstance(blocks, list):
+        return "".join(
+            block.text
+            for block in blocks
+            if getattr(block, "kind", None) == "text"
+            and isinstance(getattr(block, "text", None), str)
+        )
+    return _content_text(getattr(message, "content", ""))
+
+
+def _assistant_tool_calls(message: Any) -> list[Any]:
+    """Read tool calls from Stirrup 0.2 blocks or a legacy test double."""
+    blocks = getattr(message, "blocks", None)
+    if isinstance(blocks, list):
+        return [block for block in blocks if getattr(block, "kind", None) == "tool_call"]
+    return list(getattr(message, "tool_calls", []) or [])
+
+
 def _parse_arguments(arguments: Any) -> dict:
     """Stirrup ToolCall.arguments is a JSON string; parse defensively."""
     if isinstance(arguments, dict):
@@ -108,7 +129,7 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
 
         if role == "assistant":
             tool_calls: list[ToolCall] = []
-            for tc in getattr(msg, "tool_calls", []) or []:
+            for tc in _assistant_tool_calls(msg):
                 call = ToolCall(
                     name=getattr(tc, "name", "") or "",
                     input=_parse_arguments(getattr(tc, "arguments", "")),
@@ -125,7 +146,7 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
             trajectory.turns.append(
                 TurnRecord(
                     index=turn_index,
-                    text=_content_text(getattr(msg, "content", "")),
+                    text=_assistant_text(msg),
                     tool_calls=tool_calls,
                     input_tokens=int(in_tok or 0),
                     output_tokens=int(out_tok or 0),
@@ -167,9 +188,9 @@ def final_answer(history: Iterable[Any], finish_params: Any) -> str:
     for msg in reversed(messages):
         if getattr(msg, "role", None) != "assistant":
             continue
-        tool_calls = getattr(msg, "tool_calls", []) or []
+        tool_calls = _assistant_tool_calls(msg)
         if any(getattr(call, "name", None) == "finish" for call in tool_calls):
-            text = _content_text(getattr(msg, "content", "")).strip()
+            text = _assistant_text(msg).strip()
             if text:
                 return text
 
@@ -179,7 +200,7 @@ def final_answer(history: Iterable[Any], finish_params: Any) -> str:
 
     for msg in reversed(messages):
         if getattr(msg, "role", None) == "assistant":
-            text = _content_text(getattr(msg, "content", "")).strip()
+            text = _assistant_text(msg).strip()
             if text:
                 return text
     return ""

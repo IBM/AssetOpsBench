@@ -59,13 +59,13 @@ def test_structured_finish_answer_strips_boundary_whitespace():
 async def test_stirrup_agent_returns_custom_finish_params():
     class _Client:
         max_tokens = 100_000
+        context_window_tokens = 100_000
         model_slug = "fake/custom-finish"
 
         async def generate(self, messages, tools):
             assert tools["finish"].parameters is AssetOpsFinishParams
             return AssistantMessage(
-                content="",
-                tool_calls=[
+                blocks=[
                     ToolCall(
                         name="finish",
                         arguments=(

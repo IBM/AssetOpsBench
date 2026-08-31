@@ -118,7 +118,8 @@ def test_stirrup_runner_rejects_unsupported_code_backend():
 def test_stirrup_runner_bridges_mcp_results_when_code_is_enabled():
     runner = StirrupAgentRunner(code_backend="local")
 
-    code_provider, mcp_provider = runner._build_tools()
+    tools = runner._build_tools()
+    code_provider, mcp_provider = tools[0], tools[-1]
 
     assert isinstance(mcp_provider, WorkspaceBridgedMCPToolProvider)
     assert mcp_provider._exec_env is code_provider
@@ -139,11 +140,10 @@ def test_stirrup_runner_forwards_temperature_to_litellm_client():
 
     client = runner._build_client()
 
-    provider_client = client._client
-    assert provider_client._kwargs == {"temperature": 0.2}
-    assert provider_client._reasoning_effort == "high"
-    assert provider_client.max_tokens == 64_000
-    assert client.max_tokens == 100_000
+    assert client._kwargs == {"temperature": 0.2}
+    assert client._reasoning_effort == "high"
+    assert client.max_tokens == 64_000
+    assert client.context_window_tokens == 100_000
 
 
 def test_stirrup_runner_forwards_temperature_to_router_client(
@@ -162,12 +162,11 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
 
     from stirrup.clients.chat_completions_client import ChatCompletionsClient
 
-    router_client = client._client
-    assert isinstance(router_client, ChatCompletionsClient)
-    assert router_client._kwargs == {"temperature": 0.2}
-    assert router_client._reasoning_effort == "medium"
-    assert router_client.max_tokens == 64_000
-    assert client.max_tokens == 100_000
+    assert isinstance(client, ChatCompletionsClient)
+    assert client._kwargs == {"temperature": 0.2}
+    assert client._reasoning_effort == "medium"
+    assert client.max_tokens == 64_000
+    assert client.context_window_tokens == 100_000
 
 
 def test_stirrup_runner_uses_75k_summarization_trigger():
@@ -226,6 +225,45 @@ def test_build_trajectory_maps_turns_calls_and_outputs():
     assert traj.turns[0].duration_ms == 1500.0  # (2.5 - 1.0) * 1000
 
     assert final_answer(history, None) == "there are 7 open work orders"
+
+
+def test_build_trajectory_reads_stirrup_0_2_message_blocks():
+    from stirrup.core.models import (
+        AssistantMessage,
+        TextBlock,
+        TokenUsage,
+        ToolCall as StirrupToolCall,
+        ToolMessage,
+    )
+
+    history = [
+        [
+            AssistantMessage(
+                blocks=[
+                    TextBlock(text="checking"),
+                    StirrupToolCall(
+                        name="wo__get_work_order",
+                        arguments='{"asset":"PMP-01"}',
+                        tool_call_id="call-1",
+                    ),
+                ],
+                token_usage=TokenUsage(input=12, answer=3, reasoning=2),
+            ),
+            ToolMessage(
+                content='{"status":"open"}',
+                tool_call_id="call-1",
+                name="wo__get_work_order",
+                success=True,
+            ),
+        ]
+    ]
+
+    trajectory = build_trajectory(history)
+
+    assert trajectory.turns[0].text == "checking"
+    assert trajectory.turns[0].output_tokens == 5
+    assert trajectory.all_tool_calls[0].input == {"asset": "PMP-01"}
+    assert trajectory.all_tool_calls[0].output == '{"status":"open"}'
 
 
 def test_final_answer_prefers_finish_turn_content_over_finish_reason():
