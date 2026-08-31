@@ -34,7 +34,6 @@ import os
 import shutil
 import time
 from pathlib import Path
-from typing import Any
 
 from observability import agent_run_span, persist_trajectory
 
@@ -82,33 +81,6 @@ The local execution workspace is a temporary directory, but commands run on the
 host with the current user's permissions. Keep all reads and writes inside the
 workspace and use relative paths.
 """
-
-
-class _ContextWindowClient:
-    """Report the working context budget without changing the output-token cap.
-
-    Stirrup currently reads ``LLMClient.max_tokens`` both when configuring the
-    provider's maximum output and when deciding whether to summarize context.
-    Keeping the provider client behind this adapter lets it retain its native
-    64k output default while the agent loop uses a lower working-context budget
-    for earlier summarization.
-    """
-
-    def __init__(self, client: Any) -> None:
-        self._client = client
-
-    @property
-    def max_tokens(self) -> int:
-        return _WORKING_CONTEXT_BUDGET
-
-    @property
-    def model_slug(self) -> str:
-        return self._client.model_slug
-
-    async def generate(
-        self, messages: list[Any], tools: dict[str, Any]
-    ) -> Any:
-        return await self._client.generate(messages, tools)
 
 
 def _build_full_summary_logger():
@@ -235,6 +207,7 @@ class StirrupAgentRunner(AgentRunner):
 
             common_kwargs = {
                 "model": resolve_model(self._model_id),
+                "context_window_tokens": _WORKING_CONTEXT_BUDGET,
                 "base_url": creds.base_url.rstrip("/"),
                 "api_key": creds.api_key,
                 "reasoning_effort": self._reasoning_effort,
@@ -246,10 +219,11 @@ class StirrupAgentRunner(AgentRunner):
 
             client = LiteLLMClient(
                 model=self._model_id,
+                context_window_tokens=_WORKING_CONTEXT_BUDGET,
                 reasoning_effort=self._reasoning_effort,
                 kwargs=client_kwargs,
             )
-        return _ContextWindowClient(client)
+        return client
 
     def _build_mcp_config(self):
         """Build the Stirrup MCP configuration for AssetOpsBench servers.
