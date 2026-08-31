@@ -34,6 +34,67 @@ The vocabulary follows MLflow's evaluation split:
 - **Evaluator** — orchestrates a batch: loads scenarios + trajectories,
   joins on `scenario_id`, dispatches to scorers, aggregates results.
 
+## What the public data supports
+
+**As shipped, most scenario questions cannot be graded against the data this
+repository loads.** Whether that is intended is a separate question: the design
+guideline references an *AssetOpsBench Ground Truth Dataset (IBM Internal)*, and
+the public HuggingFace dataset ships questions only. This section records what
+can and cannot be graded against the loaded data, so the gap is found here
+rather than after a run.
+
+Taking every scenario question in the utterance set and asking whether the
+correct answer follows from the database the default manifest loads:
+
+| disposition | n | meaning |
+|---|---|---|
+| **derivable** | **14** | the answer follows from the loaded data |
+| identifier mismatch | 12 | identifiers in the question match none in the data |
+| entity absent | 10 | the question names equipment the data does not contain |
+| input file absent | 8 | a file the question depends on is not in the repository |
+| ambiguous source | 6 | two shipped sources answer the same question differently |
+| answer shape | 3 | the expected answer cannot be expressed unambiguously |
+| window absent | 2 | the time window asked about is not in the series |
+| | **55** | |
+
+**Practical consequences when evaluating against the public data:**
+
+- **An aggregate over all scenario questions is dominated by questions that
+  cannot be graded**, not by model performance. Scope any reported score to the
+  subset you verified as derivable.
+- **Ambiguous-source questions are the ones to watch**, because they fail
+  silently. Absent data produces an obvious error; two shipped sources
+  disagreeing produces a confident wrong grade.
+- **The MCQA pools carry answer keys and are therefore attractive for automated
+  evaluation, but none of their questions reference a loaded database entity.**
+  Counted at dataset revision `5e25bb7f`: **0 of 2,667** FailureSensorIQ
+  questions name any asset, site or model present in the loaded collections —
+  under an exact match and under one that ignores separators, so `Chiller 6`
+  and `CHILLER6` count as the same name. They test general engineering
+  knowledge. A system evaluated on that pool is not being evaluated on its tool
+  use, and an experiment varying tool access will find no effect there.
+- **Documented example answers may not match the shipped sample data.** Where
+  the guideline gives an answer for a site or asset, verify it against the
+  loaded collections before treating it as gold.
+
+**Two questions are answerable without the tools.** Running each derivable
+question with **no MCP servers mounted at all**, twelve returned nothing usable
+— which is what a tool-use question should do — and two did not:
+
+| id | question | why |
+|---|---|---|
+| 205 | *"Is LSTM model supported in TSFM?"* | answerable from general model knowledge |
+| 206 | *"Is Chronos model supported in TSFM?"* | answerable from general model knowledge |
+
+They are useful as controls, but a system that answers them has not
+demonstrated tool use, and counting them toward a tool-use score credits the
+model's priors rather than its retrieval. Scope them out of that measurement, or
+report them separately.
+
+None of this is a defect in the questions. It is the difference between the
+public artefacts and the internal dataset the guideline was written against, and
+knowing it in advance saves reconstructing it from failing runs.
+
 ## Inputs
 
 ### Scenario file
