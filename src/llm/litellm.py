@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 
-from .base import LLMBackend, LLMResult
+from .base import LLMBackend, LLMResult, resolve_max_tokens, result_from_response
 
 _WATSONX_PREFIX = "watsonx/"
 
@@ -39,11 +39,12 @@ class LiteLLMBackend(LLMBackend):
     def generate_with_usage(self, prompt: str, temperature: float = 0.0) -> LLMResult:
         import litellm
 
+        max_tokens = resolve_max_tokens()
         kwargs: dict = {
             "model": self._model_id,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
-            "max_tokens": 2048,
+            "max_tokens": max_tokens,
         }
 
         if self._model_id.startswith(_WATSONX_PREFIX):
@@ -56,9 +57,6 @@ class LiteLLMBackend(LLMBackend):
             kwargs["api_base"] = os.environ["LITELLM_BASE_URL"]
 
         response = litellm.completion(**kwargs)
-        usage = getattr(response, "usage", None)
-        return LLMResult(
-            text=response.choices[0].message.content,
-            input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
-            output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+        return result_from_response(
+            response, model=self._model_id, max_tokens=max_tokens
         )
