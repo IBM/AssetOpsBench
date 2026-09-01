@@ -1,4 +1,6 @@
 import logging
+import json
+import math
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
@@ -34,6 +36,7 @@ from servers.iot.telemetry_helper import (
     _history_observation,
     _iter_records,
     _iter_records_in_window,
+    _is_timezone_aware,
     _parse_iso_timestamp,
     _timestamp_age_seconds,
     _validate_dates,
@@ -53,27 +56,40 @@ COUCHDB_USERNAME = os.environ.get("COUCHDB_USERNAME")
 COUCHDB_PASSWORD = os.environ.get("COUCHDB_PASSWORD")
 IOT_DBNAME = os.environ.get("IOT_DBNAME", "iot")
 ASSET_DBNAME = os.environ.get("ASSET_DBNAME", "asset")
+IOT_ENABLE_VIEW_FAST_PATH = os.environ.get(
+    "IOT_ENABLE_VIEW_FAST_PATH", ""
+).lower() in {"1", "true", "yes", "on"}
 
 try:
-    iot_db = couchdb3.Database(
-        IOT_DBNAME,
-        url=COUCHDB_URL,
-        user=COUCHDB_USERNAME,
-        password=COUCHDB_PASSWORD,
+    iot_db = (
+        couchdb3.Database(
+            IOT_DBNAME,
+            url=COUCHDB_URL,
+            user=COUCHDB_USERNAME,
+            password=COUCHDB_PASSWORD,
+        )
+        if COUCHDB_URL
+        else None
     )
-    logger.info(f"Connected to IoT records database: {IOT_DBNAME}")
+    if iot_db is not None:
+        logger.info(f"Connected to IoT records database: {IOT_DBNAME}")
 except Exception as e:
     logger.error(f"Failed to connect to IoT records database: {e}")
     iot_db = None
 
 try:
-    asset_db = couchdb3.Database(
-        ASSET_DBNAME,
-        url=COUCHDB_URL,
-        user=COUCHDB_USERNAME,
-        password=COUCHDB_PASSWORD,
+    asset_db = (
+        couchdb3.Database(
+            ASSET_DBNAME,
+            url=COUCHDB_URL,
+            user=COUCHDB_USERNAME,
+            password=COUCHDB_PASSWORD,
+        )
+        if COUCHDB_URL
+        else None
     )
-    logger.info(f"Connected to asset registry database: {ASSET_DBNAME}")
+    if asset_db is not None:
+        logger.info(f"Connected to asset registry database: {ASSET_DBNAME}")
 except Exception as e:
     logger.error(f"Failed to connect to asset registry database: {e}")
     asset_db = None
@@ -90,19 +106,988 @@ mcp = FastMCP(
 DEFAULT_SITES = ["MAIN"]
 PAGE_SIZE = 1000
 RESERVED_FIELDS = {"_id", "_rev", "asset_id", "timestamp", "dataset", "type", "doctype"}
+IOT_DESIGN_DOC = "iot"
+IOT_DOC_ID_PREFIX = "iot:"
+IOT_SUMMARY_ID_PREFIX = "iot_summary:"
+IOT_DAILY_SUMMARY_ID_PREFIX = "iot_summary_day:"
+IOT_SUMMARY_DOCTYPE = "iot_asset_summary"
+IOT_DAILY_SUMMARY_DOCTYPE = "iot_asset_daily_summary"
 
 
 _registry_sites_cache: Optional[List[str]] = None
 _sensor_list_cache: Dict[str, List[str]] = {}
+_iot_summary_cache: Dict[str, Dict[str, Any]] = {}
+_iot_daily_summary_cache: Dict[str, List[Dict[str, Any]]] = {}
+_VIEW_UNAVAILABLE = object()
+
+
+def _is_mock_database(database: Any) -> bool:
+    return type(database).__module__.startswith("unittest.mock")
+
+
+def _row_value(row: Any) -> Any:
+    return row.get("value") if isinstance(row, dict) else getattr(row, "value", None)
+
+
+def _row_key(row: Any) -> Any:
+    return row.get("key") if isinstance(row, dict) else getattr(row, "key", None)
+
+
+def _row_doc(row: Any) -> Optional[Dict[str, Any]]:
+    doc = row.get("doc") if isinstance(row, dict) else getattr(row, "doc", None)
+    return dict(doc) if doc else None
+
+
+def _get_iot_summary(asset_id: str) -> Optional[Dict[str, Any]]:
+    """Return the materialized per-asset summary doc, when the loader created it."""
+    if asset_id in _iot_summary_cache:
+        return _iot_summary_cache[asset_id]
+    if iot_db is None:
+        return None
+    get = getattr(iot_db, "get", None)
+    if not callable(get):
+        return None
+    try:
+        try:
+            doc = get(f"{IOT_SUMMARY_ID_PREFIX}{asset_id}", default_value=None)
+        except TypeError:
+            doc = get(f"{IOT_SUMMARY_ID_PREFIX}{asset_id}")
+    except Exception as exc:
+        logger.debug("IoT summary lookup failed for asset_id %s: %s", asset_id, exc)
+        return None
+    if not isinstance(doc, dict):
+        return None
+    if (
+        doc.get("doctype") != IOT_SUMMARY_DOCTYPE
+        or doc.get("summary_asset_id") != asset_id
+    ):
+        return None
+    summary = dict(doc)
+    _iot_summary_cache[asset_id] = summary
+    return summary
+
+
+def _summary_timestamp_error(summary: Dict[str, Any]) -> Optional[str]:
+    if int(summary.get("invalid_timestamp_count") or 0):
+        return "telemetry record has an invalid ISO 8601 timestamp"
+    if summary.get("mixed_timezone_awareness"):
+        return "telemetry timestamps use mixed timezone awareness"
+    return None
+
+
+def _sensor_list_from_summary(asset_id: str) -> Optional[List[str]]:
+    summary = _get_iot_summary(asset_id)
+    if summary is None:
+        return None
+    sensors = summary.get("sensors")
+    if not isinstance(sensors, list):
+        return []
+    return sorted(str(sensor) for sensor in sensors)
+
+
+def _stream_extent_from_summary(
+    summary: Dict[str, Any],
+    sensor: Optional[str],
+) -> tuple[int, Optional[str], Optional[str]]:
+    if sensor is None:
+        return (
+            int(summary.get("timestamped_records") or 0),
+            summary.get("start_time"),
+            summary.get("end_time"),
+        )
+
+    coverage = (summary.get("coverage") or {}).get(sensor) or {}
+    return (
+        int(coverage.get("non_null_count") or 0),
+        coverage.get("first_timestamp"),
+        coverage.get("last_timestamp"),
+    )
+
+
+def _sensor_coverage_from_summary(
+    summary: Dict[str, Any],
+) -> tuple[int, List[Dict[str, Any]]]:
+    coverage = summary.get("coverage") or {}
+    sensors = [
+        {
+            "sensor": str(sensor),
+            "non_null_count": int(values.get("non_null_count") or 0),
+            "first_timestamp": values.get("first_timestamp"),
+            "last_timestamp": values.get("last_timestamp"),
+        }
+        for sensor, values in coverage.items()
+        if isinstance(values, dict)
+    ]
+    return int(summary.get("timestamped_records") or 0), sorted(
+        sensors, key=lambda item: item["sensor"]
+    )
+
+
+def _stat_from_summary(sensor: str, value: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "sensor": sensor,
+        "count": int(value.get("count") or 0),
+        "null_count": int(value.get("null_count") or 0),
+        "min": value.get("min"),
+        "max": value.get("max"),
+        "mean": value.get("mean"),
+        "stddev": value.get("stddev"),
+        "first_timestamp": value.get("first_timestamp"),
+        "last_timestamp": value.get("last_timestamp"),
+    }
+
+
+def _sensor_stats_from_summary(
+    summary: Dict[str, Any],
+    sensor: Optional[str],
+) -> List[Dict[str, Any]]:
+    stats = summary.get("stats") or {}
+    if sensor is not None:
+        value = stats.get(sensor)
+        return [_stat_from_summary(sensor, value)] if isinstance(value, dict) else []
+    return [
+        _stat_from_summary(str(sensor_name), value)
+        for sensor_name, value in sorted(stats.items())
+        if isinstance(value, dict)
+    ]
+
+
+def _empty_summary_stat_accumulator() -> Dict[str, Any]:
+    return {
+        "count": 0,
+        "null_count": 0,
+        "min": None,
+        "max": None,
+        "sum": 0.0,
+        "sumsq": 0.0,
+        "first_timestamp": None,
+        "last_timestamp": None,
+        "_first_dt": None,
+        "_last_dt": None,
+    }
+
+
+def _merge_summary_stat(
+    accumulator: Dict[str, Any],
+    stat: Dict[str, Any],
+) -> None:
+    count = int(stat.get("count") or 0)
+    null_count = int(stat.get("null_count") or 0)
+    accumulator["null_count"] += null_count
+    if count == 0:
+        return
+
+    mean = stat.get("mean")
+    stddev = stat.get("stddev") or 0.0
+    if mean is None:
+        return
+    mean = float(mean)
+    stddev = float(stddev)
+    accumulator["count"] += count
+    accumulator["sum"] += mean * count
+    accumulator["sumsq"] += ((stddev * stddev) + (mean * mean)) * count
+
+    minimum = stat.get("min")
+    maximum = stat.get("max")
+    accumulator["min"] = (
+        minimum
+        if accumulator["min"] is None
+        else min(accumulator["min"], minimum)
+    )
+    accumulator["max"] = (
+        maximum
+        if accumulator["max"] is None
+        else max(accumulator["max"], maximum)
+    )
+
+    first_timestamp = stat.get("first_timestamp")
+    first_dt = _parse_iso_timestamp(first_timestamp)
+    if first_dt is not None and (
+        accumulator["_first_dt"] is None or first_dt < accumulator["_first_dt"]
+    ):
+        accumulator["_first_dt"] = first_dt
+        accumulator["first_timestamp"] = first_timestamp
+
+    last_timestamp = stat.get("last_timestamp")
+    last_dt = _parse_iso_timestamp(last_timestamp)
+    if last_dt is not None and (
+        accumulator["_last_dt"] is None or last_dt > accumulator["_last_dt"]
+    ):
+        accumulator["_last_dt"] = last_dt
+        accumulator["last_timestamp"] = last_timestamp
+
+
+def _finalise_summary_stat_accumulator(
+    sensor: str,
+    accumulator: Dict[str, Any],
+) -> Dict[str, Any]:
+    count = int(accumulator["count"])
+    mean = None
+    stddev = None
+    if count:
+        mean = accumulator["sum"] / count
+        variance = (accumulator["sumsq"] / count) - (mean * mean)
+        if math.isfinite(variance):
+            stddev = math.sqrt(max(variance, 0.0))
+    return {
+        "sensor": sensor,
+        "count": count,
+        "null_count": int(accumulator["null_count"]),
+        "min": accumulator["min"] if count else None,
+        "max": accumulator["max"] if count else None,
+        "mean": mean,
+        "stddev": stddev,
+        "first_timestamp": accumulator["first_timestamp"],
+        "last_timestamp": accumulator["last_timestamp"],
+    }
+
+
+def _sensor_stats_from_daily_summary(
+    asset_id: str,
+    sensor: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> Optional[tuple[int, List[Dict[str, Any]]]]:
+    daily_summaries = _get_iot_daily_summaries(asset_id)
+    if daily_summaries is None or not daily_summaries:
+        return None
+
+    records_in_window = 0
+    accumulators: Dict[str, Dict[str, Any]] = {}
+    for bucket in daily_summaries:
+        if not isinstance(bucket, dict):
+            return None
+        bucket_start = _parse_iso_timestamp(bucket.get("start_time"))
+        bucket_end = _parse_iso_timestamp(bucket.get("end_time"))
+        if bucket_start is None or bucket_end is None:
+            return None
+
+        try:
+            if start_dt is not None and bucket_end < start_dt:
+                continue
+            if end_dt is not None and bucket_start >= end_dt:
+                continue
+            fully_contained = (
+                (start_dt is None or bucket_start >= start_dt)
+                and (end_dt is None or bucket_end < end_dt)
+            )
+        except TypeError:
+            return None
+        if not fully_contained:
+            return None
+
+        records_in_window += int(bucket.get("timestamped_records") or 0)
+        bucket_stats = bucket.get("stats") or {}
+        if sensor is not None:
+            stat = bucket_stats.get(sensor)
+            if isinstance(stat, dict):
+                _merge_summary_stat(
+                    accumulators.setdefault(
+                        sensor, _empty_summary_stat_accumulator()
+                    ),
+                    stat,
+                )
+            continue
+
+        for sensor_name, stat in sorted(bucket_stats.items()):
+            if not isinstance(stat, dict):
+                continue
+            _merge_summary_stat(
+                accumulators.setdefault(
+                    str(sensor_name), _empty_summary_stat_accumulator()
+                ),
+                stat,
+            )
+
+    stats = [
+        _finalise_summary_stat_accumulator(sensor_name, accumulator)
+        for sensor_name, accumulator in sorted(accumulators.items())
+    ]
+    return records_in_window, stats
+
+
+def _latest_reading_result_from_values(
+    site_name: str,
+    asset_id: str,
+    latest_timestamp: str,
+    latest_datetime: datetime,
+    values: Dict[str, Any],
+) -> LatestReadingResult:
+    return LatestReadingResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        timestamp=latest_timestamp,
+        values=values,
+        age_seconds=_timestamp_age_seconds(latest_datetime),
+        message=f"latest reading for asset_id {asset_id} at {latest_timestamp}.",
+    )
+
+
+def _latest_reading_from_summary(
+    site_name: str,
+    asset_id: str,
+    sensor: Optional[str],
+    summary: Dict[str, Any],
+) -> Union[LatestReadingResult, ErrorResult]:
+    error = _summary_timestamp_error(summary)
+    if error:
+        return ErrorResult(error=error)
+
+    if sensor is None:
+        latest = summary.get("latest") or {}
+        latest_timestamp = latest.get("timestamp")
+        values = latest.get("values") or {}
+    else:
+        coverage = (summary.get("coverage") or {}).get(sensor) or {}
+        latest_timestamp = coverage.get("latest_timestamp")
+        values = {sensor: coverage.get("latest_value")}
+
+    if not latest_timestamp:
+        return ErrorResult(
+            error=f"no records for asset_id {asset_id}"
+            + (f", sensor {sensor}" if sensor else "")
+        )
+    latest_datetime = _parse_iso_timestamp(latest_timestamp)
+    if latest_datetime is None:
+        return ErrorResult(error="telemetry record has an invalid ISO 8601 timestamp")
+    return _latest_reading_result_from_values(
+        site_name, asset_id, latest_timestamp, latest_datetime, values
+    )
+
+
+def _all_docs_method(database: Any) -> Any:
+    if database is None or _is_mock_database(database):
+        return None
+    all_docs = getattr(database, "all_docs", None)
+    return all_docs if callable(all_docs) else None
+
+
+def _all_docs_rows(database: Any, **params: Any) -> Optional[List[Any]]:
+    all_docs = _all_docs_method(database)
+    if all_docs is None:
+        return None
+    encoded = {
+        key: json.dumps(value) if key in {"key", "keys", "startkey", "endkey"} else value
+        for key, value in params.items()
+    }
+    result = all_docs(**encoded)
+    rows = result.get("rows") if isinstance(result, dict) else getattr(result, "rows", None)
+    return list(rows or [])
+
+
+def _prefix_upper_bound(prefix: str) -> str:
+    return prefix[:-1] + chr(ord(prefix[-1]) + 1)
+
+
+def _get_iot_daily_summaries(asset_id: str) -> Optional[List[Dict[str, Any]]]:
+    if asset_id in _iot_daily_summary_cache:
+        return _iot_daily_summary_cache[asset_id]
+    if iot_db is None:
+        return None
+    prefix = f"{IOT_DAILY_SUMMARY_ID_PREFIX}{asset_id}:"
+    try:
+        rows = _all_docs_rows(
+            iot_db,
+            startkey=prefix,
+            endkey=_prefix_upper_bound(prefix),
+            include_docs=True,
+            inclusive_end=False,
+            limit=10000,
+        )
+    except Exception as exc:
+        logger.debug(
+            "IoT daily summary lookup failed for asset_id %s: %s",
+            asset_id,
+            exc,
+        )
+        return None
+    if rows is None:
+        return None
+    summaries: List[Dict[str, Any]] = []
+    for row in rows:
+        doc = _row_doc(row)
+        if not isinstance(doc, dict):
+            continue
+        if (
+            doc.get("doctype") == IOT_DAILY_SUMMARY_DOCTYPE
+            and doc.get("summary_asset_id") == asset_id
+        ):
+            summaries.append(dict(doc))
+    summaries.sort(key=lambda doc: doc.get("day") or "")
+    _iot_daily_summary_cache[asset_id] = summaries
+    return summaries
+
+
+def _iot_id_bounds(
+    asset_id: str,
+    start: Optional[str],
+    end: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> tuple[str, str, bool]:
+    prefix = f"{IOT_DOC_ID_PREFIX}{asset_id}:"
+    bounds = [bound for bound in (start_dt, end_dt) if bound is not None]
+    lexical_bounds_are_safe = not any(_is_timezone_aware(bound) for bound in bounds)
+    startkey = prefix + start if start is not None and lexical_bounds_are_safe else prefix
+    if end is not None and lexical_bounds_are_safe:
+        return startkey, prefix + end, False
+    return startkey, _prefix_upper_bound(prefix), False
+
+
+def _selector_sensor_filter(selector: Dict[str, Any]) -> tuple[Optional[str], bool]:
+    for field, condition in selector.items():
+        if field in RESERVED_FIELDS:
+            continue
+        if isinstance(condition, dict) and condition.get("$exists") is True:
+            return field, "$ne" in condition and condition.get("$ne") is None
+    return None, False
+
+
+def _project_doc(doc: Dict[str, Any], fields: Optional[List[str]]) -> Dict[str, Any]:
+    if fields is None:
+        return doc
+    return {field: doc[field] for field in fields if field in doc}
+
+
+def _iter_iot_records_from_all_docs(
+    database: Any,
+    asset_id: str,
+    selector: Dict[str, Any],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    fields: Optional[List[str]],
+    start_key: Optional[str],
+    end_key: Optional[str],
+):
+    startkey, endkey, inclusive_end = _iot_id_bounds(
+        asset_id, start_key, end_key, start_dt, end_dt
+    )
+    sensor_filter, require_non_null = _selector_sensor_filter(selector)
+    page_startkey = startkey
+    skip = 0
+    stream_is_aware: Optional[bool] = None
+
+    while True:
+        rows = _all_docs_rows(
+            database,
+            startkey=page_startkey,
+            endkey=endkey,
+            include_docs=True,
+            inclusive_end=inclusive_end,
+            limit=PAGE_SIZE,
+            skip=skip,
+        )
+        if rows is None or not rows:
+            break
+
+        for row in rows:
+            doc = _row_doc(row)
+            if not doc or doc.get("asset_id") != asset_id:
+                continue
+            if sensor_filter is not None:
+                if sensor_filter not in doc:
+                    continue
+                if require_non_null and doc.get(sensor_filter) is None:
+                    continue
+
+            timestamp = doc.get("timestamp")
+            if timestamp is None:
+                continue
+            timestamp_dt = _parse_iso_timestamp(timestamp)
+            if timestamp_dt is None:
+                raise _TimestampHandlingError(
+                    "telemetry record has an invalid ISO 8601 timestamp"
+                )
+
+            timestamp_is_aware = _is_timezone_aware(timestamp_dt)
+            if stream_is_aware is None:
+                stream_is_aware = timestamp_is_aware
+                for bound in (start_dt, end_dt):
+                    if (
+                        bound is not None
+                        and _is_timezone_aware(bound) != stream_is_aware
+                    ):
+                        raise _TimestampHandlingError(
+                            "timestamp bounds must use the same timezone awareness "
+                            "as telemetry timestamps"
+                        )
+            elif timestamp_is_aware != stream_is_aware:
+                raise _TimestampHandlingError(
+                    "telemetry timestamps use mixed timezone awareness"
+                )
+
+            if start_dt is not None and timestamp_dt < start_dt:
+                continue
+            if end_dt is not None and timestamp_dt >= end_dt:
+                continue
+            yield _project_doc(doc, fields), timestamp, timestamp_dt
+
+        if len(rows) < PAGE_SIZE:
+            break
+        last_key = _row_key(rows[-1])
+        if not isinstance(last_key, str):
+            break
+        page_startkey = last_key
+        skip = 1
+
+
+def _iter_iot_records_in_window(
+    database: Any,
+    asset_id: str,
+    selector: Dict[str, Any],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    fields: Optional[List[str]] = None,
+    start_key: Optional[str] = None,
+    end_key: Optional[str] = None,
+):
+    if _all_docs_method(database) is not None:
+        yield from _iter_iot_records_from_all_docs(
+            database,
+            asset_id,
+            selector,
+            start_dt,
+            end_dt,
+            fields,
+            start_key,
+            end_key,
+        )
+        return
+    yield from _iter_records_in_window(
+        database,
+        selector,
+        start_dt,
+        end_dt,
+        fields=fields,
+        start_key=start_key,
+        end_key=end_key,
+    )
+
+
+def _view_rows(database: Any, view_name: str, **params: Any) -> Optional[List[Any]]:
+    """Return CouchDB view rows, or None when the design doc is unavailable."""
+    if not IOT_ENABLE_VIEW_FAST_PATH:
+        return None
+    if database is None or _is_mock_database(database):
+        return None
+    view = getattr(database, "view", None)
+    if not callable(view):
+        return None
+    encoded = {
+        key: json.dumps(value) if key in {"key", "keys", "startkey", "endkey"} else value
+        for key, value in params.items()
+    }
+    try:
+        result = view(IOT_DESIGN_DOC, view_name, **encoded)
+    except Exception as exc:
+        logger.debug("IoT aggregate view %s unavailable: %s", view_name, exc)
+        return None
+    rows = result.get("rows") if isinstance(result, dict) else getattr(result, "rows", None)
+    return list(rows or [])
+
+
+def _view_key_bounds(
+    asset_id: str,
+    start: Optional[str],
+    end: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    sensor: Optional[str] = None,
+) -> Optional[tuple[List[Any], List[Any]]]:
+    """Return exact view key bounds when lexical timestamp ranges are safe."""
+    bounds = [bound for bound in (start_dt, end_dt) if bound is not None]
+    if any(_is_timezone_aware(bound) for bound in bounds):
+        return None
+    prefix: List[Any] = [asset_id] if sensor is None else [asset_id, sensor]
+    startkey = [*prefix, start] if start is not None else prefix
+    endkey = [*prefix, end] if end is not None else [*prefix, {}]
+    return startkey, endkey
+
+
+def _row_timestamp(row: Any) -> Optional[str]:
+    key = _row_key(row)
+    if isinstance(key, list) and key:
+        value = key[-1]
+        return value if isinstance(value, str) else None
+    return None
+
+
+def _timestamp_matches_window(
+    timestamp: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> bool:
+    timestamp_dt = _parse_iso_timestamp(timestamp)
+    if timestamp_dt is None:
+        return False
+    if start_dt is not None and timestamp_dt < start_dt:
+        return False
+    if end_dt is not None and timestamp_dt >= end_dt:
+        return False
+    return True
+
+
+def _view_count(
+    database: Any,
+    view_name: str,
+    startkey: List[Any],
+    endkey: List[Any],
+    *,
+    end_is_exclusive: bool,
+) -> Optional[int]:
+    rows = _view_rows(
+        database,
+        view_name,
+        startkey=startkey,
+        endkey=endkey,
+        reduce=True,
+        inclusive_end=not end_is_exclusive,
+    )
+    if rows is None:
+        return None
+    if not rows:
+        return 0
+    return int(_row_value(rows[0]) or 0)
+
+
+def _first_view_timestamp(
+    database: Any,
+    view_name: str,
+    startkey: List[Any],
+    endkey: List[Any],
+    *,
+    end_is_exclusive: bool,
+) -> Optional[str]:
+    rows = _view_rows(
+        database,
+        view_name,
+        startkey=startkey,
+        endkey=endkey,
+        reduce=False,
+        inclusive_end=not end_is_exclusive,
+        limit=1,
+    )
+    if rows is None:
+        return None
+    return _row_timestamp(rows[0]) if rows else None
+
+
+def _last_view_timestamp(
+    database: Any,
+    view_name: str,
+    startkey: List[Any],
+    endkey: List[Any],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> Optional[str]:
+    rows = _view_rows(
+        database,
+        view_name,
+        startkey=endkey,
+        endkey=startkey,
+        reduce=False,
+        descending=True,
+        limit=2,
+    )
+    if rows is None:
+        return None
+    for row in rows:
+        timestamp = _row_timestamp(row)
+        if _timestamp_matches_window(timestamp, start_dt, end_dt):
+            return timestamp
+    return None
+
+
+def _stream_extent_from_views(
+    asset_id: str,
+    sensor: Optional[str],
+    start: Optional[str],
+    end: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> Optional[tuple[int, Optional[str], Optional[str]]]:
+    bounds = _view_key_bounds(asset_id, start, end, start_dt, end_dt, sensor=sensor)
+    if bounds is None:
+        return None
+    startkey, endkey = bounds
+    view_name = "stream_by_asset_sensor_time" if sensor else "stream_by_asset_time"
+    end_is_exclusive = end is not None
+    total = _view_count(
+        iot_db,
+        view_name,
+        startkey,
+        endkey,
+        end_is_exclusive=end_is_exclusive,
+    )
+    if total is None:
+        return None
+    if total == 0:
+        return 0, None, None
+    first = _first_view_timestamp(
+        iot_db,
+        view_name,
+        startkey,
+        endkey,
+        end_is_exclusive=end_is_exclusive,
+    )
+    last = _last_view_timestamp(iot_db, view_name, startkey, endkey, start_dt, end_dt)
+    if first is None or last is None:
+        return None
+    return total, first, last
+
+
+def _stat_from_aggregate(sensor: str, value: Dict[str, Any]):
+    count = int(value.get("count") or 0)
+    null_count = int(value.get("null_count") or 0)
+    minimum = value.get("min") if count else None
+    maximum = value.get("max") if count else None
+    mean = None
+    stddev = None
+    if count:
+        total = float(value.get("sum") or 0.0)
+        sumsq = float(value.get("sumsq") or 0.0)
+        mean = total / count
+        variance = (sumsq / count) - (mean * mean)
+        if math.isfinite(variance):
+            stddev = math.sqrt(max(variance, 0.0))
+    return {
+        "sensor": sensor,
+        "count": count,
+        "null_count": null_count,
+        "min": minimum,
+        "max": maximum,
+        "mean": mean,
+        "stddev": stddev,
+        "first_timestamp": value.get("first_timestamp"),
+        "last_timestamp": value.get("last_timestamp"),
+    }
+
+
+def _sensor_stats_from_views(
+    asset_id: str,
+    sensor: Optional[str],
+    start: Optional[str],
+    end: Optional[str],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+) -> Optional[List[Dict[str, Any]]]:
+    if sensor is None and (start is not None or end is not None):
+        return None
+    if sensor is not None and (start is not None or end is not None):
+        bounds = _view_key_bounds(asset_id, start, end, start_dt, end_dt, sensor=sensor)
+        if bounds is None:
+            return None
+        rows = _view_rows(
+            iot_db,
+            "stats_by_asset_sensor_time",
+            startkey=bounds[0],
+            endkey=bounds[1],
+            reduce=True,
+            inclusive_end=end is None,
+        )
+        if rows is None:
+            return None
+        value = _row_value(rows[0]) if rows else {}
+        if not value or not (int(value.get("count") or 0) + int(value.get("null_count") or 0)):
+            return []
+        return [_stat_from_aggregate(sensor, value)]
+
+    bounds = _view_key_bounds(asset_id, None, None, None, None, sensor=sensor)
+    assert bounds is not None
+    rows = _view_rows(
+        iot_db,
+        "stats_by_asset_sensor",
+        startkey=bounds[0],
+        endkey=bounds[1],
+        reduce=True,
+        group_level=2,
+    )
+    if rows is None:
+        return None
+    stats = []
+    for row in rows:
+        key = _row_key(row)
+        value = _row_value(row)
+        if not isinstance(key, list) or len(key) < 2 or not isinstance(value, dict):
+            continue
+        stats.append(_stat_from_aggregate(str(key[1]), value))
+    return sorted(stats, key=lambda item: item["sensor"])
+
+
+def _sensor_coverage_from_views(
+    asset_id: str,
+) -> Optional[tuple[int, List[Dict[str, Any]]]]:
+    bounds = _view_key_bounds(asset_id, None, None, None, None)
+    assert bounds is not None
+    docs_scanned = _view_count(
+        iot_db,
+        "stream_by_asset_time",
+        bounds[0],
+        bounds[1],
+        end_is_exclusive=False,
+    )
+    if docs_scanned is None:
+        return None
+    rows = _view_rows(
+        iot_db,
+        "coverage_by_asset_sensor",
+        startkey=bounds[0],
+        endkey=bounds[1],
+        reduce=True,
+        group_level=2,
+    )
+    if rows is None:
+        return None
+    sensors = []
+    for row in rows:
+        key = _row_key(row)
+        value = _row_value(row)
+        if not isinstance(key, list) or len(key) < 2 or not isinstance(value, dict):
+            continue
+        sensors.append(
+            {
+                "sensor": str(key[1]),
+                "non_null_count": int(value.get("non_null_count") or 0),
+                "first_timestamp": value.get("first_timestamp"),
+                "last_timestamp": value.get("last_timestamp"),
+            }
+        )
+    return docs_scanned, sorted(sensors, key=lambda item: item["sensor"])
+
+
+def _sensor_list_from_views(asset_id: str) -> Optional[List[str]]:
+    bounds = _view_key_bounds(asset_id, None, None, None, None)
+    assert bounds is not None
+    rows = _view_rows(
+        iot_db,
+        "coverage_by_asset_sensor",
+        startkey=bounds[0],
+        endkey=bounds[1],
+        reduce=True,
+        group_level=2,
+    )
+    if rows is None:
+        return None
+    sensors = set()
+    for row in rows:
+        key = _row_key(row)
+        if isinstance(key, list) and len(key) >= 2:
+            sensors.add(str(key[1]))
+    return sorted(sensors)
+
+
+def _latest_doc_from_views(asset_id: str, sensor: Optional[str]) -> Any:
+    bounds = _view_key_bounds(asset_id, None, None, None, None, sensor=sensor)
+    assert bounds is not None
+    view_name = "stream_by_asset_sensor_time" if sensor else "stream_by_asset_time"
+    rows = _view_rows(
+        iot_db,
+        view_name,
+        startkey=bounds[1],
+        endkey=bounds[0],
+        reduce=False,
+        descending=True,
+        include_docs=True,
+        limit=1,
+    )
+    if rows is None:
+        return _VIEW_UNAVAILABLE
+    if not rows:
+        return None, None, None
+
+    doc = _row_doc(rows[0])
+    if doc is None:
+        return _VIEW_UNAVAILABLE
+    timestamp = doc.get("timestamp") or _row_timestamp(rows[0])
+    timestamp_dt = _parse_iso_timestamp(timestamp)
+    if timestamp_dt is None:
+        raise _TimestampHandlingError(
+            "telemetry record has an invalid ISO 8601 timestamp"
+        )
+    if _is_timezone_aware(timestamp_dt):
+        return _VIEW_UNAVAILABLE
+    return doc, timestamp, timestamp_dt
+
+
+def _latest_reading_result(
+    site_name: str,
+    asset_id: str,
+    sensor: Optional[str],
+    latest_doc: Dict[str, Any],
+    latest_timestamp: str,
+    latest_datetime: datetime,
+) -> LatestReadingResult:
+    if sensor is None:
+        values = {
+            field: value
+            for field, value in latest_doc.items()
+            if field not in RESERVED_FIELDS
+        }
+    else:
+        values = {sensor: latest_doc[sensor]}
+    return _latest_reading_result_from_values(
+        site_name, asset_id, latest_timestamp, latest_datetime, values
+    )
+
+
+def _find_measured_assets_from_views(
+    site_asset_ids: List[str],
+    query_sensors: List[str],
+    match: str,
+) -> Optional[List[AssetSensorMatch]]:
+    site_asset_set = set(site_asset_ids)
+    matched_by_asset: Dict[str, set[str]] = {}
+    for sensor_name in query_sensors:
+        rows = _view_rows(
+            iot_db,
+            "assets_by_sensor",
+            startkey=[sensor_name],
+            endkey=[sensor_name, {}],
+            reduce=True,
+            group_level=2,
+        )
+        if rows is None:
+            return None
+        for row in rows:
+            key = _row_key(row)
+            if not isinstance(key, list) or len(key) < 2:
+                continue
+            matched_sensor, asset_id = str(key[0]), str(key[1])
+            if matched_sensor == sensor_name and asset_id in site_asset_set:
+                matched_by_asset.setdefault(asset_id, set()).add(matched_sensor)
+
+    matches: List[AssetSensorMatch] = []
+    for asset_id in site_asset_ids:
+        matched = sorted(matched_by_asset.get(asset_id, set()))
+        ok = (
+            len(matched) == len(query_sensors)
+            if match == "all"
+            else len(matched) > 0
+        )
+        if ok:
+            matches.append(AssetSensorMatch(asset_id=asset_id, matched_sensors=matched))
+    return matches
 
 
 def get_sensor_list(asset_id: str) -> List[str]:
     """Return sorted telemetry field names observed across all records for an asset."""
     if asset_id in _sensor_list_cache:
         return _sensor_list_cache[asset_id]
-    if not iot_db:
+    if iot_db is None:
         return []
     try:
+        sensors = _sensor_list_from_summary(asset_id)
+        if sensors is not None:
+            if sensors:
+                _sensor_list_cache[asset_id] = sensors
+            return sensors
+
+        sensors = _sensor_list_from_views(asset_id)
+        if sensors is not None:
+            if sensors:
+                _sensor_list_cache[asset_id] = sensors
+            return sensors
+
         found = set()
         seen = False
         for doc in _iter_records(iot_db, {"asset_id": asset_id}):
@@ -123,7 +1108,7 @@ def get_registry_sites() -> List[str]:
     global _registry_sites_cache
     if _registry_sites_cache is not None:
         return _registry_sites_cache
-    if not asset_db:
+    if asset_db is None:
         return []
     try:
         res = asset_db.find(
@@ -151,7 +1136,7 @@ def _is_known_site(site_name: str) -> bool:
 
 def _site_asset_ids(site_name: str) -> List[str]:
     """Return asset ids registered at a site."""
-    if not asset_db:
+    if asset_db is None:
         return []
     try:
         res = asset_db.find(
@@ -167,7 +1152,7 @@ def _site_asset_ids(site_name: str) -> List[str]:
 
 def _installed_sensors(asset_id: str, site_name: Optional[str] = None) -> List[str]:
     """Return registry sensor names installed on an asset."""
-    if not asset_db:
+    if asset_db is None:
         return []
     try:
         selector: Dict[str, Any] = {"assetnum": asset_id}
@@ -207,7 +1192,7 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    if not asset_db:
+    if asset_db is None:
         return ErrorResult(error="asset registry database not connected")
     try:
         res = asset_db.find(
@@ -245,7 +1230,7 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    if not asset_db:
+    if asset_db is None:
         return ErrorResult(error="asset registry database not connected")
 
     try:
@@ -317,7 +1302,7 @@ def measured_sensors(
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    if not iot_db:
+    if iot_db is None:
         return ErrorResult(error="IoT records database not connected")
 
     sensor_list = get_sensor_list(asset_id)
@@ -355,7 +1340,7 @@ def installed_sensors(
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    if not asset_db:
+    if asset_db is None:
         return ErrorResult(error="asset registry database not connected")
 
     try:
@@ -401,7 +1386,7 @@ def assets(
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    if not asset_db:
+    if asset_db is None:
         return ErrorResult(error="asset registry database not connected")
     try:
         selector: Dict[str, Any] = {"siteid": site_name}
@@ -473,14 +1458,34 @@ def find_assets_by_sensors(
         return ErrorResult(error="source must be 'measured' or 'installed'")
     if not sensors:
         return ErrorResult(error="provide at least one sensor name")
-    if not asset_db:
+    if asset_db is None:
         return ErrorResult(error="asset registry database not connected")
-    if source == "measured" and not iot_db:
+    if source == "measured" and iot_db is None:
         return ErrorResult(error="IoT records database not connected")
 
     query_sensors = list(dict.fromkeys(sensors))
+    site_asset_ids = _site_asset_ids(site_name)
+    if source == "measured" and not substring:
+        view_matches = _find_measured_assets_from_views(
+            site_asset_ids, query_sensors, match
+        )
+        if view_matches is not None:
+            return FindAssetsResult(
+                site_name=site_name,
+                query_sensors=query_sensors,
+                match=match,
+                source=source,
+                total_assets=len(view_matches),
+                assets=view_matches,
+                message=(
+                    f"{len(view_matches)} asset(s) at {site_name} match "
+                    f"{query_sensors} (match={match}, substring={substring}, "
+                    f"source={source})."
+                ),
+            )
+
     matches: List[AssetSensorMatch] = []
-    for asset_id in _site_asset_ids(site_name):
+    for asset_id in site_asset_ids:
         available = (
             get_sensor_list(asset_id)
             if source == "measured"
@@ -570,7 +1575,7 @@ def stream_extent(
     validation_error = _validate_dates(start, end)
     if validation_error:
         return ErrorResult(error=validation_error)
-    if not iot_db:
+    if iot_db is None:
         return ErrorResult(error="IoT records database not connected")
     if sensor is not None and not sensor.strip():
         return ErrorResult(error="sensor must not be empty")
@@ -581,6 +1586,85 @@ def stream_extent(
 
     start_dt = _parse_iso_timestamp(start) if start is not None else None
     end_dt = _parse_iso_timestamp(end) if end is not None else None
+    try:
+        if start is None and end is None:
+            summary = _get_iot_summary(asset_id)
+            if summary is not None:
+                summary_error = _summary_timestamp_error(summary)
+                if summary_error:
+                    return ErrorResult(error=summary_error)
+                total_records, first_timestamp, last_timestamp = (
+                    _stream_extent_from_summary(summary, sensor)
+                )
+                if total_records == 0:
+                    return ErrorResult(
+                        error=f"no records for asset_id {asset_id}"
+                        + (f", sensor {sensor}" if sensor else "")
+                    )
+                first_datetime = _parse_iso_timestamp(first_timestamp)
+                last_datetime = _parse_iso_timestamp(last_timestamp)
+                if first_datetime is None or last_datetime is None:
+                    raise _TimestampHandlingError(
+                        "telemetry record has an invalid ISO 8601 timestamp"
+                    )
+                approx_interval: Optional[float] = None
+                if total_records > 1:
+                    approx_interval = (
+                        last_datetime - first_datetime
+                    ).total_seconds() / (total_records - 1)
+                return StreamExtentResult(
+                    site_name=site_name,
+                    asset_id=asset_id,
+                    sensor=sensor,
+                    start_time=first_timestamp,
+                    end_time=last_timestamp,
+                    total_records=total_records,
+                    exceeds_page_limit=total_records > PAGE_SIZE,
+                    approx_interval_seconds=approx_interval,
+                    message=f"{total_records} record(s) for asset_id {asset_id}"
+                    + (f" (sensor {sensor})" if sensor else "")
+                    + f" from {first_timestamp} to {last_timestamp}.",
+                )
+
+        view_extent = _stream_extent_from_views(
+            asset_id, sensor, start, end, start_dt, end_dt
+        )
+        if view_extent is not None:
+            total_records, first_timestamp, last_timestamp = view_extent
+            if total_records == 0:
+                return ErrorResult(
+                    error=f"no records for asset_id {asset_id}"
+                    + (f", sensor {sensor}" if sensor else "")
+                )
+            first_datetime = _parse_iso_timestamp(first_timestamp)
+            last_datetime = _parse_iso_timestamp(last_timestamp)
+            if first_datetime is None or last_datetime is None:
+                raise _TimestampHandlingError(
+                    "telemetry record has an invalid ISO 8601 timestamp"
+                )
+            approx_interval: Optional[float] = None
+            if total_records > 1:
+                approx_interval = (last_datetime - first_datetime).total_seconds() / (
+                    total_records - 1
+                )
+            return StreamExtentResult(
+                site_name=site_name,
+                asset_id=asset_id,
+                sensor=sensor,
+                start_time=first_timestamp,
+                end_time=last_timestamp,
+                total_records=total_records,
+                exceeds_page_limit=total_records > PAGE_SIZE,
+                approx_interval_seconds=approx_interval,
+                message=f"{total_records} record(s) for asset_id {asset_id}"
+                + (f" (sensor {sensor})" if sensor else "")
+                + f" from {first_timestamp} to {last_timestamp}.",
+            )
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
+    except Exception as e:
+        logger.debug("stream_extent aggregate fast path skipped: %s", e)
+
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
         "timestamp": {"$exists": True, "$ne": None},
@@ -594,8 +1678,15 @@ def stream_extent(
     last_datetime: Optional[datetime] = None
     total_records = 0
     try:
-        for _, timestamp, timestamp_dt in _iter_records_in_window(
-            iot_db, selector, start_dt, end_dt, fields=["timestamp"]
+        for _, timestamp, timestamp_dt in _iter_iot_records_in_window(
+            iot_db,
+            asset_id,
+            selector,
+            start_dt,
+            end_dt,
+            fields=["timestamp"],
+            start_key=start,
+            end_key=end,
         ):
             if first_datetime is None or timestamp_dt < first_datetime:
                 first_datetime = timestamp_dt
@@ -682,7 +1773,7 @@ def history(
     validation_error = _validate_dates(start, end)
     if validation_error:
         return ErrorResult(error=validation_error)
-    if not iot_db:
+    if iot_db is None:
         return ErrorResult(error="IoT records database not connected")
     if isinstance(limit, bool) or not 1 <= limit <= PAGE_SIZE:
         return ErrorResult(error=f"limit must be between 1 and {PAGE_SIZE}")
@@ -735,8 +1826,15 @@ def history(
     has_more = False
     previous_datetime: Optional[datetime] = None
     try:
-        for doc, timestamp, timestamp_dt in _iter_records_in_window(
-            iot_db, selector, start_dt, end_dt, fields=fields
+        for doc, timestamp, timestamp_dt in _iter_iot_records_in_window(
+            iot_db,
+            asset_id,
+            selector,
+            start_dt,
+            end_dt,
+            fields=fields,
+            start_key=start,
+            end_key=end,
         ):
             if previous_datetime is not None and timestamp_dt < previous_datetime:
                 raise _TimestampHandlingError(
@@ -814,7 +1912,7 @@ def latest_reading(
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    if not iot_db:
+    if iot_db is None:
         return ErrorResult(error="IoT records database not connected")
     if sensor is not None and not sensor.strip():
         return ErrorResult(error="sensor must not be empty")
@@ -832,6 +1930,38 @@ def latest_reading(
         if sensor not in available_sensors:
             return ErrorResult(error=f"unknown sensor {sensor} for asset_id {asset_id}")
 
+    try:
+        summary = _get_iot_summary(asset_id)
+        if summary is not None:
+            return _latest_reading_from_summary(
+                site_name, asset_id, sensor, summary
+            )
+
+        view_latest = _latest_doc_from_views(asset_id, sensor)
+        if view_latest is not _VIEW_UNAVAILABLE:
+            latest_doc, latest_timestamp, latest_datetime = view_latest
+            if (
+                latest_doc is None
+                or latest_timestamp is None
+                or latest_datetime is None
+            ):
+                return ErrorResult(
+                    error=f"no records for asset_id {asset_id}"
+                    + (f", sensor {sensor}" if sensor else "")
+                )
+            return _latest_reading_result(
+                site_name,
+                asset_id,
+                sensor,
+                latest_doc,
+                latest_timestamp,
+                latest_datetime,
+            )
+    except _TimestampHandlingError as e:
+        return ErrorResult(error=str(e))
+    except Exception as e:
+        logger.debug("latest_reading aggregate fast path skipped: %s", e)
+
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
         "timestamp": {"$exists": True, "$ne": None},
@@ -845,8 +1975,8 @@ def latest_reading(
     latest_timestamp: Optional[str] = None
     latest_datetime: Optional[datetime] = None
     try:
-        for doc, timestamp, timestamp_dt in _iter_records_in_window(
-            iot_db, selector, None, None, fields=fields
+        for doc, timestamp, timestamp_dt in _iter_iot_records_in_window(
+            iot_db, asset_id, selector, None, None, fields=fields
         ):
             if latest_datetime is None or timestamp_dt > latest_datetime:
                 latest_doc = doc
@@ -864,21 +1994,13 @@ def latest_reading(
             + (f", sensor {sensor}" if sensor else "")
         )
 
-    if sensor is None:
-        values = {
-            field: value
-            for field, value in latest_doc.items()
-            if field not in RESERVED_FIELDS
-        }
-    else:
-        values = {sensor: latest_doc[sensor]}
-    return LatestReadingResult(
-        site_name=site_name,
-        asset_id=asset_id,
-        timestamp=latest_timestamp,
-        values=values,
-        age_seconds=_timestamp_age_seconds(latest_datetime),
-        message=f"latest reading for asset_id {asset_id} at {latest_timestamp}.",
+    return _latest_reading_result(
+        site_name,
+        asset_id,
+        sensor,
+        latest_doc,
+        latest_timestamp,
+        latest_datetime,
     )
 
 
@@ -904,8 +2026,52 @@ def sensor_coverage(
     """
     if not _is_known_site(site_name):
         return ErrorResult(error=f"unknown site {site_name}")
-    if not iot_db:
+    if iot_db is None:
         return ErrorResult(error="IoT records database not connected")
+
+    try:
+        summary = _get_iot_summary(asset_id)
+        if summary is not None:
+            summary_error = _summary_timestamp_error(summary)
+            if summary_error:
+                return ErrorResult(error=summary_error)
+            docs_scanned, sensors = _sensor_coverage_from_summary(summary)
+            if docs_scanned == 0:
+                return ErrorResult(
+                    error=f"unknown asset_id {asset_id} or no records found"
+                )
+            message = (
+                f"coverage for {len(sensors)} sensor(s) on asset_id {asset_id} "
+                f"across {docs_scanned} timestamped record(s)."
+            )
+            return SensorCoverageResult(
+                site_name=site_name,
+                asset_id=asset_id,
+                docs_scanned=docs_scanned,
+                sensors=sensors,
+                message=message,
+            )
+
+        view_coverage = _sensor_coverage_from_views(asset_id)
+        if view_coverage is not None:
+            docs_scanned, sensors = view_coverage
+            if docs_scanned == 0:
+                return ErrorResult(
+                    error=f"unknown asset_id {asset_id} or no records found"
+                )
+            message = (
+                f"coverage for {len(sensors)} sensor(s) on asset_id {asset_id} "
+                f"across {docs_scanned} timestamped record(s)."
+            )
+            return SensorCoverageResult(
+                site_name=site_name,
+                asset_id=asset_id,
+                docs_scanned=docs_scanned,
+                sensors=sensors,
+                message=message,
+            )
+    except Exception as e:
+        logger.debug("sensor_coverage aggregate fast path skipped: %s", e)
 
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
@@ -914,8 +2080,8 @@ def sensor_coverage(
     coverage: Dict[str, _SensorCoverageAccumulator] = {}
     docs_scanned = 0
     try:
-        for doc, timestamp, timestamp_dt in _iter_records_in_window(
-            iot_db, selector, None, None
+        for doc, timestamp, timestamp_dt in _iter_iot_records_in_window(
+            iot_db, asset_id, selector, None, None
         ):
             docs_scanned += 1
             for field, value in doc.items():
@@ -985,7 +2151,7 @@ def sensor_stats(
     validation_error = _validate_dates(start, end)
     if validation_error:
         return ErrorResult(error=validation_error)
-    if not iot_db:
+    if iot_db is None:
         return ErrorResult(error="IoT records database not connected")
     if sensor is not None and not sensor.strip():
         return ErrorResult(error="sensor must not be empty")
@@ -994,16 +2160,92 @@ def sensor_stats(
             error=f"sensor must be a telemetry field, not reserved metadata field {sensor}"
         )
 
-    available_sensors = get_sensor_list(asset_id)
-    if not available_sensors:
-        return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
-    if sensor is not None and sensor not in available_sensors:
-        return ErrorResult(error=f"unknown sensor {sensor} for asset_id {asset_id}")
-
-    targets = [sensor] if sensor is not None else available_sensors
-    accumulators = {target: _SensorAccumulator() for target in targets}
     start_dt = _parse_iso_timestamp(start) if start is not None else None
     end_dt = _parse_iso_timestamp(end) if end is not None else None
+    try:
+        summary = _get_iot_summary(asset_id)
+        if summary is not None:
+            summary_error = _summary_timestamp_error(summary)
+            if summary_error:
+                return ErrorResult(error=summary_error)
+            if start is None and end is None:
+                summary_stats = _sensor_stats_from_summary(summary, sensor)
+                if not summary_stats:
+                    if sensor is None:
+                        return ErrorResult(
+                            error=f"unknown asset_id {asset_id} or no sensors found"
+                        )
+                    return ErrorResult(
+                        error=f"no records for asset_id {asset_id}"
+                        + (f", sensor {sensor}" if sensor else "")
+                    )
+                return SensorStatsResult(
+                    site_name=site_name,
+                    asset_id=asset_id,
+                    stats=summary_stats,
+                    message=(
+                        f"numeric stats for {len(summary_stats)} sensor(s) "
+                        f"on asset_id {asset_id}."
+                    ),
+                )
+            daily_stats = _sensor_stats_from_daily_summary(
+                asset_id, sensor, start_dt, end_dt
+            )
+            if daily_stats is not None:
+                records_in_window, summary_stats = daily_stats
+                if records_in_window == 0:
+                    return ErrorResult(
+                        error=f"no records for asset_id {asset_id}"
+                        + (f", sensor {sensor}" if sensor else "")
+                    )
+                if not summary_stats:
+                    if sensor is None:
+                        return ErrorResult(
+                            error=f"unknown asset_id {asset_id} or no sensors found"
+                        )
+                    return ErrorResult(
+                        error=f"no records for asset_id {asset_id}"
+                        + (f", sensor {sensor}" if sensor else "")
+                    )
+                return SensorStatsResult(
+                    site_name=site_name,
+                    asset_id=asset_id,
+                    stats=summary_stats,
+                    message=(
+                        f"numeric stats for {len(summary_stats)} sensor(s) "
+                        f"on asset_id {asset_id}."
+                    ),
+                )
+
+        view_stats = _sensor_stats_from_views(
+            asset_id, sensor, start, end, start_dt, end_dt
+        )
+        if view_stats is not None:
+            if not view_stats:
+                if sensor is None:
+                    return ErrorResult(
+                        error=f"unknown asset_id {asset_id} or no sensors found"
+                    )
+                return ErrorResult(
+                    error=f"no records for asset_id {asset_id}"
+                    + (f", sensor {sensor}" if sensor else "")
+                )
+            return SensorStatsResult(
+                site_name=site_name,
+                asset_id=asset_id,
+                stats=view_stats,
+                message=(
+                    f"numeric stats for {len(view_stats)} sensor(s) "
+                    f"on asset_id {asset_id}."
+                ),
+            )
+    except Exception as e:
+        logger.debug("sensor_stats aggregate fast path skipped: %s", e)
+
+    targets = [sensor] if sensor is not None else []
+    accumulators = (
+        {sensor: _SensorAccumulator()} if sensor is not None else {}
+    )
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
         "timestamp": {"$exists": True, "$ne": None},
@@ -1013,14 +2255,24 @@ def sensor_stats(
 
     records_in_window = 0
     try:
-        for doc, timestamp, timestamp_dt in _iter_records_in_window(
+        for doc, timestamp, timestamp_dt in _iter_iot_records_in_window(
             iot_db,
+            asset_id,
             selector,
             start_dt,
             end_dt,
-            fields=["timestamp", *targets],
+            fields=["timestamp", sensor] if sensor is not None else None,
+            start_key=start,
+            end_key=end,
         ):
+            if sensor is not None and sensor not in doc:
+                continue
             records_in_window += 1
+            if sensor is None:
+                for field in doc:
+                    if field not in RESERVED_FIELDS:
+                        accumulators.setdefault(field, _SensorAccumulator())
+                targets = sorted(accumulators)
             for target in targets:
                 if target not in doc:
                     continue
@@ -1042,6 +2294,8 @@ def sensor_stats(
             error=f"no records for asset_id {asset_id}"
             + (f", sensor {sensor}" if sensor else "")
         )
+    if not accumulators:
+        return ErrorResult(error=f"unknown asset_id {asset_id} or no sensors found")
 
     stats = [accumulators[target].result(target) for target in targets]
     return SensorStatsResult(

@@ -105,7 +105,7 @@ def _iter_records(
     page_size: int = 1000,
 ) -> Iterator[Dict[str, Any]]:
     """Yield records matching a selector across paged query results."""
-    if not database:
+    if database is None:
         return
     if sort is None:
         sort = [{"asset_id": "asc"}, {"timestamp": "asc"}]
@@ -162,10 +162,15 @@ def _iter_records_in_window(
     start_dt: Optional[datetime],
     end_dt: Optional[datetime],
     fields: Optional[List[str]] = None,
+    start_key: Optional[str] = None,
+    end_key: Optional[str] = None,
 ) -> Iterator[Tuple[Dict[str, Any], str, datetime]]:
     """Yield timestamped records in a parsed half-open time window."""
+    query_selector = _selector_with_timestamp_window(
+        selector, start_dt, end_dt, start_key=start_key, end_key=end_key
+    )
     stream_is_aware: Optional[bool] = None
-    for doc in _iter_records(database, selector, fields=fields):
+    for doc in _iter_records(database, query_selector, fields=fields):
         timestamp = doc.get("timestamp")
         if timestamp is None:
             continue
@@ -197,6 +202,46 @@ def _iter_records_in_window(
         if end_dt is not None and timestamp_dt >= end_dt:
             continue
         yield doc, timestamp, timestamp_dt
+
+
+def _selector_with_timestamp_window(
+    selector: Dict[str, Any],
+    start_dt: Optional[datetime],
+    end_dt: Optional[datetime],
+    start_key: Optional[str] = None,
+    end_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return a selector that lets CouchDB use the asset/timestamp index.
+
+    Python still performs the exact datetime comparison after loading each row.
+    Offset-free bounds use the original ISO strings when available so CouchDB can
+    narrow the asset/timestamp index range. Offset-aware bounds keep the broad
+    non-null timestamp selector because lexical ordering is not equivalent to
+    instant ordering when offsets differ.
+    """
+    query_selector = dict(selector)
+    timestamp_condition: Dict[str, Any] = {"$gt": None}
+
+    bounds = [bound for bound in (start_dt, end_dt) if bound is not None]
+    if bounds and not any(_is_timezone_aware(bound) for bound in bounds):
+        if start_dt is not None:
+            timestamp_condition = {"$gte": start_key or start_dt.isoformat()}
+        if end_dt is not None:
+            timestamp_condition["$lt"] = end_key or end_dt.isoformat()
+
+    existing = query_selector.get("timestamp")
+    if isinstance(existing, dict):
+        merged = {
+            key: value
+            for key, value in existing.items()
+            if key not in {"$exists", "$ne"}
+        }
+        merged.update(timestamp_condition)
+        query_selector["timestamp"] = merged
+    else:
+        query_selector["timestamp"] = timestamp_condition
+
+    return query_selector
 
 
 def _coerce_finite_number(value: Any) -> Optional[float]:

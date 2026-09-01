@@ -24,6 +24,7 @@ def _couchdb_reachable() -> bool:
             url=url,
             user=username,
             password=password,
+            timeout=2,
         )
         registry = asset_db.find({"assetnum": "Chiller 6"}, limit=1)["docs"]
         return bool(registry)
@@ -45,9 +46,17 @@ def _iot_data_reachable() -> bool:
             url=url,
             user=username,
             password=password,
+            timeout=2,
         )
-        records = iot_db.find({"asset_id": "Chiller 6"}, limit=1)["docs"]
-        return bool(records)
+        startkey = json.dumps("iot:Chiller 6:")
+        endkey = json.dumps("iot:Chiller 6;")
+        rows = iot_db.all_docs(
+            startkey=startkey,
+            endkey=endkey,
+            inclusive_end=False,
+            limit=1,
+        )["rows"]
+        return bool(rows)
     except Exception:
         return False
 
@@ -108,9 +117,13 @@ def clear_iot_caches():
 
     iot_main._registry_sites_cache = None
     iot_main._sensor_list_cache = {}
+    iot_main._iot_summary_cache = {}
+    iot_main._iot_daily_summary_cache = {}
     yield
     iot_main._registry_sites_cache = None
     iot_main._sensor_list_cache = {}
+    iot_main._iot_summary_cache = {}
+    iot_main._iot_daily_summary_cache = {}
 
 
 async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:

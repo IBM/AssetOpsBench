@@ -26,6 +26,7 @@ import json
 import logging
 import math
 import os
+from datetime import datetime
 
 import pandas as pd
 import requests
@@ -193,6 +194,234 @@ def _normalise(doc, key, cfg, transform):
     return doc
 
 
+_IOT_RESERVED_FIELDS = {
+    "_id",
+    "_rev",
+    "asset_id",
+    "timestamp",
+    "dataset",
+    "type",
+    "doctype",
+}
+
+
+def _parse_iot_timestamp(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _iot_number(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _empty_iot_aggregate():
+    return {
+        "timestamped_records": 0,
+        "start_time": None,
+        "end_time": None,
+        "sensors": set(),
+        "coverage": {},
+        "stats": {},
+        "latest": None,
+    }
+
+
+def _empty_iot_summary(asset_id):
+    return {
+        "_id": f"iot_summary:{asset_id}",
+        "dataset": "iot",
+        "doctype": "iot_asset_summary",
+        "summary_asset_id": asset_id,
+        "invalid_timestamp_count": 0,
+        "mixed_timezone_awareness": False,
+        **_empty_iot_aggregate(),
+    }
+
+
+def _empty_iot_daily_summary(asset_id, day):
+    return {
+        "_id": f"iot_summary_day:{asset_id}:{day}",
+        "dataset": "iot",
+        "doctype": "iot_asset_daily_summary",
+        "summary_asset_id": asset_id,
+        "day": day,
+        **_empty_iot_aggregate(),
+    }
+
+
+def _add_iot_stat(stat, value, timestamp, timestamp_dt):
+    number = _iot_number(value)
+    if number is None:
+        stat["null_count"] += 1
+        return
+    stat["count"] += 1
+    stat["sum"] += number
+    stat["sumsq"] += number * number
+    stat["min"] = number if stat["min"] is None else min(stat["min"], number)
+    stat["max"] = number if stat["max"] is None else max(stat["max"], number)
+    if stat.get("_first_dt") is None or timestamp_dt < stat["_first_dt"]:
+        stat["_first_dt"] = timestamp_dt
+        stat["first_timestamp"] = timestamp
+    if stat.get("_last_dt") is None or timestamp_dt > stat["_last_dt"]:
+        stat["_last_dt"] = timestamp_dt
+        stat["last_timestamp"] = timestamp
+
+
+def _finalise_iot_stat(stat):
+    count = int(stat["count"])
+    mean = None
+    stddev = None
+    if count:
+        mean = stat["sum"] / count
+        variance = (stat["sumsq"] / count) - (mean * mean)
+        if math.isfinite(variance):
+            stddev = math.sqrt(max(variance, 0.0))
+    return {
+        "count": count,
+        "null_count": int(stat["null_count"]),
+        "min": stat["min"] if count else None,
+        "max": stat["max"] if count else None,
+        "mean": mean,
+        "stddev": stddev,
+        "first_timestamp": stat["first_timestamp"],
+        "last_timestamp": stat["last_timestamp"],
+    }
+
+
+def _add_iot_doc_to_aggregate(aggregate, doc, timestamp, timestamp_dt):
+    aggregate["timestamped_records"] += 1
+    if aggregate.get("_first_dt") is None or timestamp_dt < aggregate["_first_dt"]:
+        aggregate["_first_dt"] = timestamp_dt
+        aggregate["start_time"] = timestamp
+    if aggregate.get("_last_dt") is None or timestamp_dt > aggregate["_last_dt"]:
+        aggregate["_last_dt"] = timestamp_dt
+        aggregate["end_time"] = timestamp
+        aggregate["latest"] = {
+            "timestamp": timestamp,
+            "values": {
+                field: value
+                for field, value in doc.items()
+                if field not in _IOT_RESERVED_FIELDS
+            },
+        }
+
+    for field, value in doc.items():
+        if field in _IOT_RESERVED_FIELDS:
+            continue
+        aggregate["sensors"].add(field)
+        coverage = aggregate["coverage"].setdefault(
+            field,
+            {
+                "non_null_count": 0,
+                "first_timestamp": None,
+                "last_timestamp": None,
+                "_first_dt": None,
+                "_last_dt": None,
+                "latest_timestamp": None,
+                "latest_value": None,
+                "_latest_dt": None,
+            },
+        )
+        if value is not None:
+            coverage["non_null_count"] += 1
+            if coverage["_first_dt"] is None or timestamp_dt < coverage["_first_dt"]:
+                coverage["_first_dt"] = timestamp_dt
+                coverage["first_timestamp"] = timestamp
+            if coverage["_last_dt"] is None or timestamp_dt > coverage["_last_dt"]:
+                coverage["_last_dt"] = timestamp_dt
+                coverage["last_timestamp"] = timestamp
+            if coverage["_latest_dt"] is None or timestamp_dt > coverage["_latest_dt"]:
+                coverage["_latest_dt"] = timestamp_dt
+                coverage["latest_timestamp"] = timestamp
+                coverage["latest_value"] = value
+
+        stat = aggregate["stats"].setdefault(
+            field,
+            {
+                "count": 0,
+                "null_count": 0,
+                "min": None,
+                "max": None,
+                "sum": 0.0,
+                "sumsq": 0.0,
+                "first_timestamp": None,
+                "last_timestamp": None,
+                "_first_dt": None,
+                "_last_dt": None,
+            },
+        )
+        _add_iot_stat(stat, value, timestamp, timestamp_dt)
+
+
+def _finalise_iot_aggregate(aggregate):
+    aggregate["sensors"] = sorted(aggregate["sensors"])
+    aggregate["coverage"] = {
+        sensor: {
+            key: value
+            for key, value in coverage.items()
+            if not key.startswith("_")
+        }
+        for sensor, coverage in sorted(aggregate["coverage"].items())
+    }
+    aggregate["stats"] = {
+        sensor: _finalise_iot_stat(stat)
+        for sensor, stat in sorted(aggregate["stats"].items())
+    }
+    aggregate.pop("_first_dt", None)
+    aggregate.pop("_last_dt", None)
+    aggregate.pop("_timestamp_is_aware", None)
+
+
+def _make_iot_summary_docs(docs):
+    summaries = {}
+    daily_summaries = {}
+    for doc in docs:
+        if doc.get("doctype") in {"iot_asset_summary", "iot_asset_daily_summary"}:
+            continue
+        asset_id = doc.get("asset_id")
+        timestamp = doc.get("timestamp")
+        if not asset_id or timestamp is None:
+            continue
+        summary = summaries.setdefault(asset_id, _empty_iot_summary(asset_id))
+        timestamp_dt = _parse_iot_timestamp(timestamp)
+        if timestamp_dt is None:
+            summary["invalid_timestamp_count"] += 1
+            continue
+        timestamp_is_aware = timestamp_dt.utcoffset() is not None
+        if summary.get("_timestamp_is_aware") is None:
+            summary["_timestamp_is_aware"] = timestamp_is_aware
+        elif summary["_timestamp_is_aware"] != timestamp_is_aware:
+            summary["mixed_timezone_awareness"] = True
+            continue
+
+        _add_iot_doc_to_aggregate(summary, doc, timestamp, timestamp_dt)
+        day = timestamp_dt.date().isoformat()
+        daily = daily_summaries.setdefault(asset_id, {}).setdefault(
+            day, _empty_iot_daily_summary(asset_id, day)
+        )
+        _add_iot_doc_to_aggregate(daily, doc, timestamp, timestamp_dt)
+
+    out = []
+    for summary in summaries.values():
+        _finalise_iot_aggregate(summary)
+        out.append(summary)
+    for asset_daily_summaries in daily_summaries.values():
+        for daily in dict(sorted(asset_daily_summaries.items())).values():
+            _finalise_iot_aggregate(daily)
+            out.append(daily)
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # CouchDB I/O
 # --------------------------------------------------------------------------- #
@@ -284,11 +513,14 @@ def load_collection(key, source, drop=True, base_dir=None) -> tuple:
         _normalise(d, key, cfg, transform)
         for d in _collect_docs(key, source, cfg, base_dir)
     ]
+    docs_to_insert = list(docs)
+    if key == "iot" and docs:
+        docs_to_insert.extend(_make_iot_summary_docs(docs))
     db = key
     if docs:
         _ensure_db(db, drop=drop)
         if cfg.get("design_doc"):
             _install_design(db, cfg["design_doc"])
-        _bulk_insert(db, docs)
+        _bulk_insert(db, docs_to_insert)
         _create_indexes(db, cfg.get("indexes"))
     return db, len(docs)
