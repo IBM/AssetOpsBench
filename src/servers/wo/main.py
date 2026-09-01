@@ -405,13 +405,21 @@ _WRITE_TOOLS = [
 _TOOLS = (
     _READ_TOOLS if os.environ.get("AOB_READONLY") == "1" else _READ_TOOLS + _WRITE_TOOLS
 )
+_READ_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=True,
+)
+_WRITE_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=True,
+    idempotentHint=False,
+    openWorldHint=True,
+)
 _TOOL_ANNOTATIONS = {
-    get_failure_codes: ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=True,
-    )
+    **{fn: _READ_ANNOTATIONS for fn, _title in _READ_TOOLS},
+    **{fn: _WRITE_ANNOTATIONS for fn, _title in _WRITE_TOOLS},
 }
 for _fn, _title in _TOOLS:
     mcp.tool(title=_title, annotations=_TOOL_ANNOTATIONS.get(_fn))(_fn)
