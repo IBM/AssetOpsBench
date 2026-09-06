@@ -431,6 +431,12 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
         args, "stirrup_workspace_root", None
     ) is not None:
         stirrup_extra_args.append("--preserve-workspace")
+    skills_dir = getattr(args, "skills_dir", None)
+    if skills_dir is not None:
+        stirrup_extra_args.extend(["--skills-dir", str(skills_dir)])
+    k_level = getattr(args, "k_level", None)
+    if k_level is not None:
+        stirrup_extra_args.extend(["--k-level", k_level])
 
     opencode_extra_args: list[str] = []
     if args.opencode_allow_files:
@@ -776,6 +782,9 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print commands without executing them.",
     )
+    parser.add_argument("--skills-dir", type=Path, default=None)
+    parser.add_argument("--k-level", default="k0",
+                        choices=("k0", "k1", "k1-recovery"))
 
     return parser
 
