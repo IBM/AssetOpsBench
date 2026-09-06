@@ -193,6 +193,60 @@ def gate_frontmatter(root: pathlib.Path, rep: Report) -> None:
                     f"inconsistent licences within one skill tree: {sorted(lics)}")
 
 
+ROUTING_REQUIRED = ("schema_version", "repo_id", "skill_id",
+                    "taxonomy_sha256", "routing_status", "assignments")
+#: The digest is stored in URI form (`sha256:<64 hex>`). A bare hex digest is
+#: indistinguishable from a credential to an entropy scanner: `detect-secrets`'
+#: `HexHighEntropyString` flags one at 64, 32 and even 16 characters and blocks
+#: the commit. The prefix clears every scanner tested and names the algorithm at
+#: the point of use, so it is the better representation regardless.
+DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def gate_routing(root: pathlib.Path, rep: Report) -> None:
+    """Gate 1b: every graph declares where it routes, and against which taxonomy.
+
+    The router's area pages are generated from these files, so a graph cannot be
+    routable and undeclared. `taxonomy_sha256` is the pin saying which taxonomy
+    version the assignment was made against; without it a library can be
+    re-routed silently and two runs that read "the same" library stop being
+    comparable.
+    """
+    graphs_dir = root / "repo-skills"
+    if not graphs_dir.is_dir():
+        return
+    for graph in sorted(p for p in graphs_dir.iterdir()
+                        if p.is_dir() and (p / "SKILL.md").exists()):
+        meta = graph / "references" / "repo-routing-metadata.json"
+        rel = meta.relative_to(root).as_posix()
+        if not meta.exists():
+            rep.add("FAIL", graph.name, "missing references/repo-routing-metadata.json")
+            continue
+        try:
+            data = json.loads(meta.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            rep.add("FAIL", rel, f"not valid JSON: {exc}")
+            continue
+        for field in ROUTING_REQUIRED:
+            if field not in data or data[field] in ("", None, []):
+                rep.add("FAIL", rel, f"missing required routing field `{field}`")
+        if data.get("skill_id") not in (None, graph.name):
+            rep.add("FAIL", rel, f"skill_id `{data['skill_id']}` does not equal "
+                                 f"directory `{graph.name}`")
+        sha = str(data.get("taxonomy_sha256", ""))
+        if sha and not DIGEST_RE.fullmatch(sha):
+            if re.fullmatch(r"[0-9a-f]{64}", sha):
+                rep.add("FAIL", rel, "taxonomy_sha256 is a bare hex digest; write it "
+                                     "as `sha256:<digest>` so entropy scanners do not "
+                                     "read it as a credential")
+            else:
+                rep.add("FAIL", rel, "taxonomy_sha256 must be `sha256:` followed by "
+                                     "64 lowercase hex characters")
+        for i, asn in enumerate(data.get("assignments") or []):
+            if not isinstance(asn, dict) or not asn.get("area") or not asn.get("family"):
+                rep.add("FAIL", rel, f"assignment {i} needs both `area` and `family`")
+
+
 def gate_static(root: pathlib.Path, rep: Report) -> None:
     """Gate 2: self-containment, leakage of local paths, artifact debris."""
     for path in sorted(root.rglob("*")):
@@ -408,6 +462,7 @@ def main() -> int:
     _ANSWER_BLOBS = load_answer_blobs(a.answers, a.answers_dir, a.answers_hf,
                                       a.hf_config, a.hf_split, rep)
     gate_frontmatter(a.root, rep)
+    gate_routing(a.root, rep)
     gate_static(a.root, rep)
     gate_leakage(a.root, a.answers, rep)
     rep.print()

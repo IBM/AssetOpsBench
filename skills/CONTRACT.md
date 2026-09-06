@@ -83,14 +83,27 @@ derived from answers, and the validator fails it outright rather than warning.
   "schema_version": "2.0",
   "repo_id": "<org/repo, or practice/<graph-id> for a graph with no upstream>",
   "skill_id": "<graph-id>",
-  "taxonomy_sha256": "<the library's taxonomy hash>",
+  "taxonomy_sha256": "sha256:<64 lowercase hex characters>",
   "routing_status": "classified",
   "assignments": [{ "area": "<area>", "family": "<family>" }]
 }
 ```
 
 The router's area pages are generated from these files, so a graph cannot be
-routable and undeclared, or declared and unroutable.
+routable and undeclared, or declared and unroutable. `taxonomy_sha256` pins
+which taxonomy version the assignment was made against; without it a library can
+be re-routed silently and two runs that read "the same" library stop being
+comparable.
+
+**Write the digest in URI form**, `sha256:` followed by the hex, the same shape
+OCI image references and Subresource Integrity use. This is not decoration. A
+bare 64-character hex string is indistinguishable from a credential to an
+entropy scanner: this repository runs `detect-secrets`, whose
+`HexHighEntropyString` plugin flags a bare digest at 64, 32 and even 16
+characters and blocks the commit. The prefix clears every scanner tested and
+names the algorithm at the point of use, so it is the better representation
+regardless of the scanner. The validator enforces the form and says so by name
+if it finds a bare digest.
 
 ## `references/repo-provenance.md`
 
