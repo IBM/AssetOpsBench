@@ -4,9 +4,11 @@
 trajectory per scenario, and scores the results. This page is everything you
 need to get from a fresh clone to a leaderboard report.
 
-Related docs: [scenario_suite/README.md](scenario_suite/README.md) for scenario
+Related docs: [scenario_suite/README.md](../benchmarks/scenario_suite/README.md) for scenario
 selectors, [../docs/stirrup-agent.md](../docs/stirrup-agent.md) for the agent
-itself, [../INSTRUCTIONS.md](../INSTRUCTIONS.md) for the full environment table.
+itself, [../INSTRUCTIONS.md](../INSTRUCTIONS.md) for the full environment table,
+and [running_with_skills.md](running_with_skills.md) for running the same suite
+with an operating-knowledge library mounted, and measuring what it changed.
 
 ---
 
@@ -98,7 +100,7 @@ a selector — one id per line, `#` for comments:
 --scenario-ids my_scenarios.txt
 ```
 
-See [scenario_suite/README.md](scenario_suite/README.md) for the selector
+See [scenario_suite/README.md](../benchmarks/scenario_suite/README.md) for the selector
 grammar (`fcc_lite`, `fcc+fmsr_all`, `lite`, `all`).
 
 ### CouchDB

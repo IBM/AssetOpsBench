@@ -35,6 +35,10 @@ contract below and run the same three arms.
 
 ## Running it
 
+[docs/running_with_skills.md](../docs/running_with_skills.md) is the full guide:
+the three arms, a suite run, and how to measure the difference. The short version
+is below.
+
 ```bash
 # K0: unaided baseline. Mounts nothing, appends nothing to the prompt.
 uv run python -m agent.stirrup_agent.cli --workspace-dir ./ws-k0 \
@@ -82,6 +86,11 @@ costs the same prompt budget as a library of one.
 ```bash
 python skills/tools/validate_skills.py --root skills/repositories
 ```
+
+`skills/tools/` also holds `build_run_manifest.py`, which turns the benchmark's
+own reports and trajectories into a run manifest, and `gate5_counterfactual.py`,
+which measures `s(t) = score_K1(t) - score_K0(t)` from it. Both are described in
+[docs/running_with_skills.md](../docs/running_with_skills.md).
 
 Frontmatter contract, per-tree licence consistency, self-containment, and a
 leakage audit. Add `--answers` to point the leakage half at your answer set;
