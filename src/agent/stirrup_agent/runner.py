@@ -44,6 +44,7 @@ from ..runner import AgentRunner
 from .finish_tool import ASSETOPS_FINISH_TOOL
 from .trajectory import build_trajectory, classify_tool, final_answer
 from .handoff_tools import build_handoff_tools
+from .skills_mount import mount_skills
 
 _log = logging.getLogger(__name__)
 
@@ -165,6 +166,8 @@ class StirrupAgentRunner(AgentRunner):
         code_backend: str = "docker",
         workspace_dir: Path | str | None = None,
         preserve_workspace: bool = False,
+        skills_dir: Path | str | None = None,
+        k_level: str = "k0",
         max_turns: int = 30,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
@@ -187,6 +190,13 @@ class StirrupAgentRunner(AgentRunner):
                 "preserve_workspace is only supported with docker or local code backends"
             )
         self._preserve_workspace = preserve_workspace
+        self._k_level = k_level
+        self._skills_prompt = mount_skills(
+            skills_dir,
+            self._workspace_dir,
+            k_level=k_level,
+            code_backend=code_backend,
+        )
         self._max_turns = max_turns
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
@@ -296,16 +306,21 @@ class StirrupAgentRunner(AgentRunner):
         ]
 
     def _build_system_prompt(self) -> str:
-        """Append code-execution guidance when the code track is enabled."""
+        """Append code-execution guidance, then the skill router block."""
         if not self._code_enabled:
-            return AGENT_SYSTEM_PROMPT
-
-        backend_prompt = (
-            _DOCKER_CODE_EXEC_SYSTEM_PROMPT
-            if self._code_backend == "docker"
-            else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
-        )
-        return f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+            prompt = AGENT_SYSTEM_PROMPT
+        else:
+            backend_prompt = (
+                _DOCKER_CODE_EXEC_SYSTEM_PROMPT
+                if self._code_backend == "docker"
+                else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
+            )
+            prompt = (
+                f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+            )
+        if self._skills_prompt:
+            prompt = f"{prompt}\n{self._skills_prompt}"
+        return prompt
 
     # -- run ---------------------------------------------------------------
 
@@ -331,12 +346,13 @@ class StirrupAgentRunner(AgentRunner):
             )
 
             _log.info(
-                "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s, workspace=%s, preserve=%s)",
+                "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s, workspace=%s, preserve=%s, k_level=%s)",
                 self._model_id,
                 self._code_enabled,
                 self._code_backend,
                 self._workspace_dir,
                 self._preserve_workspace,
+                self._k_level,
             )
 
             async with agent.session() as session:
