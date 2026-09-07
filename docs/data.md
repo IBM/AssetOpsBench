@@ -60,6 +60,7 @@ src/couchdb/
     └── shared/                data common to many scenarios
         ├── work_order/workorders.csv
         ├── iot/*.json
+        ├── iot/*.csv
         └── failure_code/failure_code_sample.csv
 ```
 
