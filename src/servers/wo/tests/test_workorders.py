@@ -298,6 +298,21 @@ async def test_failure_code_mcp_tool_is_registered_read_only(monkeypatch) -> Non
 
 
 @pytest.mark.anyio
+async def test_workorder_tool_safety_annotations_cover_reads_and_writes() -> None:
+    tools = {tool.name: tool for tool in await main.mcp.list_tools()}
+
+    for fn, _title in main._READ_TOOLS:
+        annotations = tools[fn.__name__].annotations
+        assert annotations.readOnlyHint is True
+        assert annotations.destructiveHint is False
+
+    for fn, _title in main._WRITE_TOOLS:
+        annotations = tools[fn.__name__].annotations
+        assert annotations.readOnlyHint is False
+        assert annotations.destructiveHint is True
+
+
+@pytest.mark.anyio
 async def test_failure_code_mcp_boundary_returns_typed_database_error(
     monkeypatch,
 ) -> None:

@@ -209,37 +209,17 @@ def _parse_json_or_python(content: str) -> Any:
     return _PARSE_MISSING
 
 
-def _extract_count_from_text(content: str) -> int | float | None:
-    """Extract a count when the answer is count-only or nearly count-only."""
-    stripped = content.strip()
-
-    if re.fullmatch(r"-?\d+", stripped):
-        return int(stripped)
-
-    if re.fullmatch(r"-?\d+\.\d+", stripped):
-        return float(stripped)
-
-    numbers = re.findall(
-        r"(?<![A-Za-z0-9_])-?\d+(?:\.\d+)?(?![A-Za-z0-9_])",
-        stripped,
-    )
-    if len(numbers) == 1:
-        number = numbers[0]
-        return float(number) if "." in number else int(number)
-
-    return None
-
-
 def _extract_final_count_from_text(content: str) -> int | float | None:
-    """Extract a final standalone count from a noisy scalar answer."""
+    """Extract only an explicit final count from a scalar answer.
+
+    A unique number elsewhere in prose is not necessarily the answer. For example,
+    ``cannot complete because Step 1 failed`` must not score as the count ``1``.
+    """
     stripped = content.strip()
-    count = _extract_count_from_text(stripped)
-    if count is not None:
-        return count
 
     final_number = re.compile(
         r"^\s*(?:"
-        r"(?:final\s+answer|answer|count|result)\s*(?:is|:)?\s*"
+        r"(?:the\s+)?(?:final\s+answer|answer|count|result)\s*(?:is|:)?\s*"
         r")?(-?\d+(?:\.\d+)?)\s*\.?\s*$",
         flags=re.IGNORECASE,
     )
@@ -336,10 +316,6 @@ def parse_structured_answer(value: Any) -> Any:
             return parsed
 
     count = _extract_final_count_from_text(content)
-    if count is not None:
-        return count
-
-    count = _extract_count_from_text(content)
     if count is not None:
         return count
 

@@ -42,6 +42,12 @@ Rules:
 - Server and tool names must exactly match those listed above.
 - Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
 - Keep tasks specific and actionable.
+- When the question describes an identifier indirectly, first use an available
+  discovery or list tool to obtain the canonical identifier, then make the
+  consuming step depend on that evidence.
+- Do not plan a capability that no listed tool provides.
+- Use a "none" reasoning step only to derive an answer from earlier evidence,
+  and make its evidence dependencies explicit.
 
 Question: {question}
 

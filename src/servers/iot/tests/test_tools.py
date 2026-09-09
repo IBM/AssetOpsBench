@@ -26,6 +26,13 @@ class TestToolRegistration:
         ]
 
     @pytest.mark.anyio
+    async def test_all_iot_tools_are_advertised_read_only(self):
+        tools = await mcp.list_tools()
+
+        assert all(tool.annotations.readOnlyHint is True for tool in tools)
+        assert all(tool.annotations.destructiveHint is False for tool in tools)
+
+    @pytest.mark.anyio
     async def test_stream_extent_description_is_storage_neutral(self):
         tools = await mcp.list_tools()
         descriptions = {

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from agent.plan_execute.executor import (
     Executor,
+    _extract_tool_result,
+    _make_stdio_params,
     _parse_json,
     _parse_tool_call,
     _resolve_args,
@@ -96,6 +100,18 @@ class _CapturingLLM:
         return self._response
 
 
+class _RecordingSequentialLLM(LLMBackend):
+    """Records prompts while returning canned responses in order."""
+
+    def __init__(self, responses: list[str]) -> None:
+        self.prompts: list[str] = []
+        self._responses = iter(responses)
+
+    def generate(self, prompt: str, temperature: float = 0.0) -> str:
+        self.prompts.append(prompt)
+        return next(self._responses, "")
+
+
 # ── orchestrator tests ────────────────────────────────────────────────────────
 
 
@@ -144,6 +160,70 @@ async def test_orchestrator_unknown_server_recorded_as_error(sequential_llm):
     assert len(result.trajectory) == 1
     assert result.trajectory[0].success is False
     assert "ghost" in result.trajectory[0].error
+
+
+def test_orchestrator_adaptive_escalation_disabled_by_default(mock_llm):
+    runner = PlanExecuteRunner(mock_llm())
+
+    assert runner._adaptive_escalation is False
+
+
+@pytest.mark.anyio
+async def test_orchestrator_adaptive_escalation_no_extra_call_for_low_risk_plan():
+    plan = (
+        "#Task1: List sites\n"
+        "#Server1: iot\n"
+        "#Tool1: sites\n"
+        "#Dependency1: None\n"
+        "#ExpectedOutput1: Site list\n"
+    )
+    llm = _RecordingSequentialLLM([plan, "{}", _FINAL_ANSWER])
+
+    with _patch_mcp()[0], _patch_mcp()[1]:
+        result = await PlanExecuteRunner(llm, adaptive_escalation=True).run("Q")
+
+    assert result.answer == _FINAL_ANSWER
+    assert len(llm.prompts) == 3
+    assert not any("Verification notes" in prompt for prompt in llm.prompts)
+
+
+@pytest.mark.anyio
+async def test_orchestrator_adaptive_escalation_runs_verification_when_enabled():
+    plan = (
+        "#Task1: Check vibration trend\n"
+        "#Server1: vibration\n"
+        "#Tool1: analyze\n"
+        "#Dependency1: None\n"
+        "#ExpectedOutput1: Vibration analysis\n"
+    )
+    verification = "Verification: evidence is limited."
+    final_answer = "Final answer with verification."
+    llm = _RecordingSequentialLLM([plan, "{}", verification, final_answer])
+    mutating_tool = {
+        "name": "analyze",
+        "description": "Analyze and record a vibration assessment",
+        "parameters": [],
+        "annotations": {"read_only": False, "destructive": True},
+    }
+
+    with (
+        patch(
+            "agent.plan_execute.executor._list_tools",
+            new=AsyncMock(return_value=[mutating_tool]),
+        ),
+        patch(
+            "agent.plan_execute.executor._call_tool",
+            new=AsyncMock(side_effect=RuntimeError("write outcome unknown")),
+        ),
+    ):
+        result = await PlanExecuteRunner(llm, adaptive_escalation=True).run("Q")
+
+    assert result.answer == final_answer
+    assert len(llm.prompts) == 4
+    assert "Escalation reasons:" in llm.prompts[2]
+    assert "automatic retry prohibited by tool safety" in llm.prompts[2]
+    assert verification in llm.prompts[3]
+    assert result.escalation_action == "verify"
 
 
 class _UsageReportingLLM(LLMBackend):
@@ -201,6 +281,16 @@ async def test_orchestrator_no_tool_returns_expected_output(sequential_llm):
 # ── executor unit tests ───────────────────────────────────────────────────────
 
 
+def test_entry_point_server_receives_checkout_pythonpath():
+    params = _make_stdio_params("utilities-mcp-server")
+
+    repo_root = Path(__file__).resolve().parents[3]
+    assert params.command == "uv"
+    assert params.args == ["run", "utilities-mcp-server"]
+    assert params.cwd == str(repo_root)
+    assert params.env == {"PYTHONPATH": str(repo_root / "src")}
+
+
 @pytest.mark.anyio
 async def test_executor_unknown_server(mock_llm):
     executor = Executor(mock_llm(""), server_paths={})
@@ -243,6 +333,19 @@ async def test_executor_no_tool_step_skips_llm():
     assert result.response == "42"
     assert result.success is True
     assert llm.prompts == []  # LLM was never called
+
+
+@pytest.mark.anyio
+async def test_executor_no_tool_step_does_not_require_registered_server():
+    llm = _CapturingLLM()
+    executor = Executor(llm, server_paths={})
+
+    step = _make_step(1, server="none", tool="none", expected_output="42")
+    result = await executor.execute_step(step, {}, "Q")
+
+    assert result.response == "42"
+    assert result.success is True
+    assert llm.prompts == []
 
 
 @pytest.mark.anyio
@@ -291,6 +394,33 @@ async def test_executor_tool_call_exception_recorded_as_error(sequential_llm):
 
     assert result.success is False
     assert "timeout" in result.error
+
+
+@pytest.mark.anyio
+async def test_executor_omits_null_optional_args(sequential_llm):
+    llm = sequential_llm(
+        ['{"site_id": "MAIN", "page_size": null, "page_num": null}']
+    )
+    executor = Executor(llm, server_paths={"wo": Path("/fake/server.py")})
+    step = _make_step(1, server="wo", tool="list_workorders")
+    call_mock = AsyncMock(return_value="{}")
+
+    with patch("agent.plan_execute.executor._call_tool", new=call_mock):
+        result = await executor.execute_step(step, {}, "List work orders")
+
+    assert result.success is True
+    assert result.tool_args == {"site_id": "MAIN"}
+    assert call_mock.call_args.args[2] == {"site_id": "MAIN"}
+
+
+def test_extract_tool_result_raises_for_mcp_error():
+    result = SimpleNamespace(
+        isError=True,
+        content=[SimpleNamespace(text="argument validation failed")],
+    )
+
+    with pytest.raises(RuntimeError, match="argument validation failed"):
+        _extract_tool_result(result)
 
 
 @pytest.mark.anyio
@@ -517,6 +647,24 @@ async def test_resolve_args_with_llm_schema_in_prompt():
         "Q", "List assets", "assets", "site_name: string", {}, llm
     )
     assert "site_name: string" in llm.prompts[0]
+
+
+@pytest.mark.anyio
+async def test_resolve_args_prompt_omits_invented_optional_filters():
+    llm = _CapturingLLM('{}')
+    await _resolve_args_with_llm(  # type: ignore[arg-type]
+        "Count all work orders",
+        "List work orders",
+        "list_workorders",
+        "status: string?",
+        {},
+        llm,
+        tool_description="status accepts OPEN / APPROVED_PENDING",
+    )
+
+    assert "Treat optional parameters as filters" in llm.prompts[0]
+    assert "Never invent a placeholder value" in llm.prompts[0]
+    assert "status accepts OPEN / APPROVED_PENDING" in llm.prompts[0]
 
 
 @pytest.mark.anyio
