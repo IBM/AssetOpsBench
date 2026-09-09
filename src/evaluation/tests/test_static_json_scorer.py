@@ -557,3 +557,25 @@ def test_static_json_scorer_uses_car_metadata_score():
     assert result.passed is True
     assert result.score == 1.0
     assert result.details["car_score"] == 1.0
+
+
+def test_digit_inside_an_asset_name_is_not_a_count():
+    """A number inside a name is not a count.
+
+    `_extract_count_from_text` accepted any text containing exactly one number,
+    so "Chiller 6" parsed as 6. Two differently-named assets then compared equal
+    on the digit, and a wrong asset scored as a perfect match while a different
+    wrong asset scored zero.
+    """
+    assert parse_structured_answer("Chiller 6") == "Chiller 6"
+    assert parse_structured_answer("Boiler 6") == "Boiler 6"
+    assert parse_structured_answer("Chiller 6") != parse_structured_answer("Boiler 6")
+
+
+def test_count_only_answers_still_parse_as_counts():
+    """The intended behaviour is preserved: count-only or nearly count-only."""
+    assert parse_structured_answer("6") == 6
+    assert parse_structured_answer("  6  ") == 6
+    assert parse_structured_answer("The count is 6") == 6
+    assert parse_structured_answer("Answer: 6.") == 6
+    assert parse_structured_answer("3.5") == 3.5
