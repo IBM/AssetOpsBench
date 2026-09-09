@@ -193,8 +193,14 @@ uv run evaluate \
   [--reports-dir DIR]            # default: reports/
   [--scorer-default NAME]        # default: llm_judge
   [--judge-model MODEL_ID]       # required when llm_judge runs
+  [--charts]                     # optional SVG/PNG leaderboards
   [-v]
 ```
+
+`--charts` derives one leaderboard per runner from the completed
+`EvalReport` and writes it under `<reports-dir>/charts`. See
+[Leaderboard chart generation](2026-08-09_leaderboard-charts.md) for the
+optional dependency, aggregation rules, outputs, and accessibility measures.
 
 
 ## Available scorers in this branch
