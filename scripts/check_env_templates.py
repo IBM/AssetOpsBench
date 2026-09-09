@@ -43,8 +43,17 @@ ENV_FILE_RE = re.compile(r"(^|/)\.?env(\.|$)")
 # that value may take. Add a key here only when the value is a public,
 # non-secret default such as a documented service endpoint.
 ALLOWED_DEFAULTS = {
+    # Public service endpoints.
     "WATSONX_URL": re.compile(r"^https://[a-z0-9.-]+\.cloud\.ibm\.com/?$"),
     "TOKENROUTER_BASE_URL": re.compile(r"^https://api\.tokenrouter\.com/v1/?$"),
+    # Local-only CouchDB defaults. Loopback hosts only, never a remote host.
+    "COUCHDB_URL": re.compile(r"^https?://(localhost|127\.0\.0\.1)(:[0-9]{2,5})?/?$"),
+    "COUCHDB_USERNAME": re.compile(r"^admin$"),
+    # Non-secret identifiers: database names and the runner image tag.
+    "IOT_DBNAME": re.compile(r"^[a-z0-9_-]{1,40}$"),
+    "WO_DBNAME": re.compile(r"^[a-z0-9_-]{1,40}$"),
+    "FAILURE_CODE_DBNAME": re.compile(r"^[a-z0-9_-]{1,40}$"),
+    "STIRRUP_CODE_IMAGE": re.compile(r"^[a-z0-9._/-]{1,60}(:[a-zA-Z0-9._-]{1,40})?$"),
 }
 
 # Key names that must ALWAYS be empty, even if someone adds them to
