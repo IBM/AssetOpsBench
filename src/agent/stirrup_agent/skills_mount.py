@@ -117,26 +117,36 @@ def mount_path(code_backend: str = "docker") -> str:
     return "/workspace/skills" if code_backend == "docker" else "skills"
 
 
-def copy_skills_into(skills_source: Path | str, exec_dir: Path | str) -> int:
-    """Copy the library into the live code-execution directory.
+def copy_tree_into(
+    source: Path | str, exec_dir: Path | str, name: str = "skills"
+) -> int:
+    """Copy a tree into the live code-execution directory under ``name``.
 
     ``exec_dir`` is the directory the sandbox exposes as ``/workspace``. It is
     the provider's ``temp_dir``, a child of ``temp_base_dir``, and it does not
     exist until the provider is entered. Copying into ``temp_base_dir`` instead
-    puts the library one level above the mount, where the agent cannot see it.
+    puts the tree one level above the mount, where the agent cannot see it.
+
+    Returns the number of ``SKILL.md`` files mounted, which is what both the
+    skill library and the turn router index by.
     """
-    source = Path(skills_source).expanduser().resolve()
-    destination = Path(exec_dir).expanduser().resolve() / "skills"
+    src = Path(source).expanduser().resolve()
+    destination = Path(exec_dir).expanduser().resolve() / name
     if destination.exists():
         shutil.rmtree(destination)
-    shutil.copytree(source, destination, ignore=_IGNORE)
+    shutil.copytree(src, destination, ignore=_IGNORE)
     # The sandbox may run as a different uid than the process doing the copy.
     for path in destination.rglob("*"):
         path.chmod(0o755 if path.is_dir() else 0o644)
     destination.chmod(0o755)
     n = sum(1 for _ in destination.rglob("SKILL.md"))
-    _log.info("mounted %d skills from %s into %s", n, source, destination)
+    _log.info("mounted %s (%d SKILL.md) from %s into %s", name, n, src, destination)
     return n
+
+
+def copy_skills_into(skills_source: Path | str, exec_dir: Path | str) -> int:
+    """Mount the skill library at ``<exec dir>/skills``."""
+    return copy_tree_into(skills_source, exec_dir, name="skills")
 
 
 def mount_skills(

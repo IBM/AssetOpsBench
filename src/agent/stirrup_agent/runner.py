@@ -44,7 +44,9 @@ from ..runner import AgentRunner
 from .finish_tool import ASSETOPS_FINISH_TOOL
 from .trajectory import build_trajectory, classify_tool, final_answer
 from .handoff_tools import build_handoff_tools
-from .skills_mount import copy_skills_into, resolve_skills_source, skills_prompt
+from .skills_mount import copy_tree_into, resolve_skills_source, skills_prompt
+from .turns_mount import MOUNT_NAME as _TURNS_MOUNT_NAME
+from .turns_mount import resolve_m_level, turns_prompt
 
 _log = logging.getLogger(__name__)
 
@@ -111,31 +113,38 @@ def _copy_workspace_contents(source: Path, destination: Path) -> None:
             shutil.copy2(item, target)
 
 
-def _skill_mounting_provider_class(provider_cls):
-    """Copy the skill library into the exec directory once it exists.
+def _mounting_provider_class(provider_cls):
+    """Copy one or more trees into the exec directory once it exists.
 
     The provider creates ``temp_dir`` under ``temp_base_dir`` when it is
     entered, and that child is what the sandbox exposes as ``/workspace``. The
     copy therefore has to happen here, not in ``__init__``.
+
+    ``mounts`` is a list of ``(source, name)`` pairs, so the skill library and
+    the dialog's earlier turns take the same path into the workspace.
     """
 
-    class _SkillMountingCodeExecToolProvider(provider_cls):
-        def __init__(self, *args, skills_source: Path, **kwargs) -> None:
+    class _MountingCodeExecToolProvider(provider_cls):
+        def __init__(self, *args, mounts: list[tuple[Path, str]], **kwargs) -> None:
             super().__init__(*args, **kwargs)
-            self._assetops_skills_source = skills_source
+            self._assetops_mounts = mounts
 
         async def __aenter__(self):
             result = await super().__aenter__()
             temp_dir = self.temp_dir
             if temp_dir is None or not Path(temp_dir).is_dir():
                 raise RuntimeError(
-                    "code-exec provider exposed no temp_dir after entry, so the "
-                    "skill library cannot be mounted where the agent reads it"
+                    "code-exec provider exposed no temp_dir after entry, so "
+                    f"{len(self._assetops_mounts)} mount(s) cannot be placed "
+                    "where the agent reads them"
                 )
-            copy_skills_into(self._assetops_skills_source, temp_dir)
+            for source, name in self._assetops_mounts:
+                copy_tree_into(source, temp_dir, name=name)
             return result
 
-    return _SkillMountingCodeExecToolProvider
+    return _MountingCodeExecToolProvider
+
+
 
 
 def _preserving_provider_class(provider_cls):
@@ -195,6 +204,9 @@ class StirrupAgentRunner(AgentRunner):
         preserve_workspace: bool = False,
         skills_dir: Path | str | None = None,
         k_level: str = "k0",
+        turns_dir: Path | str | None = None,
+        m_level: str = "m0",
+        turn: int = 1,
         max_turns: int = 30,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
@@ -228,6 +240,28 @@ class StirrupAgentRunner(AgentRunner):
             self._skills_source,
             k_level=k_level,
             code_backend=code_backend,
+        )
+
+        self._turn = turn
+        self._m_level = m_level
+        wants_turns = resolve_m_level(m_level, turn)
+        if wants_turns and turns_dir is None:
+            raise ValueError(
+                f"m_level={m_level} at turn {turn} requires the staged earlier "
+                "turns; pass turns_dir"
+            )
+        self._turns_source = (
+            Path(turns_dir).expanduser().resolve() if wants_turns else None
+        )
+        if self._turns_source is not None and not self._turns_source.is_dir():
+            raise ValueError(f"turns source is not a directory: {self._turns_source}")
+        if self._turns_source is not None and not code_enabled:
+            raise ValueError(
+                "earlier turns mount into the code-execution workspace; "
+                f"m_level={m_level} requires the code track, not --no-code"
+            )
+        self._turns_prompt = turns_prompt(
+            turn, m_level=m_level, code_backend=code_backend
         )
         self._max_turns = max_turns
         self._temperature = temperature
@@ -311,8 +345,12 @@ class StirrupAgentRunner(AgentRunner):
         else:
             from stirrup.tools.code_backends.docker import DockerCodeExecToolProvider
 
-            # K0 keeps the original construction path untouched.
-            if not self._preserve_workspace and self._skills_source is None:
+            # K0/M0 keeps the original construction path untouched.
+            if (
+                not self._preserve_workspace
+                and self._skills_source is None
+                and self._turns_source is None
+            ):
                 return DockerCodeExecToolProvider.from_image(
                     _DEFAULT_CODE_IMAGE,
                     temp_base_dir=self._workspace_dir,
@@ -324,9 +362,14 @@ class StirrupAgentRunner(AgentRunner):
         if self._preserve_workspace:
             provider_cls = _preserving_provider_class(provider_cls)
             kwargs["preserve_dir"] = self._workspace_dir
+        mounts: list[tuple[Path, str]] = []
         if self._skills_source is not None:
-            provider_cls = _skill_mounting_provider_class(provider_cls)
-            kwargs["skills_source"] = self._skills_source
+            mounts.append((self._skills_source, "skills"))
+        if self._turns_source is not None:
+            mounts.append((self._turns_source, _TURNS_MOUNT_NAME))
+        if mounts:
+            provider_cls = _mounting_provider_class(provider_cls)
+            kwargs["mounts"] = mounts
         return provider_cls(*args, **kwargs)
 
     def _build_tools(self) -> list:
@@ -355,6 +398,8 @@ class StirrupAgentRunner(AgentRunner):
             )
         if self._skills_prompt:
             prompt = f"{prompt}\n{self._skills_prompt}"
+        if self._turns_prompt:
+            prompt = f"{prompt}\n{self._turns_prompt}"
         return prompt
 
     # -- run ---------------------------------------------------------------

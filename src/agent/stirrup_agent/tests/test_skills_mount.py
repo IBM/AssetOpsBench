@@ -9,6 +9,7 @@ as an unaided K0 run while being labelled K1.
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 
 import pytest
@@ -102,7 +103,7 @@ def test_recovery_prompt_defers_the_library(library: Path) -> None:
 
 def test_provider_wrapper_copies_after_entry(library: Path, tmp_path: Path) -> None:
     """The wrapper must copy into temp_dir, which only exists after entry."""
-    from agent.stirrup_agent.runner import _skill_mounting_provider_class
+    from agent.stirrup_agent.runner import _mounting_provider_class
 
     base = tmp_path / "ws"
     base.mkdir()
@@ -122,10 +123,10 @@ def test_provider_wrapper_copies_after_entry(library: Path, tmp_path: Path) -> N
         async def __aexit__(self, *exc) -> None:
             return None
 
-    wrapped = _skill_mounting_provider_class(_FakeProvider)
+    wrapped = _mounting_provider_class(_FakeProvider)
 
     async def _run() -> Path:
-        async with wrapped(temp_base_dir=base, skills_source=library) as provider:
+        async with wrapped(temp_base_dir=base, mounts=[(library, "skills")]) as provider:
             return provider.temp_dir
 
     exec_dir = asyncio.run(_run())
@@ -137,7 +138,7 @@ def test_provider_wrapper_copies_after_entry(library: Path, tmp_path: Path) -> N
 def test_wrapper_refuses_a_provider_without_a_temp_dir(
     library: Path, tmp_path: Path
 ) -> None:
-    from agent.stirrup_agent.runner import _skill_mounting_provider_class
+    from agent.stirrup_agent.runner import _mounting_provider_class
 
     class _NoTempDirProvider:
         def __init__(self, **kwargs) -> None:
@@ -149,11 +150,179 @@ def test_wrapper_refuses_a_provider_without_a_temp_dir(
         async def __aexit__(self, *exc) -> None:
             return None
 
-    wrapped = _skill_mounting_provider_class(_NoTempDirProvider)
+    wrapped = _mounting_provider_class(_NoTempDirProvider)
 
     async def _run() -> None:
-        async with wrapped(skills_source=library):
+        async with wrapped(mounts=[(library, "skills")]):
             pass
 
     with pytest.raises(RuntimeError, match="no temp_dir"):
         asyncio.run(_run())
+
+
+# -- preserve_workspace, and its interaction with the mount -----------------
+
+
+class _FakeStirrupProvider:
+    """The Stirrup contract both wrappers depend on.
+
+    ``temp_dir`` is a child of ``temp_base_dir``, created on entry and removed
+    on exit. ``_fix_file_ownership`` exists because the sandbox writes as a
+    different uid.
+    """
+
+    def __init__(self, *, temp_base_dir: Path) -> None:
+        self._base = Path(temp_base_dir)
+        self.temp_dir: Path | None = None
+        self.ownership_fixed = False
+        self.cleaned_up = False
+
+    async def __aenter__(self):
+        self.temp_dir = self._base / "stirrup_agent" / "run-1" / "exec-1"
+        self.temp_dir.mkdir(parents=True)
+        return self
+
+    async def _fix_file_ownership(self) -> None:
+        self.ownership_fixed = True
+
+    async def __aexit__(self, *exc) -> None:
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        self.cleaned_up = True
+
+    def agent_writes(self, name: str, text: str) -> None:
+        (self.temp_dir / name).write_text(text)
+
+
+def _compose(preserve: bool, skills: bool):
+    """Mirror _build_code_provider's wrapper order."""
+    from agent.stirrup_agent.runner import (
+        _mounting_provider_class,
+        _preserving_provider_class,
+    )
+
+    cls = _FakeStirrupProvider
+    if preserve:
+        cls = _preserving_provider_class(cls)
+    if skills:
+        cls = _mounting_provider_class(cls)
+    return cls
+
+
+def _run(cls, *, base: Path, writes: dict[str, str], **kwargs) -> _FakeStirrupProvider:
+    async def _go():
+        async with cls(temp_base_dir=base, **kwargs) as provider:
+            for name, text in writes.items():
+                provider.agent_writes(name, text)
+            return provider
+
+    return asyncio.run(_go())
+
+
+def test_preserve_alone_keeps_agent_output_after_cleanup(tmp_path: Path) -> None:
+    base = tmp_path / "ws-k0"
+    base.mkdir()
+
+    provider = _run(
+        _compose(preserve=True, skills=False),
+        base=base,
+        writes={"answer.txt": "42"},
+        preserve_dir=base,
+    )
+
+    assert provider.cleaned_up
+    assert not provider.temp_dir.exists()
+    assert (base / "answer.txt").read_text() == "42"
+    assert provider.ownership_fixed
+
+
+def test_preserve_and_skills_compose(tmp_path: Path, library: Path) -> None:
+    """Both wrappers on one provider: mount on entry, preserve on exit."""
+    base = tmp_path / "ws-k1"
+    base.mkdir()
+
+    provider = _run(
+        _compose(preserve=True, skills=True),
+        base=base,
+        writes={"answer.txt": "42"},
+        preserve_dir=base,
+        mounts=[(library, "skills")],
+    )
+
+    # The agent's own output survives.
+    assert (base / "answer.txt").read_text() == "42"
+    # And the exec dir is gone, so anything left is what preserve copied.
+    assert not provider.temp_dir.exists()
+
+
+def test_preserve_captures_files_written_after_the_mount(
+    tmp_path: Path, library: Path
+) -> None:
+    """The mount happens on entry; preserve must still catch later writes."""
+    base = tmp_path / "ws-k1"
+    base.mkdir()
+
+    _run(
+        _compose(preserve=True, skills=True),
+        base=base,
+        writes={"late.txt": "written after the library was mounted"},
+        preserve_dir=base,
+        mounts=[(library, "skills")],
+    )
+
+    assert (base / "late.txt").is_file()
+
+
+def test_preserve_copies_the_mounted_library_too(
+    tmp_path: Path, library: Path
+) -> None:
+    """Documents current behaviour: the library lands in the preserved dir.
+
+    This is what makes `ls <ws>/skills` evidence that the mount reached the
+    agent. It also means the preserved workspace mixes a mounted *input* with
+    the agent's *outputs*, and that the library is duplicated once per
+    preserved run.
+    """
+    base = tmp_path / "ws-k1"
+    base.mkdir()
+
+    _run(
+        _compose(preserve=True, skills=True),
+        base=base,
+        writes={},
+        preserve_dir=base,
+        mounts=[(library, "skills")],
+    )
+
+    assert (base / "skills" / "repo-skills-router" / "SKILL.md").is_file()
+
+
+def test_k0_preserve_leaves_no_skills_behind(tmp_path: Path) -> None:
+    """The contamination check the docs rely on, as a test."""
+    base = tmp_path / "ws-k0"
+    base.mkdir()
+
+    _run(
+        _compose(preserve=True, skills=False),
+        base=base,
+        writes={"answer.txt": "42"},
+        preserve_dir=base,
+    )
+
+    assert not (base / "skills").exists()
+
+
+def test_preserve_does_not_recurse_into_itself(tmp_path: Path, library: Path) -> None:
+    """preserve_dir is the parent of temp_dir, so the copy walks into itself."""
+    base = tmp_path / "ws-k1"
+    base.mkdir()
+
+    _run(
+        _compose(preserve=True, skills=True),
+        base=base,
+        writes={"answer.txt": "42"},
+        preserve_dir=base,
+        mounts=[(library, "skills")],
+    )
+
+    depth = max(len(p.relative_to(base).parts) for p in base.rglob("*"))
+    assert depth < 8
