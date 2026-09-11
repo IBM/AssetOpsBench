@@ -61,37 +61,100 @@ through {mount}/repo-skills-router/SKILL.md rather than browsing.
 """
 
 
+_IGNORE = shutil.ignore_patterns(
+    "__pycache__", "*.pyc", ".git", "tests", "reports", "test-cases"
+)
+
+
+def resolve_skills_source(
+    skills_source: Path | str | None, k_level: str = "k1"
+) -> Path | None:
+    """Validate the requested library and return it, or None when unused.
+
+    Returns None for ``k0``. Raises when ``k1``/``k1-recovery`` is requested
+    without a usable library, so a run can never be labelled K1 while silently
+    behaving as K0.
+    """
+    if k_level not in K_LEVELS:
+        raise ValueError(f"k_level must be one of {K_LEVELS}, got {k_level!r}")
+    if k_level == "k0":
+        if skills_source is not None:
+            _log.warning("k_level=k0 ignores --skills-dir %s", skills_source)
+        return None
+    if skills_source is None:
+        raise ValueError(
+            f"k_level={k_level} requires a skill library; pass --skills-dir "
+            "at the directory holding repo-skills/ and repo-skills-router/"
+        )
+    source = Path(skills_source).expanduser().resolve()
+    if not source.is_dir():
+        raise ValueError(f"skills source is not a directory: {source}")
+    if not (source / "repo-skills-router" / "SKILL.md").is_file():
+        raise ValueError(
+            f"no repo-skills-router/SKILL.md under {source}; --skills-dir must "
+            "point at the directory holding repo-skills/ and repo-skills-router/"
+        )
+    return source
+
+
+def skills_prompt(
+    skills_source: Path | None,
+    k_level: str = "k1",
+    code_backend: str = "docker",
+) -> str | None:
+    """Return the system-prompt block for the mount, or None for ``k0``."""
+    if k_level not in K_LEVELS:
+        raise ValueError(f"k_level must be one of {K_LEVELS}, got {k_level!r}")
+    if k_level == "k0" or skills_source is None:
+        return None
+    mount = mount_path(code_backend)
+    template = _RECOVERY_PROMPT if k_level == "k1-recovery" else _SKILLS_PROMPT
+    return template.format(mount=mount)
+
+
+def mount_path(code_backend: str = "docker") -> str:
+    """The path the agent sees, which is the exec directory, not its parent."""
+    return "/workspace/skills" if code_backend == "docker" else "skills"
+
+
+def copy_skills_into(skills_source: Path | str, exec_dir: Path | str) -> int:
+    """Copy the library into the live code-execution directory.
+
+    ``exec_dir`` is the directory the sandbox exposes as ``/workspace``. It is
+    the provider's ``temp_dir``, a child of ``temp_base_dir``, and it does not
+    exist until the provider is entered. Copying into ``temp_base_dir`` instead
+    puts the library one level above the mount, where the agent cannot see it.
+    """
+    source = Path(skills_source).expanduser().resolve()
+    destination = Path(exec_dir).expanduser().resolve() / "skills"
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(source, destination, ignore=_IGNORE)
+    # The sandbox may run as a different uid than the process doing the copy.
+    for path in destination.rglob("*"):
+        path.chmod(0o755 if path.is_dir() else 0o644)
+    destination.chmod(0o755)
+    n = sum(1 for _ in destination.rglob("SKILL.md"))
+    _log.info("mounted %d skills from %s into %s", n, source, destination)
+    return n
+
+
 def mount_skills(
     skills_source: Path | str | None,
     workspace_dir: Path | None,
     k_level: str = "k1",
     code_backend: str = "docker",
 ) -> str | None:
-    """Copy the skill tree into the workspace and return the prompt block.
+    """Deprecated. Copies beside the exec directory, so the agent never sees it.
 
-    Returns None when nothing should be appended to the system prompt, which is
-    the case for ``k0`` and whenever the source is absent.
+    Kept only so out-of-tree callers fail loudly rather than silently mounting
+    into the wrong directory. Use :func:`resolve_skills_source`,
+    :func:`skills_prompt` and :func:`copy_skills_into`.
     """
-    if k_level not in K_LEVELS:
-        raise ValueError(f"k_level must be one of {K_LEVELS}, got {k_level!r}")
-    if k_level == "k0" or skills_source is None:
-        return None
-
-    source = Path(skills_source).expanduser().resolve()
-    if not source.is_dir():
-        raise ValueError(f"skills source is not a directory: {source}")
-    if workspace_dir is None:
-        raise ValueError("workspace_dir is required when skills are mounted")
-
-    destination = Path(workspace_dir).expanduser().resolve() / "skills"
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source, destination, ignore=shutil.ignore_patterns(
-        "__pycache__", "*.pyc", ".git", "tests", "reports", "test-cases"))
-
-    mount = "/workspace/skills" if code_backend == "docker" else "skills"
-    n = sum(1 for _ in destination.rglob("SKILL.md"))
-    _log.info("mounted %d skills from %s at %s (k_level=%s)", n, source, mount, k_level)
-
-    template = _RECOVERY_PROMPT if k_level == "k1-recovery" else _SKILLS_PROMPT
-    return template.format(mount=mount)
+    raise NotImplementedError(
+        "mount_skills copied the library into temp_base_dir, which is the "
+        "parent of the directory exposed as /workspace. Use "
+        "resolve_skills_source() + skills_prompt() at construction time and "
+        "copy_skills_into(source, provider.temp_dir) after the provider is "
+        "entered."
+    )

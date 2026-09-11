@@ -44,7 +44,7 @@ from ..runner import AgentRunner
 from .finish_tool import ASSETOPS_FINISH_TOOL
 from .trajectory import build_trajectory, classify_tool, final_answer
 from .handoff_tools import build_handoff_tools
-from .skills_mount import mount_skills
+from .skills_mount import copy_skills_into, resolve_skills_source, skills_prompt
 
 _log = logging.getLogger(__name__)
 
@@ -109,6 +109,33 @@ def _copy_workspace_contents(source: Path, destination: Path) -> None:
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(item, target)
+
+
+def _skill_mounting_provider_class(provider_cls):
+    """Copy the skill library into the exec directory once it exists.
+
+    The provider creates ``temp_dir`` under ``temp_base_dir`` when it is
+    entered, and that child is what the sandbox exposes as ``/workspace``. The
+    copy therefore has to happen here, not in ``__init__``.
+    """
+
+    class _SkillMountingCodeExecToolProvider(provider_cls):
+        def __init__(self, *args, skills_source: Path, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self._assetops_skills_source = skills_source
+
+        async def __aenter__(self):
+            result = await super().__aenter__()
+            temp_dir = self.temp_dir
+            if temp_dir is None or not Path(temp_dir).is_dir():
+                raise RuntimeError(
+                    "code-exec provider exposed no temp_dir after entry, so the "
+                    "skill library cannot be mounted where the agent reads it"
+                )
+            copy_skills_into(self._assetops_skills_source, temp_dir)
+            return result
+
+    return _SkillMountingCodeExecToolProvider
 
 
 def _preserving_provider_class(provider_cls):
@@ -191,9 +218,14 @@ class StirrupAgentRunner(AgentRunner):
             )
         self._preserve_workspace = preserve_workspace
         self._k_level = k_level
-        self._skills_prompt = mount_skills(
-            skills_dir,
-            self._workspace_dir,
+        self._skills_source = resolve_skills_source(skills_dir, k_level=k_level)
+        if self._skills_source is not None and not code_enabled:
+            raise ValueError(
+                "skills mount into the code-execution workspace; "
+                f"k_level={k_level} requires the code track, not --no-code"
+            )
+        self._skills_prompt = skills_prompt(
+            self._skills_source,
             k_level=k_level,
             code_backend=code_backend,
         )
@@ -274,25 +306,28 @@ class StirrupAgentRunner(AgentRunner):
             from stirrup.tools.code_backends.local import LocalCodeExecToolProvider
 
             provider_cls = LocalCodeExecToolProvider
+            args: tuple = ()
             kwargs = {"temp_base_dir": self._workspace_dir}
-            if self._preserve_workspace:
-                provider_cls = _preserving_provider_class(provider_cls)
-                kwargs["preserve_dir"] = self._workspace_dir
-            return provider_cls(**kwargs)
-        from stirrup.tools.code_backends.docker import DockerCodeExecToolProvider
+        else:
+            from stirrup.tools.code_backends.docker import DockerCodeExecToolProvider
+
+            # K0 keeps the original construction path untouched.
+            if not self._preserve_workspace and self._skills_source is None:
+                return DockerCodeExecToolProvider.from_image(
+                    _DEFAULT_CODE_IMAGE,
+                    temp_base_dir=self._workspace_dir,
+                )
+            provider_cls = DockerCodeExecToolProvider
+            args = (_DEFAULT_CODE_IMAGE,)
+            kwargs = {"is_dockerfile": False, "temp_base_dir": self._workspace_dir}
 
         if self._preserve_workspace:
-            provider_cls = _preserving_provider_class(DockerCodeExecToolProvider)
-            return provider_cls(
-                _DEFAULT_CODE_IMAGE,
-                is_dockerfile=False,
-                temp_base_dir=self._workspace_dir,
-                preserve_dir=self._workspace_dir,
-            )
-        return DockerCodeExecToolProvider.from_image(
-            _DEFAULT_CODE_IMAGE,
-            temp_base_dir=self._workspace_dir,
-        )
+            provider_cls = _preserving_provider_class(provider_cls)
+            kwargs["preserve_dir"] = self._workspace_dir
+        if self._skills_source is not None:
+            provider_cls = _skill_mounting_provider_class(provider_cls)
+            kwargs["skills_source"] = self._skills_source
+        return provider_cls(*args, **kwargs)
 
     def _build_tools(self) -> list:
         if not self._code_enabled:
