@@ -34,14 +34,23 @@ def setup_logging(verbose: bool) -> None:
     logging.root.setLevel(level)
 
 
-def add_common_args(parser: argparse.ArgumentParser, default_model: str) -> None:
+def add_common_args(
+    parser: argparse.ArgumentParser,
+    default_model: str,
+    *,
+    include_question: bool = True,
+) -> None:
     """Register the args shared by every SDK CLI.
 
     Adds the positional ``question`` plus ``--model-id``, ``--show-trajectory``,
     ``--json``, and ``--verbose``.  The caller is responsible for any
     runner-specific flags (e.g. ``--max-turns``, ``--recursion-limit``).
+
+    ``include_question=False`` omits the positional, for a CLI whose input is a
+    dialog of several turns rather than one question.
     """
-    parser.add_argument("question", help="The question to answer.")
+    if include_question:
+        parser.add_argument("question", help="The question to answer.")
     parser.add_argument(
         "--model-id",
         default=default_model,
