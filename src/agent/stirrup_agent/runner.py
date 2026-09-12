@@ -42,6 +42,7 @@ from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
 from .finish_tool import ASSETOPS_FINISH_TOOL
+from .adapter.provider import build_mcp_provider_class, load_spec
 from .trajectory import build_trajectory, classify_tool, final_answer
 from .handoff_tools import build_handoff_tools
 
@@ -165,6 +166,7 @@ class StirrupAgentRunner(AgentRunner):
         code_backend: str = "docker",
         workspace_dir: Path | str | None = None,
         preserve_workspace: bool = False,
+        adapter_dir: Path | str | None = None,
         max_turns: int = 30,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
@@ -187,6 +189,10 @@ class StirrupAgentRunner(AgentRunner):
                 "preserve_workspace is only supported with docker or local code backends"
             )
         self._preserve_workspace = preserve_workspace
+        # The client-side adapter is the only surface a harness patch may
+        # change. An absent or empty adapter leaves the provider class exactly
+        # as it was, so the baseline arm is the code that was already there.
+        self._adapter_spec = load_spec(adapter_dir)
         self._max_turns = max_turns
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
@@ -249,11 +255,18 @@ class StirrupAgentRunner(AgentRunner):
         if exec_env is None:
             from stirrup.tools.mcp import MCPToolProvider
 
+            MCPToolProvider = build_mcp_provider_class(
+                MCPToolProvider, self._adapter_spec
+            )
+
             return MCPToolProvider(config=config)
 
         from .workspace_bridge import WorkspaceBridgedMCPToolProvider
 
-        return WorkspaceBridgedMCPToolProvider(
+        provider_cls = build_mcp_provider_class(
+            WorkspaceBridgedMCPToolProvider, self._adapter_spec
+        )
+        return provider_cls(
             config=config,
             exec_env=exec_env,
         )

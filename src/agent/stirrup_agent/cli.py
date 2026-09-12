@@ -119,6 +119,16 @@ examples:
         ),
     )
     parser.add_argument(
+        "--adapter-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Client-side adapter directory holding adapter.json. Omitted means "
+            "the unadapted tool surface, which is the baseline arm."
+        ),
+    )
+    parser.add_argument(
         "--preserve-workspace",
         action="store_true",
         help=(
@@ -138,6 +148,7 @@ async def _run(args: argparse.Namespace) -> None:
         code_backend=args.code_backend,
         workspace_dir=args.workspace_dir,
         preserve_workspace=args.preserve_workspace,
+        adapter_dir=args.adapter_dir,
         max_turns=args.max_turns,
         temperature=args.temperature,
         reasoning_effort=args.reasoning_effort,
