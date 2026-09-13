@@ -36,19 +36,22 @@ def test_load_scenario_ids_raises_for_missing_file(tmp_path: Path) -> None:
 
 
 def test_scenario_mappings_cover_expected_categories() -> None:
-    expected = {"car", "fcc", "fmsr", "health", "tsfm", "wosr"}
+    expected = {"car", "fcc", "fmea", "fmsr", "health", "tsfm", "wosr"}
 
     assert set(mr.SCENARIO_IDS_ALL) == expected
     assert set(mr.SCENARIO_IDS_LITE) == expected
     assert all(
         len(mr.SCENARIO_IDS_ALL[category]) == 10
-        for category in expected - {"car", "fcc", "fmsr", "tsfm", "wosr"}
+        for category in expected - {"car", "fcc", "fmea", "fmsr", "tsfm", "wosr"}
     )
     assert mr.SCENARIO_IDS_ALL["car"] == tuple(
         str(scenario_id) for scenario_id in range(151, 201)
     )
     assert mr.SCENARIO_IDS_ALL["fcc"] == tuple(
         str(scenario_id) for scenario_id in range(301, 328)
+    )
+    assert mr.SCENARIO_IDS_ALL["fmea"] == tuple(
+        str(scenario_id) for scenario_id in range(9001, 9034, 2)
     )
     assert mr.SCENARIO_IDS_ALL["fmsr"] == tuple(
         str(scenario_id) for scenario_id in range(901, 933)
@@ -61,9 +64,9 @@ def test_scenario_mappings_cover_expected_categories() -> None:
     )
     assert all(
         mr.SCENARIO_IDS_LITE[category]
-        for category in expected - {"tsfm"}
+        for category in expected - {"fmea"}
     )
-    assert mr.SCENARIO_IDS_LITE["tsfm"] == ()
+    assert mr.SCENARIO_IDS_LITE["fmea"] == ()
 
 
 def test_scenario_profiles_are_loaded_from_yaml() -> None:
@@ -98,13 +101,19 @@ def test_scenario_ids_for_selector_resolves_lite_category() -> None:
     )
 
 
+def test_scenario_ids_for_selector_resolves_fmea_all() -> None:
+    assert mr.scenario_ids_for_selector("fmea_all") == list(
+        mr.SCENARIO_IDS_ALL["fmea"]
+    )
+
+
 def test_scenario_ids_for_selector_resolves_profile_shorthands() -> None:
     assert mr.scenario_ids_for_selector("lite") == [
         scenario_id
         for category in mr.SCENARIO_CATEGORY_ORDER
         for scenario_id in mr.SCENARIO_IDS_LITE[category]
     ]
-    assert len(mr.scenario_ids_for_selector("all")) == 215
+    assert len(mr.scenario_ids_for_selector("all")) == 232
 
 
 @pytest.mark.parametrize(
@@ -129,6 +138,7 @@ def test_resolve_scenario_ids_accepts_yaml_profile(tmp_path: Path) -> None:
         """
 car: [151]
 fcc: [301]
+fmea: [9001]
 fmsr: [902]
 health: [401]
 tsfm: [1001]
@@ -137,7 +147,15 @@ wosr: [1]
         encoding="utf-8",
     )
 
-    assert mr.resolve_scenario_ids(path) == ["151", "301", "902", "401", "1001", "1"]
+    assert mr.resolve_scenario_ids(path) == [
+        "151",
+        "301",
+        "9001",
+        "902",
+        "401",
+        "1001",
+        "1",
+    ]
 
 
 def test_load_scenario_profile_rejects_missing_category(tmp_path: Path) -> None:
@@ -154,6 +172,7 @@ def test_load_scenario_profile_accepts_empty_category(tmp_path: Path) -> None:
         """
 car: [151]
 fcc: [301]
+fmea: []
 fmsr: [902]
 health: [401]
 tsfm: []
@@ -173,6 +192,7 @@ def test_load_scenario_profile_rejects_empty_profile(tmp_path: Path) -> None:
         """
 car: []
 fcc: []
+fmea: []
 fmsr: []
 health: []
 tsfm: []
