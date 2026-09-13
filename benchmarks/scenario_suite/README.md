@@ -11,20 +11,21 @@ runs evaluation unless `--no-evaluate` is set.
 <category>[+<category>...]_<all|lite>
 ```
 
-Categories are `car`, `fcc`, `fmsr`, `health`, `tsfm`, and `wosr`. The `all`
-and `lite` shorthands select every category from that profile.
+Categories are `car`, `fcc`, `fmea`, `fmsr`, `health`, `tsfm`, and `wosr`. The
+`all` and `lite` shorthands select every category from that profile.
 
 Profiles are loaded from `all.yaml` and `lite.yaml` in this directory. The Lite
 profile contains:
 
 | Category | Scenario IDs |
 | -------- | ------------ |
-| CAR | 151, 152, 153, 156 |
-| FCC | 301, 303, 305, 308, 314, 316, 320, 323, 325, 327 |
-| FMSR | 902, 904, 905, 906 |
-| Health | 401–404 |
-| TSFM | `[]` (none) |
-| WOSR | 5, 9, 13, 20 |
+| CAR | 151, 152, 153, 157, 159, 160, 178, 180, 182, 183, 189, 193 |
+| FCC | 303, 304, 305, 308, 312, 320, 322, 325 |
+| FMEA | `[]` (none) |
+| FMSR | 902, 904, 905, 906, 908, 915, 916, 917, 920, 923, 928 |
+| Health | 401–410 |
+| TSFM | 1001–1025 |
+| WOSR | 11, 13, 16, 20, 24, 31, 43, 50, 61, 66 |
 
 Individual categories may use an empty list, such as `tsfm: []`; the profile as
 a whole must contain at least one scenario ID. Profile shorthands such as `lite`
@@ -34,6 +35,7 @@ Examples:
 
 ```bash
 --scenario-ids fcc_lite
+--scenario-ids fmea_all
 --scenario-ids fcc+fmsr_all
 --scenario-ids lite
 --scenario-ids all

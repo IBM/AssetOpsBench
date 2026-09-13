@@ -42,7 +42,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MODEL_ID = "tokenrouter/MiniMax-M3"
 _DEFAULT_GEMINI_MODEL_ID = "tokenrouter_gemini/google/gemma-4-26b-a4b-it"
 
-SCENARIO_CATEGORY_ORDER = ("car", "fcc", "fmsr", "health", "tsfm", "wosr")
+SCENARIO_CATEGORY_ORDER = (
+    "car",
+    "fcc",
+    "fmea",
+    "fmsr",
+    "health",
+    "tsfm",
+    "wosr",
+)
 SCENARIO_PROFILE_PATHS = {
     "all": REPO_ROOT / "benchmarks/scenario_suite/all.yaml",
     "lite": REPO_ROOT / "benchmarks/scenario_suite/lite.yaml",
