@@ -168,7 +168,30 @@ Edit this file and re-run `init_data.py` — that's the whole change.
 | `primary_key` | recommended | Fields whose values form the deterministic `_id`: `<id_prefix or key>:<v1>:<v2>`. If a doc is missing a key field, CouchDB assigns a random id (reloads then duplicate — so set this). |
 | `id_prefix` | no | `_id` prefix; defaults to the collection key. |
 | `design_doc` | no | A design-document JSON to install (validation + views). Only `workorder` uses one. |
+| `json_fields` | no | CSV columns whose cells hold JSON. Each is parsed with `json.loads`, so a nested object or array survives a flat CSV. Only `workorder` uses this. |
+| `int_fields` / `float_fields` | no | CSV columns to coerce numerically. Everything else stays a string. |
 | `indexes` | no | Mango indexes to create, one field-list per index. |
+
+Typing applies to CSV only; a JSON source already carries its own types. A column
+listed in `json_fields` whose cell is not valid JSON fails the load, and a dotted
+header (`aob_source.evidence.score`) nests instead, so never list both spellings of
+the same field.
+
+#### Work-order extension columns
+
+Three columns on `workorder` carry AssetOpsBench data rather than Maximo data. The
+WO server passes them through untouched: `workorders._public()` strips only `_rev`
+and `WorkOrderItem` sets `extra="allow"`, so whatever is stored reaches the agent.
+
+| Column | Holds |
+| --- | --- |
+| `aob_source` | provenance for a generated work order: `agent`, `trigger_type`, `evidence`, optional `scenario_id`. The design doc validates `agent` against iot / fmsr / tsfm / wo / human and `trigger_type` against anomaly_detection / forecast / failure_mode / rule_monitoring / inspection / manual. |
+| `aob_fmea` | the failure-mode analysis behind the work order: root causes, effects, risk assessment, detection methods, recommended and preventive actions. Unvalidated, so the shape follows whatever produced it. |
+| `aob_asset_class` | the asset class, indexed by the `by_asset_class` view. |
+
+`aob_source` and `aob_fmea` are objects, so both belong in `json_fields`. Leave a
+cell empty rather than writing `{}` when a work order has no FMEA: empty cells are
+dropped, so the field is absent instead of present and empty.
 
 ### 3. Add a new collection (no code)
 
