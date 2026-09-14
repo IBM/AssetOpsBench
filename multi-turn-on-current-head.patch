@@ -1,0 +1,1721 @@
+diff --git a/docs/running_multi_turn.md b/docs/running_multi_turn.md
+new file mode 100644
+index 0000000..45d82be
+--- /dev/null
++++ b/docs/running_multi_turn.md
+@@ -0,0 +1,131 @@
++# Running multi-turn dialogs
++
++Stirrup runs one question. This page covers the outer loop that makes it run a
++dialog, the on-disk format for authoring one, and the arms you compare.
++
++## What Stirrup does and does not give you
++
++`Agent.run()` rebuilds the conversation on every call. It appends a fresh
++`SystemMessage` and resets `full_msg_history` to `[]`, so nothing carries from
++one `run()` to the next (`src/stirrup/core/agent.py`, in the `if not resumed:`
++branch). The `resume=True` path restores an interrupted run of the *same* task,
++keyed by `compute_task_hash(init_msgs)`; it does not continue a conversation.
++
++What the session *does* keep is the execution environment. `__aenter__` builds
++the exec env, the MCP connections and the tool set once per session rather than
++once per run.
++
++So continuity has to come from somewhere. This implementation puts it on the
++filesystem rather than in the message history.
++
++## Why the filesystem and not message replay
++
++Replaying prior messages as `init_msgs` is the obvious alternative. Three
++things argue against it.
++
++`Agent._get_turn_count` counts `AssistantMessage` instances across the history,
++and the agent loop guard is `while _get_turn_count(...) < max_turns`. Every
++replayed assistant message spends the working budget before the agent does any
++new work. At `max_turns=30`, a full-trace replay can exhaust the budget by turn
++four.
++
++Replay also puts the whole prior trace in the prompt whether the turn needs it
++or not. That is the context growth the dialog paper's baseline suffers from:
++response length climbing from 1,100 to 6,700 characters across a dialog.
++
++And replay is invisible. You cannot tell from a trajectory whether the agent
++used turn 2's evidence or ignored it.
++
++Mounting makes retrieval an action. The agent reads a router, decides which
++earlier turn matters, and opens it. That decision lands in the trajectory as a
++`code_exec` call naming a path, so cross-turn reuse becomes something you
++measure rather than something you assume.
++
++## Authoring a dialog
++
++The format extends the scenario directory rather than replacing it:
++
++```
++scenario_1/
++  question.txt            turn 1, exactly as today
++  groundtruth.txt         turn 1's expected answer, exactly as today
++  manifest.json
++  turns/
++    02/question.txt       turn 2
++    02/groundtruth.txt    optional
++    02/depends_on.txt     optional, e.g. "1"
++    03/question.txt       turn 3
++```
++
++A scenario with no `turns/` directory loads as a one-turn dialog. The entire
++existing suite is therefore already a valid set of dialogs, and no file needs
++editing to keep working.
++
++Turn 1 lives in `question.txt` and nowhere else. A `turns/01/` directory is
++rejected, because two sources for the same turn drift apart.
++
++## Running one
++
++```bash
++# m1: earlier turns mounted behind a router
++uv run python -m agent.stirrup_agent.cli_dialog \
++  --scenario-dir src/couchdb/scenarios_data/scenario_1 \
++  --dialog-root ./dlg-1 --m-level m1
++
++# m0: the unaided arm, every turn as if it were the first
++uv run python -m agent.stirrup_agent.cli_dialog \
++  --scenario-dir src/couchdb/scenarios_data/scenario_1 \
++  --dialog-root ./dlg-1-m0 --m-level m0
++
++# an ad-hoc dialog, no scenario directory
++uv run python -m agent.stirrup_agent.cli_dialog --dialog-root ./dlg-ad-hoc \
++  --turn "What sensors are on Chiller 6?" \
++  --turn "Which of those has drifted this month?"
++```
++
++## The M levels
++
++| Level | Mounts | Measures |
++| --- | --- | --- |
++| `m0` | nothing | How much the dialog actually depends on its history |
++| `m1` | earlier turns, behind a router | The treatment |
++| `m1-full` | the same tree, no routing discipline | Routing, separated from mere availability |
++
++`m0` is to dialogs what `k0` is to skills: it mounts nothing and appends
++nothing, so it is the honest baseline. Record the M level and the K level in
++every results row. They move the leaderboard the way a model change does.
++
++## What a run leaves behind
++
++```
++dlg-1/
++  turn-01/              turn 1's preserved workspace
++  turn-02/              turn 2's, with turn 1 mounted during the run
++  turn-03/
++  _staged/turn-02/      exactly what turn 2 was given
++  _staged/turn-03/      exactly what turn 3 was given
++  dialog.json           ask, answer, duration, tool calls, per turn
++```
++
++`_staged/` is the audit trail. It is the mounted tree as the agent saw it, kept
++after the run, so a claim about what turn 3 could have known is checkable rather
++than argued.
++
++## Checking the mount reached the agent
++
++```bash
++ls dlg-1/_staged/turn-02/turn-router/SKILL.md     # the router turn 2 was given
++ls dlg-1-m0/_staged 2>/dev/null                   # must not exist under m0
++grep -l "turns/turn-" dlg-1/turn-0*/              # turns the agent actually opened
++```
++
++The third command is the one that matters. It separates a dialog where the
++agent consulted its history from one where the history merely sat there.
++
++## Per-turn cost
++
++`dialog.json` records duration and tool calls per turn, which is what the
++paper's per-turn cost table is built from. The claim to test is that turns 2
++onward run faster than turn 1 because evidence is reused rather than
++re-gathered. Under `m0` that speedup should disappear; if it does not, the
++dialog did not need its history and the scenario is mis-authored.
+diff --git a/pyproject.toml b/pyproject.toml
+index a866ea9..870858e 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -51,6 +51,7 @@ vibration-mcp-server = "servers.vibration.main:main"
+ openai-agent = "agent.openai_agent.cli:main"
+ deep-agent = "agent.deep_agent.cli:main"
+ stirrup-agent = "agent.stirrup_agent.cli:main"
++stirrup-dialog = "agent.stirrup_agent.cli_dialog:main"
+ opencode-agent = "agent.opencode_agent.cli:main"
+ evaluate = "evaluation.cli:main"
+ direct-llm-agent = "agent.direct_llm_agent.cli:main"
+diff --git a/src/agent/_cli_common.py b/src/agent/_cli_common.py
+index 772d4f5..eaed804 100644
+--- a/src/agent/_cli_common.py
++++ b/src/agent/_cli_common.py
+@@ -34,14 +34,23 @@ def setup_logging(verbose: bool) -> None:
+     logging.root.setLevel(level)
+ 
+ 
+-def add_common_args(parser: argparse.ArgumentParser, default_model: str) -> None:
++def add_common_args(
++    parser: argparse.ArgumentParser,
++    default_model: str,
++    *,
++    include_question: bool = True,
++) -> None:
+     """Register the args shared by every SDK CLI.
+ 
+     Adds the positional ``question`` plus ``--model-id``, ``--show-trajectory``,
+     ``--json``, and ``--verbose``.  The caller is responsible for any
+     runner-specific flags (e.g. ``--max-turns``, ``--recursion-limit``).
++
++    ``include_question=False`` omits the positional, for a CLI whose input is a
++    dialog of several turns rather than one question.
+     """
+-    parser.add_argument("question", help="The question to answer.")
++    if include_question:
++        parser.add_argument("question", help="The question to answer.")
+     parser.add_argument(
+         "--model-id",
+         default=default_model,
+diff --git a/src/agent/stirrup_agent/cli_dialog.py b/src/agent/stirrup_agent/cli_dialog.py
+new file mode 100644
+index 0000000..8c7a3ac
+--- /dev/null
++++ b/src/agent/stirrup_agent/cli_dialog.py
+@@ -0,0 +1,170 @@
++"""CLI entry point for running a multi-turn dialog through the Stirrup agent.
++
++Usage:
++    stirrup-dialog --scenario-dir src/couchdb/scenarios_data/scenario_1 \\
++      --dialog-root ./dlg-1 --m-level m1
++
++    # the m0 arm: every turn runs as if it were the first
++    stirrup-dialog --scenario-dir ... --dialog-root ./dlg-1-m0 --m-level m0
++
++    # an ad-hoc dialog, no scenario directory needed
++    stirrup-dialog --dialog-root ./dlg-ad-hoc \\
++      --turn "What sensors are on Chiller 6?" \\
++      --turn "Which of those has drifted this month?" \\
++      --turn "Raise a work order for the worst one."
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++
++from .._cli_common import add_common_args, run_sdk_cli
++
++_DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
++
++
++def _build_parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(
++        prog="stirrup-dialog",
++        description=(
++            "Run a multi-turn dialog through the Stirrup agent. Each turn runs "
++            "in its own workspace; earlier turns are mounted into the next one "
++            "and reached through a router, the same way skills are."
++        ),
++        formatter_class=argparse.RawDescriptionHelpFormatter,
++        epilog="""
++m-level (the dialog control, alongside --k-level for skills):
++  m0        Mount nothing. Every turn runs as if it were the first. The
++            unaided arm: it measures how much the dialog needs its history.
++  m1        Mount earlier turns behind a router (default).
++  m1-full   Mount the same tree with no routing discipline, which separates
++            routing from mere availability.
++
++dialog layout on disk:
++  scenario_7/
++    question.txt          turn 1, exactly as today
++    groundtruth.txt       turn 1's expected answer
++    turns/02/question.txt turn 2
++    turns/03/question.txt turn 3
++
++  A scenario with no turns/ directory is a one-turn dialog, so the whole
++  existing suite already loads.
++""",
++    )
++    add_common_args(parser, default_model=_DEFAULT_MODEL, include_question=False)
++
++    source = parser.add_mutually_exclusive_group(required=True)
++    source.add_argument(
++        "--scenario-dir",
++        type=Path,
++        metavar="PATH",
++        help="Scenario directory holding question.txt and an optional turns/.",
++    )
++    source.add_argument(
++        "--turn",
++        action="append",
++        dest="turns",
++        metavar="TEXT",
++        help="One turn of an ad-hoc dialog. Repeat, in order.",
++    )
++
++    parser.add_argument(
++        "--dialog-root",
++        type=Path,
++        required=True,
++        metavar="PATH",
++        help="Directory for per-turn workspaces, staged mounts and dialog.json.",
++    )
++    parser.add_argument(
++        "--m-level",
++        choices=("m0", "m1", "m1-full"),
++        default="m1",
++        help="Dialog memory level (default: m1).",
++    )
++    parser.add_argument(
++        "--k-level",
++        choices=("k0", "k1", "k1-recovery"),
++        default="k0",
++        help="Skill level, passed through to every turn (default: k0).",
++    )
++    parser.add_argument(
++        "--skills-dir",
++        type=Path,
++        default=None,
++        metavar="PATH",
++        help="Skill collection, required when --k-level is not k0.",
++    )
++    parser.add_argument(
++        "--code-backend",
++        choices=["docker", "local"],
++        default="docker",
++        help="Code-execution sandbox backend (default: docker).",
++    )
++    parser.add_argument(
++        "--max-turns",
++        type=int,
++        default=30,
++        metavar="N",
++        help="Stirrup agent-loop bound, applied per dialog turn (default: 30).",
++    )
++    return parser
++
++
++async def _run(args: argparse.Namespace) -> None:
++    from agent.stirrup_agent.dialog import Dialog, DialogTurn, load_dialog, run_dialog
++    from agent.stirrup_agent.runner import StirrupAgentRunner
++
++    if args.scenario_dir is not None:
++        dialog = load_dialog(args.scenario_dir)
++    else:
++        dialog = Dialog(
++            id="ad-hoc",
++            turns=[DialogTurn(n=i, text=t) for i, t in enumerate(args.turns, start=1)],
++        )
++
++    def runner_factory(turn: int, workspace: Path, turns_dir: Path | None):
++        return StirrupAgentRunner(
++            model=args.model_id,
++            code_enabled=True,
++            code_backend=args.code_backend,
++            workspace_dir=workspace,
++            preserve_workspace=True,
++            skills_dir=args.skills_dir,
++            k_level=args.k_level,
++            turns_dir=turns_dir,
++            m_level=args.m_level,
++            turn=turn,
++            max_turns=args.max_turns,
++        )
++
++    result = await run_dialog(
++        dialog,
++        dialog_root=args.dialog_root,
++        runner_factory=runner_factory,
++        m_level=args.m_level,
++        k_level=args.k_level,
++    )
++
++    if args.output_json:
++        print(json.dumps(result.to_json(), indent=2))
++        return
++
++    print(f"\nDialog {result.dialog_id}  m_level={result.m_level}  "
++          f"k_level={result.k_level}  turns={len(result.turns)}\n")
++    for turn in result.turns:
++        status = "FAILED" if turn.failed else "ok"
++        print(f"--- Turn {turn.n} [{status}] {turn.duration_ms / 1000:.1f}s "
++              f"({len(turn.tool_calls)} tool calls)")
++        print(f"Q: {turn.ask}")
++        print(f"A: {turn.answer}\n")
++    print(f"Record written to {Path(args.dialog_root) / 'dialog.json'}")
++
++
++def main() -> None:
++    run_sdk_cli("stirrup-dialog", _build_parser, _run)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/agent/stirrup_agent/dialog.py b/src/agent/stirrup_agent/dialog.py
+new file mode 100644
+index 0000000..673ecda
+--- /dev/null
++++ b/src/agent/stirrup_agent/dialog.py
+@@ -0,0 +1,294 @@
++"""The outer loop that turns a Stirrup single-shot runner into a dialog.
++
++Stirrup gives one run, not a conversation. This module wraps it:
++
++    for each turn:
++        stage the turns completed so far into a mountable tree
++        run the turn in its own workspace, with that tree mounted
++        preserve the workspace, and record ask / answer / files
++
++Each turn gets its own directory under the dialog root::
++
++    <dialog-root>/
++      turn-01/            --workspace-dir for turn 1, preserved after it
++      turn-02/            turn 2, with turn 1 mounted at /workspace/turns
++      _staged/turn-02/    the tree mounted into turn 2
++      dialog.json         the record of the whole dialog
++
++Turn N never sees turn N's own directory as history; it sees the staged tree
++built from turns 1..N-1. The staging step is what keeps the mount honest: the
++agent reads a router and chooses, rather than inheriting a directory.
++
++Why a fresh session per turn
++----------------------------
++Holding one Stirrup session open for the whole dialog would keep the same
++``temp_dir`` across turns, and continuity would come free. It would also make
++cross-turn reuse unobservable and untestable: no mount, no routing decision, no
++way to run an ``m0`` arm. A session per turn costs a container start and buys a
++controlled experiment, which is the trade this benchmark exists to make.
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import time
++from dataclasses import dataclass, field
++from pathlib import Path
++
++from ..models import AgentResult
++from .turns_mount import TurnRecord, stage_turns
++
++_log = logging.getLogger(__name__)
++
++
++@dataclass
++class DialogTurn:
++    """One authored turn of a dialog."""
++
++    n: int
++    text: str
++    characteristic_form: str | None = None
++    expected_answer: str | None = None
++    depends_on: list[int] = field(default_factory=list)
++
++
++@dataclass
++class Dialog:
++    """An authored multi-turn scenario."""
++
++    id: str
++    turns: list[DialogTurn]
++    type: str = ""
++    category: str = ""
++
++    @property
++    def is_single_turn(self) -> bool:
++        return len(self.turns) == 1
++
++
++@dataclass
++class TurnResult:
++    """What one executed turn produced."""
++
++    n: int
++    ask: str
++    answer: str
++    workspace: Path
++    duration_ms: float
++    tool_calls: list[str]
++    failed: bool
++    result: AgentResult | None = None
++
++    def to_json(self) -> dict:
++        return {
++            "n": self.n,
++            "ask": self.ask,
++            "answer": self.answer,
++            "workspace": str(self.workspace),
++            "duration_ms": round(self.duration_ms, 1),
++            "tool_calls": self.tool_calls,
++            "failed": self.failed,
++        }
++
++
++@dataclass
++class DialogResult:
++    """Every turn of one dialog, in order."""
++
++    dialog_id: str
++    m_level: str
++    k_level: str
++    turns: list[TurnResult]
++
++    def to_json(self) -> dict:
++        return {
++            "dialog_id": self.dialog_id,
++            "m_level": self.m_level,
++            "k_level": self.k_level,
++            "turn_count": len(self.turns),
++            "turns": [t.to_json() for t in self.turns],
++        }
++
++
++def load_dialog(scenario_dir: Path | str) -> Dialog:
++    """Read a dialog from a scenario directory.
++
++    The layout extends the existing one rather than replacing it::
++
++        scenario_7/
++          question.txt          turn 1, exactly as today
++          groundtruth.txt       turn 1's expected answer, exactly as today
++          turns/
++            02/question.txt     turn 2
++            02/groundtruth.txt
++            03/question.txt
++
++    A scenario with no ``turns/`` directory loads as a one-turn dialog, so every
++    scenario in the suite is already a valid dialog and nothing needs editing.
++    """
++    root = Path(scenario_dir).expanduser().resolve()
++    if not root.is_dir():
++        raise ValueError(f"scenario directory not found: {root}")
++
++    question_path = root / "question.txt"
++    if not question_path.is_file():
++        raise ValueError(f"no question.txt in {root}")
++
++    scenario_id = root.name.removeprefix("scenario_")
++    turns = [
++        DialogTurn(
++            n=1,
++            text=question_path.read_text(encoding="utf-8").strip(),
++            expected_answer=_read_optional(root / "groundtruth.txt"),
++            characteristic_form=_read_optional(root / "characteristic_form.txt"),
++        )
++    ]
++
++    turns_root = root / "turns"
++    if turns_root.is_dir():
++        for turn_dir in sorted(p for p in turns_root.iterdir() if p.is_dir()):
++            try:
++                n = int(turn_dir.name)
++            except ValueError as exc:
++                raise ValueError(
++                    f"turn directory must be a number, got {turn_dir.name!r} "
++                    f"in {turns_root}"
++                ) from exc
++            if n < 2:
++                raise ValueError(
++                    f"turn directories start at 02 (turn 1 is question.txt); "
++                    f"got {turn_dir.name!r}"
++                )
++            turn_question = turn_dir / "question.txt"
++            if not turn_question.is_file():
++                raise ValueError(f"no question.txt in {turn_dir}")
++            turns.append(
++                DialogTurn(
++                    n=n,
++                    text=turn_question.read_text(encoding="utf-8").strip(),
++                    expected_answer=_read_optional(turn_dir / "groundtruth.txt"),
++                    characteristic_form=_read_optional(
++                        turn_dir / "characteristic_form.txt"
++                    ),
++                    depends_on=_read_depends_on(turn_dir / "depends_on.txt"),
++                )
++            )
++
++    expected = list(range(1, len(turns) + 1))
++    actual = [t.n for t in turns]
++    if actual != expected:
++        raise ValueError(
++            f"dialog {scenario_id} has turns {actual}, expected {expected}; "
++            "turn numbers must be contiguous from 1"
++        )
++    return Dialog(id=scenario_id, turns=turns)
++
++
++def _read_optional(path: Path) -> str | None:
++    return path.read_text(encoding="utf-8").strip() if path.is_file() else None
++
++
++def _read_depends_on(path: Path) -> list[int]:
++    if not path.is_file():
++        return []
++    raw = path.read_text(encoding="utf-8").replace(",", " ").split()
++    return [int(token) for token in raw]
++
++
++async def run_dialog(
++    dialog: Dialog,
++    *,
++    dialog_root: Path | str,
++    runner_factory,
++    m_level: str = "m1",
++    k_level: str = "k0",
++) -> DialogResult:
++    """Run every turn, mounting the turns completed so far into the next.
++
++    ``runner_factory(turn_number, workspace_dir, turns_dir)`` returns a
++    configured ``StirrupAgentRunner``. Injecting it keeps this loop free of
++    model, backend and skill wiring, and lets the tests drive it with a fake.
++    """
++    root = Path(dialog_root).expanduser().resolve()
++    root.mkdir(parents=True, exist_ok=True)
++    staging_root = root / "_staged"
++
++    records: list[TurnRecord] = []
++    results: list[TurnResult] = []
++
++    for turn in dialog.turns:
++        workspace = root / f"turn-{turn.n:02d}"
++        workspace.mkdir(parents=True, exist_ok=True)
++
++        turns_dir: Path | None = None
++        if records and m_level != "m0":
++            turns_dir = stage_turns(
++                records, staging_root / f"turn-{turn.n:02d}", current_turn=turn.n
++            )
++
++        runner = runner_factory(turn.n, workspace, turns_dir)
++
++        _log.info(
++            "dialog %s turn %d/%d (m_level=%s, mounted=%s)",
++            dialog.id,
++            turn.n,
++            len(dialog.turns),
++            m_level,
++            turns_dir is not None,
++        )
++
++        started = time.perf_counter()
++        failed = False
++        answer = ""
++        result = None
++        try:
++            result = await runner.run(turn.text)
++            answer = result.answer
++        except Exception as exc:  # a failed turn is still evidence
++            failed = True
++            answer = f"Turn failed: {type(exc).__name__}: {exc}"
++            _log.warning("dialog %s turn %d failed", dialog.id, turn.n, exc_info=True)
++        duration_ms = (time.perf_counter() - started) * 1000
++
++        tool_calls = _tool_names(result)
++        results.append(
++            TurnResult(
++                n=turn.n,
++                ask=turn.text,
++                answer=answer,
++                workspace=workspace,
++                duration_ms=duration_ms,
++                tool_calls=tool_calls,
++                failed=failed,
++                result=result,
++            )
++        )
++        records.append(
++            TurnRecord(
++                n=turn.n,
++                ask=turn.text,
++                answer=answer,
++                workspace=workspace,
++                tool_calls=tool_calls,
++                duration_ms=duration_ms,
++                failed=failed,
++            )
++        )
++
++    dialog_result = DialogResult(
++        dialog_id=dialog.id, m_level=m_level, k_level=k_level, turns=results
++    )
++    (root / "dialog.json").write_text(
++        json.dumps(dialog_result.to_json(), indent=2), encoding="utf-8"
++    )
++    return dialog_result
++
++
++def _tool_names(result: AgentResult | None) -> list[str]:
++    if result is None or result.trajectory is None:
++        return []
++    try:
++        return [tc.name for tc in result.trajectory.all_tool_calls]
++    except AttributeError:
++        return []
+diff --git a/src/agent/stirrup_agent/runner.py b/src/agent/stirrup_agent/runner.py
+index c2cae10..3e6d461 100644
+--- a/src/agent/stirrup_agent/runner.py
++++ b/src/agent/stirrup_agent/runner.py
+@@ -44,7 +44,9 @@ from ..runner import AgentRunner
+ from .finish_tool import ASSETOPS_FINISH_TOOL
+ from .trajectory import build_trajectory, classify_tool, final_answer
+ from .handoff_tools import build_handoff_tools
+-from .skills_mount import copy_skills_into, resolve_skills_source, skills_prompt
++from .skills_mount import copy_tree_into, resolve_skills_source, skills_prompt
++from .turns_mount import MOUNT_NAME as _TURNS_MOUNT_NAME
++from .turns_mount import resolve_m_level, turns_prompt
+ 
+ _log = logging.getLogger(__name__)
+ 
+@@ -111,31 +113,38 @@ def _copy_workspace_contents(source: Path, destination: Path) -> None:
+             shutil.copy2(item, target)
+ 
+ 
+-def _skill_mounting_provider_class(provider_cls):
+-    """Copy the skill library into the exec directory once it exists.
++def _mounting_provider_class(provider_cls):
++    """Copy one or more trees into the exec directory once it exists.
+ 
+     The provider creates ``temp_dir`` under ``temp_base_dir`` when it is
+     entered, and that child is what the sandbox exposes as ``/workspace``. The
+     copy therefore has to happen here, not in ``__init__``.
++
++    ``mounts`` is a list of ``(source, name)`` pairs, so the skill library and
++    the dialog's earlier turns take the same path into the workspace.
+     """
+ 
+-    class _SkillMountingCodeExecToolProvider(provider_cls):
+-        def __init__(self, *args, skills_source: Path, **kwargs) -> None:
++    class _MountingCodeExecToolProvider(provider_cls):
++        def __init__(self, *args, mounts: list[tuple[Path, str]], **kwargs) -> None:
+             super().__init__(*args, **kwargs)
+-            self._assetops_skills_source = skills_source
++            self._assetops_mounts = mounts
+ 
+         async def __aenter__(self):
+             result = await super().__aenter__()
+             temp_dir = self.temp_dir
+             if temp_dir is None or not Path(temp_dir).is_dir():
+                 raise RuntimeError(
+-                    "code-exec provider exposed no temp_dir after entry, so the "
+-                    "skill library cannot be mounted where the agent reads it"
++                    "code-exec provider exposed no temp_dir after entry, so "
++                    f"{len(self._assetops_mounts)} mount(s) cannot be placed "
++                    "where the agent reads them"
+                 )
+-            copy_skills_into(self._assetops_skills_source, temp_dir)
++            for source, name in self._assetops_mounts:
++                copy_tree_into(source, temp_dir, name=name)
+             return result
+ 
+-    return _SkillMountingCodeExecToolProvider
++    return _MountingCodeExecToolProvider
++
++
+ 
+ 
+ def _preserving_provider_class(provider_cls):
+@@ -195,6 +204,9 @@ class StirrupAgentRunner(AgentRunner):
+         preserve_workspace: bool = False,
+         skills_dir: Path | str | None = None,
+         k_level: str = "k0",
++        turns_dir: Path | str | None = None,
++        m_level: str = "m0",
++        turn: int = 1,
+         max_turns: int = 30,
+         temperature: float | None = None,
+         reasoning_effort: str | None = None,
+@@ -229,6 +241,28 @@ class StirrupAgentRunner(AgentRunner):
+             k_level=k_level,
+             code_backend=code_backend,
+         )
++
++        self._turn = turn
++        self._m_level = m_level
++        wants_turns = resolve_m_level(m_level, turn)
++        if wants_turns and turns_dir is None:
++            raise ValueError(
++                f"m_level={m_level} at turn {turn} requires the staged earlier "
++                "turns; pass turns_dir"
++            )
++        self._turns_source = (
++            Path(turns_dir).expanduser().resolve() if wants_turns else None
++        )
++        if self._turns_source is not None and not self._turns_source.is_dir():
++            raise ValueError(f"turns source is not a directory: {self._turns_source}")
++        if self._turns_source is not None and not code_enabled:
++            raise ValueError(
++                "earlier turns mount into the code-execution workspace; "
++                f"m_level={m_level} requires the code track, not --no-code"
++            )
++        self._turns_prompt = turns_prompt(
++            turn, m_level=m_level, code_backend=code_backend
++        )
+         self._max_turns = max_turns
+         self._temperature = temperature
+         self._reasoning_effort = reasoning_effort
+@@ -311,8 +345,12 @@ class StirrupAgentRunner(AgentRunner):
+         else:
+             from stirrup.tools.code_backends.docker import DockerCodeExecToolProvider
+ 
+-            # K0 keeps the original construction path untouched.
+-            if not self._preserve_workspace and self._skills_source is None:
++            # K0/M0 keeps the original construction path untouched.
++            if (
++                not self._preserve_workspace
++                and self._skills_source is None
++                and self._turns_source is None
++            ):
+                 return DockerCodeExecToolProvider.from_image(
+                     _DEFAULT_CODE_IMAGE,
+                     temp_base_dir=self._workspace_dir,
+@@ -324,9 +362,14 @@ class StirrupAgentRunner(AgentRunner):
+         if self._preserve_workspace:
+             provider_cls = _preserving_provider_class(provider_cls)
+             kwargs["preserve_dir"] = self._workspace_dir
++        mounts: list[tuple[Path, str]] = []
+         if self._skills_source is not None:
+-            provider_cls = _skill_mounting_provider_class(provider_cls)
+-            kwargs["skills_source"] = self._skills_source
++            mounts.append((self._skills_source, "skills"))
++        if self._turns_source is not None:
++            mounts.append((self._turns_source, _TURNS_MOUNT_NAME))
++        if mounts:
++            provider_cls = _mounting_provider_class(provider_cls)
++            kwargs["mounts"] = mounts
+         return provider_cls(*args, **kwargs)
+ 
+     def _build_tools(self) -> list:
+@@ -355,6 +398,8 @@ class StirrupAgentRunner(AgentRunner):
+             )
+         if self._skills_prompt:
+             prompt = f"{prompt}\n{self._skills_prompt}"
++        if self._turns_prompt:
++            prompt = f"{prompt}\n{self._turns_prompt}"
+         return prompt
+ 
+     # -- run ---------------------------------------------------------------
+diff --git a/src/agent/stirrup_agent/skills_mount.py b/src/agent/stirrup_agent/skills_mount.py
+index 6f33e0e..1e8092f 100644
+--- a/src/agent/stirrup_agent/skills_mount.py
++++ b/src/agent/stirrup_agent/skills_mount.py
+@@ -117,28 +117,38 @@ def mount_path(code_backend: str = "docker") -> str:
+     return "/workspace/skills" if code_backend == "docker" else "skills"
+ 
+ 
+-def copy_skills_into(skills_source: Path | str, exec_dir: Path | str) -> int:
+-    """Copy the library into the live code-execution directory.
++def copy_tree_into(
++    source: Path | str, exec_dir: Path | str, name: str = "skills"
++) -> int:
++    """Copy a tree into the live code-execution directory under ``name``.
+ 
+     ``exec_dir`` is the directory the sandbox exposes as ``/workspace``. It is
+     the provider's ``temp_dir``, a child of ``temp_base_dir``, and it does not
+     exist until the provider is entered. Copying into ``temp_base_dir`` instead
+-    puts the library one level above the mount, where the agent cannot see it.
++    puts the tree one level above the mount, where the agent cannot see it.
++
++    Returns the number of ``SKILL.md`` files mounted, which is what both the
++    skill library and the turn router index by.
+     """
+-    source = Path(skills_source).expanduser().resolve()
+-    destination = Path(exec_dir).expanduser().resolve() / "skills"
++    src = Path(source).expanduser().resolve()
++    destination = Path(exec_dir).expanduser().resolve() / name
+     if destination.exists():
+         shutil.rmtree(destination)
+-    shutil.copytree(source, destination, ignore=_IGNORE)
++    shutil.copytree(src, destination, ignore=_IGNORE)
+     # The sandbox may run as a different uid than the process doing the copy.
+     for path in destination.rglob("*"):
+         path.chmod(0o755 if path.is_dir() else 0o644)
+     destination.chmod(0o755)
+     n = sum(1 for _ in destination.rglob("SKILL.md"))
+-    _log.info("mounted %d skills from %s into %s", n, source, destination)
++    _log.info("mounted %s (%d SKILL.md) from %s into %s", name, n, src, destination)
+     return n
+ 
+ 
++def copy_skills_into(skills_source: Path | str, exec_dir: Path | str) -> int:
++    """Mount the skill library at ``<exec dir>/skills``."""
++    return copy_tree_into(skills_source, exec_dir, name="skills")
++
++
+ def mount_skills(
+     skills_source: Path | str | None,
+     workspace_dir: Path | None,
+diff --git a/src/agent/stirrup_agent/tests/test_dialog.py b/src/agent/stirrup_agent/tests/test_dialog.py
+new file mode 100644
+index 0000000..1633712
+--- /dev/null
++++ b/src/agent/stirrup_agent/tests/test_dialog.py
+@@ -0,0 +1,357 @@
++"""Multi-turn dialog: loading, the turn mount, the router, and the M arms.
++
++The failure these guard against: a turn that silently runs without its history
++while the run is still labelled ``m1``. That is the same class of error as a k1
++run that mounted nothing, and it is just as invisible in the results table.
++"""
++
++from __future__ import annotations
++
++import asyncio
++import json
++from dataclasses import dataclass, field
++from pathlib import Path
++
++import pytest
++
++from agent.stirrup_agent.dialog import (
++    Dialog,
++    DialogTurn,
++    load_dialog,
++    run_dialog,
++)
++from agent.stirrup_agent.turns_mount import (
++    TurnRecord,
++    build_router,
++    resolve_m_level,
++    stage_turns,
++    turns_prompt,
++)
++
++
++# -- the on-disk dialog format ---------------------------------------------
++
++
++def _scenario(tmp_path: Path, turns: list[str]) -> Path:
++    root = tmp_path / "scenario_7"
++    root.mkdir()
++    (root / "question.txt").write_text(turns[0])
++    (root / "groundtruth.txt").write_text("42")
++    for i, text in enumerate(turns[1:], start=2):
++        turn_dir = root / "turns" / f"{i:02d}"
++        turn_dir.mkdir(parents=True)
++        (turn_dir / "question.txt").write_text(text)
++    return root
++
++
++def test_existing_single_turn_scenario_loads_as_a_one_turn_dialog(
++    tmp_path: Path,
++) -> None:
++    """No turns/ directory means the whole current suite already loads."""
++    root = _scenario(tmp_path, ["How many work orders?"])
++
++    dialog = load_dialog(root)
++
++    assert dialog.is_single_turn
++    assert dialog.id == "7"
++    assert dialog.turns[0].text == "How many work orders?"
++    assert dialog.turns[0].expected_answer == "42"
++
++
++def test_turns_directory_extends_the_dialog(tmp_path: Path) -> None:
++    root = _scenario(
++        tmp_path, ["How many work orders?", "How many are open?", "As a percentage?"]
++    )
++
++    dialog = load_dialog(root)
++
++    assert [t.n for t in dialog.turns] == [1, 2, 3]
++    assert dialog.turns[2].text == "As a percentage?"
++    assert not dialog.is_single_turn
++
++
++def test_depends_on_is_read(tmp_path: Path) -> None:
++    root = _scenario(tmp_path, ["one", "two"])
++    (root / "turns" / "02" / "depends_on.txt").write_text("1")
++
++    assert load_dialog(root).turns[1].depends_on == [1]
++
++
++def test_a_gap_in_turn_numbers_raises(tmp_path: Path) -> None:
++    root = _scenario(tmp_path, ["one"])
++    gap = root / "turns" / "03"
++    gap.mkdir(parents=True)
++    (gap / "question.txt").write_text("three")
++
++    with pytest.raises(ValueError, match="contiguous"):
++        load_dialog(root)
++
++
++def test_turn_01_directory_is_rejected(tmp_path: Path) -> None:
++    """Turn 1 is question.txt. Two sources for it would diverge."""
++    root = _scenario(tmp_path, ["one"])
++    dup = root / "turns" / "01"
++    dup.mkdir(parents=True)
++    (dup / "question.txt").write_text("also one")
++
++    with pytest.raises(ValueError, match="start at 02"):
++        load_dialog(root)
++
++
++# -- the M control ----------------------------------------------------------
++
++
++def test_m0_never_mounts() -> None:
++    assert resolve_m_level("m0", 1) is False
++    assert resolve_m_level("m0", 5) is False
++
++
++def test_m1_mounts_from_turn_two() -> None:
++    assert resolve_m_level("m1", 1) is False
++    assert resolve_m_level("m1", 2) is True
++
++
++def test_a_bad_m_level_raises() -> None:
++    with pytest.raises(ValueError, match="m_level must be one of"):
++        resolve_m_level("m2", 2)
++
++
++def test_turn_one_gets_no_prompt_block() -> None:
++    assert turns_prompt(1, m_level="m1") is None
++
++
++def test_prompt_names_the_router_at_the_mount() -> None:
++    block = turns_prompt(2, m_level="m1", code_backend="docker")
++    assert "/workspace/turns/turn-router/SKILL.md" in block
++    assert turns_prompt(2, m_level="m1", code_backend="local").startswith(
++        "This is turn 2"
++    )
++
++
++def test_m1_full_drops_the_routing_discipline() -> None:
++    routed = turns_prompt(2, m_level="m1")
++    full = turns_prompt(2, m_level="m1-full")
++    assert "Route before you act" in routed
++    assert "Route before you act" not in full
++
++
++# -- staging and the router -------------------------------------------------
++
++
++@pytest.fixture
++def records(tmp_path: Path) -> list[TurnRecord]:
++    ws1 = tmp_path / "turn-01"
++    ws1.mkdir()
++    (ws1 / "counts.csv").write_text("site,count\nMAIN,39\n")
++    return [
++        TurnRecord(
++            n=1,
++            ask="How many work orders are logged at the main site?",
++            answer="39",
++            workspace=ws1,
++            tool_calls=["wo__count_work_orders"],
++            duration_ms=1234.0,
++        )
++    ]
++
++
++def test_staging_lays_out_what_the_router_promises(
++    records: list[TurnRecord], tmp_path: Path
++) -> None:
++    staged = stage_turns(records, tmp_path / "_staged" / "turn-02", current_turn=2)
++
++    assert (staged / "turn-router" / "SKILL.md").is_file()
++    assert (staged / "turn-01" / "ASK.md").is_file()
++    assert (staged / "turn-01" / "ANSWER.md").read_text().strip() == "39"
++    assert (staged / "turn-01" / "workspace" / "counts.csv").is_file()
++    assert json.loads((staged / "turn-01" / "turn.json").read_text())["n"] == 1
++
++
++def test_staging_does_not_nest_earlier_mounts(tmp_path: Path) -> None:
++    """Turn N-1's own mounts must not ride along into turn N.
++
++    Without this the tree grows quadratically: turn 4 would carry turn 3's copy
++    of turn 2's copy of turn 1.
++    """
++    ws = tmp_path / "turn-02"
++    (ws / "turns" / "turn-01").mkdir(parents=True)
++    (ws / "turns" / "turn-01" / "ANSWER.md").write_text("stale")
++    (ws / "skills" / "repo-skills").mkdir(parents=True)
++    (ws / "real_output.csv").write_text("kept")
++
++    staged = stage_turns(
++        [TurnRecord(n=2, ask="q", answer="a", workspace=ws)],
++        tmp_path / "_staged",
++        current_turn=3,
++    )
++
++    assert (staged / "turn-02" / "workspace" / "real_output.csv").is_file()
++    assert not (staged / "turn-02" / "workspace" / "turns").exists()
++    assert not (staged / "turn-02" / "workspace" / "skills").exists()
++
++
++def test_router_lists_every_turn_with_its_ask(records: list[TurnRecord]) -> None:
++    router = build_router(records, current_turn=2)
++
++    assert "| 1 |" in router
++    assert "How many work orders are logged at the main site?" in router
++    assert "`turn-01/ANSWER.md`" in router
++    assert "`turn-01/workspace/`" in router
++    assert "wo__count_work_orders" in router
++
++
++def test_router_marks_a_failed_turn(tmp_path: Path) -> None:
++    router = build_router(
++        [TurnRecord(n=1, ask="q", answer="Turn failed: X", failed=True)],
++        current_turn=2,
++    )
++    assert "(failed)" in router
++
++
++def test_router_escapes_a_pipe_in_the_ask() -> None:
++    """A pipe in the question must not split the router's table row."""
++    import re
++
++    router = build_router(
++        [TurnRecord(n=1, ask="count a | b", answer="ok")], current_turn=2
++    )
++    table_row = [line for line in router.splitlines() if line.startswith("| 1 |")][0]
++
++    assert r"count a \| b" in table_row
++    # Four columns means five unescaped delimiters, escaped ones excluded.
++    assert len(re.findall(r"(?<!\\)\|", table_row)) == 5
++
++
++# -- the outer loop ---------------------------------------------------------
++
++
++@dataclass
++class _FakeRunner:
++    """Records what each turn was handed, and writes a file like a real turn."""
++
++    turn: int
++    workspace: Path
++    turns_dir: Path | None
++    seen: list[dict] = field(default_factory=list)
++
++    async def run(self, question: str):
++        self.workspace.mkdir(parents=True, exist_ok=True)
++        (self.workspace / f"out-{self.turn}.txt").write_text(f"turn {self.turn}")
++        self.seen.append({"turn": self.turn, "question": question})
++
++        @dataclass
++        class _Result:
++            question: str
++            answer: str
++            trajectory: object = None
++
++        return _Result(question=question, answer=f"answer {self.turn}")
++
++
++def _run_three(tmp_path: Path, m_level: str):
++    dialog = Dialog(
++        id="7",
++        turns=[
++            DialogTurn(n=1, text="first"),
++            DialogTurn(n=2, text="second"),
++            DialogTurn(n=3, text="third"),
++        ],
++    )
++    handed: list[Path | None] = []
++
++    def factory(turn: int, workspace: Path, turns_dir: Path | None):
++        handed.append(turns_dir)
++        return _FakeRunner(turn, workspace, turns_dir)
++
++    result = asyncio.run(
++        run_dialog(
++            dialog,
++            dialog_root=tmp_path / "dlg",
++            runner_factory=factory,
++            m_level=m_level,
++        )
++    )
++    return result, handed
++
++
++def test_each_turn_gets_its_own_workspace(tmp_path: Path) -> None:
++    result, _ = _run_three(tmp_path, "m1")
++
++    assert [t.workspace.name for t in result.turns] == [
++        "turn-01",
++        "turn-02",
++        "turn-03",
++    ]
++    assert (tmp_path / "dlg" / "turn-02" / "out-2.txt").is_file()
++
++
++def test_m1_hands_every_turn_after_the_first_a_staged_tree(tmp_path: Path) -> None:
++    _, handed = _run_three(tmp_path, "m1")
++
++    assert handed[0] is None, "turn 1 has no history to mount"
++    assert handed[1] is not None
++    assert handed[2] is not None
++    assert (handed[2] / "turn-02" / "ANSWER.md").read_text().strip() == "answer 2"
++
++
++def test_m0_hands_nothing_to_any_turn(tmp_path: Path) -> None:
++    _, handed = _run_three(tmp_path, "m0")
++
++    assert handed == [None, None, None]
++
++
++def test_the_mounted_tree_grows_by_one_turn_each_time(tmp_path: Path) -> None:
++    _, handed = _run_three(tmp_path, "m1")
++
++    assert sorted(p.name for p in handed[1].iterdir()) == ["turn-01", "turn-router"]
++    assert sorted(p.name for p in handed[2].iterdir()) == [
++        "turn-01",
++        "turn-02",
++        "turn-router",
++    ]
++
++
++def test_dialog_json_records_the_arm_and_every_turn(tmp_path: Path) -> None:
++    result, _ = _run_three(tmp_path, "m1")
++
++    written = json.loads((tmp_path / "dlg" / "dialog.json").read_text())
++    assert written["m_level"] == "m1"
++    assert written["turn_count"] == 3
++    assert [t["n"] for t in written["turns"]] == [1, 2, 3]
++    assert all(t["duration_ms"] >= 0 for t in written["turns"])
++    assert result.turns[1].answer == "answer 2"
++
++
++def test_a_failed_turn_does_not_end_the_dialog(tmp_path: Path) -> None:
++    """The paper's recovery metric needs the dialog to continue past a failure."""
++    dialog = Dialog(
++        id="7",
++        turns=[DialogTurn(n=1, text="boom"), DialogTurn(n=2, text="carry on")],
++    )
++
++    class _Exploding(_FakeRunner):
++        async def run(self, question: str):
++            if self.turn == 1:
++                raise RuntimeError("tool exploded")
++            return await super().run(question)
++
++    staged: list[Path | None] = []
++
++    def factory(turn: int, workspace: Path, turns_dir: Path | None):
++        staged.append(turns_dir)
++        return _Exploding(turn, workspace, turns_dir)
++
++    result = asyncio.run(
++        run_dialog(
++            dialog,
++            dialog_root=tmp_path / "dlg",
++            runner_factory=factory,
++            m_level="m1",
++        )
++    )
++
++    assert result.turns[0].failed is True
++    assert "tool exploded" in result.turns[0].answer
++    assert result.turns[1].failed is False
++    # And the failure is visible to turn 2, which is the point.
++    assert "(failed)" in (staged[1] / "turn-router" / "SKILL.md").read_text()
+diff --git a/src/agent/stirrup_agent/tests/test_skills_mount.py b/src/agent/stirrup_agent/tests/test_skills_mount.py
+index 6823e83..498656e 100644
+--- a/src/agent/stirrup_agent/tests/test_skills_mount.py
++++ b/src/agent/stirrup_agent/tests/test_skills_mount.py
+@@ -9,6 +9,7 @@ as an unaided K0 run while being labelled K1.
+ from __future__ import annotations
+ 
+ import asyncio
++import shutil
+ from pathlib import Path
+ 
+ import pytest
+@@ -102,7 +103,7 @@ def test_recovery_prompt_defers_the_library(library: Path) -> None:
+ 
+ def test_provider_wrapper_copies_after_entry(library: Path, tmp_path: Path) -> None:
+     """The wrapper must copy into temp_dir, which only exists after entry."""
+-    from agent.stirrup_agent.runner import _skill_mounting_provider_class
++    from agent.stirrup_agent.runner import _mounting_provider_class
+ 
+     base = tmp_path / "ws"
+     base.mkdir()
+@@ -122,10 +123,10 @@ def test_provider_wrapper_copies_after_entry(library: Path, tmp_path: Path) -> N
+         async def __aexit__(self, *exc) -> None:
+             return None
+ 
+-    wrapped = _skill_mounting_provider_class(_FakeProvider)
++    wrapped = _mounting_provider_class(_FakeProvider)
+ 
+     async def _run() -> Path:
+-        async with wrapped(temp_base_dir=base, skills_source=library) as provider:
++        async with wrapped(temp_base_dir=base, mounts=[(library, "skills")]) as provider:
+             return provider.temp_dir
+ 
+     exec_dir = asyncio.run(_run())
+@@ -137,7 +138,7 @@ def test_provider_wrapper_copies_after_entry(library: Path, tmp_path: Path) -> N
+ def test_wrapper_refuses_a_provider_without_a_temp_dir(
+     library: Path, tmp_path: Path
+ ) -> None:
+-    from agent.stirrup_agent.runner import _skill_mounting_provider_class
++    from agent.stirrup_agent.runner import _mounting_provider_class
+ 
+     class _NoTempDirProvider:
+         def __init__(self, **kwargs) -> None:
+@@ -149,11 +150,179 @@ def test_wrapper_refuses_a_provider_without_a_temp_dir(
+         async def __aexit__(self, *exc) -> None:
+             return None
+ 
+-    wrapped = _skill_mounting_provider_class(_NoTempDirProvider)
++    wrapped = _mounting_provider_class(_NoTempDirProvider)
+ 
+     async def _run() -> None:
+-        async with wrapped(skills_source=library):
++        async with wrapped(mounts=[(library, "skills")]):
+             pass
+ 
+     with pytest.raises(RuntimeError, match="no temp_dir"):
+         asyncio.run(_run())
++
++
++# -- preserve_workspace, and its interaction with the mount -----------------
++
++
++class _FakeStirrupProvider:
++    """The Stirrup contract both wrappers depend on.
++
++    ``temp_dir`` is a child of ``temp_base_dir``, created on entry and removed
++    on exit. ``_fix_file_ownership`` exists because the sandbox writes as a
++    different uid.
++    """
++
++    def __init__(self, *, temp_base_dir: Path) -> None:
++        self._base = Path(temp_base_dir)
++        self.temp_dir: Path | None = None
++        self.ownership_fixed = False
++        self.cleaned_up = False
++
++    async def __aenter__(self):
++        self.temp_dir = self._base / "stirrup_agent" / "run-1" / "exec-1"
++        self.temp_dir.mkdir(parents=True)
++        return self
++
++    async def _fix_file_ownership(self) -> None:
++        self.ownership_fixed = True
++
++    async def __aexit__(self, *exc) -> None:
++        shutil.rmtree(self.temp_dir, ignore_errors=True)
++        self.cleaned_up = True
++
++    def agent_writes(self, name: str, text: str) -> None:
++        (self.temp_dir / name).write_text(text)
++
++
++def _compose(preserve: bool, skills: bool):
++    """Mirror _build_code_provider's wrapper order."""
++    from agent.stirrup_agent.runner import (
++        _mounting_provider_class,
++        _preserving_provider_class,
++    )
++
++    cls = _FakeStirrupProvider
++    if preserve:
++        cls = _preserving_provider_class(cls)
++    if skills:
++        cls = _mounting_provider_class(cls)
++    return cls
++
++
++def _run(cls, *, base: Path, writes: dict[str, str], **kwargs) -> _FakeStirrupProvider:
++    async def _go():
++        async with cls(temp_base_dir=base, **kwargs) as provider:
++            for name, text in writes.items():
++                provider.agent_writes(name, text)
++            return provider
++
++    return asyncio.run(_go())
++
++
++def test_preserve_alone_keeps_agent_output_after_cleanup(tmp_path: Path) -> None:
++    base = tmp_path / "ws-k0"
++    base.mkdir()
++
++    provider = _run(
++        _compose(preserve=True, skills=False),
++        base=base,
++        writes={"answer.txt": "42"},
++        preserve_dir=base,
++    )
++
++    assert provider.cleaned_up
++    assert not provider.temp_dir.exists()
++    assert (base / "answer.txt").read_text() == "42"
++    assert provider.ownership_fixed
++
++
++def test_preserve_and_skills_compose(tmp_path: Path, library: Path) -> None:
++    """Both wrappers on one provider: mount on entry, preserve on exit."""
++    base = tmp_path / "ws-k1"
++    base.mkdir()
++
++    provider = _run(
++        _compose(preserve=True, skills=True),
++        base=base,
++        writes={"answer.txt": "42"},
++        preserve_dir=base,
++        mounts=[(library, "skills")],
++    )
++
++    # The agent's own output survives.
++    assert (base / "answer.txt").read_text() == "42"
++    # And the exec dir is gone, so anything left is what preserve copied.
++    assert not provider.temp_dir.exists()
++
++
++def test_preserve_captures_files_written_after_the_mount(
++    tmp_path: Path, library: Path
++) -> None:
++    """The mount happens on entry; preserve must still catch later writes."""
++    base = tmp_path / "ws-k1"
++    base.mkdir()
++
++    _run(
++        _compose(preserve=True, skills=True),
++        base=base,
++        writes={"late.txt": "written after the library was mounted"},
++        preserve_dir=base,
++        mounts=[(library, "skills")],
++    )
++
++    assert (base / "late.txt").is_file()
++
++
++def test_preserve_copies_the_mounted_library_too(
++    tmp_path: Path, library: Path
++) -> None:
++    """Documents current behaviour: the library lands in the preserved dir.
++
++    This is what makes `ls <ws>/skills` evidence that the mount reached the
++    agent. It also means the preserved workspace mixes a mounted *input* with
++    the agent's *outputs*, and that the library is duplicated once per
++    preserved run.
++    """
++    base = tmp_path / "ws-k1"
++    base.mkdir()
++
++    _run(
++        _compose(preserve=True, skills=True),
++        base=base,
++        writes={},
++        preserve_dir=base,
++        mounts=[(library, "skills")],
++    )
++
++    assert (base / "skills" / "repo-skills-router" / "SKILL.md").is_file()
++
++
++def test_k0_preserve_leaves_no_skills_behind(tmp_path: Path) -> None:
++    """The contamination check the docs rely on, as a test."""
++    base = tmp_path / "ws-k0"
++    base.mkdir()
++
++    _run(
++        _compose(preserve=True, skills=False),
++        base=base,
++        writes={"answer.txt": "42"},
++        preserve_dir=base,
++    )
++
++    assert not (base / "skills").exists()
++
++
++def test_preserve_does_not_recurse_into_itself(tmp_path: Path, library: Path) -> None:
++    """preserve_dir is the parent of temp_dir, so the copy walks into itself."""
++    base = tmp_path / "ws-k1"
++    base.mkdir()
++
++    _run(
++        _compose(preserve=True, skills=True),
++        base=base,
++        writes={"answer.txt": "42"},
++        preserve_dir=base,
++        mounts=[(library, "skills")],
++    )
++
++    depth = max(len(p.relative_to(base).parts) for p in base.rglob("*"))
++    assert depth < 8
+diff --git a/src/agent/stirrup_agent/turns_mount.py b/src/agent/stirrup_agent/turns_mount.py
+new file mode 100644
+index 0000000..463e5ca
+--- /dev/null
++++ b/src/agent/stirrup_agent/turns_mount.py
+@@ -0,0 +1,251 @@
++"""Turn mounting for multi-turn dialogs (the memory plug).
++
++Stirrup has no multi-turn dialog mechanism. ``Agent.run()`` rebuilds the
++conversation from scratch on every call: it appends a fresh ``SystemMessage``
++and resets ``full_msg_history`` to ``[]``, so nothing carries from one
++``run()`` to the next. The only restore path is ``resume=True``, keyed by
++``compute_task_hash(init_msgs)``, which resumes an interrupted run of the *same*
++task rather than continuing a conversation.
++
++This module adds the smallest thing that makes a dialog usable there, and it
++deliberately mirrors ``skills_mount``: a tree is copied into the
++code-execution workspace and one short block naming a router is appended to the
++system prompt. The agent already has a shell, so progressive disclosure comes
++free. Router, then one turn, then that turn's files.
++
++Why the filesystem rather than the message history
++--------------------------------------------------
++Replaying prior messages as ``init_msgs`` is the obvious alternative and it is
++worse in three ways. ``Agent._get_turn_count`` counts ``AssistantMessage``
++instances across the history, and the loop guard is
++``while _get_turn_count(...) < max_turns``, so every replayed assistant message
++spends the agent's working budget before it does any new work. Replay also puts
++the whole prior trace in the prompt whether or not the turn needs it, which is
++the context growth the baseline in the dialog paper suffers from. And replay is
++invisible: you cannot tell from the trajectory whether the agent used turn 2's
++evidence or ignored it.
++
++Mounting instead makes retrieval an action. The agent reads the router, decides
++which earlier turn matters, and opens it. That decision lands in the trajectory
++as a ``code_exec`` call naming a path, so cross-turn reuse becomes something you
++measure rather than something you assume.
++
++``M_LEVEL`` is the dialog control, exactly as ``K_LEVEL`` is the skills control.
++``m0`` mounts nothing, so each turn runs as if it were the first and you measure
++how much the dialog actually depends on its history. ``m1`` mounts the routed
++tree. ``m1-full`` mounts the same tree without the routing discipline, which
++isolates routing from mere availability.
++"""
++
++from __future__ import annotations
++
++import json
++import logging
++import shutil
++from dataclasses import dataclass, field
++from pathlib import Path
++
++from .skills_mount import copy_tree_into
++
++_log = logging.getLogger(__name__)
++
++M_LEVELS = ("m0", "m1", "m1-full")
++
++MOUNT_NAME = "turns"
++ROUTER_DIRNAME = "turn-router"
++
++_TURNS_PROMPT = """\
++This is turn {turn} of a dialog. Earlier turns of the same dialog are mounted at
++{mount}. They hold what the user asked before, what you answered, and the files
++you produced while answering.
++
++Route before you act. Read {mount}/{router}/SKILL.md first. It lists each
++earlier turn, what was asked, and where that turn's files are. Open one turn's
++ANSWER.md when the router says it bears on the current question, and its
++workspace/ only when you need the artifact itself. Do not read every turn.
++
++The user speaks as if you remember. When this turn says "that chiller", "the
++same anomaly" or "the one you found", resolve the reference from the router
++before you re-derive it. Evidence you already gathered is on disk: reuse it
++rather than calling the same tool again.
++"""
++
++_FULL_PROMPT = """\
++This is turn {turn} of a dialog. Earlier turns of the same dialog are mounted at
++{mount}, including what was asked, what you answered, and the files produced.
++
++The user speaks as if you remember. Resolve references to earlier turns from
++what is mounted there.
++"""
++
++_ROUTER_HEADER = """\
++---
++name: turn-router
++description: Index of earlier turns in this dialog. Read this first, then open \
++only the turn that bears on the current question.
++leakage-class: trajectory
++---
++
++# Earlier turns in this dialog
++
++Turn {current} is the one you are answering now. Everything below already
++happened. Each turn's directory holds:
++
++- `ASK.md` - what the user asked on that turn, verbatim.
++- `ANSWER.md` - the answer you gave.
++- `workspace/` - the files that turn left behind, if any.
++
++Open the row you need. Do not read every turn.
++
++"""
++
++_ROUTER_FOOTER = """
++
++## Using this
++
++Resolve a pronoun or a definite reference ("that chiller", "the same window")
++against the Asked column before you re-derive anything. When a row's answer
++already contains what this turn needs, cite it rather than calling the tool
++again. When a turn produced a file, its path under `workspace/` is the artifact
++itself, and reading it costs one shell command.
++
++A turn that failed is still evidence. It tells you which approach not to repeat.
++"""
++
++
++@dataclass
++class TurnRecord:
++    """One completed turn, as the next turn gets to see it."""
++
++    n: int
++    ask: str
++    answer: str
++    workspace: Path | None = None
++    tool_calls: list[str] = field(default_factory=list)
++    duration_ms: float | None = None
++    failed: bool = False
++
++    def to_json(self) -> dict:
++        return {
++            "n": self.n,
++            "ask": self.ask,
++            "answer": self.answer,
++            "workspace": str(self.workspace) if self.workspace else None,
++            "tool_calls": self.tool_calls,
++            "duration_ms": self.duration_ms,
++            "failed": self.failed,
++        }
++
++
++def resolve_m_level(m_level: str, turn: int) -> bool:
++    """Whether turn ``turn`` should carry a mount. Raises on a bad level."""
++    if m_level not in M_LEVELS:
++        raise ValueError(f"m_level must be one of {M_LEVELS}, got {m_level!r}")
++    if m_level == "m0":
++        return False
++    return turn > 1
++
++
++def _summarize(text: str, limit: int = 160) -> str:
++    """One line for the router table, with pipes escaped."""
++    flat = " ".join(text.split())
++    if len(flat) > limit:
++        flat = flat[: limit - 1].rstrip() + "…"
++    return flat.replace("|", "\\|")
++
++
++def build_router(records: list[TurnRecord], current_turn: int) -> str:
++    """Render the router index over completed turns."""
++    lines = [_ROUTER_HEADER.format(current=current_turn)]
++    lines.append("| Turn | Asked | Answered | Files |")
++    lines.append("| --- | --- | --- | --- |")
++    for record in records:
++        directory = f"turn-{record.n:02d}"
++        files = f"`{directory}/workspace/`" if record.workspace else "none"
++        status = " (failed)" if record.failed else ""
++        lines.append(
++            f"| {record.n} | {_summarize(record.ask)} | "
++            f"`{directory}/ANSWER.md`{status} | {files} |"
++        )
++    lines.append(_ROUTER_FOOTER)
++
++    for record in records:
++        lines.append(f"\n## Turn {record.n}\n")
++        lines.append(f"Asked: {_summarize(record.ask, 400)}\n")
++        if record.tool_calls:
++            unique = sorted(set(record.tool_calls))
++            lines.append(f"Tools used: {', '.join(unique)}\n")
++        lines.append(f"Answer: `turn-{record.n:02d}/ANSWER.md`\n")
++    return "\n".join(lines)
++
++
++def stage_turns(
++    records: list[TurnRecord], staging_dir: Path | str, current_turn: int
++) -> Path:
++    """Assemble the mountable tree for the turns completed so far.
++
++    Layout, which is what the router promises the agent::
++
++        <staging>/turn-router/SKILL.md
++        <staging>/turn-01/ASK.md
++        <staging>/turn-01/ANSWER.md
++        <staging>/turn-01/workspace/...
++    """
++    staging = Path(staging_dir).expanduser().resolve()
++    if staging.exists():
++        shutil.rmtree(staging)
++    staging.mkdir(parents=True)
++
++    router_dir = staging / ROUTER_DIRNAME
++    router_dir.mkdir()
++    (router_dir / "SKILL.md").write_text(
++        build_router(records, current_turn), encoding="utf-8"
++    )
++
++    for record in records:
++        turn_dir = staging / f"turn-{record.n:02d}"
++        turn_dir.mkdir()
++        (turn_dir / "ASK.md").write_text(record.ask + "\n", encoding="utf-8")
++        (turn_dir / "ANSWER.md").write_text(record.answer + "\n", encoding="utf-8")
++        (turn_dir / "turn.json").write_text(
++            json.dumps(record.to_json(), indent=2), encoding="utf-8"
++        )
++        if record.workspace is not None and Path(record.workspace).is_dir():
++            _copy_workspace(Path(record.workspace), turn_dir / "workspace")
++
++    _log.info("staged %d earlier turns at %s", len(records), staging)
++    return staging
++
++
++def _copy_workspace(source: Path, destination: Path) -> None:
++    """Copy a preserved turn workspace, minus anything we mounted into it.
++
++    A preserved workspace contains whatever the previous turn's exec dir held,
++    which includes the trees we mounted for that turn. Carrying those forward
++    would nest turn N-1's copy of turn N-2 inside turn N's copy of turn N-1, and
++    the tree would grow quadratically down the dialog.
++    """
++    destination.mkdir(parents=True, exist_ok=True)
++    for item in source.iterdir():
++        if item.name in {MOUNT_NAME, "skills"}:
++            continue
++        if item.is_dir():
++            shutil.copytree(item, destination / item.name, dirs_exist_ok=True)
++        else:
++            shutil.copy2(item, destination / item.name)
++
++
++def turns_prompt(
++    turn: int, m_level: str = "m1", code_backend: str = "docker"
++) -> str | None:
++    """Return the system-prompt block for the turn mount, or None."""
++    if not resolve_m_level(m_level, turn):
++        return None
++    mount = f"/workspace/{MOUNT_NAME}" if code_backend == "docker" else MOUNT_NAME
++    template = _FULL_PROMPT if m_level == "m1-full" else _TURNS_PROMPT
++    return template.format(turn=turn, mount=mount, router=ROUTER_DIRNAME)
++
++
++def copy_turns_into(staging_dir: Path | str, exec_dir: Path | str) -> int:
++    """Mount the staged turns at ``<exec dir>/turns``."""
++    return copy_tree_into(staging_dir, exec_dir, name=MOUNT_NAME)
+diff --git a/src/couchdb/scenarios_data/scenario_1/turns/02/depends_on.txt b/src/couchdb/scenarios_data/scenario_1/turns/02/depends_on.txt
+new file mode 100644
+index 0000000..d00491f
+--- /dev/null
++++ b/src/couchdb/scenarios_data/scenario_1/turns/02/depends_on.txt
+@@ -0,0 +1 @@
++1
+diff --git a/src/couchdb/scenarios_data/scenario_1/turns/02/question.txt b/src/couchdb/scenarios_data/scenario_1/turns/02/question.txt
+new file mode 100644
+index 0000000..6d7d022
+--- /dev/null
++++ b/src/couchdb/scenarios_data/scenario_1/turns/02/question.txt
+@@ -0,0 +1 @@
++Of those work orders, how many are still open? Use the same site you just counted. Return only the final count as a single integer.
+diff --git a/src/couchdb/scenarios_data/scenario_1/turns/03/depends_on.txt b/src/couchdb/scenarios_data/scenario_1/turns/03/depends_on.txt
+new file mode 100644
+index 0000000..8d04f96
+--- /dev/null
++++ b/src/couchdb/scenarios_data/scenario_1/turns/03/depends_on.txt
+@@ -0,0 +1 @@
++1 2
+diff --git a/src/couchdb/scenarios_data/scenario_1/turns/03/question.txt b/src/couchdb/scenarios_data/scenario_1/turns/03/question.txt
+new file mode 100644
+index 0000000..24cd18b
+--- /dev/null
++++ b/src/couchdb/scenarios_data/scenario_1/turns/03/question.txt
+@@ -0,0 +1 @@
++Express that open count as a percentage of the total you gave on the first turn, rounded to one decimal place. Return only the number.
