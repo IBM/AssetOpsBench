@@ -27,11 +27,11 @@ Run the MiniMax FMEA evaluation with:
 
 ```bash
 uv run evaluate \
-  --trajectories /Users/chathurangishyalika/Documents/AssetOpsBenchRuns/trajectories/stirrup_agent/tokenrouter-MiniMax-M3 \
-  --scenarios /Users/chathurangishyalika/Documents/AssetOpsBenchScenarioGeneration/scenarios_data \
+  --trajectories "../stirrup_agent/tokenrouter-MiniMax-M3 \
+  --scenarios "../scenarios_data" \
   --scenario-ids fmea_all \
   --scorer-default fmea \
-  --reports-dir /Users/chathurangishyalika/Documents/AssetOpsBenchRuns/reports/stirrup_agent/tokenrouter-MiniMax-M3-fmea
+  --reports-dir "../reports/stirrup_agent/tokenrouter-MiniMax-M3-fmea"
 ```
 
 `reference_answer.json` currently stores summary baseline metrics rather than
