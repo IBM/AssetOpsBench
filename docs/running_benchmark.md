@@ -4,9 +4,9 @@
 trajectory per scenario, and scores the results. This page is everything you
 need to get from a fresh clone to a leaderboard report.
 
-Related docs: [scenario_suite/README.md](scenario_suite/README.md) for scenario
-selectors, [../docs/stirrup-agent.md](../docs/stirrup-agent.md) for the agent
-itself, [../INSTRUCTIONS.md](../INSTRUCTIONS.md) for the full environment table.
+Related docs: [benchmarks/scenario_suite/README.md](../benchmarks/scenario_suite/README.md) for scenario
+selectors, [stirrup-agent.md](stirrup-agent.md) for the agent
+itself, [INSTRUCTIONS.md](../INSTRUCTIONS.md) for the full environment table.
 
 ---
 
@@ -98,7 +98,7 @@ a selector — one id per line, `#` for comments:
 --scenario-ids my_scenarios.txt
 ```
 
-See [scenario_suite/README.md](scenario_suite/README.md) for the selector
+See [benchmarks/scenario_suite/README.md](../benchmarks/scenario_suite/README.md) for the selector
 grammar (`fcc_lite`, `fcc+fmsr_all`, `lite`, `all`).
 
 ### CouchDB
@@ -164,7 +164,7 @@ matrix in `run.sh` uses both.
 
 Per-database names (`IOT_DBNAME`, `WO_DBNAME`, `CATALOG_DBNAME`, …) default to
 values matching the bundled compose file; see
-[../INSTRUCTIONS.md](../INSTRUCTIONS.md) for the full list.
+[INSTRUCTIONS.md](../INSTRUCTIONS.md) for the full list.
 
 ### WatsonX — needed more often than it looks
 
