@@ -47,5 +47,7 @@ def names() -> list[str]:
 from . import code_based  # noqa: E402,F401
 from . import semantic  # noqa: E402,F401
 from .static_json import install as _install_static_json  # noqa: E402
+from .fmea import install as _install_fmea  # noqa: E402
 
 _install_static_json()
+_install_fmea()
