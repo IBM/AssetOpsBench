@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """One model-level results table from a sweep's `_aggregate.json` files.
 
-    uv run python scripts/consolidate_results.py "$LEADERBOARD_DIR"
-    uv run python scripts/consolidate_results.py path/to/_aggregate.json --csv out.csv
+    uv run python benchmarks/consolidate_results.py "$LEADERBOARD_DIR"
+    uv run python benchmarks/consolidate_results.py path/to/_aggregate.json --csv out.csv
 """
 
 from __future__ import annotations

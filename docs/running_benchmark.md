@@ -32,21 +32,27 @@ docker build -f src/agent/stirrup_agent/Dockerfile.code -t assetops-code .
 ./benchmarks/run.sh
 ```
 
-`run.sh` takes exactly two positional arguments and reads everything else from
-the environment:
+`run.sh` needs three directories. Pass them as flags, as positional arguments
+in this order, or export them:
 
-| Argument | Also settable as | What it is |
-| --- | --- | --- |
-| `$1` | `SCENARIO_DIR` | Directory of `scenario_<id>/` folders — the benchmark corpus |
-| `$2` | `LEADERBOARD_DIR` | Output root; trajectories, reports and workspaces are created under it |
+| Flag | Positional | Environment | What it is |
+| --- | --- | --- | --- |
+| `-s` | `$1` | `SCENARIO_DIR` | Directory of `scenario_<id>/` folders — the benchmark corpus |
+| `-l` | `$2` | `LEADERBOARD_DIR` | Output root for reports and stirrup workspaces |
+| `-t` | `$3` | `TRAJECTORY_DIR` | Output root for saved trajectories |
 
-Both can live in `.env` instead, in which case `./benchmarks/run.sh` needs no
-arguments at all. Precedence is **positional arguments → exported environment →
-`.env`**, so a one-off run can always override the file:
+Flags and positional arguments cannot be mixed. Arguments override the
+environment:
 
 ```bash
-./benchmarks/run.sh /other/corpus /other/output      # wins over .env
+./benchmarks/run.sh -s /corpus -l /output -t /output/trajectories
+./benchmarks/run.sh /corpus /output /output/trajectories
+SCENARIO_DIR=/corpus LEADERBOARD_DIR=/output TRAJECTORY_DIR=/output/traj ./benchmarks/run.sh
 ```
+
+`run.sh` does not read `.env`; these three must be exported or passed. `.env`
+still reaches the Python runners through `load_dotenv()`, so gateway keys and
+database settings belong there.
 
 ---
 
@@ -54,9 +60,9 @@ arguments at all. Precedence is **positional arguments → exported environment 
 
 ### The scenario corpus
 
-**This is the most common hard stop.** `run.sh` sets `scenario_ids=lite`, which
-resolves through `scenario_suite/lite.yaml` to roughly 50 scenario ids (151,
-301, 902, …). Each one needs a folder:
+**This is the most common hard stop.** `run.sh` sets `scenario_ids=tsfm_lite`,
+which resolves through `scenario_suite/lite.yaml` to the TSFM scenario ids
+(1001 to 1025). Each one needs a folder:
 
 ```
 scenarios_data/
@@ -255,6 +261,34 @@ Model directory names are the model id with `/` replaced by `-`:
 
 Each trajectory JSON holds the question, the final answer, and a turn-by-turn
 record with tool calls, tool outputs, token usage and timings.
+
+### Consolidating a sweep into one table
+
+`run.sh` writes one `_aggregate.json` per model. To compare them:
+
+```bash
+uv run python benchmarks/consolidate_results.py "$LEADERBOARD_DIR"
+uv run python benchmarks/consolidate_results.py "$LEADERBOARD_DIR" --csv leaderboard.csv
+```
+
+```
+model                                     n  pass    rate         score         turns         calls            tok_in    cost$   $/pass
+litellm_proxy/aws/claude-opus-5           6     5  83.3%   0.833±0.408       3.2±0.4       6.7±0.8         1,684±280     0.07     0.01
+tokenrouter/MiniMax-M3                    6     4  66.7%   0.667±0.516       3.8±1.3       6.2±1.6         2,840±615     0.07     0.02
+```
+
+Point it at `$LEADERBOARD_DIR` and it descends into `assetopsbench-reports`
+itself; a single `_aggregate.json` works too. Rows sort by pass rate.
+
+Score, turns, calls and input tokens report `mean±sd`, where sd is the sample
+standard deviation **across scenarios**. It measures how unevenly a model
+handles the suite, not run-to-run variance, which needs repeated runs of the
+same scenario. A model with one scenario shows the mean alone. The `--csv`
+export carries every mean and sd as its own column.
+
+Models that did not finish every scenario are dropped, with a note on stderr
+naming each one and its count, so a partial run cannot quietly look like a
+better score than a complete one. Pass `--all-models` to keep them.
 
 ### Keeping the code workspaces
 
