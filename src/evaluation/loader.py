@@ -101,11 +101,30 @@ def _load_scenario_dir(path: Path) -> list[Scenario]:
 
         expected_answer = groundtruth_path.read_text(encoding="utf-8").strip()
         eval_metadata_path = child / "groundtruth_eval.json"
-        evaluation_metadata = None
+        evaluation_metadata: dict = {}
         if eval_metadata_path.exists():
-            evaluation_metadata = json.loads(
-                eval_metadata_path.read_text(encoding="utf-8")
+            evaluation_metadata.update(
+                json.loads(eval_metadata_path.read_text(encoding="utf-8"))
             )
+
+        # Keep scenario-specific scoring inputs separate from the canonical
+        # answer while making them available to custom deterministic scorers.
+        scoring_method = None
+        for filename, metadata_key in (
+            ("scenario_meta.json", "scenario_meta"),
+            ("rubric.json", "rubric"),
+            ("reference_answer.json", "reference_answer"),
+        ):
+            metadata_path = child / filename
+            if metadata_path.exists():
+                metadata_value = json.loads(
+                    metadata_path.read_text(encoding="utf-8")
+                )
+                evaluation_metadata[metadata_key] = metadata_value
+                if metadata_key == "scenario_meta" and isinstance(
+                    metadata_value, dict
+                ):
+                    scoring_method = metadata_value.get("scoring_method")
 
         question_path = child / "question.txt"
         text = (
@@ -121,8 +140,8 @@ def _load_scenario_dir(path: Path) -> list[Scenario]:
                     "text": text,
                     "type": "structured",
                     "expected_answer": expected_answer,
-                    "evaluation_metadata": evaluation_metadata,
-                    "scoring_method": "static_json",
+                    "evaluation_metadata": evaluation_metadata or None,
+                    "scoring_method": scoring_method or "static_json",
                 }
             )
         )
