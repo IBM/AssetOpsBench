@@ -12,6 +12,7 @@ Prefixes::
 
     litellm_proxy/<model>   LiteLLM proxy  (LITELLM_BASE_URL / LITELLM_API_KEY)
     tokenrouter/<model>     TokenRouter    (TOKENROUTER_BASE_URL / TOKENROUTER_API_KEY)
+    atlascloud/<model>      Atlas Cloud    (ATLASCLOUD_API_KEY)
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from typing import NamedTuple
 
 LITELLM_PREFIX = "litellm_proxy/"
 TOKENROUTER_PREFIX = "tokenrouter/"
+ATLASCLOUD_PREFIX = "atlascloud/"
+ATLASCLOUD_DEFAULT_BASE_URL = "https://api.atlascloud.ai/v1"
 
 
 class RouterCreds(NamedTuple):
@@ -39,12 +42,12 @@ PROXY_ROUTERS: dict[str, tuple[str, str]] = {
 
 # Prefixes whose endpoints speak the OpenAI Chat Completions API and can be
 # driven by the native ``openai`` SDK (llm.OpenAICompatBackend).
-OPENAI_COMPAT_PREFIXES: tuple[str, ...] = (TOKENROUTER_PREFIX,)
+OPENAI_COMPAT_PREFIXES: tuple[str, ...] = (TOKENROUTER_PREFIX, ATLASCLOUD_PREFIX)
 
 
 def router_prefix(model_id: str) -> str | None:
     """Return the proxy-router prefix matching *model_id*, else ``None``."""
-    for prefix in PROXY_ROUTERS:
+    for prefix in (*PROXY_ROUTERS, ATLASCLOUD_PREFIX):
         if model_id.startswith(prefix):
             return prefix
     return None
@@ -65,6 +68,23 @@ def is_openai_compat(model_id: str) -> bool:
     return model_id.startswith(OPENAI_COMPAT_PREFIXES)
 
 
+def resolve_openai_compat_creds(model_id: str) -> RouterCreds | None:
+    """Resolve credentials for native OpenAI-compatible backends."""
+    if model_id.startswith(ATLASCLOUD_PREFIX):
+        api_key = os.environ.get("ATLASCLOUD_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "ATLASCLOUD_API_KEY must be set when using the 'atlascloud/' model prefix"
+            )
+        return RouterCreds(
+            prefix=ATLASCLOUD_PREFIX,
+            base_url=os.environ.get("ATLASCLOUD_API_BASE")
+            or ATLASCLOUD_DEFAULT_BASE_URL,
+            api_key=api_key,
+        )
+    return resolve_router_creds(model_id)
+
+
 def resolve_router_creds(model_id: str, *, strict: bool = True) -> RouterCreds | None:
     """Resolve endpoint + key for *model_id*, or ``None`` if not proxied.
 
@@ -74,7 +94,7 @@ def resolve_router_creds(model_id: str, *, strict: bool = True) -> RouterCreds |
             ``None`` so the caller can fall back to its own defaults.
     """
     prefix = router_prefix(model_id)
-    if prefix is None:
+    if prefix is None or prefix not in PROXY_ROUTERS:
         return None
     base_env, key_env = PROXY_ROUTERS[prefix]
     base_url = os.environ.get(base_env)

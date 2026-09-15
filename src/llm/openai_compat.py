@@ -1,7 +1,8 @@
 """OpenAI-compatible LLM backend (no litellm dependency).
 
 For gateways that expose the standard OpenAI Chat Completions API — such as
-`TokenRouter <https://www.tokenrouter.com>`_ — we talk to them with the
+`TokenRouter <https://www.tokenrouter.com>`_ and
+`Atlas Cloud <https://www.atlascloud.ai>`_ — we talk to them with the
 ``openai`` SDK directly instead of routing through litellm.  litellm only
 earns its keep for providers that are *not* OpenAI-shaped (e.g. watsonx).
 
@@ -15,7 +16,12 @@ agent runners).  The bare model name is sent to the endpoint::
 from __future__ import annotations
 
 from .base import LLMBackend, LLMResult
-from .routers import is_openai_compat, resolve_model, resolve_router_creds
+from .routers import (
+    ATLASCLOUD_PREFIX,
+    is_openai_compat,
+    resolve_model,
+    resolve_openai_compat_creds,
+)
 
 __all__ = ["OpenAICompatBackend", "is_openai_compat"]
 
@@ -39,8 +45,19 @@ class OpenAICompatBackend(LLMBackend):
     def generate_with_usage(self, prompt: str, temperature: float = 0.0) -> LLMResult:
         from openai import OpenAI
 
-        creds = resolve_router_creds(self._model_id)  # strict: clear error if unset
-        client = OpenAI(base_url=creds.base_url, api_key=creds.api_key)
+        creds = resolve_openai_compat_creds(self._model_id)
+        if creds is None:
+            raise ValueError(
+                f"missing OpenAI-compatible credentials for {self._model_id!r}"
+            )
+        if creds.prefix == ATLASCLOUD_PREFIX:
+            client = OpenAI(
+                base_url=creds.base_url,
+                api_key=creds.api_key,
+                max_retries=0,
+            )
+        else:
+            client = OpenAI(base_url=creds.base_url, api_key=creds.api_key)
         response = client.chat.completions.create(
             model=self._model_name,
             messages=[{"role": "user", "content": prompt}],
