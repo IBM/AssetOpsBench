@@ -35,6 +35,7 @@ def load_runs(target: Path) -> list[dict[str, Any]]:
             runs.append(
                 {
                     "model": result.get("model") or "unknown",
+                    "scenario_id": str(result.get("scenario_id") or ""),
                     "passed": bool(score.get("passed")),
                     "score": score.get("score"),
                     "turns": ops.get("turn_count") or 0,
@@ -46,6 +47,11 @@ def load_runs(target: Path) -> list[dict[str, Any]]:
                 }
             )
     return runs
+
+
+def _id_sort_key(scenario_id: str) -> tuple[int, Any]:
+    """Sort numeric scenario ids numerically, everything else lexically after."""
+    return (0, int(scenario_id)) if scenario_id.isdigit() else (1, scenario_id)
 
 
 def stdev(values: list[float]) -> float | None:
@@ -121,17 +127,21 @@ def main() -> int:
         print(f"error: no scored results under {root}", file=sys.stderr)
         return 2
 
-    if not args.all_models:
-        counts = Counter(r["model"] for r in runs)
-        full = max(counts.values())
-        incomplete = {m: c for m, c in counts.items() if c < full}
-        if incomplete:
-            print(
-                f"showing models with all {full} scenarios; dropped "
-                + ", ".join(f"{m} (n={c})" for m, c in sorted(incomplete.items())),
-                file=sys.stderr,
-            )
-            runs = [r for r in runs if counts[r["model"]] == full]
+    counts = Counter(r["model"] for r in runs)
+    full = max(counts.values())
+    incomplete = {m: c for m, c in counts.items() if c < full}
+
+    # Scenario ids a complete model covered, so a dropped model can be resumed.
+    expected_ids = {
+        r["scenario_id"] for r in runs if counts[r["model"]] == full and r["scenario_id"]
+    }
+    ids_by_model: dict[str, set[str]] = defaultdict(set)
+    for run in runs:
+        if run["scenario_id"]:
+            ids_by_model[run["model"]].add(run["scenario_id"])
+
+    if incomplete and not args.all_models:
+        runs = [r for r in runs if counts[r["model"]] == full]
 
     rows = summarize(runs)
 
@@ -176,6 +186,20 @@ def main() -> int:
         "mean±sd; sd is the sample standard deviation across scenarios, so it "
         "measures task-to-task spread, not run-to-run variance."
     )
+
+    if incomplete:
+        verb = "incomplete" if args.all_models else "dropped"
+        print(f"\n{verb}: {len(incomplete)} model(s) short of the full {full} scenarios")
+        width = max(len(m) for m in incomplete)
+        for model, count in sorted(incomplete.items(), key=lambda kv: (-kv[1], kv[0])):
+            missing = sorted(expected_ids - ids_by_model[model], key=_id_sort_key)
+            shown = ", ".join(missing[:8])
+            if len(missing) > 8:
+                shown += f", +{len(missing) - 8} more"
+            detail = f"  missing {shown}" if shown else ""
+            print(f"  {model:<{width}}  {count:>4}/{full}{detail}")
+        if not args.all_models:
+            print("  pass --all-models to include them in the table above")
 
     if args.csv:
         with args.csv.open("w", newline="", encoding="utf-8") as handle:
