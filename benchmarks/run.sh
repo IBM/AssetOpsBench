@@ -47,7 +47,7 @@ if [[ -z "$scenario_dir" || -z "$leaderboard_dir" || -z "$trajectory_dir" ]]; th
 fi
 
 agent_name=stirrup_agent
-scenario_ids=tsfm_lite
+scenario_ids=all
 
 model_configs=(
   "litellm_proxy/gcp/gemini-3.6-flash high"
