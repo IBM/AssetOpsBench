@@ -41,8 +41,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="SELECTOR",
         help=(
-            "Optional benchmark YAML selector such as fcc_lite or "
-            "fcc+fmsr_all. Only matching scenario IDs are evaluated."
+            "Optional benchmark YAML selector such as fcc_mini, fcc_lite, "
+            "or fcc+fmsr_all. Only matching scenario IDs are evaluated."
         ),
     )
     p.add_argument(
@@ -97,7 +97,7 @@ def _validate_scorer_default(name: str) -> None:
 
 
 def _resolve_scenario_ids(selector: str | None) -> set[str] | None:
-    """Resolve an optional benchmark scenario selector from all/lite YAML."""
+    """Resolve an optional built-in benchmark scenario selector."""
     if selector is None:
         return None
 

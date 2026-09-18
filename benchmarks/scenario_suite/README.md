@@ -8,14 +8,27 @@ runs evaluation unless `--no-evaluate` is set.
 `--scenario-ids` accepts a named selector:
 
 ```text
-<category>[+<category>...]_<all|lite>
+<category>[+<category>...]_<all|lite|mini|open>
 ```
 
-Categories are `car`, `fcc`, `fmea`, `fmsr`, `health`, `tsfm`, and `wosr`. The
-`all` and `lite` shorthands select every category from that profile.
+Categories are `car`, `fcc`, `fmea`, `fmsr`, `health`, `tsfm`, and `wosr`.
+The `all`, `lite`, `mini`, and `open` shorthands select every category from the
+corresponding profile.
 
-Profiles are loaded from `all.yaml` and `lite.yaml` in this directory. The Lite
-profile contains:
+Profiles are loaded from `all.yaml`, `lite.yaml`, `mini.yaml`, and `open.yaml`
+in this directory. The Mini profile contains:
+
+| Category | Scenario IDs |
+| -------- | ------------ |
+| CAR | 152, 157, 158, 159, 165, 166, 168, 191 |
+| FCC | 303, 318, 322, 324 |
+| FMEA | 9001, 9003, 9027 |
+| FMSR | 902, 906, 913, 914, 915 |
+| Health | 402, 409 |
+| TSFM | 1008, 1014, 1015, 1019 |
+| WOSR | 10, 14, 18, 21, 22, 28, 36, 45, 49 |
+
+The Lite profile contains:
 
 | Category | Scenario IDs |
 | -------- | ------------ |
@@ -35,8 +48,10 @@ Examples:
 
 ```bash
 --scenario-ids fcc_lite
+--scenario-ids fcc_mini
 --scenario-ids fmea_all
 --scenario-ids fcc+fmsr_all
+--scenario-ids mini
 --scenario-ids lite
 --scenario-ids all
 ```
