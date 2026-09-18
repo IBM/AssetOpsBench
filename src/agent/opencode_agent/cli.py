@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from .._cli_common import add_common_args, print_result, run_sdk_cli
@@ -72,8 +73,11 @@ examples:
     parser.add_argument(
         "--timeout-s",
         type=float,
-        default=900,
-        help="Wall-clock timeout for `opencode run` in seconds (default: 900).",
+        default=float(os.getenv("OPENCODE_AGENT_TIMEOUT_S", "1800")),
+        help=(
+            "Wall-clock timeout for `opencode run` in seconds "
+            "(default: 1800, or OPENCODE_AGENT_TIMEOUT_S)."
+        ),
     )
     parser.add_argument(
         "--thinking",
