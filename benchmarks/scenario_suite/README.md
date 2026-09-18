@@ -8,23 +8,37 @@ runs evaluation unless `--no-evaluate` is set.
 `--scenario-ids` accepts a named selector:
 
 ```text
-<category>[+<category>...]_<all|lite>
+<category>[+<category>...]_<all|lite|mini|open>
 ```
 
-Categories are `car`, `fcc`, `fmsr`, `health`, `tsfm`, and `wosr`. The `all`
-and `lite` shorthands select every category from that profile.
+Categories are `car`, `fcc`, `fmea`, `fmsr`, `health`, `tsfm`, and `wosr`.
+The `all`, `lite`, `mini`, and `open` shorthands select every category from the
+corresponding profile.
 
-Profiles are loaded from `all.yaml` and `lite.yaml` in this directory. The Lite
-profile contains:
+Profiles are loaded from `all.yaml`, `lite.yaml`, `mini.yaml`, and `open.yaml`
+in this directory. The Mini profile contains:
 
 | Category | Scenario IDs |
 | -------- | ------------ |
-| CAR | 151, 152, 153, 156 |
-| FCC | 301, 303, 305, 308, 314, 316, 320, 323, 325, 327 |
-| FMSR | 902, 904, 905, 906 |
-| Health | 401–404 |
-| TSFM | `[]` (none) |
-| WOSR | 5, 9, 13, 20 |
+| CAR | 152, 157, 158, 159, 165, 166, 168, 191 |
+| FCC | 303, 318, 322, 324 |
+| FMEA | 9001, 9003, 9027 |
+| FMSR | 902, 906, 913, 914, 915 |
+| Health | 402, 409 |
+| TSFM | 1008, 1014, 1015, 1019 |
+| WOSR | 10, 14, 18, 21, 22, 28, 36, 45, 49 |
+
+The Lite profile contains:
+
+| Category | Scenario IDs |
+| -------- | ------------ |
+| CAR | 151, 152, 153, 157, 159, 160, 178, 180, 182, 183, 189, 193 |
+| FCC | 303, 304, 305, 308, 312, 320, 322, 325 |
+| FMEA | `[]` (none) |
+| FMSR | 902, 904, 905, 906, 908, 915, 916, 917, 920, 923, 928 |
+| Health | 401–410 |
+| TSFM | 1001–1025 |
+| WOSR | 11, 13, 16, 20, 24, 31, 43, 50, 61, 66 |
 
 Individual categories may use an empty list, such as `tsfm: []`; the profile as
 a whole must contain at least one scenario ID. Profile shorthands such as `lite`
@@ -34,7 +48,10 @@ Examples:
 
 ```bash
 --scenario-ids fcc_lite
+--scenario-ids fcc_mini
+--scenario-ids fmea_all
 --scenario-ids fcc+fmsr_all
+--scenario-ids mini
 --scenario-ids lite
 --scenario-ids all
 ```

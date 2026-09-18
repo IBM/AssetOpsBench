@@ -1,7 +1,3 @@
-<div align="center">
-
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ibm-assetopsbench-badge.png)](https://mseep.ai/app/ibm-assetopsbench)
-
 # AssetOpsBench
 
 ### AI Agents for Industrial Asset Operations & Maintenance
@@ -567,7 +563,13 @@ Thanks to these wonderful people ✨
 
 ## Star History
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=IBM/AssetOpsBench&type=Date)](https://star-history.dera.page/#IBM/AssetOpsBench&Date)
+<a href="https://www.star-history.com/?repos=ibm%2Fassetopsbench&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ibm/assetopsbench&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ibm/assetopsbench&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ibm/assetopsbench&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ---
 
@@ -576,3 +578,9 @@ Thanks to these wonderful people ✨
 **If AssetOpsBench is useful to your work, please ⭐ star the repo, 🍴 fork it, and tell us what you're building.**
 
 </div>
+
+---
+
+<div align="center">
+
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ibm-assetopsbench-badge.png)](https://mseep.ai/app/ibm-assetopsbench)

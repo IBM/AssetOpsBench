@@ -145,3 +145,29 @@ def test_load_scenarios_reads_groundtruth_eval_metadata(tmp_path):
         "mode": "clarification",
         "required_terms": ["main unit"],
     }
+
+
+def test_load_scenarios_reads_custom_scorer_and_fmea_metadata(tmp_path):
+    scenario_dir = tmp_path / "scenario_9001"
+    scenario_dir.mkdir()
+    (scenario_dir / "groundtruth.txt").write_text(
+        '{"asset": "Electric Motor", "failure_modes": {}}', encoding="utf-8"
+    )
+    (scenario_dir / "scenario_meta.json").write_text(
+        '{"tag": "asset_modes", "scoring_method": "fmea"}', encoding="utf-8"
+    )
+    (scenario_dir / "rubric.json").write_text(
+        '{"dimensions": []}', encoding="utf-8"
+    )
+    (scenario_dir / "reference_answer.json").write_text(
+        '{"f1": 0.2}', encoding="utf-8"
+    )
+
+    scenario = load_scenarios(tmp_path)[0]
+
+    assert scenario.scoring_method == "fmea"
+    assert scenario.evaluation_metadata == {
+        "scenario_meta": {"tag": "asset_modes", "scoring_method": "fmea"},
+        "rubric": {"dimensions": []},
+        "reference_answer": {"f1": 0.2},
+    }
