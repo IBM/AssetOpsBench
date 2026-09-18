@@ -32,6 +32,10 @@ _log = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_MODEL = "opencode/gpt-5.1-codex"
 _DEFAULT_AGENT_NAME = "assetops"
+# Wall-clock ceiling for one `opencode run`. Long-horizon scenarios on
+# slower routed models exceed the old 900s cap; override per run with
+# OPENCODE_AGENT_TIMEOUT_S or --timeout-s.
+_DEFAULT_TIMEOUT_S = float(os.getenv("OPENCODE_AGENT_TIMEOUT_S", "1800"))
 _LOG_STREAM_TAIL_CHARS = 1000
 _ERROR_STREAM_TAIL_CHARS = 4000
 
@@ -687,7 +691,7 @@ class OpenCodeAgentRunner(AgentRunner):
         agent_name: str = _DEFAULT_AGENT_NAME,
         opencode_bin: str = "opencode",
         attach: str | None = None,
-        timeout_s: float | None = 900,
+        timeout_s: float | None = _DEFAULT_TIMEOUT_S,
         thinking: bool = False,
         variant: str | None = None,
         temperature: float = 0.1,
