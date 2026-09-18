@@ -92,7 +92,13 @@ def check_import(aob: pathlib.Path):
     except Exception as exc:  # noqa: BLE001
         bad("3 import", f"{type(exc).__name__}: {exc}")
         return None
-    for attr in ("mount_skills", "K_LEVELS"):
+    required = (
+        "resolve_skills_source",
+        "skills_prompt",
+        "copy_skills_into",
+        "K_LEVELS",
+    )
+    for attr in required:
         if not hasattr(skills_mount, attr):
             bad("3 import", f"skills_mount has no `{attr}`")
             return None
@@ -105,7 +111,10 @@ def check_mounts(sm, skills: pathlib.Path, total: int) -> None:
         ws0 = pathlib.Path(td) / "k0"
         ws0.mkdir()
         try:
-            block = sm.mount_skills(skills, ws0, k_level="k0", code_backend="docker")
+            source = sm.resolve_skills_source(skills, k_level="k0")
+            block = sm.skills_prompt(
+                source, k_level="k0", code_backend="docker"
+            )
         except Exception as exc:  # noqa: BLE001
             bad("4 mount k0", f"{type(exc).__name__}: {exc}")
             return
@@ -119,7 +128,11 @@ def check_mounts(sm, skills: pathlib.Path, total: int) -> None:
         ws1 = pathlib.Path(td) / "k1"
         ws1.mkdir()
         try:
-            block = sm.mount_skills(skills, ws1, k_level="k1", code_backend="docker")
+            source = sm.resolve_skills_source(skills, k_level="k1")
+            block = sm.skills_prompt(
+                source, k_level="k1", code_backend="docker"
+            )
+            copied = sm.copy_skills_into(source, ws1)
         except Exception as exc:  # noqa: BLE001
             bad("5 mount k1", f"{type(exc).__name__}: {exc}")
             return
@@ -131,6 +144,11 @@ def check_mounts(sm, skills: pathlib.Path, total: int) -> None:
         else:
             if len(landed) != total:
                 warn("5 mount k1", f"{len(landed)} SKILL.md landed, tree has {total}")
+            if copied != len(landed):
+                warn(
+                    "5 mount k1",
+                    f"copy helper reported {copied}, filesystem contains {len(landed)}",
+                )
             ok("5 mount k1", f"{len(landed) - 1} skills plus the router mounted, "
                              f"prompt block {len(block)} chars")
 
