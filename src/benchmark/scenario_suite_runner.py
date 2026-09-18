@@ -54,6 +54,7 @@ SCENARIO_CATEGORY_ORDER = (
 SCENARIO_PROFILE_PATHS = {
     "all": REPO_ROOT / "benchmarks/scenario_suite/all.yaml",
     "lite": REPO_ROOT / "benchmarks/scenario_suite/lite.yaml",
+    "mini": REPO_ROOT / "benchmarks/scenario_suite/mini.yaml",
     "open": REPO_ROOT / "benchmarks/scenario_suite/open.yaml",
 }
 
@@ -117,10 +118,12 @@ def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
 
 SCENARIO_IDS_ALL = load_scenario_profile(SCENARIO_PROFILE_PATHS["all"])
 SCENARIO_IDS_LITE = load_scenario_profile(SCENARIO_PROFILE_PATHS["lite"])
+SCENARIO_IDS_MINI = load_scenario_profile(SCENARIO_PROFILE_PATHS["mini"])
 SCENARIO_IDS_OPEN = load_scenario_profile(SCENARIO_PROFILE_PATHS["open"])
 SCENARIO_ID_PROFILES = {
     "all": SCENARIO_IDS_ALL,
     "lite": SCENARIO_IDS_LITE,
+    "mini": SCENARIO_IDS_MINI,
     "open": SCENARIO_IDS_OPEN,
 }
 
@@ -193,8 +196,8 @@ def _scenario_selector_error(selector: str) -> ValueError:
     categories = ", ".join(SCENARIO_CATEGORY_ORDER)
     return ValueError(
         f"Invalid scenario selector {selector!r}. Use "
-        f"<category>[+<category>...]_<all|lite|open>; categories: {categories}. "
-        "The shorthands 'all', 'lite', 'open' select every category."
+        f"<category>[+<category>...]_<all|lite|mini|open>; categories: {categories}. "
+        "The shorthands 'all', 'lite', 'mini', 'open' select every category."
     )
 
 
@@ -204,9 +207,11 @@ def scenario_ids_for_selector(selector: str) -> list[str]:
     Examples:
 
         fcc_lite
+        fcc_mini
         fcc+fmsr_all
         all
         lite
+        mini
     """
     normalized = selector.strip().lower()
     if normalized in SCENARIO_ID_PROFILES:
@@ -570,8 +575,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default="benchmarks/scenario_suite/scenarios.txt",
         metavar="SELECTOR_OR_FILE",
         help=(
-            "Scenario selector such as fcc_lite, fcc+fmsr_all, all, or lite; "
-            "a YAML profile or plain text file is also accepted."
+            "Scenario selector such as fcc_mini, fcc_lite, fcc+fmsr_all, "
+            "mini, lite, or all; a YAML profile or plain text file is also "
+            "accepted."
         ),
     )
     parser.add_argument(

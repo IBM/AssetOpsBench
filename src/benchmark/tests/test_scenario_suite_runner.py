@@ -40,6 +40,7 @@ def test_scenario_mappings_cover_expected_categories() -> None:
 
     assert set(mr.SCENARIO_IDS_ALL) == expected
     assert set(mr.SCENARIO_IDS_LITE) == expected
+    assert set(mr.SCENARIO_IDS_MINI) == expected
     assert all(
         len(mr.SCENARIO_IDS_ALL[category]) == 10
         for category in expected - {"car", "fcc", "fmea", "fmsr", "tsfm", "wosr"}
@@ -67,6 +68,7 @@ def test_scenario_mappings_cover_expected_categories() -> None:
         for category in expected - {"fmea"}
     )
     assert mr.SCENARIO_IDS_LITE["fmea"] == ()
+    assert mr.SCENARIO_IDS_MINI["fcc"] == ("303", "318", "322", "324")
 
 
 def test_scenario_profiles_are_loaded_from_yaml() -> None:
@@ -75,6 +77,9 @@ def test_scenario_profiles_are_loaded_from_yaml() -> None:
     )
     assert mr.SCENARIO_IDS_LITE == mr.load_scenario_profile(
         mr.SCENARIO_PROFILE_PATHS["lite"]
+    )
+    assert mr.SCENARIO_IDS_MINI == mr.load_scenario_profile(
+        mr.SCENARIO_PROFILE_PATHS["mini"]
     )
 
 
@@ -101,6 +106,12 @@ def test_scenario_ids_for_selector_resolves_lite_category() -> None:
     )
 
 
+def test_scenario_ids_for_selector_resolves_mini_category() -> None:
+    assert mr.scenario_ids_for_selector("fcc_mini") == list(
+        mr.SCENARIO_IDS_MINI["fcc"]
+    )
+
+
 def test_scenario_ids_for_selector_resolves_fmea_all() -> None:
     assert mr.scenario_ids_for_selector("fmea_all") == list(
         mr.SCENARIO_IDS_ALL["fmea"]
@@ -112,6 +123,11 @@ def test_scenario_ids_for_selector_resolves_profile_shorthands() -> None:
         scenario_id
         for category in mr.SCENARIO_CATEGORY_ORDER
         for scenario_id in mr.SCENARIO_IDS_LITE[category]
+    ]
+    assert mr.scenario_ids_for_selector("mini") == [
+        scenario_id
+        for category in mr.SCENARIO_CATEGORY_ORDER
+        for scenario_id in mr.SCENARIO_IDS_MINI[category]
     ]
     assert len(mr.scenario_ids_for_selector("all")) == 232
 
