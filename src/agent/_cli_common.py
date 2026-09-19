@@ -15,6 +15,7 @@ import asyncio
 import dataclasses
 import json
 import logging
+import os
 import sys
 import uuid
 from typing import Awaitable, Callable
@@ -127,6 +128,37 @@ def print_result(result, *, show_trajectory: bool, output_json: bool) -> None:
     print_answer(result.answer)
 
 
+def install_task_dumper(
+    loop: asyncio.AbstractEventLoop, path: str | None = None
+) -> None:
+    """Dump every pending coroutine stack to a file on SIGUSR1.
+
+    ``py-spy dump`` walks native thread stacks, so a suspended coroutine is
+    invisible to it: every blocked asyncio program looks identical, parked in
+    ``select``. ``kill -USR1 <pid>`` names the actual await instead.
+
+    Writes to a file rather than stderr so the rich live display cannot eat it.
+    """
+    import signal
+
+    target = path or os.environ.get("AGENT_TASK_DUMP", "/tmp/agent_tasks.txt")
+
+    def _dump(signum, frame) -> None:  # noqa: ANN001 - signal handler signature
+        try:
+            with open(target, "w") as fh:
+                for task in asyncio.all_tasks(loop):
+                    print(f"=== {task!r}", file=fh)
+                    task.print_stack(file=fh)
+            print(f"task dump written to {target}", file=sys.stderr, flush=True)
+        except Exception as exc:  # pragma: no cover - diagnostics must not kill a run
+            print(f"task dump failed: {exc}", file=sys.stderr, flush=True)
+
+    try:
+        signal.signal(signal.SIGUSR1, _dump)
+    except (AttributeError, ValueError):  # pragma: no cover - Windows, non-main thread
+        pass
+
+
 def run_sdk_cli(
     service_name: str,
     build_parser: Callable[[], argparse.ArgumentParser],
@@ -152,4 +184,8 @@ def run_sdk_cli(
     if getattr(args, "run_id", None) is None:
         args.run_id = str(uuid.uuid4())
     set_run_context(run_id=args.run_id, scenario_id=getattr(args, "scenario_id", None))
-    asyncio.run(run_coro(args))
+    async def _main() -> None:
+        install_task_dumper(asyncio.get_running_loop())
+        await run_coro(args)
+
+    asyncio.run(_main())

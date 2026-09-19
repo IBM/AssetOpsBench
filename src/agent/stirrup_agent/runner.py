@@ -80,9 +80,26 @@ TOPOLOGIES = ("flat", "subagent")
 # provider output cap and the summarization trigger, so the adapter this module
 # used to carry is gone.  ``max_tokens`` must stay <= ``context_window_tokens``;
 # the client constructor validates the pair.
-_ROOT_CONTEXT_WINDOW_TOKENS = 100_000
-_ROOT_MAX_OUTPUT_TOKENS = 64_000
-_CONTEXT_SUMMARIZATION_CUTOFF = 0.75
+_ROOT_CONTEXT_WINDOW_TOKENS = int(
+    os.environ.get("STIRRUP_CONTEXT_BUDGET", 100_000)
+)
+# The summarizer sends the whole history in one non-streaming request. Left at
+# 64k this was the slowest call of every run, and a silent stall there parked
+# whole sweeps: nothing crosses the wire while a reasoning model thinks, so an
+# upstream idle timer drops the flow and a client with no timeout waits forever.
+_ROOT_MAX_OUTPUT_TOKENS = int(os.environ.get("STIRRUP_MAX_TOKENS", 16_000))
+# Checked once per turn, after the turn, so the cutoff needs headroom for the
+# largest single-turn growth. A run that summarized at 96% of a 75% cutoff had
+# overshot on one fat tool result.
+_CONTEXT_SUMMARIZATION_CUTOFF = float(os.environ.get("STIRRUP_SUMMARIZE_AT", 0.60))
+# No request may wait forever. Retries stay low because the timeout is generous.
+_REQUEST_TIMEOUT_S = float(os.environ.get("STIRRUP_REQUEST_TIMEOUT", 900))
+_REQUEST_MAX_RETRIES = int(os.environ.get("STIRRUP_MAX_RETRIES", 1))
+# Keepalive probes hold the flow open through load balancers and NAT, and
+# surface a genuinely dead peer in ~4 minutes instead of never.
+_TCP_KEEPALIVE_IDLE_S = int(os.environ.get("STIRRUP_TCP_KEEPALIVE_IDLE", 60))
+_TCP_KEEPALIVE_INTERVAL_S = int(os.environ.get("STIRRUP_TCP_KEEPALIVE_INTERVAL", 30))
+_TCP_KEEPALIVE_COUNT = int(os.environ.get("STIRRUP_TCP_KEEPALIVE_COUNT", 6))
 
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
@@ -125,6 +142,57 @@ Domain delegation:
 - Delegate one domain at a time and use what comes back; do not ask a sub-agent
   to speculate about another domain's data.
 """
+
+
+def _keepalive_socket_options() -> list[tuple[int, int, int]]:
+    """TCP keepalive options, named differently on macOS and Linux."""
+    import socket
+
+    idle_opt = getattr(socket, "TCP_KEEPALIVE", getattr(socket, "TCP_KEEPIDLE", None))
+    options = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+    if idle_opt is not None:
+        options.append((socket.IPPROTO_TCP, idle_opt, _TCP_KEEPALIVE_IDLE_S))
+    for name, value in (
+        ("TCP_KEEPINTVL", _TCP_KEEPALIVE_INTERVAL_S),
+        ("TCP_KEEPCNT", _TCP_KEEPALIVE_COUNT),
+    ):
+        opt = getattr(socket, name, None)
+        if opt is not None:
+            options.append((socket.IPPROTO_TCP, opt, value))
+    return options
+
+
+def _apply_keepalive_transport(client, *, base_url: str, api_key: str) -> None:
+    """Swap in an AsyncOpenAI whose sockets carry TCP keepalive.
+
+    ``ChatCompletionsClient`` builds its own ``AsyncOpenAI`` and exposes no
+    ``http_client`` hook, so replace the built one. Upstream should grow that
+    parameter; until then this is the seam.
+    """
+    try:
+        import httpx
+        from openai import AsyncOpenAI
+    except ImportError:  # pragma: no cover - openai ships with stirrup
+        _log.warning("Could not enable TCP keepalive: openai/httpx unavailable")
+        return
+
+    try:
+        transport = httpx.AsyncHTTPTransport(
+            socket_options=_keepalive_socket_options(), retries=0
+        )
+    except TypeError:
+        _log.warning(
+            "httpx %s does not support socket_options; TCP keepalive not enabled",
+            httpx.__version__,
+        )
+        return
+
+    client._client = AsyncOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        max_retries=_REQUEST_MAX_RETRIES,
+        http_client=httpx.AsyncClient(transport=transport, timeout=_REQUEST_TIMEOUT_S),
+    )
 
 
 def _build_full_summary_logger():
@@ -272,28 +340,45 @@ class StirrupAgentRunner(AgentRunner):
         provider's real window so long runs compact early. Domain sub-agents get
         a smaller budget than the root so a single domain cannot hoard.
         """
-        client_kwargs = (
-            {"temperature": self._temperature}
-            if self._temperature is not None
-            else None
+        client_kwargs: dict = {}
+        if self._temperature is not None:
+            client_kwargs["temperature"] = self._temperature
+
+        max_output_tokens = min(max_output_tokens, context_window_tokens)
+        _log.info(
+            "StirrupAgentRunner: client budget=%d max_tokens=%d cutoff=%.2f "
+            "timeout=%.0fs retries=%d",
+            context_window_tokens,
+            max_output_tokens,
+            _CONTEXT_SUMMARIZATION_CUTOFF,
+            _REQUEST_TIMEOUT_S,
+            _REQUEST_MAX_RETRIES,
         )
 
         creds = resolve_router_creds(self._model_id)
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
 
-            return ChatCompletionsClient(
+            base_url = creds.base_url.rstrip("/")
+            client = ChatCompletionsClient(
                 model=resolve_model(self._model_id),
                 max_tokens=max_output_tokens,
                 context_window_tokens=context_window_tokens,
-                base_url=creds.base_url.rstrip("/"),
+                base_url=base_url,
                 api_key=creds.api_key,
                 reasoning_effort=self._reasoning_effort,
-                kwargs=client_kwargs,
+                timeout=_REQUEST_TIMEOUT_S,
+                max_retries=_REQUEST_MAX_RETRIES,
+                kwargs=client_kwargs or None,
             )
+            _apply_keepalive_transport(client, base_url=base_url, api_key=creds.api_key)
+            return client
 
         from stirrup.clients.litellm_client import LiteLLMClient
 
+        # LiteLLM forwards unknown kwargs to acompletion, so the timeout rides
+        # along here rather than as a constructor argument.
+        client_kwargs.setdefault("timeout", _REQUEST_TIMEOUT_S)
         return LiteLLMClient(
             model=self._model_id,
             max_tokens=max_output_tokens,
@@ -328,20 +413,41 @@ class StirrupAgentRunner(AgentRunner):
             }
         return MCPConfig.model_validate({"mcpServers": servers})
 
-    def _build_mcp_provider(self, *, exec_env=None, server_names: list[str] | None = None):
-        """Build an MCP provider, bridging large results when code is enabled."""
+    def _build_mcp_provider(
+        self,
+        *,
+        exec_env=None,
+        server_names: list[str] | None = None,
+        reader_has_code_exec: bool = True,
+    ):
+        """Build an MCP provider, bridging large results when code is enabled.
+
+        ``reader_has_code_exec`` is False for a domain sub-agent's provider:
+        only the root holds code_exec, so a handle returned to a sub-agent must
+        tell it to pass the handle up rather than to analyse the file.
+        """
         config = self._build_mcp_config()
         if exec_env is None:
             from stirrup.tools.mcp import MCPToolProvider
 
             return MCPToolProvider(config=config, server_names=server_names)
 
-        from .workspace_bridge import WorkspaceBridgedMCPToolProvider
+        from .workspace_bridge import (
+            DEFAULT_PERSIST_THRESHOLD_BYTES,
+            SUBAGENT_PERSIST_THRESHOLD_BYTES,
+            WorkspaceBridgedMCPToolProvider,
+        )
 
         return WorkspaceBridgedMCPToolProvider(
             config=config,
             exec_env=exec_env,
             server_names=server_names,
+            reader_has_code_exec=reader_has_code_exec,
+            persist_threshold_bytes=(
+                DEFAULT_PERSIST_THRESHOLD_BYTES
+                if reader_has_code_exec
+                else SUBAGENT_PERSIST_THRESHOLD_BYTES
+            ),
         )
 
     def _build_code_provider(self):
@@ -403,7 +509,9 @@ class StirrupAgentRunner(AgentRunner):
             delegated,
             client_factory=self._build_subagent_client,
             provider_factory=lambda server: self._build_mcp_provider(
-                exec_env=code_provider, server_names=[server]
+                exec_env=code_provider,
+                server_names=[server],
+                reader_has_code_exec=False,
             ),
             exec_env=code_provider,
             recorder=self._recorder,

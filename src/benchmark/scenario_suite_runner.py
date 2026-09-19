@@ -39,6 +39,14 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Wall-clock ceilings. Without them a hung child blocks the suite forever in
+# waitpid, and --continue-on-error cannot help because it only sees non-zero
+# exits. TimeoutExpired is an Exception, so main()'s handler already catches it
+# and the suite moves on to the next scenario.
+SCENARIO_TIMEOUT_S = float(os.environ.get("ASSETOPS_SCENARIO_TIMEOUT", 3600))
+COUCHDB_TIMEOUT_S = float(os.environ.get("ASSETOPS_COUCHDB_TIMEOUT", 600))
+EVALUATION_TIMEOUT_S = float(os.environ.get("ASSETOPS_EVALUATION_TIMEOUT", 3600))
+
 _DEFAULT_MODEL_ID = "tokenrouter/MiniMax-M3"
 _DEFAULT_GEMINI_MODEL_ID = "tokenrouter_gemini/google/gemma-4-26b-a4b-it"
 
@@ -337,8 +345,12 @@ def reset_and_load_couchdb(scenario_id: str, scenario_root: Path, dry_run: bool)
     if dry_run:
         return
 
-    subprocess.run(reset_cmd, check=True, cwd=str(REPO_ROOT), env=env)
-    subprocess.run(load_cmd, check=True, cwd=str(REPO_ROOT), env=env)
+    subprocess.run(
+        reset_cmd, check=True, cwd=str(REPO_ROOT), env=env, timeout=COUCHDB_TIMEOUT_S
+    )
+    subprocess.run(
+        load_cmd, check=True, cwd=str(REPO_ROOT), env=env, timeout=COUCHDB_TIMEOUT_S
+    )
 
 
 def run_agent_for_scenario(
@@ -391,7 +403,14 @@ def run_agent_for_scenario(
     if dry_run:
         return
 
-    subprocess.run(cmd, check=True, env=env)
+    try:
+        subprocess.run(cmd, check=True, env=env, timeout=SCENARIO_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        print(
+            f"timeout: {run_id} exceeded {SCENARIO_TIMEOUT_S:.0f}s and was killed",
+            file=sys.stderr,
+        )
+        raise
 
 
 def run_evaluation(
@@ -428,7 +447,7 @@ def run_evaluation(
     if dry_run:
         return
 
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, timeout=EVALUATION_TIMEOUT_S)
 
 
 def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
