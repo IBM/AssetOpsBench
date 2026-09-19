@@ -52,8 +52,28 @@ _REPO_ROOT = Path(__file__).parent.parent.parent.parent
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 # A code-track image needs the scientific stack the WO/vibration analyses use.
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "assetops-code")
-_WORKING_CONTEXT_BUDGET = 100_000
-_CONTEXT_SUMMARIZATION_CUTOFF = 0.75
+# Working context budget and the fraction of it that triggers summarization.
+# Set STIRRUP_CONTEXT_BUDGET to the model's real context window. The cutoff
+# needs enough headroom to absorb the largest single-turn growth, because the
+# check runs once per turn, after the turn: a run that summarizes at 96% of a
+# 75% cutoff overshot on one fat tool result.
+_WORKING_CONTEXT_BUDGET = int(os.environ.get("STIRRUP_CONTEXT_BUDGET", 100_000))
+_CONTEXT_SUMMARIZATION_CUTOFF = float(os.environ.get("STIRRUP_SUMMARIZE_AT", 0.60))
+# Output cap per request. The summarizer sends the whole history, so an
+# uncapped default (64k) makes that one request unserveable once the history is
+# large, and OpenAI-compatible gateways answer that by stalling rather than
+# erroring.
+_MAX_OUTPUT_TOKENS = int(os.environ.get("STIRRUP_MAX_TOKENS", 16_000))
+# A request with no timeout waits forever when an intermediary silently drops
+# the flow. Non-streaming reasoning requests send no bytes while the model
+# thinks, so they are exactly what idle timers kill.
+_REQUEST_TIMEOUT_S = float(os.environ.get("STIRRUP_REQUEST_TIMEOUT", 900))
+_REQUEST_MAX_RETRIES = int(os.environ.get("STIRRUP_MAX_RETRIES", 1))
+# Keepalive probes hold the flow open through load balancers and NAT, and
+# surface a genuinely dead peer in ~4 minutes instead of never.
+_TCP_KEEPALIVE_IDLE_S = int(os.environ.get("STIRRUP_TCP_KEEPALIVE_IDLE", 60))
+_TCP_KEEPALIVE_INTERVAL_S = int(os.environ.get("STIRRUP_TCP_KEEPALIVE_INTERVAL", 30))
+_TCP_KEEPALIVE_COUNT = int(os.environ.get("STIRRUP_TCP_KEEPALIVE_COUNT", 6))
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
 - MCP tools and their definitions are authoritative for domain data and semantics.
@@ -82,6 +102,61 @@ The local execution workspace is a temporary directory, but commands run on the
 host with the current user's permissions. Keep all reads and writes inside the
 workspace and use relative paths.
 """
+
+
+def _keepalive_socket_options() -> list[tuple[int, int, int]]:
+    """TCP keepalive options, named differently on macOS and Linux."""
+    import socket
+
+    idle_opt = getattr(
+        socket, "TCP_KEEPALIVE", getattr(socket, "TCP_KEEPIDLE", None)
+    )
+    options = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+    if idle_opt is not None:
+        options.append((socket.IPPROTO_TCP, idle_opt, _TCP_KEEPALIVE_IDLE_S))
+    for name, value in (
+        ("TCP_KEEPINTVL", _TCP_KEEPALIVE_INTERVAL_S),
+        ("TCP_KEEPCNT", _TCP_KEEPALIVE_COUNT),
+    ):
+        opt = getattr(socket, name, None)
+        if opt is not None:
+            options.append((socket.IPPROTO_TCP, opt, value))
+    return options
+
+
+def _apply_keepalive_transport(client, *, base_url: str, api_key: str) -> None:
+    """Swap in an AsyncOpenAI whose sockets carry TCP keepalive.
+
+    ``ChatCompletionsClient`` builds its own ``AsyncOpenAI`` and exposes no
+    ``http_client`` hook, so replace the built one. Upstream should grow that
+    parameter; until then this is the seam.
+    """
+    try:
+        import httpx
+        from openai import AsyncOpenAI
+    except ImportError:  # pragma: no cover - openai ships with stirrup
+        _log.warning("Could not enable TCP keepalive: openai/httpx unavailable")
+        return
+
+    try:
+        transport = httpx.AsyncHTTPTransport(
+            socket_options=_keepalive_socket_options(), retries=0
+        )
+    except TypeError:
+        _log.warning(
+            "httpx %s does not support socket_options; TCP keepalive not enabled",
+            httpx.__version__,
+        )
+        return
+
+    client._client = AsyncOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        max_retries=_REQUEST_MAX_RETRIES,
+        http_client=httpx.AsyncClient(
+            transport=transport, timeout=_REQUEST_TIMEOUT_S
+        ),
+    )
 
 
 def _build_full_summary_logger():
@@ -237,34 +312,54 @@ class StirrupAgentRunner(AgentRunner):
 
     def _build_client(self):
         """Build a Stirrup LLM client for the configured model id."""
-        client_kwargs = (
-            {"temperature": self._temperature}
-            if self._temperature is not None
-            else None
-        )
+        client_kwargs: dict = {}
+        if self._temperature is not None:
+            client_kwargs["temperature"] = self._temperature
+
+        max_output_tokens = min(_MAX_OUTPUT_TOKENS, _WORKING_CONTEXT_BUDGET)
 
         creds = resolve_router_creds(self._model_id)
         if creds is not None:
             from stirrup.clients.chat_completions_client import ChatCompletionsClient
 
+            base_url = creds.base_url.rstrip("/")
             common_kwargs = {
                 "model": resolve_model(self._model_id),
+                "max_tokens": max_output_tokens,
                 "context_window_tokens": _WORKING_CONTEXT_BUDGET,
-                "base_url": creds.base_url.rstrip("/"),
+                "base_url": base_url,
                 "api_key": creds.api_key,
                 "reasoning_effort": self._reasoning_effort,
-                "kwargs": client_kwargs,
+                "timeout": _REQUEST_TIMEOUT_S,
+                "max_retries": _REQUEST_MAX_RETRIES,
+                "kwargs": client_kwargs or None,
             }
             client = ChatCompletionsClient(**common_kwargs)
+            _apply_keepalive_transport(
+                client, base_url=base_url, api_key=creds.api_key
+            )
         else:
             from stirrup.clients.litellm_client import LiteLLMClient
 
+            # LiteLLM forwards unknown kwargs to acompletion, so the timeout
+            # rides along here rather than as a constructor argument.
+            client_kwargs.setdefault("timeout", _REQUEST_TIMEOUT_S)
             client = LiteLLMClient(
                 model=self._model_id,
+                max_tokens=max_output_tokens,
                 context_window_tokens=_WORKING_CONTEXT_BUDGET,
                 reasoning_effort=self._reasoning_effort,
                 kwargs=client_kwargs,
             )
+        _log.info(
+            "StirrupAgentRunner: client budget=%d cutoff=%.2f max_tokens=%d "
+            "timeout=%.0fs retries=%d",
+            _WORKING_CONTEXT_BUDGET,
+            _CONTEXT_SUMMARIZATION_CUTOFF,
+            max_output_tokens,
+            _REQUEST_TIMEOUT_S,
+            _REQUEST_MAX_RETRIES,
+        )
         return client
 
     def _build_mcp_config(self):

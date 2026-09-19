@@ -39,6 +39,91 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Wall-clock ceiling per agent run. Without it a hung child blocks the suite
+# forever in waitpid, and --continue-on-error cannot help because it only sees
+# non-zero exits. TimeoutExpired is an Exception, so the existing handler in
+# main() catches it and the suite moves on to the next scenario.
+SCENARIO_TIMEOUT_S = float(os.environ.get("ASSETOPS_SCENARIO_TIMEOUT", 3600))
+COUCHDB_TIMEOUT_S = float(os.environ.get("ASSETOPS_COUCHDB_TIMEOUT", 600))
+EVALUATION_TIMEOUT_S = float(os.environ.get("ASSETOPS_EVALUATION_TIMEOUT", 3600))
+
+_DEFAULT_MODEL_ID = "tokenrouter/MiniMax-M3"
+_DEFAULT_GEMINI_MODEL_ID = "tokenrouter_gemini/google/gemma-4-26b-a4b-it"
+
+SCENARIO_CATEGORY_ORDER = (
+    "car",
+    "fcc",
+    "fmea",
+    "fmsr",
+    "health",
+    "tsfm",
+    "wosr",
+)
+SCENARIO_PROFILE_PATHS = {
+    "all": REPO_ROOT / "benchmarks/scenario_suite/all.yaml",
+    "lite": REPO_ROOT / "benchmarks/scenario_suite/lite.yaml",
+    "mini": REPO_ROOT / "benchmarks/scenario_suite/mini.yaml",
+    "open": REPO_ROOT / "benchmarks/scenario_suite/open.yaml",
+}
+
+def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
+    """Load and validate a category-to-scenario-ids YAML profile."""
+    if not path.exists():
+        raise FileNotFoundError(f"Scenario profile not found: {path}")
+
+    raw_profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw_profile, dict):
+        raise ValueError(f"Scenario profile must be a YAML mapping: {path}")
+    if any(not isinstance(category, str) for category in raw_profile):
+        raise ValueError(f"Scenario profile category names must be strings: {path}")
+
+    expected_categories = set(SCENARIO_CATEGORY_ORDER)
+    actual_categories = set(raw_profile)
+    if actual_categories != expected_categories:
+        missing = sorted(expected_categories - actual_categories)
+        unknown = sorted(actual_categories - expected_categories)
+        details = []
+        if missing:
+            details.append(f"missing categories: {', '.join(missing)}")
+        if unknown:
+            details.append(f"unknown categories: {', '.join(unknown)}")
+        raise ValueError(f"Invalid scenario profile {path}: {'; '.join(details)}")
+
+    profile: dict[str, tuple[str, ...]] = {}
+    for category in SCENARIO_CATEGORY_ORDER:
+        raw_ids = raw_profile[category]
+        if not isinstance(raw_ids, list):
+            raise ValueError(
+                f"Scenario profile category {category!r} must be a list: {path}"
+            )
+
+        scenario_ids: list[str] = []
+        for raw_id in raw_ids:
+            if isinstance(raw_id, bool) or not isinstance(raw_id, (str, int)):
+                raise ValueError(
+                    f"Invalid scenario id {raw_id!r} in category {category!r}: {path}"
+                )
+            scenario_id = str(raw_id).strip()
+            if not scenario_id:
+                raise ValueError(
+                    f"Empty scenario id in category {category!r}: {path}"
+                )
+            scenario_ids.append(scenario_id)
+
+        if len(set(scenario_ids)) != len(scenario_ids):
+            raise ValueError(
+                f"Duplicate scenario ids in category {category!r}: {path}"
+            )
+        profile[category] = tuple(scenario_ids)
+
+    if not any(profile.values()):
+        raise ValueError(
+            f"Scenario profile must contain at least one scenario id: {path}"
+        )
+
+    return profile
+
+
 _DEFAULT_MODEL_ID = "tokenrouter/MiniMax-M3"
 _DEFAULT_GEMINI_MODEL_ID = "tokenrouter_gemini/google/gemma-4-26b-a4b-it"
 
@@ -337,8 +422,12 @@ def reset_and_load_couchdb(scenario_id: str, scenario_root: Path, dry_run: bool)
     if dry_run:
         return
 
-    subprocess.run(reset_cmd, check=True, cwd=str(REPO_ROOT), env=env)
-    subprocess.run(load_cmd, check=True, cwd=str(REPO_ROOT), env=env)
+    subprocess.run(
+        reset_cmd, check=True, cwd=str(REPO_ROOT), env=env, timeout=COUCHDB_TIMEOUT_S
+    )
+    subprocess.run(
+        load_cmd, check=True, cwd=str(REPO_ROOT), env=env, timeout=COUCHDB_TIMEOUT_S
+    )
 
 
 def run_agent_for_scenario(
@@ -391,7 +480,14 @@ def run_agent_for_scenario(
     if dry_run:
         return
 
-    subprocess.run(cmd, check=True, env=env)
+    try:
+        subprocess.run(cmd, check=True, env=env, timeout=SCENARIO_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        print(
+            f"timeout: {run_id} exceeded {SCENARIO_TIMEOUT_S:.0f}s and was killed",
+            file=sys.stderr,
+        )
+        raise
 
 
 def run_evaluation(
@@ -428,7 +524,7 @@ def run_evaluation(
     if dry_run:
         return
 
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, timeout=EVALUATION_TIMEOUT_S)
 
 
 def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:

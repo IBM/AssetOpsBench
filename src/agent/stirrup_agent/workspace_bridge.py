@@ -8,9 +8,11 @@ conversation with a compact, cacheable artifact handle.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -22,7 +24,16 @@ from stirrup.tools.mcp import MCPConfig, MCPToolProvider
 
 _log = logging.getLogger(__name__)
 
-DEFAULT_PERSIST_THRESHOLD_BYTES = 100 * 1024
+# Results above this size go to the code workspace as an artifact handle. The
+# old 100 KiB let a single result ride inline at roughly 25k tokens, which
+# alone pushed a 100k working budget past the summarization cutoff in one turn.
+DEFAULT_PERSIST_THRESHOLD_BYTES = int(
+    os.environ.get("STIRRUP_MCP_SPILL_BYTES", 16 * 1024)
+)
+# Stirrup builds its stdio ClientSession without read_timeout_seconds and
+# awaits call_tool bare, so a server that never answers hangs the run forever.
+# Bound it here and hand the model a failed result it can recover from.
+MCP_TOOL_TIMEOUT_S = float(os.environ.get("STIRRUP_MCP_TOOL_TIMEOUT", 300))
 _ARTIFACT_DIRECTORY = "mcp_results"
 _MUTATING_TOOLS = {
     "fmsr__add_failure_modes",
@@ -159,7 +170,23 @@ class WorkspaceBridgedMCPToolProvider(MCPToolProvider):
                     metadata=ToolUseCountMetadata(),
                 )
 
-            result = await original_executor(params)
+            try:
+                result = await asyncio.wait_for(
+                    original_executor(params), timeout=MCP_TOOL_TIMEOUT_S
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                _log.warning(
+                    "MCP tool %s timed out after %.0fs", tool.name, MCP_TOOL_TIMEOUT_S
+                )
+                return ToolResult(
+                    content=(
+                        f"{tool.name} did not respond within "
+                        f"{MCP_TOOL_TIMEOUT_S:.0f}s and was cancelled. The server may "
+                        "be unavailable. Try a narrower query or a different tool."
+                    ),
+                    success=False,
+                    metadata=ToolUseCountMetadata(),
+                )
             if result.success and tool.name in _MUTATING_TOOLS:
                 self._artifacts.clear()
 
