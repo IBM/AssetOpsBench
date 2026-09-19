@@ -19,7 +19,8 @@ from agent.stirrup_agent.finish_tool import ASSETOPS_FINISH_TOOL
 from agent.stirrup_agent.runner import (
     StirrupAgentRunner,
     _CONTEXT_SUMMARIZATION_CUTOFF,
-    _WORKING_CONTEXT_BUDGET,
+    _ROOT_CONTEXT_WINDOW_TOKENS,
+    _ROOT_MAX_OUTPUT_TOKENS,
     _build_full_summary_logger,
     _copy_workspace_contents,
 )
@@ -118,11 +119,13 @@ def test_stirrup_runner_rejects_unsupported_code_backend():
 def test_stirrup_runner_bridges_mcp_results_when_code_is_enabled():
     runner = StirrupAgentRunner(code_backend="local")
 
-    tools = runner._build_tools()
-    code_provider, mcp_provider = tools[0], tools[-1]
+    code_provider, *rest = runner._build_tools()
+    mcp_provider = rest[-1]
 
     assert isinstance(mcp_provider, WorkspaceBridgedMCPToolProvider)
     assert mcp_provider._exec_env is code_provider
+    # Flat topology connects every registered server through one provider.
+    assert mcp_provider._server_names is None
 
 
 def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
@@ -170,9 +173,11 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
 
 
 def test_stirrup_runner_uses_75k_summarization_trigger():
-    assert _WORKING_CONTEXT_BUDGET == 100_000
+    assert _ROOT_CONTEXT_WINDOW_TOKENS == 100_000
     assert _CONTEXT_SUMMARIZATION_CUTOFF == 0.75
-    assert _WORKING_CONTEXT_BUDGET * _CONTEXT_SUMMARIZATION_CUTOFF == 75_000
+    assert _ROOT_CONTEXT_WINDOW_TOKENS * _CONTEXT_SUMMARIZATION_CUTOFF == 75_000
+    # Stirrup validates this pair in the client constructor.
+    assert _ROOT_MAX_OUTPUT_TOKENS <= _ROOT_CONTEXT_WINDOW_TOKENS
 
 
 def test_full_summary_logger_does_not_truncate(capsys: pytest.CaptureFixture[str]):
