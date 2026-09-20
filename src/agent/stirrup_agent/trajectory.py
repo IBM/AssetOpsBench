@@ -4,19 +4,13 @@ Stirrup's :meth:`Agent.run` returns ``(finish_params, history, metadata)``
 where ``history`` is a ``list[list[ChatMessage]]`` (a list of turns, each a
 list of messages).  Stirrup's message objects are strongly typed pydantic
 models, so unlike the Goose path there is no fragile JSONL parsing: we read
-attributes directly.
+the ordered 0.2 message blocks directly.
 
 Mapping:
   * each ``AssistantMessage`` -> one :class:`~agent.models.TurnRecord`
-    (its ``content`` text, ``tool_calls``, ``token_usage``, request timing);
+    (its text/tool-call blocks, ``token_usage``, and request timing);
   * each ``ToolMessage`` -> the ``output`` of the matching :class:`ToolCall`,
     joined by ``tool_call_id``.
-
-Stirrup 0.2.0 made assistant messages block-based: ``blocks`` is the stored
-content and ``content`` / ``tool_calls`` survive only as deprecated read-only
-projections. :func:`_assistant_text` and :func:`_assistant_tool_calls` read
-blocks when present and fall back to the projections, so this module works
-against both shapes and emits no deprecation warnings on 0.2.
 
 Stirrup exposes MCP tools as ``{server}__{tool}`` and the code-execution tool
 as ``code_exec``, so :func:`classify_tool` (shared shape with the Goose
@@ -29,7 +23,6 @@ import json
 from typing import Any, Iterable
 
 from ..models import ToolCall, Trajectory, TurnRecord
-from .gateway import GATEWAY_CALL_TOOL, GATEWAY_DISCOVERY_TOOLS
 
 # Stirrup's built-in code-execution tool name (LocalCodeExec and Docker both
 # register under this name by default).  A call to it = "the agent ran code".
@@ -38,35 +31,15 @@ _CODE_TOOL_NAMES = {"code_exec"}
 _WEB_TOOL_NAMES = {"web_search", "web_fetch"}
 
 
-def classify_tool(
-    tool_name: str,
-    domain_servers: set[str],
-    arguments: dict | None = None,
-) -> str:
+def classify_tool(tool_name: str, domain_servers: set[str]) -> str:
     """Label a Stirrup tool call ``"domain"`` / ``"code"`` / ``"other"``.
 
     MCP tools arrive as ``{server}__{tool}``; ``code_exec`` is code execution;
-    anything else (web, finish, discovery, ...) is ``"other"``.
-
-    Under ``--topology gateway`` every domain call arrives as ``call_tool`` with
-    the real tool in its ``name`` argument. Without ``arguments`` that would
-    classify as "other", zeroing ``agent.domain_tool_calls`` and making
-    ``tool_bypass`` read true on every gateway run. Pass the call's arguments
-    and the underlying server is credited instead, so the counts stay
-    comparable with a flat run.
+    anything else (web, finish, calculator, ...) is ``"other"``.
     """
     if tool_name in _CODE_TOOL_NAMES:
         return "code"
     if tool_name in _WEB_TOOL_NAMES:
-        return "other"
-    if tool_name == GATEWAY_CALL_TOOL:
-        inner = (arguments or {}).get("name")
-        if isinstance(inner, str) and inner.split("__", 1)[0] in domain_servers:
-            return "domain"
-        return "other"
-    if tool_name in GATEWAY_DISCOVERY_TOOLS:
-        # Discovery is overhead the gateway pays and flat does not. Counted
-        # separately rather than as domain work.
         return "other"
     prefix = tool_name.split("__", 1)[0]
     if prefix in domain_servers:
@@ -93,26 +66,25 @@ def _content_text(content: Any) -> str:
     return str(content)
 
 
-def _assistant_text(msg: Any) -> str:
-    """Text of an assistant message, preferring 0.2 blocks over projections."""
-    blocks = getattr(msg, "blocks", None)
-    if blocks:
-        parts = [
+def _assistant_text(message: Any) -> str:
+    """Read answer text from Stirrup 0.2 blocks or a legacy test double."""
+    blocks = getattr(message, "blocks", None)
+    if isinstance(blocks, list):
+        return "".join(
             block.text
             for block in blocks
             if getattr(block, "kind", None) == "text"
             and isinstance(getattr(block, "text", None), str)
-        ]
-        return "".join(parts)
-    return _content_text(getattr(msg, "content", ""))
+        )
+    return _content_text(getattr(message, "content", ""))
 
 
-def _assistant_tool_calls(msg: Any) -> list[Any]:
-    """Tool calls of an assistant message, in emission order."""
-    blocks = getattr(msg, "blocks", None)
-    if blocks:
-        return [b for b in blocks if getattr(b, "kind", None) == "tool_call"]
-    return list(getattr(msg, "tool_calls", []) or [])
+def _assistant_tool_calls(message: Any) -> list[Any]:
+    """Read tool calls from Stirrup 0.2 blocks or a legacy test double."""
+    blocks = getattr(message, "blocks", None)
+    if isinstance(blocks, list):
+        return [block for block in blocks if getattr(block, "kind", None) == "tool_call"]
+    return list(getattr(message, "tool_calls", []) or [])
 
 
 def _parse_arguments(arguments: Any) -> dict:
@@ -216,10 +188,8 @@ def final_answer(history: Iterable[Any], finish_params: Any) -> str:
     for msg in reversed(messages):
         if getattr(msg, "role", None) != "assistant":
             continue
-        if any(
-            getattr(call, "name", None) == "finish"
-            for call in _assistant_tool_calls(msg)
-        ):
+        tool_calls = _assistant_tool_calls(msg)
+        if any(getattr(call, "name", None) == "finish" for call in tool_calls):
             text = _assistant_text(msg).strip()
             if text:
                 return text

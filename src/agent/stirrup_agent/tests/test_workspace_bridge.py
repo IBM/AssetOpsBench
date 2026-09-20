@@ -11,7 +11,6 @@ from stirrup.core.models import Tool, ToolResult, ToolUseCountMetadata
 from stirrup.tools.mcp import MCPConfig
 
 from agent.stirrup_agent.workspace_bridge import (
-    DEFAULT_PERSIST_THRESHOLD_BYTES,
     WorkspaceBridgedMCPToolProvider,
 )
 
@@ -248,28 +247,3 @@ async def test_mutation_calls_are_never_cached() -> None:
     await tool.executor(_Params())
 
     assert calls == ["wo__update_workorder", "wo__update_workorder"]
-
-
-# The gateway keeps one context for the whole run, so an oversized MCP result
-# lands directly on the agent doing the reasoning. A real run showed paginated
-# pages near 46 KiB against a 100 KiB threshold: every page rode inline.
-
-_OBSERVED_PAGE_BYTES = 46_733
-
-
-def test_spill_threshold_sits_below_a_real_mcp_page() -> None:
-    assert DEFAULT_PERSIST_THRESHOLD_BYTES < _OBSERVED_PAGE_BYTES
-
-
-@pytest.mark.anyio
-async def test_page_sized_result_becomes_a_handle_not_conversation_text() -> None:
-    exec_env = _FakeExecEnvironment()
-    provider = _provider(exec_env, threshold=DEFAULT_PERSIST_THRESHOLD_BYTES)
-    page = json.dumps({"work_orders": [{"d": "x" * 80} for _ in range(600)]})
-    assert len(page.encode()) > DEFAULT_PERSIST_THRESHOLD_BYTES
-
-    tool = provider._wrap_tool(_tool("wo__list_workorders", page, []))
-    result = await tool.executor(_Params())
-
-    assert json.loads(result.content)["artifact_type"] == "mcp_result"
-    assert len(result.content) < len(page)

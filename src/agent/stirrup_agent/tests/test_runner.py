@@ -19,10 +19,7 @@ from agent.stirrup_agent.finish_tool import ASSETOPS_FINISH_TOOL
 from agent.stirrup_agent.runner import (
     StirrupAgentRunner,
     _CONTEXT_SUMMARIZATION_CUTOFF,
-    _REQUEST_MAX_RETRIES,
-    _REQUEST_TIMEOUT_S,
-    _ROOT_CONTEXT_WINDOW_TOKENS,
-    _ROOT_MAX_OUTPUT_TOKENS,
+    _WORKING_CONTEXT_BUDGET,
     _build_full_summary_logger,
     _copy_workspace_contents,
 )
@@ -31,7 +28,6 @@ from agent.stirrup_agent.trajectory import (
     classify_tool,
     final_answer,
 )
-from agent.stirrup_agent.gateway import MCPGatewayToolProvider
 from agent.stirrup_agent.workspace_bridge import WorkspaceBridgedMCPToolProvider
 
 _DOMAIN = {"iot", "utilities", "fmsr", "tsfm", "wo", "vibration"}
@@ -122,43 +118,11 @@ def test_stirrup_runner_rejects_unsupported_code_backend():
 def test_stirrup_runner_bridges_mcp_results_when_code_is_enabled():
     runner = StirrupAgentRunner(code_backend="local")
 
-    # The code track is [code_provider, *handoff_tools, mcp_provider]; the
-    # handoff tools in the middle are why this cannot unpack to a fixed pair.
-    code_provider, *rest = runner._build_tools()
-    mcp_provider = rest[-1]
+    tools = runner._build_tools()
+    code_provider, mcp_provider = tools[0], tools[-1]
 
     assert isinstance(mcp_provider, WorkspaceBridgedMCPToolProvider)
     assert mcp_provider._exec_env is code_provider
-    # Flat topology connects every registered server through one provider.
-    assert mcp_provider._server_names is None
-
-
-def test_gateway_topology_wraps_the_bridged_provider():
-    runner = StirrupAgentRunner(code_backend="local", topology="gateway")
-
-    code_provider, *rest = runner._build_tools()
-    gateway = rest[-1]
-
-    # The gateway must sit on top of the bridge, not replace it, or oversized
-    # MCP results stop spilling into the workspace and land in the context.
-    assert isinstance(gateway, MCPGatewayToolProvider)
-    assert isinstance(gateway._inner, WorkspaceBridgedMCPToolProvider)
-    assert gateway._inner._exec_env is code_provider
-
-
-def test_gateway_topology_works_without_code_execution():
-    # Unlike a delegated topology, the gateway needs no execution environment,
-    # so it can be compared with flat on the same track as the other runners.
-    runner = StirrupAgentRunner(code_enabled=False, topology="gateway")
-
-    (gateway,) = runner._build_tools()
-
-    assert isinstance(gateway, MCPGatewayToolProvider)
-
-
-def test_unknown_topology_is_rejected_at_construction():
-    with pytest.raises(ValueError, match="topology"):
-        StirrupAgentRunner(topology="subagent")
 
 
 def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
@@ -176,12 +140,10 @@ def test_stirrup_runner_forwards_temperature_to_litellm_client():
 
     client = runner._build_client()
 
-    # LiteLLM forwards unknown kwargs to acompletion, so the request timeout
-    # rides alongside the temperature rather than as a constructor argument.
-    assert client._kwargs == {"temperature": 0.2, "timeout": _REQUEST_TIMEOUT_S}
+    assert client._kwargs == {"temperature": 0.2}
     assert client._reasoning_effort == "high"
-    assert client.max_tokens == _ROOT_MAX_OUTPUT_TOKENS
-    assert client.context_window_tokens == _ROOT_CONTEXT_WINDOW_TOKENS
+    assert client.max_tokens == 64_000
+    assert client.context_window_tokens == 100_000
 
 
 def test_stirrup_runner_forwards_temperature_to_router_client(
@@ -203,33 +165,14 @@ def test_stirrup_runner_forwards_temperature_to_router_client(
     assert isinstance(client, ChatCompletionsClient)
     assert client._kwargs == {"temperature": 0.2}
     assert client._reasoning_effort == "medium"
-    assert client.max_tokens == _ROOT_MAX_OUTPUT_TOKENS
-    assert client.context_window_tokens == _ROOT_CONTEXT_WINDOW_TOKENS
-    # The router path must carry a timeout: with timeout=None the OpenAI SDK
-    # waits indefinitely when an intermediary silently drops the flow. It
-    # arrives as an httpx.Timeout because the keepalive transport owns the
-    # http client, which is itself the assertion that the swap happened.
-    timeout = client._client.timeout
-    assert timeout is not None
-    assert getattr(timeout, "read", timeout) == _REQUEST_TIMEOUT_S
-    assert client._client.max_retries == _REQUEST_MAX_RETRIES
+    assert client.max_tokens == 64_000
+    assert client.context_window_tokens == 100_000
 
 
-def test_stirrup_runner_summarization_leaves_headroom():
-    # The cutoff is checked once per turn, after the turn. One fat tool result
-    # can push the context well past it before the check runs: a real run
-    # summarized at 96.7% of a 75% cutoff. Keep headroom for that overshoot.
-    assert _ROOT_CONTEXT_WINDOW_TOKENS == 100_000
-    assert _CONTEXT_SUMMARIZATION_CUTOFF <= 0.60
-    # Stirrup validates this pair in the client constructor.
-    assert _ROOT_MAX_OUTPUT_TOKENS <= _ROOT_CONTEXT_WINDOW_TOKENS
-
-
-def test_no_request_can_wait_forever():
-    # A chat completion with timeout=None waits indefinitely when an
-    # intermediary silently drops the flow, which parked entire sweeps.
-    assert _REQUEST_TIMEOUT_S > 0
-    assert _REQUEST_TIMEOUT_S * (_REQUEST_MAX_RETRIES + 1) <= 3600
+def test_stirrup_runner_uses_75k_summarization_trigger():
+    assert _WORKING_CONTEXT_BUDGET == 100_000
+    assert _CONTEXT_SUMMARIZATION_CUTOFF == 0.75
+    assert _WORKING_CONTEXT_BUDGET * _CONTEXT_SUMMARIZATION_CUTOFF == 75_000
 
 
 def test_full_summary_logger_does_not_truncate(capsys: pytest.CaptureFixture[str]):

@@ -8,11 +8,9 @@ conversation with a compact, cacheable artifact handle.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import logging
-import os
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -24,17 +22,7 @@ from stirrup.tools.mcp import MCPConfig, MCPToolProvider
 
 _log = logging.getLogger(__name__)
 
-# Above this size a result becomes a workspace handle instead of conversation
-# text. 100 KiB was far too generous: a paginated MCP page lands near 45 KiB, so
-# it rode inline and filled the root context in three calls. The gateway keeps
-# one context for the whole run, so an oversized result lands directly on the
-# agent doing the reasoning. The threshold must sit below one page.
-DEFAULT_PERSIST_THRESHOLD_BYTES = int(
-    os.environ.get("STIRRUP_MCP_SPILL_BYTES", 16 * 1024)
-)
-# Stirrup builds its stdio ClientSession without read_timeout_seconds and awaits
-# call_tool bare, so a server that never answers hangs the run forever.
-MCP_TOOL_TIMEOUT_S = float(os.environ.get("STIRRUP_MCP_TOOL_TIMEOUT", 300))
+DEFAULT_PERSIST_THRESHOLD_BYTES = 100 * 1024
 _ARTIFACT_DIRECTORY = "mcp_results"
 _MUTATING_TOOLS = {
     "fmsr__add_failure_modes",
@@ -127,21 +115,11 @@ class WorkspaceBridgedMCPToolProvider(MCPToolProvider):
         config: MCPConfig,
         *,
         exec_env: CodeExecToolProvider,
-        server_names: list[str] | None = None,
         persist_threshold_bytes: int = DEFAULT_PERSIST_THRESHOLD_BYTES,
     ) -> None:
-        """Bridge oversized MCP results into ``exec_env``.
-
-        ``server_names`` restricts this provider to a subset of the servers in
-        ``config``; ``None`` connects to all of them.
-
-        ``exec_env`` is a constructor argument, never a tool, so a wrapper such
-        as the gateway can spill large results into the root's workspace
-        without the agent gaining code execution.
-        """
         if persist_threshold_bytes <= 0:
             raise ValueError("persist_threshold_bytes must be positive")
-        super().__init__(config=config, server_names=server_names)
+        super().__init__(config=config)
         self._exec_env = exec_env
         self._persist_threshold_bytes = persist_threshold_bytes
         self._artifacts: dict[str, MCPResultArtifact] = {}
@@ -181,23 +159,7 @@ class WorkspaceBridgedMCPToolProvider(MCPToolProvider):
                     metadata=ToolUseCountMetadata(),
                 )
 
-            try:
-                result = await asyncio.wait_for(
-                    original_executor(params), timeout=MCP_TOOL_TIMEOUT_S
-                )
-            except (asyncio.TimeoutError, TimeoutError):
-                _log.warning(
-                    "MCP tool %s timed out after %.0fs", tool.name, MCP_TOOL_TIMEOUT_S
-                )
-                return ToolResult(
-                    content=(
-                        f"{tool.name} did not respond within "
-                        f"{MCP_TOOL_TIMEOUT_S:.0f}s and was cancelled. The server may "
-                        "be unavailable. Try a narrower query or a different tool."
-                    ),
-                    success=False,
-                    metadata=ToolUseCountMetadata(),
-                )
+            result = await original_executor(params)
             if result.success and tool.name in _MUTATING_TOOLS:
                 self._artifacts.clear()
 

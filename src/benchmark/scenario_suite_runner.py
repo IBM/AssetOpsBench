@@ -39,14 +39,6 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Wall-clock ceilings. Without them a hung child blocks the suite forever in
-# waitpid, and --continue-on-error cannot help because it only sees non-zero
-# exits. TimeoutExpired is an Exception, so main()'s handler already catches it
-# and the suite moves on to the next scenario.
-SCENARIO_TIMEOUT_S = float(os.environ.get("ASSETOPS_SCENARIO_TIMEOUT", 3600))
-COUCHDB_TIMEOUT_S = float(os.environ.get("ASSETOPS_COUCHDB_TIMEOUT", 600))
-EVALUATION_TIMEOUT_S = float(os.environ.get("ASSETOPS_EVALUATION_TIMEOUT", 3600))
-
 _DEFAULT_MODEL_ID = "tokenrouter/MiniMax-M3"
 _DEFAULT_GEMINI_MODEL_ID = "tokenrouter_gemini/google/gemma-4-26b-a4b-it"
 
@@ -345,12 +337,8 @@ def reset_and_load_couchdb(scenario_id: str, scenario_root: Path, dry_run: bool)
     if dry_run:
         return
 
-    subprocess.run(
-        reset_cmd, check=True, cwd=str(REPO_ROOT), env=env, timeout=COUCHDB_TIMEOUT_S
-    )
-    subprocess.run(
-        load_cmd, check=True, cwd=str(REPO_ROOT), env=env, timeout=COUCHDB_TIMEOUT_S
-    )
+    subprocess.run(reset_cmd, check=True, cwd=str(REPO_ROOT), env=env)
+    subprocess.run(load_cmd, check=True, cwd=str(REPO_ROOT), env=env)
 
 
 def run_agent_for_scenario(
@@ -403,14 +391,7 @@ def run_agent_for_scenario(
     if dry_run:
         return
 
-    try:
-        subprocess.run(cmd, check=True, env=env, timeout=SCENARIO_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        print(
-            f"timeout: {run_id} exceeded {SCENARIO_TIMEOUT_S:.0f}s and was killed",
-            file=sys.stderr,
-        )
-        raise
+    subprocess.run(cmd, check=True, env=env)
 
 
 def run_evaluation(
@@ -447,7 +428,7 @@ def run_evaluation(
     if dry_run:
         return
 
-    subprocess.run(cmd, check=True, timeout=EVALUATION_TIMEOUT_S)
+    subprocess.run(cmd, check=True)
 
 
 def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
@@ -463,19 +444,6 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
         args, "stirrup_workspace_root", None
     ) is not None:
         stirrup_extra_args.append("--preserve-workspace")
-
-    # One method per gateway mode. They are separate method names rather than a
-    # flag on stirrup_agent because outputs are keyed on agent_name
-    # (`<root>/<agent_name>/<model>/` and `{agent_name}_{scenario}`), so a
-    # shared name would have one configuration overwrite another's
-    # trajectories and reports, destroying the comparison being run.
-    gateway_top_k = getattr(args, "stirrup_gateway_top_k", None)
-
-    def _gateway_args(mode: str) -> list[str]:
-        extra = [*stirrup_extra_args, "--topology", "gateway", "--gateway-mode", mode]
-        if gateway_top_k is not None:
-            extra.extend(["--gateway-top-k", str(gateway_top_k)])
-        return extra
 
     opencode_extra_args: list[str] = []
     if args.opencode_allow_files:
@@ -530,20 +498,6 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             extra_args=tuple(stirrup_extra_args),
             workspace_root=getattr(args, "stirrup_workspace_root", None),
         ),
-        "stirrup_agent_gateway": MethodConfig(
-            agent_name="stirrup_agent_gateway",
-            command="stirrup-agent",
-            model_id=args.model_id,
-            extra_args=tuple(_gateway_args("index")),
-            workspace_root=getattr(args, "stirrup_workspace_root", None),
-        ),
-        "stirrup_agent_gateway_search": MethodConfig(
-            agent_name="stirrup_agent_gateway_search",
-            command="stirrup-agent",
-            model_id=args.model_id,
-            extra_args=tuple(_gateway_args("search")),
-            workspace_root=getattr(args, "stirrup_workspace_root", None),
-        ),
         "opencode_agent": MethodConfig(
             agent_name="opencode_agent",
             command="opencode-agent",
@@ -588,17 +542,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scenario_suite_runner",
         description="Run benchmark scenarios sequentially.",
-    )
-    parser.add_argument(
-        "--stirrup-gateway-top-k",
-        type=int,
-        default=None,
-        metavar="K",
-        help=(
-            "Candidates returned by the gateway's search_tools under the "
-            "stirrup_agent_gateway* methods. Omitted by default, so the "
-            "runner's own default applies."
-        ),
     )
     parser.add_argument(
         "--temperature",
@@ -648,20 +591,13 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=[
             "direct_llm",
             "stirrup_agent",
-            "stirrup_agent_gateway",
-            "stirrup_agent_gateway_search",
             "opencode_agent",
             "gemini_cli_agent",
             "openclaw_cli_agent",
             "all",
         ],
         default="direct_llm",
-        help=(
-            "Which agent to run. The three stirrup_agent* methods are the same "
-            "runner under different tool surfaces: flat, gateway with a pinned "
-            "catalogue, and gateway with search only. Note that 'all' runs "
-            "every one of them."
-        ),
+        help="Which agent to run.",
     )
     parser.add_argument(
         "--trajectory-root",
