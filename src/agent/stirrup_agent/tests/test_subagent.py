@@ -262,3 +262,99 @@ def test_recorder_counts_calls_across_domains():
 
     assert recorder.call_count == 3
     assert len(recorder.histories["iot_agent"]) == 2
+
+# -- run metrics -----------------------------------------------------------
+#
+# The root/sub split is the experiment: the topology buys root context headroom
+# by re-paying system prompts and tool schemas inside every delegation, so cost
+# and context move in opposite directions. These figures used to exist only as
+# OpenTelemetry span attributes, which made a sweep unreadable without a
+# tracing backend. They are now persisted in the trajectory record too, and
+# both readers take them from one computation so they cannot drift apart.
+
+
+def _runner_with_turns(turns):
+    from agent.models import Trajectory
+    from agent.stirrup_agent.runner import StirrupAgentRunner
+
+    runner = StirrupAgentRunner(code_backend="local", topology="subagent")
+    trajectory = Trajectory()
+    trajectory.turns.extend(turns)
+    return runner, trajectory
+
+
+def _turn(index, *, agent, depth, tokens_in, tokens_out=0, tools=()):
+    from agent.models import ToolCall, TurnRecord
+
+    return TurnRecord(
+        index=index,
+        text="",
+        tool_calls=[ToolCall(name=n, input={}, id=f"c{index}-{i}")
+                    for i, n in enumerate(tools)],
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+        agent=agent,
+        depth=depth,
+    )
+
+
+def test_run_metrics_split_root_from_subagent_tokens():
+    runner, trajectory = _runner_with_turns([
+        _turn(0, agent="root", depth=0, tokens_in=1_000, tools=("wo_agent",)),
+        _turn(1, agent="wo_agent", depth=1, tokens_in=9_000, tools=("wo__list",)),
+        _turn(2, agent="wo_agent", depth=1, tokens_in=7_000),
+        _turn(3, agent="root", depth=0, tokens_in=3_000, tools=("code_exec",)),
+    ])
+
+    m = runner._run_metrics(trajectory, answer="done", started=0.0)
+
+    assert m["input_tokens"] == 20_000
+    assert m["root_input_tokens"] == 4_000
+    assert m["subagent_input_tokens"] == 16_000
+    # The context axis is the root's worst single turn, not the total.
+    assert m["root_peak_context_tokens"] == 3_000
+    assert m["root_turns"] == 2
+    assert m["subagent_turns"] == 2
+    assert m["topology"] == "subagent"
+
+
+def test_run_metrics_root_and_subagent_tokens_sum_to_the_total():
+    # The split is a filter on depth, never a separate accumulator, so it can
+    # never disagree with the turns it describes.
+    runner, trajectory = _runner_with_turns([
+        _turn(0, agent="root", depth=0, tokens_in=500),
+        _turn(1, agent="tsfm_agent", depth=1, tokens_in=1_500),
+        _turn(2, agent="wo_agent", depth=1, tokens_in=2_500),
+    ])
+
+    m = runner._run_metrics(trajectory, answer="", started=0.0)
+
+    assert m["root_input_tokens"] + m["subagent_input_tokens"] == m["input_tokens"]
+
+
+def test_run_metrics_break_down_by_agent():
+    runner, trajectory = _runner_with_turns([
+        _turn(0, agent="root", depth=0, tokens_in=100, tools=("wo_agent",)),
+        _turn(1, agent="wo_agent", depth=1, tokens_in=200, tools=("wo__list", "wo__get")),
+    ])
+
+    by_agent = runner._run_metrics(trajectory, answer="", started=0.0)["by_agent"]
+
+    assert by_agent["root"]["turns"] == 1
+    assert by_agent["wo_agent"]["turns"] == 1
+    assert by_agent["wo_agent"]["tool_calls"] == 2
+    assert by_agent["wo_agent"]["input_tokens"] == 200
+
+
+def test_delegation_calls_are_not_counted_as_domain_work_in_metrics():
+    # A delegation is named `{server}_agent` with no `__`, so it must fall
+    # through to "other" while the real domain calls beneath it count once.
+    runner, trajectory = _runner_with_turns([
+        _turn(0, agent="root", depth=0, tokens_in=10, tools=("wo_agent",)),
+        _turn(1, agent="wo_agent", depth=1, tokens_in=10, tools=("wo__list_workorders",)),
+    ])
+
+    m = runner._run_metrics(trajectory, answer="", started=0.0)
+
+    assert m["domain_tool_calls"] == 1
+    assert m["other_tool_calls"] == 1

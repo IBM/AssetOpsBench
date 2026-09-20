@@ -61,6 +61,13 @@ class Trajectory:
     """ISO-8601 UTC timestamp of when ``run()`` began, for replay
     alignment with the corresponding trace.  Populated by the runner."""
 
+    metrics: dict = field(default_factory=dict)
+    """Per-run accounting the runner computed for this trajectory: token split
+    by delegation depth, tool counts, topology.  Persisted with the trajectory
+    (the writer serialises this dataclass wholesale), so a sweep is analysable
+    from the run files alone rather than only through a tracing backend.
+    Runners that compute nothing leave it empty."""
+
     @property
     def total_input_tokens(self) -> int:
         return sum(t.input_tokens for t in self.turns)

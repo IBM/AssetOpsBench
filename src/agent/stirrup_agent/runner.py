@@ -585,7 +585,12 @@ class StirrupAgentRunner(AgentRunner):
             trajectory.started_at = started_at
             answer = final_answer(history, finish_params)
 
-            self._annotate_span(span, trajectory, answer, run_started)
+            # Computed once, read twice: the span carries it to a tracing
+            # backend, and the field rides along into the persisted trajectory
+            # so a sweep can be analysed from the run files alone. Two
+            # accumulators would eventually disagree.
+            trajectory.metrics = self._run_metrics(trajectory, answer, run_started)
+            self._annotate_span(span, trajectory.metrics)
             persist_trajectory(
                 runner_name="stirrup-agent",
                 model=self._model_id,
@@ -595,53 +600,103 @@ class StirrupAgentRunner(AgentRunner):
             )
             return AgentResult(question=question, answer=answer, trajectory=trajectory)
 
-    def _annotate_span(
-        self, span, trajectory: Trajectory, answer: str, started: float
-    ) -> None:
+    def _run_metrics(
+        self, trajectory: Trajectory, answer: str, started: float
+    ) -> dict:
+        """Compute the per-run accounting once, for both spans and the record.
+
+        Root-only and tree-wide figures diverge under ``--topology subagent``,
+        and that divergence is the experiment: the topology buys root context
+        headroom by re-paying system prompts and tool schemas inside every
+        delegation, so cost and context move in opposite directions. Reporting
+        only the total hides the saving; reporting only the peak hides the bill.
+
+        Sub-agent turns are spliced into the trajectory at ``depth >= 1``, so
+        every figure below is a filter on that field rather than a separate
+        accumulator that could drift from the turns it describes.
+        """
         domain_servers = set(self._server_paths)
         counts = {"domain": 0, "code": 0, "other": 0}
         for tc in trajectory.all_tool_calls:
             counts[classify_tool(tc.name, domain_servers)] += 1
-        total_tools = sum(counts.values())
-        bypass = self._code_enabled and counts["code"] > 0 and counts["domain"] == 0
 
-        # Root-only vs tree-wide accounting. Under --topology subagent these
-        # diverge, and the divergence is the experiment: the topology buys root
-        # context headroom by re-paying schemas and system prompts inside each
-        # delegation, so cost and context move in opposite directions.
         root_turns = [t for t in trajectory.turns if t.depth == 0]
+        sub_turns = [t for t in trajectory.turns if t.depth > 0]
         root_input = sum(t.input_tokens for t in root_turns)
-        root_peak = max((t.input_tokens for t in root_turns), default=0)
-        sub_input = trajectory.total_input_tokens - root_input
 
-        span.set_attribute("agent.answer.length", len(answer))
-        span.set_attribute("gen_ai.usage.input_tokens", trajectory.total_input_tokens)
-        span.set_attribute("gen_ai.usage.output_tokens", trajectory.total_output_tokens)
-        span.set_attribute("agent.turns", len(trajectory.turns))
-        span.set_attribute("agent.tool_calls", total_tools)
-        span.set_attribute("agent.duration_ms", (time.perf_counter() - started) * 1000)
-        span.set_attribute("agent.code_track", self._code_enabled)
-        span.set_attribute("agent.topology", self._topology)
-        span.set_attribute("agent.domain_tool_calls", counts["domain"])
-        span.set_attribute("agent.code_tool_calls", counts["code"])
-        span.set_attribute("agent.tool_bypass", bypass)
-        span.set_attribute("agent.root_turns", len(root_turns))
-        span.set_attribute("agent.root_input_tokens", root_input)
-        span.set_attribute("agent.root_peak_context_tokens", root_peak)
-        span.set_attribute("agent.subagent_input_tokens", sub_input)
-        span.set_attribute("agent.subagent_calls", self._recorder.call_count)
+        # Per-agent breakdown, so a sweep can see which domain dominated a run
+        # without re-walking the turn list.
+        by_agent: dict[str, dict[str, int]] = {}
+        for turn in trajectory.turns:
+            entry = by_agent.setdefault(
+                turn.agent,
+                {"turns": 0, "tool_calls": 0, "input_tokens": 0, "output_tokens": 0},
+            )
+            entry["turns"] += 1
+            entry["tool_calls"] += len(turn.tool_calls)
+            entry["input_tokens"] += turn.input_tokens
+            entry["output_tokens"] += turn.output_tokens
+
+        return {
+            "topology": self._topology,
+            "code_track": self._code_enabled,
+            "answer_length": len(answer),
+            "duration_ms": (time.perf_counter() - started) * 1000,
+            "turns": len(trajectory.turns),
+            "tool_calls": sum(counts.values()),
+            "domain_tool_calls": counts["domain"],
+            "code_tool_calls": counts["code"],
+            "other_tool_calls": counts["other"],
+            "tool_bypass": (
+                self._code_enabled and counts["code"] > 0 and counts["domain"] == 0
+            ),
+            "input_tokens": trajectory.total_input_tokens,
+            "output_tokens": trajectory.total_output_tokens,
+            # Cost axis is input_tokens; context axis is root_peak_context_tokens.
+            "root_turns": len(root_turns),
+            "root_input_tokens": root_input,
+            "root_peak_context_tokens": max(
+                (t.input_tokens for t in root_turns), default=0
+            ),
+            "subagent_turns": len(sub_turns),
+            "subagent_input_tokens": trajectory.total_input_tokens - root_input,
+            "subagent_calls": self._recorder.call_count,
+            "by_agent": by_agent,
+        }
+
+    def _annotate_span(self, span, metrics: dict) -> None:
+        span.set_attribute("agent.answer.length", metrics["answer_length"])
+        span.set_attribute("gen_ai.usage.input_tokens", metrics["input_tokens"])
+        span.set_attribute("gen_ai.usage.output_tokens", metrics["output_tokens"])
+        span.set_attribute("agent.turns", metrics["turns"])
+        span.set_attribute("agent.tool_calls", metrics["tool_calls"])
+        span.set_attribute("agent.duration_ms", metrics["duration_ms"])
+        span.set_attribute("agent.code_track", metrics["code_track"])
+        span.set_attribute("agent.topology", metrics["topology"])
+        span.set_attribute("agent.domain_tool_calls", metrics["domain_tool_calls"])
+        span.set_attribute("agent.code_tool_calls", metrics["code_tool_calls"])
+        span.set_attribute("agent.tool_bypass", metrics["tool_bypass"])
+        span.set_attribute("agent.root_turns", metrics["root_turns"])
+        span.set_attribute("agent.root_input_tokens", metrics["root_input_tokens"])
+        span.set_attribute(
+            "agent.root_peak_context_tokens", metrics["root_peak_context_tokens"]
+        )
+        span.set_attribute(
+            "agent.subagent_input_tokens", metrics["subagent_input_tokens"]
+        )
+        span.set_attribute("agent.subagent_calls", metrics["subagent_calls"])
 
         _log.info(
             "StirrupAgentRunner: done (topology=%s, turns=%d, root_turns=%d, "
             "domain=%d, code=%d, subagent_calls=%d, root_peak_ctx=%d, "
             "total_in=%d, bypass=%s)",
-            self._topology,
-            len(trajectory.turns),
-            len(root_turns),
-            counts["domain"],
-            counts["code"],
-            self._recorder.call_count,
-            root_peak,
-            trajectory.total_input_tokens,
-            bypass,
+            metrics["topology"],
+            metrics["turns"],
+            metrics["root_turns"],
+            metrics["domain_tool_calls"],
+            metrics["code_tool_calls"],
+            metrics["subagent_calls"],
+            metrics["root_peak_context_tokens"],
+            metrics["input_tokens"],
+            metrics["tool_bypass"],
         )
