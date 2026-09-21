@@ -431,3 +431,33 @@ async def test_run_uses_structured_finish_without_repair_call(
 
     assert result.answer == "[1,2]"
     assert persist.call_args.kwargs["answer"] == "[1,2]"
+
+
+def test_build_mcp_config_emits_http_for_a_swapped_server(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Stirrup infers transport from the config shape: a "url" key becomes a
+    # Streamable HTTP server, which is what a hosted MCP service speaks. Every
+    # other slot must stay a local stdio process, or the swap changes more than
+    # the one domain under test.
+    monkeypatch.setenv("ASSETOPS_MCP_URL_TSFM", "https://api.tsfm.ai/mcp")
+    monkeypatch.setenv("ASSETOPS_MCP_TOKEN_TSFM", "secret-token")
+
+    runner = StirrupAgentRunner(code_backend="local")
+    config = runner._build_mcp_config()
+
+    tsfm = config.mcp_servers["tsfm"]
+    assert getattr(tsfm, "url", None) == "https://api.tsfm.ai/mcp"
+    assert tsfm.headers == {"Authorization": "Bearer secret-token"}
+
+    wo = config.mcp_servers["wo"]
+    assert getattr(wo, "command", None) == "uv"
+    assert not hasattr(wo, "url")
+
+
+def test_build_mcp_config_is_all_stdio_without_an_override():
+    runner = StirrupAgentRunner(code_backend="local")
+    config = runner._build_mcp_config()
+
+    for name, server in config.mcp_servers.items():
+        assert getattr(server, "command", None) == "uv", name

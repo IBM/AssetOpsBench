@@ -40,6 +40,7 @@ from observability import agent_run_span, persist_trajectory
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
+from ..mcp_servers import describe_servers, is_remote
 from ..runner import AgentRunner
 from .finish_tool import ASSETOPS_FINISH_TOOL
 from .trajectory import build_trajectory, classify_tool, final_answer
@@ -235,10 +236,23 @@ class StirrupAgentRunner(AgentRunner):
 
         servers: dict[str, dict] = {}
         for name, spec in self._server_paths.items():
-            cmd_arg = str(spec)
+            if is_remote(spec):
+                # Stirrup infers transport from the config shape: a "url" key
+                # not ending in /sse becomes a Streamable HTTP server, which is
+                # what a hosted MCP service speaks.
+                entry: dict = {
+                    "url": spec.url,
+                    "timeout": spec.timeout_s,
+                    "sse_read_timeout": spec.sse_read_timeout_s,
+                }
+                headers = spec.headers()
+                if headers:
+                    entry["headers"] = headers
+                servers[name] = entry
+                continue
             servers[name] = {
                 "command": "uv",
-                "args": ["run", "--directory", str(_REPO_ROOT), cmd_arg],
+                "args": ["run", "--directory", str(_REPO_ROOT), str(spec)],
                 "cwd": str(_REPO_ROOT),
             }
         return MCPConfig.model_validate({"mcpServers": servers})
@@ -331,6 +345,9 @@ class StirrupAgentRunner(AgentRunner):
             )
 
             _log.info(
+                "StirrupAgentRunner: servers %s", describe_servers(self._server_paths)
+            )
+            _log.info(
                 "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s, workspace=%s, preserve=%s)",
                 self._model_id,
                 self._code_enabled,
@@ -376,6 +393,14 @@ class StirrupAgentRunner(AgentRunner):
         span.set_attribute("agent.domain_tool_calls", counts["domain"])
         span.set_attribute("agent.code_tool_calls", counts["code"])
         span.set_attribute("agent.tool_bypass", bypass)
+        remote = sorted(n for n, sp in self._server_paths.items() if is_remote(sp))
+        span.set_attribute("agent.remote_servers", ",".join(remote))
+        for name in remote:
+            # Endpoint only. The bearer token never reaches a span, a log or a
+            # trajectory file.
+            span.set_attribute(
+                f"agent.mcp_endpoint.{name}", self._server_paths[name].url
+            )
 
         _log.info(
             "StirrupAgentRunner: done (turns=%d, domain=%d, code=%d, bypass=%s)",

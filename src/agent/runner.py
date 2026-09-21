@@ -7,20 +7,17 @@ from pathlib import Path
 
 from llm import LLMBackend
 
+from .mcp_servers import (
+    DEFAULT_SERVER_PATHS as _DEFAULT_SERVER_PATHS,
+    RemoteMCPServer,
+    apply_env_overrides,
+)
 from .models import AgentResult
 
-# Maps MCP-server names to either a uv entry-point name (str) or a script Path.
-# Entry-point names are invoked as ``uv run <name>``; Paths fall back to
-# ``uv run <path>``.  Subclassing runners receive a resolved copy via
-# ``self._server_paths`` (defaulting to this dict when ``server_paths=None``).
-DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
-    "iot": "iot-mcp-server",
-    "utilities": "utilities-mcp-server",
-    "fmsr": "fmsr-mcp-server",
-    "tsfm": "tsfm-mcp-server",
-    "wo": "wo-mcp-server",
-    "vibration": "vibration-mcp-server",
-}
+# Server specs live in :mod:`agent.mcp_servers` so a slot can point at a remote
+# MCP service instead of a local stdio process. Re-exported here because every
+# runner already imports it from this module.
+DEFAULT_SERVER_PATHS = _DEFAULT_SERVER_PATHS
 
 
 class AgentRunner(ABC):
@@ -35,11 +32,17 @@ class AgentRunner(ABC):
     def __init__(
         self,
         llm: LLMBackend,
-        server_paths: dict[str, Path | str] | None = None,
+        server_paths: dict[str, Path | str | RemoteMCPServer] | None = None,
     ) -> None:
         self._llm = llm
-        self._server_paths: dict[str, Path | str] = (
-            dict(DEFAULT_SERVER_PATHS) if server_paths is None else server_paths
+        # ASSETOPS_MCP_URL_<NAME> redirects one slot to a remote MCP service,
+        # which is how the "replace our tsfm with theirs" arm runs without a
+        # fork. Applied to an explicit override too, so a caller that pins
+        # server paths still honours the swap.
+        self._server_paths: dict[str, Path | str | RemoteMCPServer] = (
+            apply_env_overrides(
+                dict(DEFAULT_SERVER_PATHS) if server_paths is None else server_paths
+            )
         )
 
     @abstractmethod
