@@ -11,6 +11,8 @@ from stirrup.core.models import Tool, ToolResult, ToolUseCountMetadata
 from stirrup.tools.mcp import MCPConfig
 
 from agent.stirrup_agent.workspace_bridge import (
+    DEFAULT_PERSIST_THRESHOLD_BYTES,
+    SUBAGENT_PERSIST_THRESHOLD_BYTES,
     WorkspaceBridgedMCPToolProvider,
 )
 
@@ -247,3 +249,95 @@ async def test_mutation_calls_are_never_cached() -> None:
     await tool.executor(_Params())
 
     assert calls == ["wo__update_workorder", "wo__update_workorder"]
+
+
+# -- spill threshold ------------------------------------------------------
+#
+# These pin the constant that decides whether a bulk MCP result becomes a
+# workspace handle or conversation text. A real run showed paginated
+# `wo__list_workorders` pages arriving near 46 KiB against a 100 KiB threshold:
+# every page rode inline, a 40k-token sub-agent filled its context in three
+# calls, and 8 of 10 delegated calls died at their turn cap having fetched the
+# same rows repeatedly. The threshold must stay below one page.
+
+_OBSERVED_PAGE_BYTES = 46_733
+
+
+def test_spill_threshold_sits_below_a_real_mcp_page() -> None:
+    assert DEFAULT_PERSIST_THRESHOLD_BYTES < _OBSERVED_PAGE_BYTES
+    assert SUBAGENT_PERSIST_THRESHOLD_BYTES <= DEFAULT_PERSIST_THRESHOLD_BYTES
+
+
+@pytest.mark.anyio
+async def test_page_sized_result_becomes_a_handle_not_conversation_text() -> None:
+    exec_env = _FakeExecEnvironment()
+    provider = _provider(exec_env, threshold=DEFAULT_PERSIST_THRESHOLD_BYTES)
+    calls: list[str] = []
+    page = json.dumps({"work_orders": [{"d": "x" * 80} for _ in range(600)]})
+    assert len(page.encode()) > DEFAULT_PERSIST_THRESHOLD_BYTES
+
+    tool = provider._wrap_tool(_tool("wo__list_workorders", page, calls))
+    result = await tool.executor(_Params())
+    handle = json.loads(result.content)
+
+    assert handle["artifact_type"] == "mcp_result"
+    assert len(result.content) < len(page)
+
+
+# -- recipient-aware instructions -----------------------------------------
+#
+# Only the root holds code_exec. A sub-agent told to "process it with
+# code_exec" is pointed at a tool it does not have, and answers by paginating
+# the data into its own context instead of handing the handle up.
+
+
+@pytest.mark.anyio
+async def test_root_handle_says_to_use_code_exec() -> None:
+    exec_env = _FakeExecEnvironment()
+    provider = _provider(exec_env, threshold=32)
+    tool = provider._wrap_tool(_tool("wo__list_workorders", "y" * 400, []))
+
+    handle = json.loads((await tool.executor(_Params())).content)
+
+    assert "code_exec" in handle["instruction"]
+    assert "artifacts" not in handle["instruction"]
+
+
+@pytest.mark.anyio
+async def test_subagent_handle_says_to_pass_the_handle_up() -> None:
+    exec_env = _FakeExecEnvironment()
+    config = MCPConfig.model_validate({"mcpServers": {}})
+    provider = WorkspaceBridgedMCPToolProvider(
+        config=config,
+        exec_env=exec_env,  # type: ignore[arg-type]
+        persist_threshold_bytes=32,
+        reader_has_code_exec=False,
+    )
+    tool = provider._wrap_tool(_tool("wo__list_workorders", "y" * 400, []))
+
+    handle = json.loads((await tool.executor(_Params())).content)
+
+    assert "no code_exec" in handle["instruction"]
+    assert "artifacts" in handle["instruction"]
+    assert "re-fetch" in handle["instruction"]
+
+
+@pytest.mark.anyio
+async def test_cached_handle_keeps_the_recipient_specific_instruction() -> None:
+    exec_env = _FakeExecEnvironment()
+    config = MCPConfig.model_validate({"mcpServers": {}})
+    provider = WorkspaceBridgedMCPToolProvider(
+        config=config,
+        exec_env=exec_env,  # type: ignore[arg-type]
+        persist_threshold_bytes=32,
+        reader_has_code_exec=False,
+    )
+    calls: list[str] = []
+    tool = provider._wrap_tool(_tool("wo__list_workorders", "y" * 400, calls))
+
+    await tool.executor(_Params())
+    cached = json.loads((await tool.executor(_Params())).content)
+
+    assert cached["cached"] is True
+    assert calls == ["wo__list_workorders"]
+    assert "no code_exec" in cached["instruction"]
