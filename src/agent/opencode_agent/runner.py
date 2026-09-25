@@ -25,7 +25,7 @@ from observability import agent_run_span, persist_trajectory
 
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
-from ..runner import AgentRunner
+from ..runner import AgentRunner, fmsr_env_overrides
 
 _log = logging.getLogger(__name__)
 
@@ -772,6 +772,7 @@ class OpenCodeAgentRunner(AgentRunner):
             env.pop("AGENT_TRAJECTORY_DIR", None)
             env.pop("SCENARIOS_DATA_DIR", None)
             env.update(self._env_overrides)
+            env.update(fmsr_env_overrides(self._model_id))
             env["OPENCODE_CONFIG_CONTENT"] = json.dumps(self._config)
             env.setdefault("OPENCODE_DISABLE_AUTOUPDATE", "true")
             env.setdefault("NO_COLOR", "1")
