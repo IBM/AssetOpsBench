@@ -27,3 +27,4 @@ async def test_missing_database_reports_unavailable(mock_db):
     data = await call_tool(mcp, "list_vibration_sensors", _ARGS)
 
     assert "does not exist or is unreachable" in data["error"]
+    assert "vibration" not in data["error"]

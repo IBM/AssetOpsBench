@@ -90,7 +90,7 @@ def _is_missing_database(exc: Exception) -> bool:
 
 
 _MISSING_DATABASE_ERROR = (
-    f"database '{FAILURE_MODE_DBNAME}' does not exist in this environment; the "
+    "the data source does not exist in this environment; the "
     "data is unavailable, do not retry with other arguments"
 )
 

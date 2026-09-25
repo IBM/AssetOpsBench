@@ -56,7 +56,7 @@ class CouchClient:
             return
         if reason == "Database does not exist.":
             raise CouchError(
-                f"database '{self.db}' does not exist in this environment; the "
+                "the data source does not exist in this environment; the "
                 "data is unavailable, do not retry with other arguments"
             )
 

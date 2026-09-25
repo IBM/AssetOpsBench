@@ -145,14 +145,14 @@ def known_sites() -> List[str]:
     return get_registry_sites() or DEFAULT_SITES
 
 
-def _missing_db_error(db: Any, name: str) -> Optional[ErrorResult]:
+def _missing_db_error(db: Any) -> Optional[ErrorResult]:
     """Return an error when the database itself is absent or unreachable, so a
     missing database is not reported as an unknown key."""
     if db is not None and db.check():
         return None
     return ErrorResult(
         error=(
-            f"database '{name}' does not exist or is unreachable in this "
+            "the data source does not exist or is unreachable in this "
             "environment; the data is unavailable, do not retry with other arguments"
         )
     )
@@ -237,7 +237,7 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
         )
     except Exception as e:
         logger.error(f"asset_ids failed: {e}")
-        return _missing_db_error(asset_db, ASSET_DBNAME) or ErrorResult(error=str(e))
+        return _missing_db_error(asset_db) or ErrorResult(error=str(e))
 
 
 @mcp.tool(title="Get Asset Detail")
@@ -278,7 +278,7 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
         )
         docs = res.get("docs", [])
         if not docs:
-            return _missing_db_error(asset_db, ASSET_DBNAME) or ErrorResult(
+            return _missing_db_error(asset_db) or ErrorResult(
                 error=f"unknown asset_id {asset_id} at site {site_name}"
             )
 
@@ -310,7 +310,7 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
         )
     except Exception as e:
         logger.error(f"asset_detail failed: {e}")
-        return _missing_db_error(asset_db, ASSET_DBNAME) or ErrorResult(error=str(e))
+        return _missing_db_error(asset_db) or ErrorResult(error=str(e))
 
 
 @mcp.tool(title="List Measured Sensors")
@@ -337,7 +337,7 @@ def measured_sensors(
 
     sensor_list = get_sensor_list(asset_id)
     if not sensor_list:
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error=f"unknown asset_id {asset_id} or no sensors found"
         )
 
@@ -383,7 +383,7 @@ def installed_sensors(
         )
         docs = res.get("docs", [])
         if not docs:
-            return _missing_db_error(asset_db, ASSET_DBNAME) or ErrorResult(
+            return _missing_db_error(asset_db) or ErrorResult(
                 error=f"unknown asset_id {asset_id} at site {site_name}"
             )
         names = list(docs[0].get("sensors") or [])
@@ -396,7 +396,7 @@ def installed_sensors(
         )
     except Exception as e:
         logger.error(f"installed_sensors failed: {e}")
-        return _missing_db_error(asset_db, ASSET_DBNAME) or ErrorResult(error=str(e))
+        return _missing_db_error(asset_db) or ErrorResult(error=str(e))
 
 
 @mcp.tool(title="List Assets")
@@ -454,7 +454,7 @@ def assets(
         )
     except Exception as e:
         logger.error(f"assets failed: {e}")
-        return _missing_db_error(asset_db, ASSET_DBNAME) or ErrorResult(error=str(e))
+        return _missing_db_error(asset_db) or ErrorResult(error=str(e))
 
 
 @mcp.tool(title="Find Assets By Sensors")
@@ -625,7 +625,7 @@ def stream_extent(
             total_records += 1
 
         if total_records == 0:
-            return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+            return _missing_db_error(iot_db) or ErrorResult(
                 error=f"no records for asset_id {asset_id}"
                 + (f", sensor {sensor}" if sensor else "")
             )
@@ -657,7 +657,7 @@ def stream_extent(
         return ErrorResult(error=str(e))
     except Exception as e:
         logger.error(f"stream_extent failed: {e}")
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error="unable to inspect telemetry stream extent"
         )
 
@@ -725,7 +725,7 @@ def history(
             )
         available_sensors = get_sensor_list(asset_id)
         if not available_sensors:
-            return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+            return _missing_db_error(iot_db) or ErrorResult(
             error=f"unknown asset_id {asset_id} or no sensors found"
         )
         unknown = [
@@ -786,7 +786,7 @@ def history(
         return ErrorResult(error=str(e))
     except Exception as e:
         logger.error(f"history failed: {e}")
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error="unable to retrieve telemetry history"
         )
 
@@ -853,7 +853,7 @@ def latest_reading(
     if sensor is not None:
         available_sensors = get_sensor_list(asset_id)
         if not available_sensors:
-            return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+            return _missing_db_error(iot_db) or ErrorResult(
             error=f"unknown asset_id {asset_id} or no sensors found"
         )
         if sensor not in available_sensors:
@@ -883,12 +883,12 @@ def latest_reading(
         return ErrorResult(error=str(e))
     except Exception as e:
         logger.error(f"latest_reading failed: {e}")
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error="unable to retrieve latest telemetry reading"
         )
 
     if latest_doc is None or latest_timestamp is None or latest_datetime is None:
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error=f"no records for asset_id {asset_id}"
             + (f", sensor {sensor}" if sensor else "")
         )
@@ -959,12 +959,12 @@ def sensor_coverage(
         return ErrorResult(error=str(e))
     except Exception as e:
         logger.error(f"sensor_coverage failed: {e}")
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error="unable to calculate sensor coverage"
         )
 
     if docs_scanned == 0:
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error=f"unknown asset_id {asset_id} or no records found"
         )
 
@@ -1029,7 +1029,7 @@ def sensor_stats(
 
     available_sensors = get_sensor_list(asset_id)
     if not available_sensors:
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error=f"unknown asset_id {asset_id} or no sensors found"
         )
     if sensor is not None and sensor not in available_sensors:
@@ -1070,12 +1070,12 @@ def sensor_stats(
         return ErrorResult(error=str(e))
     except Exception as e:
         logger.error(f"sensor_stats failed: {e}")
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error="unable to calculate sensor statistics"
         )
 
     if records_in_window == 0:
-        return _missing_db_error(iot_db, IOT_DBNAME) or ErrorResult(
+        return _missing_db_error(iot_db) or ErrorResult(
             error=f"no records for asset_id {asset_id}"
             + (f", sensor {sensor}" if sensor else "")
         )

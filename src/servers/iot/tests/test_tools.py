@@ -1824,3 +1824,4 @@ class TestMissingDatabaseMessage:
 
         assert "does not exist or is unreachable" in data["error"]
         assert "do not retry" in data["error"]
+        assert "iot" not in data["error"]

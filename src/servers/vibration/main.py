@@ -20,7 +20,6 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
 from .couchdb_client import (
-    VIBRATION_DBNAME,
     database_available,
     fetch_vibration_timeseries,
     list_sensor_fields,
@@ -70,9 +69,8 @@ def _missing_db_error() -> Optional[ErrorResult]:
         return None
     return ErrorResult(
         error=(
-            f"database '{VIBRATION_DBNAME}' does not exist or is unreachable in "
-            "this environment; the data is unavailable, do not retry with other "
-            "arguments"
+            "the data source does not exist or is unreachable in this "
+            "environment; the data is unavailable, do not retry with other arguments"
         )
     )
 

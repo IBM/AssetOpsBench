@@ -28,7 +28,15 @@ async def test_missing_document_returns_none() -> None:
 async def test_missing_database_raises_distinct_message() -> None:
     client = _client("Database does not exist.")
 
-    with pytest.raises(CouchError, match="database 'workorder' does not exist"):
+    with pytest.raises(CouchError, match="data source does not exist"):
         await client.get("wo:MAIN:1")
-    with pytest.raises(CouchError, match="database 'workorder' does not exist"):
+    with pytest.raises(CouchError, match="data source does not exist"):
         await client.find({"type": "workorder"})
+
+
+@pytest.mark.anyio
+async def test_missing_database_message_hides_database_name() -> None:
+    with pytest.raises(CouchError) as exc_info:
+        await _client("Database does not exist.").get("wo:MAIN:1")
+
+    assert "workorder" not in str(exc_info.value)

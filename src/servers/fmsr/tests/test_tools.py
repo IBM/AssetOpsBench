@@ -313,4 +313,5 @@ class TestMissingDatabaseMessage:
         data = await call_tool(mcp, "get_failure_modes", {"asset_class": "pump"})
 
         assert "does not exist in this environment" in data["error"]
+        assert "failure_mode" not in data["error"]
         assert "no failure_mode record" not in data["error"]
