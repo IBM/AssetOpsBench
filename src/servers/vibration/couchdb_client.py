@@ -47,6 +47,12 @@ def _get_db() -> Optional[couchdb3.Database]:
         return None
 
 
+def database_available() -> bool:
+    """True when the vibration database exists and CouchDB is reachable."""
+    db = _get_db()
+    return bool(db and db.check())
+
+
 def fetch_vibration_timeseries(
     asset_id: str,
     sensor_name: str,

@@ -293,3 +293,25 @@ class TestToolRegistration:
         assert "generate_failure_mode_sensor_mapping" not in {
             tool.name for tool in tools
         }
+
+
+class TestMissingDatabaseMessage:
+    @pytest.mark.anyio
+    async def test_missing_database_reports_unavailable(self, monkeypatch):
+        from couchdb3.exceptions import NotFoundError
+
+        class MissingDatabase:
+            def get(self, *args, **kwargs):
+                raise NotFoundError(
+                    '{"error":"not_found","reason":"Database does not exist."}'
+                )
+
+            find = get
+
+        monkeypatch.setattr("servers.fmsr.main.fm_db", MissingDatabase())
+
+        data = await call_tool(mcp, "get_failure_modes", {"asset_class": "pump"})
+
+        assert "does not exist in this environment" in data["error"]
+        assert "failure_mode" not in data["error"]
+        assert "no failure_mode record" not in data["error"]
