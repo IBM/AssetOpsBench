@@ -11,11 +11,12 @@ only sees compact summaries (statistics, peak lists, diagnosis reports).
 from __future__ import annotations
 
 import hashlib
-import time
 from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import NDArray
+
+from servers.clock import now_utc
 
 
 def _kurtosis(x: NDArray) -> float:
@@ -36,7 +37,7 @@ class DataEntry:
 
     signal: NDArray[np.floating]
     sample_rate: float
-    created_at: float = field(default_factory=time.time)
+    created_at: float = field(default_factory=lambda: now_utc().timestamp())
     metadata: dict = field(default_factory=dict)
 
     @property
@@ -119,7 +120,7 @@ class DataStore:
     ) -> str:
         """Store a signal with an auto-generated ID."""
         h = hashlib.md5(signal.tobytes()[:1024]).hexdigest()[:8]
-        data_id = f"sig_{h}_{int(time.time()) % 100000}"
+        data_id = f"sig_{h}_{int(now_utc().timestamp()) % 100000}"
         return self.put(data_id, signal, sample_rate, metadata)
 
     def get(self, data_id: str) -> DataEntry | None:

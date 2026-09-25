@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
+from servers.clock import now_utc
+
 load_dotenv()
 
 # Setup logging — default WARNING so stderr stays quiet when used as MCP server;
@@ -221,11 +223,11 @@ def get_failure_mode_catalog(
 @mcp.tool(title="Get Current Date and Time")
 def current_date_time() -> DateTimeResult:
     """Provides the current date time as a JSON object."""
-    now = datetime.now(timezone.utc)
+    now = now_utc()
     now_iso = now.isoformat().replace("+00:00", "Z")
 
-    date_part = now_iso.split("T")[0]
-    time_part = now_iso.split("T")[1].split(".")[0]
+    date_part = now.strftime("%Y-%m-%d")
+    time_part = now.strftime("%H:%M:%S")
 
     description = f"Today's date is {date_part} and time is {time_part}."
 
@@ -237,7 +239,7 @@ def current_date_time() -> DateTimeResult:
 @mcp.tool(title="Get Current Time in English")
 def current_time_english() -> TimeEnglishResult:
     """Returns the current time in English text."""
-    now = datetime.now(timezone.utc)
+    now = now_utc()
     now_iso = now.isoformat().replace("+00:00", "Z")
 
     dt = pendulum.parse(now_iso)

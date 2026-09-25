@@ -5,6 +5,7 @@ import os
 import tempfile
 
 import pytest
+from servers.clock import FIXED_DATETIME_ENV
 from servers.utilities import main as utilities
 from servers.utilities.main import mcp
 from .conftest import call_tool
@@ -85,6 +86,15 @@ class TestCurrentDateTime:
         # Should contain a T separator (ISO 8601)
         assert "T" in data["currentDateTime"]
 
+    @pytest.mark.anyio
+    async def test_honours_fixed_datetime(self, monkeypatch):
+        monkeypatch.setenv(FIXED_DATETIME_ENV, "2025-01-15T09:00:00Z")
+        data = await call_tool(mcp, "current_date_time", {})
+        assert data["currentDateTime"] == "2025-01-15T09:00:00Z"
+        assert data["currentDateTimeDescription"] == (
+            "Today's date is 2025-01-15 and time is 09:00:00."
+        )
+
 
 # ---------------------------------------------------------------------------
 # current_time_english
@@ -104,6 +114,13 @@ class TestCurrentTimeEnglish:
         # pendulum's to_datetime_string returns "YYYY-MM-DD HH:MM:SS"
         parts = data["english"].split(" ")
         assert len(parts) == 2  # date + time
+
+    @pytest.mark.anyio
+    async def test_honours_fixed_datetime(self, monkeypatch):
+        monkeypatch.setenv(FIXED_DATETIME_ENV, "2025-01-15T09:00:00Z")
+        data = await call_tool(mcp, "current_time_english", {})
+        assert data["iso"] == "2025-01-15T09:00:00Z"
+        assert data["english"] == "2025-01-15 09:00:00"
 
 
 # ---------------------------------------------------------------------------

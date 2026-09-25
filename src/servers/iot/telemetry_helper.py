@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
+from servers.clock import now_utc
 from servers.iot.models import SensorCoverage, SensorStat
 
 
@@ -285,5 +286,5 @@ def _timestamp_age_seconds(timestamp_dt: datetime) -> float:
     if not _is_timezone_aware(timestamp_dt):
         timestamp_dt = timestamp_dt.replace(tzinfo=timezone.utc)
     return (
-        datetime.now(timezone.utc) - timestamp_dt.astimezone(timezone.utc)
+        now_utc() - timestamp_dt.astimezone(timezone.utc)
     ).total_seconds()

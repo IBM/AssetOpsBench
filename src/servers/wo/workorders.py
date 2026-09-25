@@ -22,6 +22,8 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
+from servers.clock import now_utc
+
 from .envelope import envelope, error, Timer
 
 OPEN_STATUSES = ("WAPPR", "APPR", "WMATL", "WSCH", "INPRG", "WPCOND")
@@ -281,7 +283,7 @@ async def get_workorder_kpis(
 ) -> Dict[str, Any]:
     """Site KPIs over a period: totals, backlog, overdue, avg completion, priority + asset breakdowns."""
     with Timer() as t:
-        now = now or datetime.now(timezone.utc)
+        now = now or now_utc()
         cutoff = _iso(now - timedelta(days=period_months * 30))
         now_str = _iso(now)
         docs = await db.find(
@@ -339,7 +341,7 @@ async def get_schedule_calendar(
 ) -> Dict[str, Any]:
     """Scheduled (non-terminal) work orders in a date window, optionally bucketed by day."""
     with Timer() as t:
-        now = now or datetime.now(timezone.utc)
+        now = now or now_utc()
         date_from = date_from or now.strftime("%Y-%m-%d")
         date_to = date_to or (now + timedelta(days=14)).strftime("%Y-%m-%d")
         docs = await db.find(
@@ -434,7 +436,7 @@ async def create_workorder(
         return error(f"work_type must be one of {WORKTYPES}", "VALIDATION_ERROR")
 
     with Timer() as t:
-        now = now or datetime.now(timezone.utc)
+        now = now or now_utc()
         won = wonum or await db.next_wonum(site_id)
         doc: Dict[str, Any] = {
             "_id": _doc_id(site_id, won),
@@ -513,7 +515,7 @@ async def _change_status(
         if not doc:
             return error(f"Work order '{wonum}' not found", "NOT_FOUND")
         doc["status"] = new_status
-        doc["status_date"] = _iso(now or datetime.now(timezone.utc))
+        doc["status_date"] = _iso(now or now_utc())
         if extra:
             doc.update(extra)
         await db.put(doc)
@@ -559,7 +561,7 @@ async def assign_technician(
         line: Dict[str, Any] = {
             "laborcode": labor_code,
             "laborhrs": hours_planned,
-            "startdate": start_date or _iso(now or datetime.now(timezone.utc)),
+            "startdate": start_date or _iso(now or now_utc()),
         }
         if craft:
             line["craft"] = craft
@@ -579,7 +581,7 @@ async def close_workorder(
 ) -> Dict[str, Any]:
     """Close a work order (status → COMP), recording actual hours, failure code, resolution,
     and stamping `actfinish`."""
-    now = now or datetime.now(timezone.utc)
+    now = now or now_utc()
     extra: Dict[str, Any] = {"actlabhrs": actual_hours, "actfinish": _iso(now)}
     if failure_code:
         extra["failurecode"] = failure_code
