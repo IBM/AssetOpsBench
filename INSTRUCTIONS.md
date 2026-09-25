@@ -97,6 +97,7 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `WO_DBNAME`                | `workorder`             | Work order database name           |
 | `FAILURE_CODE_DBNAME`      | `failure_code`          | FCC failure-code database name     |
 | `FAILURE_MODE_DBNAME`      | `failure_mode`          | FMSR failure-mode database name    |
+| `FMSR_MODEL_ID`            | agent `--model-id`      | LLM for FMSR `generate_failure_modes`; runners always pin it (explicit value, else the agent model); standalone default `watsonx/meta-llama/llama-3-3-70b-instruct` |
 | `VIBRATION_DBNAME`         | `vibration`             | Vibration sensor database name     |
 | `CATALOG_DBNAME`           | `catalog`               | Shared sensor/asset/failure-mode catalog database name |
 | `MODEL_CATALOG_DBNAME`     | `model_catalog`         | TSFM model catalog database name   |
