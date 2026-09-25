@@ -1,13 +1,8 @@
 import json
-import os
 
 import pytest
-from unittest.mock import MagicMock, patch
-
-requires_watsonx = pytest.mark.skipif(
-    os.environ.get("WATSONX_APIKEY") is None,
-    reason="WatsonX not available (set WATSONX_APIKEY)",
-)
+from couchdb3.exceptions import ConflictError
+from unittest.mock import patch
 
 
 async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:
@@ -17,11 +12,13 @@ async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:
 
 
 class FakeDatabase:
+    """In-memory stand-in for couchdb3.Database, including _rev conflict checks."""
+
     def __init__(self, docs=None):
-        self.docs = {doc["_id"]: dict(doc) for doc in docs or []}
+        self.docs = {doc["_id"]: {"_rev": "1-fake", **doc} for doc in docs or []}
 
     def find(self, selector, fields=None, limit=None):
-        docs = [doc for doc in self.docs.values() if self._matches(doc, selector)]
+        docs = [dict(doc) for doc in self.docs.values() if self._matches(doc, selector)]
         if limit is not None:
             docs = docs[:limit]
         if fields is not None:
@@ -38,7 +35,12 @@ class FakeDatabase:
         return dict(self.docs[doc_id])
 
     def save(self, doc):
-        self.docs[doc["_id"]] = dict(doc)
+        current = self.docs.get(doc["_id"])
+        if doc.get("_rev") != (current or {}).get("_rev"):
+            raise ConflictError("Document update conflict.")
+        generation = int(current["_rev"].split("-")[0]) + 1 if current else 1
+        self.docs[doc["_id"]] = {**doc, "_rev": f"{generation}-fake"}
+        return doc["_id"], True, self.docs[doc["_id"]]["_rev"]
 
     @staticmethod
     def _matches(doc, selector):
@@ -63,11 +65,23 @@ class BrokenDatabase(FakeDatabase):
         raise RuntimeError("database write failed")
 
 
-@pytest.fixture
-def no_llm():
-    """Simulate missing WatsonX credentials."""
-    with patch("servers.fmsr.main._llm_available", False):
-        yield
+class WriteFailingDatabase(FakeDatabase):
+    def save(self, doc):
+        raise RuntimeError("database write failed")
+
+
+class RacingDatabase(FakeDatabase):
+    """Another writer updates each doc between this client's read and write."""
+
+    def find(self, selector, fields=None, limit=None):
+        res = super().find(selector, fields=fields, limit=limit)
+        for doc_id, doc in self.docs.items():
+            self.docs[doc_id] = {
+                **doc,
+                "failure_modes": [*doc.get("failure_modes", []), "concurrent edit"],
+                "_rev": "2-other-writer",
+            }
+        return res
 
 
 @pytest.fixture
@@ -88,6 +102,73 @@ def fake_fm_db():
 
 
 @pytest.fixture
+def messy_fm_db():
+    """Stored names are not normalised and _ids do not follow the fm:<class> form."""
+    db = FakeDatabase(
+        [
+            {
+                "_id": "fm:Hydraulic Pump",
+                "asset_class": "Hydraulic Pump",
+                "failure_modes": ["cavitation"],
+            },
+            {
+                "_id": "a1b2c3",
+                "asset_class": "CO2 Compressor",
+                "failure_modes": ["valve leakage"],
+            },
+            {
+                "_id": "fm:co compressor",
+                "asset_class": "CO Compressor",
+                "failure_modes": ["carbon fouling"],
+            },
+            {
+                "_id": "fm:Chiller",
+                "asset_class": "Chiller",
+                "failure_modes": ["refrigerant leak"],
+            },
+            {
+                "_id": "fm:fan",
+                "asset_class": "Blower",
+                "failure_modes": ["blade imbalance"],
+            },
+        ]
+    )
+    with patch("servers.fmsr.main.fm_db", db):
+        yield db
+
+
+@pytest.fixture
+def duplicate_fm_db():
+    """Two stored names that normalise to the same class."""
+    db = FakeDatabase(
+        [
+            {"_id": "b", "asset_class": "Pump", "failure_modes": ["from Pump"]},
+            {"_id": "a", "asset_class": "pump", "failure_modes": ["from pump"]},
+        ]
+    )
+    with patch("servers.fmsr.main.fm_db", db):
+        yield db
+
+
+@pytest.fixture
+def write_failing_fm_db():
+    db = WriteFailingDatabase(
+        [{"_id": "fm:pump", "asset_class": "pump", "failure_modes": ["seal leakage"]}]
+    )
+    with patch("servers.fmsr.main.fm_db", db):
+        yield db
+
+
+@pytest.fixture
+def racing_fm_db():
+    db = RacingDatabase(
+        [{"_id": "fm:pump", "asset_class": "pump", "failure_modes": ["seal leakage"]}]
+    )
+    with patch("servers.fmsr.main.fm_db", db):
+        yield db
+
+
+@pytest.fixture
 def empty_fm_db():
     db = FakeDatabase()
     with patch("servers.fmsr.main.fm_db", db):
@@ -99,18 +180,3 @@ def broken_fm_db():
     db = BrokenDatabase()
     with patch("servers.fmsr.main.fm_db", db):
         yield db
-
-
-@pytest.fixture
-def mock_failure_mode_generation():
-    """Patch failure-mode generation so tests do not call the LLM."""
-    mock = MagicMock(
-        return_value=[
-            "bearing wear",
-            "seal leakage",
-            "motor overheating",
-        ]
-    )
-    with patch("servers.fmsr.main._call_failure_mode_generation", mock):
-        with patch("servers.fmsr.main._llm_available", True):
-            yield mock

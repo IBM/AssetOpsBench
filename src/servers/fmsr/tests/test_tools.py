@@ -4,7 +4,7 @@ import pytest
 
 from servers.fmsr.main import mcp
 
-from .conftest import call_tool, requires_watsonx
+from .conftest import call_tool
 
 
 class TestGetFailureModes:
@@ -42,7 +42,7 @@ class TestGetFailureModes:
         data = await call_tool(mcp, "get_failure_modes", {"asset_class": "bad-pump-1"})
 
         assert "error" in data
-        assert "no failure_mode record for asset_class 'bad pump'" in data["error"]
+        assert "no failure_mode record for asset_class 'bad pump 1'" in data["error"]
         assert "Input was normalized from 'bad-pump-1'" in data["error"]
         assert "Available asset_class values include: pump" in data["error"]
 
@@ -63,110 +63,103 @@ class TestGetFailureModes:
         }
 
 
-class TestGenerateFailureModes:
+class TestAssetClassMatching:
     @pytest.mark.anyio
-    async def test_extends_failure_modes_from_db(
-        self, fake_fm_db, mock_failure_mode_generation
-    ):
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Hydraulic Pump",
+            "hydraulic pump",
+            "HYDRAULIC_PUMP",
+            "hydraulic-pump",
+            "  hydraulic   pump ",
+        ],
+    )
+    async def test_matches_unnormalised_stored_name(self, messy_fm_db, query):
+        data = await call_tool(mcp, "get_failure_modes", {"asset_class": query})
+
+        assert data["asset_class"] == "Hydraulic Pump"
+        assert data["failure_modes"] == ["cavitation"]
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize(
+        "query, expected",
+        [
+            ("co2 compressor", "CO2 Compressor"),
+            ("CO2-Compressor", "CO2 Compressor"),
+            ("co compressor", "CO Compressor"),
+        ],
+    )
+    async def test_digits_in_name_are_kept(self, messy_fm_db, query, expected):
+        data = await call_tool(mcp, "get_failure_modes", {"asset_class": query})
+
+        assert data["asset_class"] == expected
+
+    @pytest.mark.anyio
+    async def test_instance_id_is_not_a_class(self, messy_fm_db):
+        data = await call_tool(
+            mcp, "get_failure_modes", {"asset_class": "Hydraulic Pump 2"}
+        )
+
+        assert (
+            "no failure_mode record for asset_class 'hydraulic pump 2'"
+            in (data["error"])
+        )
+        assert "Did you mean: Hydraulic Pump?" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_does_not_match_on_id(self, messy_fm_db):
+        data = await call_tool(mcp, "get_failure_modes", {"asset_class": "fan"})
+
+        assert "error" in data
+        assert "no failure_mode record for asset_class 'fan'" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_add_updates_matched_record_in_place(self, messy_fm_db):
         data = await call_tool(
             mcp,
-            "generate_failure_modes",
-            {"asset_class": "Pump", "max_modes": 5},
+            "add_failure_modes",
+            {"asset_class": "hydraulic_pump", "failure_modes": ["seal wear"]},
         )
+
+        assert data["asset_class"] == "Hydraulic Pump"
+        assert data["failure_modes"] == ["cavitation", "seal wear"]
+        assert len(messy_fm_db.docs) == 5
+        assert messy_fm_db.docs["fm:Hydraulic Pump"]["failure_modes"] == [
+            "cavitation",
+            "seal wear",
+        ]
+
+    @pytest.mark.anyio
+    async def test_add_new_class_keeps_digits(self, empty_fm_db):
+        data = await call_tool(
+            mcp,
+            "add_failure_modes",
+            {"asset_class": "CO2-Compressor", "failure_modes": ["valve leakage"]},
+        )
+
+        assert data["asset_class"] == "co2 compressor"
+        assert empty_fm_db.docs["fm:co2 compressor"]["asset_class"] == "co2 compressor"
+
+
+class TestDuplicateNormalizedClasses:
+    @pytest.mark.anyio
+    async def test_lowest_id_wins(self, duplicate_fm_db):
+        data = await call_tool(mcp, "get_failure_modes", {"asset_class": "PUMP"})
 
         assert data["asset_class"] == "pump"
-        assert data["known"] == ["seal leakage", "impeller wear"]
-        assert data["generated"] == ["bearing wear", "motor overheating"]
-        assert data["failure_modes"] == [
-            "seal leakage",
-            "impeller wear",
-            "bearing wear",
-            "motor overheating",
-        ]
-        assert data["source"].startswith("LLM:")
-        assert "nothing was persisted" in data["message"]
-        mock_failure_mode_generation.assert_called_once_with(
-            "pump", ["seal leakage", "impeller wear"], 5
-        )
 
     @pytest.mark.anyio
-    async def test_generates_from_scratch_for_missing_db_record(
-        self, empty_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
+    async def test_add_and_get_resolve_to_same_record(self, duplicate_fm_db):
+        await call_tool(
             mcp,
-            "generate_failure_modes",
-            {"asset_class": "compressor", "max_modes": 3},
+            "add_failure_modes",
+            {"asset_class": "Pump", "failure_modes": ["bearing wear"]},
         )
+        data = await call_tool(mcp, "get_failure_modes", {"asset_class": "Pump"})
 
-        assert data["asset_class"] == "compressor"
-        assert data["known"] == []
-        assert data["generated"] == [
-            "bearing wear",
-            "seal leakage",
-            "motor overheating",
-        ]
-        mock_failure_mode_generation.assert_called_once_with("compressor", [], 3)
-
-    @pytest.mark.anyio
-    async def test_database_read_error_returns_error(
-        self, broken_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 3},
-        )
-
-        assert data == {
-            "error": "database lookup failed for asset_class 'pump': database read failed"
-        }
-        mock_failure_mode_generation.assert_not_called()
-
-    @pytest.mark.anyio
-    async def test_empty_asset_class_returns_error(self, mock_failure_mode_generation):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "", "max_modes": 3},
-        )
-
-        assert data == {"error": "asset_class is required"}
-
-    @pytest.mark.anyio
-    async def test_invalid_max_modes_returns_error(self, mock_failure_mode_generation):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 0},
-        )
-
-        assert data == {"error": "max_modes must be greater than 0"}
-
-    @pytest.mark.anyio
-    async def test_llm_unavailable_returns_error(self, no_llm):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 3},
-        )
-
-        assert data == {"error": "LLM unavailable"}
-
-    @requires_watsonx
-    @pytest.mark.anyio
-    async def test_integration(self):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {
-                "asset_class": "pump",
-                "max_modes": 2,
-            },
-        )
-
-        assert "generated" in data
-        assert len(data["generated"]) <= 2
+        assert data["failure_modes"] == ["from pump", "bearing wear"]
+        assert duplicate_fm_db.docs["b"]["failure_modes"] == ["from Pump"]
 
 
 class TestAddFailureModes:
@@ -176,7 +169,7 @@ class TestAddFailureModes:
             mcp,
             "add_failure_modes",
             {
-                "asset_class": "Pump-1",
+                "asset_class": "Pump",
                 "failure_modes": ["impeller wear", "bearing wear"],
                 "exhaustive": True,
                 "source": "unit-test",
@@ -223,7 +216,7 @@ class TestAddFailureModes:
             mcp,
             "add_failure_modes",
             {
-                "asset_class": "Gearbox-1",
+                "asset_class": "Gearbox",
                 "failure_modes": ["gear tooth wear", "bearing wear"],
             },
         )
@@ -273,6 +266,45 @@ class TestAddFailureModes:
         assert data == {"error": "database not connected"}
 
     @pytest.mark.anyio
+    async def test_new_record_is_found_by_later_lookup(self, empty_fm_db):
+        await call_tool(
+            mcp,
+            "add_failure_modes",
+            {"asset_class": "Cooling_Tower", "failure_modes": ["fill fouling"]},
+        )
+        data = await call_tool(
+            mcp, "get_failure_modes", {"asset_class": "Cooling Tower"}
+        )
+
+        assert data["asset_class"] == "cooling tower"
+        assert data["failure_modes"] == ["fill fouling"]
+
+    @pytest.mark.anyio
+    async def test_database_write_error_returns_error(self, write_failing_fm_db):
+        data = await call_tool(
+            mcp,
+            "add_failure_modes",
+            {"asset_class": "pump", "failure_modes": ["bearing wear"]},
+        )
+
+        assert data == {"error": "database write failed"}
+        assert write_failing_fm_db.docs["fm:pump"]["failure_modes"] == ["seal leakage"]
+
+    @pytest.mark.anyio
+    async def test_concurrent_update_returns_conflict_error(self, racing_fm_db):
+        data = await call_tool(
+            mcp,
+            "add_failure_modes",
+            {"asset_class": "pump", "failure_modes": ["bearing wear"]},
+        )
+
+        assert "conflict" in data["error"].lower()
+        assert racing_fm_db.docs["fm:pump"]["failure_modes"] == [
+            "seal leakage",
+            "concurrent edit",
+        ]
+
+    @pytest.mark.anyio
     async def test_database_read_error_returns_error(self, broken_fm_db):
         data = await call_tool(
             mcp,
@@ -287,9 +319,10 @@ class TestAddFailureModes:
 
 class TestToolRegistration:
     @pytest.mark.anyio
-    async def test_mapping_tool_is_not_registered(self):
+    async def test_only_catalog_tools_are_registered(self):
         tools = await mcp.list_tools()
 
-        assert "generate_failure_mode_sensor_mapping" not in {
-            tool.name for tool in tools
+        assert {tool.name for tool in tools} == {
+            "get_failure_modes",
+            "add_failure_modes",
         }
