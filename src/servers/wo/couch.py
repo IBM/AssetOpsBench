@@ -45,9 +45,25 @@ class CouchClient:
     async def aclose(self) -> None:
         await self._c.aclose()
 
+    def _raise_if_missing_db(self, r: "httpx.Response") -> None:
+        """CouchDB answers 404 both for a missing doc and a missing database;
+        only the body's reason tells them apart."""
+        if r.status_code != 404:
+            return
+        try:
+            reason = r.json().get("reason")
+        except ValueError:
+            return
+        if reason == "Database does not exist.":
+            raise CouchError(
+                f"database '{self.db}' does not exist in this environment; the "
+                "data is unavailable, do not retry with other arguments"
+            )
+
     # ---- document CRUD ----
     async def get(self, doc_id: str) -> Optional[Dict[str, Any]]:
         r = await self._c.get(f"/{self.db}/{doc_id}")
+        self._raise_if_missing_db(r)
         if r.status_code == 404:
             return None
         r.raise_for_status()
@@ -57,6 +73,7 @@ class CouchClient:
         if "_id" not in doc:
             raise CouchError("document must have _id")
         r = await self._c.put(f"/{self.db}/{doc['_id']}", json=doc)
+        self._raise_if_missing_db(r)
         if r.status_code == 409:
             raise CouchError(f"conflict updating {doc['_id']} (stale _rev)")
         r.raise_for_status()
@@ -83,6 +100,7 @@ class CouchClient:
         if sort:
             body["sort"] = sort
         r = await self._c.post(f"/{self.db}/_find", json=body)
+        self._raise_if_missing_db(r)
         r.raise_for_status()
         return r.json().get("docs", [])
 
@@ -95,6 +113,7 @@ class CouchClient:
             for k, v in params.items()
         }
         r = await self._c.get(f"/{self.db}/_design/{ddoc}/_view/{view}", params=q)
+        self._raise_if_missing_db(r)
         r.raise_for_status()
         return r.json()
 

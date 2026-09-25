@@ -85,7 +85,19 @@ def _missing_asset_class_error(original: str, normalized: str) -> ErrorResult:
     return ErrorResult(error=message)
 
 
+def _is_missing_database(exc: Exception) -> bool:
+    return "Database does not exist" in str(exc)
+
+
+_MISSING_DATABASE_ERROR = (
+    f"database '{FAILURE_MODE_DBNAME}' does not exist in this environment; the "
+    "data is unavailable, do not retry with other arguments"
+)
+
+
 def _is_not_found_error(exc: Exception) -> bool:
+    if _is_missing_database(exc):
+        return False
     if isinstance(exc, (KeyError, NotFoundError)):
         return True
     response = getattr(exc, "response", None)
@@ -267,6 +279,8 @@ def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
     try:
         d = fm_db.get(f"fm:{key}", check=True)
     except Exception as exc:  # noqa: BLE001
+        if _is_missing_database(exc):
+            raise RuntimeError(_MISSING_DATABASE_ERROR) from exc
         if _is_not_found_error(exc):
             d = None
         else:
@@ -281,6 +295,8 @@ def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
                 d = docs[0]
         return d
     except Exception as exc:  # noqa: BLE001
+        if _is_missing_database(exc):
+            raise RuntimeError(_MISSING_DATABASE_ERROR) from exc
         raise RuntimeError(
             f"database lookup failed for asset_class '{key}': {exc}"
         ) from exc

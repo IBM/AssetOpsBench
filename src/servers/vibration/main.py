@@ -19,7 +19,12 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
-from .couchdb_client import fetch_vibration_timeseries, list_sensor_fields
+from .couchdb_client import (
+    VIBRATION_DBNAME,
+    database_available,
+    fetch_vibration_timeseries,
+    list_sensor_fields,
+)
 from .data_store import store
 from .dsp.bearing_freqs import (
     COMMON_BEARINGS,
@@ -56,6 +61,20 @@ mcp = FastMCP(
 
 class ErrorResult(BaseModel):
     error: str
+
+
+def _missing_db_error() -> Optional[ErrorResult]:
+    """Return an error when the database itself is absent or unreachable, so a
+    missing database is not reported as missing asset/sensor data."""
+    if database_available():
+        return None
+    return ErrorResult(
+        error=(
+            f"database '{VIBRATION_DBNAME}' does not exist or is unreachable in "
+            "this environment; the data is unavailable, do not retry with other "
+            "arguments"
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +174,7 @@ def get_vibration_data(
     """
     result = fetch_vibration_timeseries(asset_id, sensor_name, start, final)
     if result is None:
-        return ErrorResult(
+        return _missing_db_error() or ErrorResult(
             error=f"No vibration data found for asset '{asset_id}', "
             f"sensor '{sensor_name}' in time range starting {start}."
         )
@@ -190,7 +209,7 @@ def list_vibration_sensors(
     """
     sensors = list_sensor_fields(asset_id)
     if not sensors:
-        return ErrorResult(
+        return _missing_db_error() or ErrorResult(
             error=f"No sensors found for asset '{asset_id}' at site '{site_name}'."
         )
     return {
