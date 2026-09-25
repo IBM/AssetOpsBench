@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import difflib
 import logging
 import os
 import re
 from typing import List, Optional, Union
 
 import couchdb3
-from couchdb3.exceptions import NotFoundError
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -52,47 +52,61 @@ fm_db = _connect(FAILURE_MODE_DBNAME)
 
 
 def _asset_class_key(asset_class: str) -> str:
-    """Normalise an asset class to the database key format ('Hydraulic_Pump' -> 'hydraulic pump')."""
-    key = re.sub(r"\d+", "", asset_class or "")
-    key = re.sub(r"[_\-]+", " ", key)
-    return re.sub(r"\s+", " ", key).strip().lower()
+    """Normalise an asset class for matching ('Hydraulic_Pump' -> 'hydraulic pump').
+
+    Only case, punctuation, and whitespace are normalised; the caller is expected
+    to pass a real class name, not an instance id like 'Pump-1'.
+    """
+    return re.sub(r"[\W_]+", " ", asset_class or "").strip().casefold()
 
 
-def _known_asset_classes(limit: int = 10) -> List[str]:
-    """Return known asset classes from the failure_mode collection for error guidance."""
+# Upper bound on failure_mode records scanned per lookup. Matching is done in
+# Python on normalised names, so every record's asset_class has to be read.
+_MAX_ASSET_CLASSES = 10_000
+
+
+def _load_failure_mode_docs(key: str) -> List[dict]:
+    """Return every stored failure-mode doc that has an asset_class."""
     if not fm_db:
-        return []
+        raise RuntimeError("database not connected")
     try:
-        res = fm_db.find({}, fields=["asset_class"], limit=limit)
-    except Exception:  # noqa: BLE001
-        return []
-    classes = [
-        doc.get("asset_class")
+        res = fm_db.find({"asset_class": {"$exists": True}}, limit=_MAX_ASSET_CLASSES)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(
+            f"database lookup failed for asset_class '{key}': {exc}"
+        ) from exc
+    return [
+        doc
         for doc in res.get("docs", [])
-        if isinstance(doc.get("asset_class"), str) and doc.get("asset_class")
+        if isinstance(doc.get("asset_class"), str) and doc["asset_class"].strip()
     ]
-    return sorted(dict.fromkeys(classes))
 
 
-def _missing_asset_class_error(original: str, normalized: str) -> ErrorResult:
+def _match_failure_mode_doc(key: str, docs: List[dict]) -> Optional[dict]:
+    """Return the doc whose normalised asset_class equals key, or None.
+
+    Matching is on asset_class only, never on _id. If several docs normalise to
+    the same key, the lowest _id wins.
+    """
+    matches = [doc for doc in docs if _asset_class_key(doc["asset_class"]) == key]
+    return min(matches, key=lambda doc: str(doc.get("_id", "")), default=None)
+
+
+def _missing_asset_class_error(
+    original: str, normalized: str, docs: List[dict]
+) -> ErrorResult:
     message = (
         f"no failure_mode record for asset_class '{normalized}' in database. "
         f"Input was normalized from {original!r}; check that asset_class matches a stored class."
     )
-    known = _known_asset_classes()
+    by_key = {_asset_class_key(doc["asset_class"]): doc["asset_class"] for doc in docs}
+    close = difflib.get_close_matches(normalized, list(by_key), n=3, cutoff=0.6)
+    if close:
+        message += f" Did you mean: {', '.join(by_key[k] for k in close)}?"
+    known = sorted(set(by_key.values()))[:10]
     if known:
         message += f" Available asset_class values include: {', '.join(known)}."
     return ErrorResult(error=message)
-
-
-def _is_not_found_error(exc: Exception) -> bool:
-    if isinstance(exc, (KeyError, NotFoundError)):
-        return True
-    response = getattr(exc, "response", None)
-    status_code = getattr(response, "status_code", None) or getattr(
-        exc, "status_code", None
-    )
-    return status_code == 404
 
 
 # ── Result models ─────────────────────────────────────────────────────────────
@@ -138,19 +152,21 @@ def get_failure_modes(asset_class: str) -> Union[FailureModesResult, ErrorResult
     """READ the known failure modes for an asset class.
 
     Args:
-        asset_class: Asset class to look up, such as "pump". Case, whitespace,
-            digits, underscores, and hyphens are normalized before querying.
+        asset_class: Generic equipment type, such as "pump" or "hydraulic pump".
+            Pass the class, not an asset id: for "Chiller 6" use "chiller". Case,
+            punctuation, and whitespace are ignored. If no record is found, retry
+            with a class suggested in the error.
     """
-    raw_asset_class = asset_class
     key = _asset_class_key(asset_class)
     if not key or key == "none":
         return ErrorResult(error="asset_class is required")
     try:
-        d = _find_failure_mode_doc(key)
+        docs = _load_failure_mode_docs(key)
+        d = _match_failure_mode_doc(key, docs)
         if d is None:
-            return _missing_asset_class_error(raw_asset_class, key)
+            return _missing_asset_class_error(asset_class, key, docs)
         return FailureModesResult(
-            asset_class=d.get("asset_class", key),
+            asset_class=d["asset_class"],
             failure_modes=d.get("failure_modes", []),
             exhaustive=d.get("exhaustive", False),
             source=d.get("source"),
@@ -158,33 +174,6 @@ def get_failure_modes(asset_class: str) -> Union[FailureModesResult, ErrorResult
     except Exception as exc:  # noqa: BLE001
         logger.error("get_failure_modes failed: %s", exc)
         return ErrorResult(error=str(exc))
-
-
-def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
-    """Return the stored failure-mode doc for an asset class, or None."""
-    if not fm_db:
-        raise RuntimeError("database not connected")
-    key = _asset_class_key(asset_class)
-    try:
-        d = fm_db.get(f"fm:{key}", check=True)
-    except Exception as exc:  # noqa: BLE001
-        if _is_not_found_error(exc):
-            d = None
-        else:
-            raise RuntimeError(
-                f"database lookup failed for asset_class '{key}': {exc}"
-            ) from exc
-    try:
-        if d is None:
-            res = fm_db.find({"asset_class": key}, limit=1)
-            docs = res["docs"]
-            if docs:
-                d = docs[0]
-        return d
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            f"database lookup failed for asset_class '{key}': {exc}"
-        ) from exc
 
 
 @mcp.tool(title="Add Failure Modes")
@@ -202,8 +191,10 @@ def add_failure_modes(
     `get_failure_modes` calls.
 
     Args:
-        asset_class: Asset class to update, such as "pump". Case, whitespace,
-            digits, underscores, and hyphens are normalized before writing.
+        asset_class: Generic equipment type, such as "pump", not an asset id.
+            Reuse an existing class name where one fits, to avoid near-duplicate
+            classes. Matched the same way as `get_failure_modes`; if nothing
+            matches, a new record is created under the normalized name.
         failure_modes: Failure modes to add for the asset class.
         exhaustive: Set true only when the stored list is believed complete. If
             omitted, the existing value is preserved; new records default false.
@@ -223,8 +214,7 @@ def add_failure_modes(
         return ErrorResult(error="database not connected")
 
     try:
-        doc_id = f"fm:{key}"
-        doc = _find_failure_mode_doc(key)
+        doc = _match_failure_mode_doc(key, _load_failure_mode_docs(key))
         existing = [
             mode.strip()
             for mode in (doc or {}).get("failure_modes", [])
@@ -247,11 +237,9 @@ def add_failure_modes(
                 added.append(mode)
 
         if doc is None:
-            doc = {"_id": doc_id, "asset_class": key}
+            doc = {"_id": f"fm:{key}", "asset_class": key}
             stored_exhaustive = False
         else:
-            doc.setdefault("_id", doc_id)
-            doc["asset_class"] = key
             stored_exhaustive = bool(doc.get("exhaustive", False))
         doc["failure_modes"] = merged
         doc["exhaustive"] = stored_exhaustive if exhaustive is None else exhaustive
@@ -259,14 +247,14 @@ def add_failure_modes(
         fm_db.save(doc)
 
         return AddFailureModesResult(
-            asset_class=key,
+            asset_class=doc["asset_class"],
             added=added,
             failure_modes=merged,
             total=len(merged),
             exhaustive=doc["exhaustive"],
             source=doc.get("source"),
             message=(
-                f"added {len(added)} new failure mode(s) to asset_class '{key}' "
+                f"added {len(added)} new failure mode(s) to asset_class '{doc['asset_class']}' "
                 f"({len(merged)} total)."
             ),
         )
