@@ -206,20 +206,6 @@ else
   bad "uv not on PATH — run.sh invokes 'uv run'"
 fi
 
-# The fmsr generate_* tools disable themselves silently without credentials.
-fmsr_model="${FMSR_MODEL_ID:-watsonx/meta-llama/llama-3-3-70b-instruct}"
-if [[ "$fmsr_model" == watsonx/* ]]; then
-  if [[ -n "${WATSONX_APIKEY:-}" && -n "${WATSONX_PROJECT_ID:-}" ]]; then
-    ok "fmsr generate_* tools: WatsonX credentials present"
-  else
-    soft "fmsr generate_* tools will be DISABLED (no WATSONX_APIKEY / WATSONX_PROJECT_ID)"
-    hint "they return {\"error\": \"LLM unavailable\"}; fmsr scenarios will score badly"
-    hint "fix: set the WatsonX vars, or FMSR_MODEL_ID=litellm_proxy/<your-model>"
-  fi
-else
-  ok "fmsr generate_* tools routed to $fmsr_model"
-fi
-
 # ASSETOPS_SHARED_DIR must live inside a path the Docker VM shares.
 shared_dir="${ASSETOPS_SHARED_DIR:-/tmp/assetops_shared}"
 case "$(uname -s)" in

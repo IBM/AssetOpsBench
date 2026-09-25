@@ -1,13 +1,7 @@
 import json
-import os
 
 import pytest
-from unittest.mock import MagicMock, patch
-
-requires_watsonx = pytest.mark.skipif(
-    os.environ.get("WATSONX_APIKEY") is None,
-    reason="WatsonX not available (set WATSONX_APIKEY)",
-)
+from unittest.mock import patch
 
 
 async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:
@@ -64,13 +58,6 @@ class BrokenDatabase(FakeDatabase):
 
 
 @pytest.fixture
-def no_llm():
-    """Simulate missing WatsonX credentials."""
-    with patch("servers.fmsr.main._llm_available", False):
-        yield
-
-
-@pytest.fixture
 def fake_fm_db():
     db = FakeDatabase(
         [
@@ -100,17 +87,3 @@ def broken_fm_db():
     with patch("servers.fmsr.main.fm_db", db):
         yield db
 
-
-@pytest.fixture
-def mock_failure_mode_generation():
-    """Patch failure-mode generation so tests do not call the LLM."""
-    mock = MagicMock(
-        return_value=[
-            "bearing wear",
-            "seal leakage",
-            "motor overheating",
-        ]
-    )
-    with patch("servers.fmsr.main._call_failure_mode_generation", mock):
-        with patch("servers.fmsr.main._llm_available", True):
-            yield mock

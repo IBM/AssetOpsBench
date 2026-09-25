@@ -4,7 +4,7 @@ import pytest
 
 from servers.fmsr.main import mcp
 
-from .conftest import call_tool, requires_watsonx
+from .conftest import call_tool
 
 
 class TestGetFailureModes:
@@ -61,112 +61,6 @@ class TestGetFailureModes:
         assert data == {
             "error": "database lookup failed for asset_class 'pump': database read failed"
         }
-
-
-class TestGenerateFailureModes:
-    @pytest.mark.anyio
-    async def test_extends_failure_modes_from_db(
-        self, fake_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "Pump", "max_modes": 5},
-        )
-
-        assert data["asset_class"] == "pump"
-        assert data["known"] == ["seal leakage", "impeller wear"]
-        assert data["generated"] == ["bearing wear", "motor overheating"]
-        assert data["failure_modes"] == [
-            "seal leakage",
-            "impeller wear",
-            "bearing wear",
-            "motor overheating",
-        ]
-        assert data["source"].startswith("LLM:")
-        assert "nothing was persisted" in data["message"]
-        mock_failure_mode_generation.assert_called_once_with(
-            "pump", ["seal leakage", "impeller wear"], 5
-        )
-
-    @pytest.mark.anyio
-    async def test_generates_from_scratch_for_missing_db_record(
-        self, empty_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "compressor", "max_modes": 3},
-        )
-
-        assert data["asset_class"] == "compressor"
-        assert data["known"] == []
-        assert data["generated"] == [
-            "bearing wear",
-            "seal leakage",
-            "motor overheating",
-        ]
-        mock_failure_mode_generation.assert_called_once_with("compressor", [], 3)
-
-    @pytest.mark.anyio
-    async def test_database_read_error_returns_error(
-        self, broken_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 3},
-        )
-
-        assert data == {
-            "error": "database lookup failed for asset_class 'pump': database read failed"
-        }
-        mock_failure_mode_generation.assert_not_called()
-
-    @pytest.mark.anyio
-    async def test_empty_asset_class_returns_error(self, mock_failure_mode_generation):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "", "max_modes": 3},
-        )
-
-        assert data == {"error": "asset_class is required"}
-
-    @pytest.mark.anyio
-    async def test_invalid_max_modes_returns_error(self, mock_failure_mode_generation):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 0},
-        )
-
-        assert data == {"error": "max_modes must be greater than 0"}
-
-    @pytest.mark.anyio
-    async def test_llm_unavailable_returns_error(self, no_llm):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 3},
-        )
-
-        assert data == {"error": "LLM unavailable"}
-
-    @requires_watsonx
-    @pytest.mark.anyio
-    async def test_integration(self):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {
-                "asset_class": "pump",
-                "max_modes": 2,
-            },
-        )
-
-        assert "generated" in data
-        assert len(data["generated"]) <= 2
 
 
 class TestAddFailureModes:
@@ -287,9 +181,10 @@ class TestAddFailureModes:
 
 class TestToolRegistration:
     @pytest.mark.anyio
-    async def test_mapping_tool_is_not_registered(self):
+    async def test_only_catalog_tools_are_registered(self):
         tools = await mcp.list_tools()
 
-        assert "generate_failure_mode_sensor_mapping" not in {
-            tool.name for tool in tools
+        assert {tool.name for tool in tools} == {
+            "get_failure_modes",
+            "add_failure_modes",
         }
