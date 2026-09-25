@@ -497,9 +497,15 @@ def find_assets_by_sensors(
     if source == "measured" and not iot_db:
         return ErrorResult(error="IoT records database not connected")
 
+    site_asset_ids = _site_asset_ids(site_name)
+    if not site_asset_ids:
+        missing = _missing_db_error(asset_db)
+        if missing:
+            return missing
+
     query_sensors = list(dict.fromkeys(sensors))
     matches: List[AssetSensorMatch] = []
-    for asset_id in _site_asset_ids(site_name):
+    for asset_id in site_asset_ids:
         available = (
             get_sensor_list(asset_id)
             if source == "measured"
@@ -540,6 +546,11 @@ def find_assets_by_sensors(
             matches.append(
                 AssetSensorMatch(asset_id=asset_id, matched_sensors=matched)
             )
+
+    if not matches and source == "measured":
+        missing = _missing_db_error(iot_db)
+        if missing:
+            return missing
 
     return FindAssetsResult(
         site_name=site_name,
@@ -726,8 +737,8 @@ def history(
         available_sensors = get_sensor_list(asset_id)
         if not available_sensors:
             return _missing_db_error(iot_db) or ErrorResult(
-            error=f"unknown asset_id {asset_id} or no sensors found"
-        )
+                error=f"unknown asset_id {asset_id} or no sensors found"
+            )
         unknown = [
             sensor for sensor in selected_sensors if sensor not in available_sensors
         ]
@@ -854,8 +865,8 @@ def latest_reading(
         available_sensors = get_sensor_list(asset_id)
         if not available_sensors:
             return _missing_db_error(iot_db) or ErrorResult(
-            error=f"unknown asset_id {asset_id} or no sensors found"
-        )
+                error=f"unknown asset_id {asset_id} or no sensors found"
+            )
         if sensor not in available_sensors:
             return ErrorResult(error=f"unknown sensor {sensor} for asset_id {asset_id}")
 

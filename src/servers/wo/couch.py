@@ -81,6 +81,7 @@ class CouchClient:
 
     async def delete(self, doc_id: str, rev: str) -> Dict[str, Any]:
         r = await self._c.delete(f"/{self.db}/{doc_id}", params={"rev": rev})
+        self._raise_if_missing_db(r)
         r.raise_for_status()
         return r.json()
 

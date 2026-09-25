@@ -1825,3 +1825,19 @@ class TestMissingDatabaseMessage:
         assert "does not exist or is unreachable" in data["error"]
         assert "do not retry" in data["error"]
         assert "iot" not in data["error"]
+
+    @pytest.mark.anyio
+    async def test_find_assets_with_missing_database_reports_unavailable(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.side_effect = RuntimeError("Database does not exist.")
+        mock_iot_db.check.return_value = False
+
+        data = await call_tool(
+            mcp,
+            "find_assets_by_sensors",
+            {"site_name": "MAIN", "sensors": ["Temp"]},
+        )
+
+        assert "does not exist or is unreachable" in data["error"]
