@@ -152,9 +152,10 @@ def get_failure_modes(asset_class: str) -> Union[FailureModesResult, ErrorResult
     """READ the known failure modes for an asset class.
 
     Args:
-        asset_class: Asset class to look up, such as "pump" or "hydraulic pump".
-            Case, punctuation, and whitespace are ignored when matching stored
-            classes; pass the class name, not an asset instance id.
+        asset_class: Generic equipment type, such as "pump" or "hydraulic pump".
+            Pass the class, not an asset id: for "Chiller 6" use "chiller". Case,
+            punctuation, and whitespace are ignored. If no record is found, retry
+            with a class suggested in the error.
     """
     key = _asset_class_key(asset_class)
     if not key or key == "none":
@@ -190,10 +191,10 @@ def add_failure_modes(
     `get_failure_modes` calls.
 
     Args:
-        asset_class: Asset class to update, such as "pump". Matched to a stored
-            class the same way as `get_failure_modes`, keeping the stored name;
-            if nothing matches, a new record is created under the normalized
-            name.
+        asset_class: Generic equipment type, such as "pump", not an asset id.
+            Reuse an existing class name where one fits, to avoid near-duplicate
+            classes. Matched the same way as `get_failure_modes`; if nothing
+            matches, a new record is created under the normalized name.
         failure_modes: Failure modes to add for the asset class.
         exhaustive: Set true only when the stored list is believed complete. If
             omitted, the existing value is preserved; new records default false.
