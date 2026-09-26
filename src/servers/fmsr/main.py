@@ -150,14 +150,18 @@ def _build_llm():
         ]
         if missing:
             raise RuntimeError(f"Missing env vars for WatsonX: {missing}")
-    elif _MODEL_ID.startswith("tokenrouter/"):
-        missing = [
-            v
-            for v in ("TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL")
-            if not os.environ.get(v)
-        ]
+    elif _MODEL_ID.startswith(("tokenrouter/", "beatapi/")):
+        is_beatapi = _MODEL_ID.startswith("beatapi/")
+        key_env, base_env = (
+            ("BEATAPI_API_KEY", "BEATAPI_BASE_URL")
+            if is_beatapi
+            else ("TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL")
+        )
+        missing = [v for v in (key_env, base_env) if not os.environ.get(v)]
         if missing:
-            raise RuntimeError(f"Missing env vars for TokenRouter: {missing}")
+            raise RuntimeError(
+                f"Missing env vars for {'BeatAPI' if is_beatapi else 'TokenRouter'}: {missing}"
+            )
     else:
         missing = [
             v for v in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(v)
