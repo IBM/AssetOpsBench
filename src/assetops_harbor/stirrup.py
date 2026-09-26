@@ -58,6 +58,40 @@ from harbor.models.trajectories import (
 AOB_HOME = "/opt/aob"
 REMOTE_QUESTION_PATH = "/tmp/aob_instruction.txt"
 
+# Mirrors PROXY_ROUTERS in src/llm/routers.py, which is the source of truth.
+# Copied rather than imported because `llm/__init__` pulls in the LiteLLM and
+# OpenAI backends, and this module runs host-side inside Harbor. The test suite
+# asserts the two stay in step.
+ROUTER_CREDENTIALS: dict[str, tuple[str, str]] = {
+    "litellm_proxy/": ("LITELLM_BASE_URL", "LITELLM_API_KEY"),
+    "tokenrouter/": ("TOKENROUTER_BASE_URL", "TOKENROUTER_API_KEY"),
+}
+
+# Forwarded from the Harbor process into the agent container when present.
+# Harbor scopes them to the agent phase, so the verifier and build steps never
+# see them. `--ae KEY=VALUE` still takes precedence over the host environment.
+CREDENTIAL_ENV_VARS: tuple[str, ...] = (
+    "LITELLM_BASE_URL",
+    "LITELLM_API_KEY",
+    "TOKENROUTER_BASE_URL",
+    "TOKENROUTER_API_KEY",
+    "WATSONX_APIKEY",
+    "WATSONX_URL",
+    "WATSONX_PROJECT_ID",
+    "WATSONX_DEPLOYMENT_SPACE_ID",
+    "WATSONX_TOKEN",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_REGION",
+    "AWS_REGION_NAME",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "GEMINI_API_KEY",
+)
+
 
 class StirrupAgent(BaseInstalledAgent):
     """Runs the AssetOpsBench Stirrup CLI inside the task environment."""
@@ -97,6 +131,39 @@ class StirrupAgent(BaseInstalledAgent):
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
         super().__init__(*args, **kwargs)
+        self._require_router_credentials()
+
+    def _require_router_credentials(self) -> None:
+        """Fail before Harbor builds anything if the router creds are missing.
+
+        llm.routers.resolve_router_creds raises inside the container otherwise,
+        which costs an image build and a container per trial to learn that a
+        variable is unset.
+        """
+        for prefix, (base_env, key_env) in ROUTER_CREDENTIALS.items():
+            if not (self.model_name or "").startswith(prefix):
+                continue
+            missing = [name for name in (base_env, key_env) if not self._get_env(name)]
+            if missing:
+                raise ValueError(
+                    f"{' and '.join(missing)} must be set for the {prefix!r} model "
+                    f"prefix. Export them, or pass them per run with "
+                    f"--ae {missing[0]}=... ."
+                )
+
+    def _credential_env(self) -> dict[str, str]:
+        """Credentials to forward into the agent container.
+
+        _get_env reads resolved env vars, then --ae overrides, then the Harbor
+        process environment, so an exported shell variable reaches the agent
+        without being named on the command line.
+        """
+        found = {}
+        for name in CREDENTIAL_ENV_VARS:
+            value = self._get_env(name)
+            if value:
+                found[name] = value
+        return found
 
     async def install(self, environment: BaseEnvironment) -> None:
         """No-op: the repo and its uv environment are baked into the task image."""
@@ -152,7 +219,9 @@ class StirrupAgent(BaseInstalledAgent):
             f"2>&1 | tee {shlex.quote(f'/logs/agent/{run_id}.stdout.txt')}"
         )
 
-        await self.exec_as_agent(environment, command=command, cwd=AOB_HOME)
+        await self.exec_as_agent(
+            environment, command=command, cwd=AOB_HOME, env=self._credential_env()
+        )
 
     @property
     def run_id(self) -> str:
@@ -168,6 +237,44 @@ class StirrupAgent(BaseInstalledAgent):
     # ------------------------------------------------------------------ #
     # ATIF conversion
     # ------------------------------------------------------------------ #
+
+    def populate_context_post_run(self, context: AgentContext) -> None:
+        """Write trajectory.json and fill the run's token counts.
+
+        Harbor never calls convert_trajectory() on its own. Each agent invokes it
+        from here and persists the result, exactly as harbor.agents.installed
+        .claude_code and .codex do. Trial._sync_agent_output then reads
+        logs_dir/trajectory.json back to populate model usage, so without this
+        hook there is no trajectory file and no token accounting.
+        """
+        try:
+            trajectory = self.convert_trajectory(self.logs_dir)
+        except Exception as exc:  # noqa: BLE001 - never fail a scored run over telemetry
+            self.logger.debug("Failed to convert the Stirrup trajectory: %s", exc)
+            return
+        if trajectory is None:
+            self.logger.debug(
+                "No AssetOpsBench record found in %s; "
+                "check that AGENT_TRAJECTORY_DIR pointed at it",
+                self.logs_dir,
+            )
+            return
+
+        path = self.logs_dir / "trajectory.json"
+        try:
+            path.write_text(
+                json.dumps(trajectory.to_json_dict(), indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            self.logger.debug("Failed to write %s: %s", path, exc)
+
+        metrics = trajectory.final_metrics
+        if metrics is not None:
+            context.n_input_tokens = metrics.total_prompt_tokens or 0
+            context.n_output_tokens = metrics.total_completion_tokens or 0
+            context.n_cache_tokens = metrics.total_cached_tokens or 0
+            context.cost_usd = metrics.total_cost_usd
 
     def convert_trajectory(self, logs_dir: Path) -> Trajectory | None:
         """Map the AssetOpsBench persisted record onto Harbor's ATIF schema.

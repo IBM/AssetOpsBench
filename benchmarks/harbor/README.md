@@ -54,6 +54,51 @@ PYTHONPATH=agent harbor run \
   --n-concurrent 16
 ```
 
+## Why the MCP servers need an explicit env
+
+`StirrupAgentRunner._build_mcp_config` sets `env` on every stdio server. It has
+to. `mcp.client.stdio` applies `get_default_environment()` when
+`StdioServerParameters.env` is None, and that inherits only HOME, LOGNAME, PATH,
+SHELL, TERM and USER. Without it, no server sees `COUCHDB_URL` and each falls
+back to `http://localhost:5984`.
+
+That default is correct on a laptop, where the shared CouchDB publishes 5984 and
+the agent runs on the host, which is why this never surfaced before. Under
+Harbor the database is `couchdb:5984` inside the trial's Compose network, the
+fallback points at nothing, and the failure appears inside a tool call as
+
+```
+Error executing tool list_workorders: All connection attempts failed
+```
+
+rather than at startup. `src/agent/tests/test_stirrup_mcp_env.py` guards both
+the runner's behaviour and the SDK default it compensates for.
+
+## Credentials
+
+The agent forwards credentials from the Harbor process into the container for
+the agent phase only. Exporting them in your shell is enough:
+
+```bash
+export TOKENROUTER_BASE_URL=... TOKENROUTER_API_KEY=...
+harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
+  --agent assetops_harbor.stirrup:StirrupAgent --model tokenrouter/MiniMax-M3
+```
+
+`--ae KEY=VALUE` overrides the shell for one run. The forwarded set is
+`CREDENTIAL_ENV_VARS` in `src/assetops_harbor/stirrup.py`: the LiteLLM and
+TokenRouter router pairs, the watsonx variables, and the common OpenAI,
+Anthropic, AWS and Gemini names.
+
+A model with a `litellm_proxy/` or `tokenrouter/` prefix fails at construction
+when its pair is unset, before Harbor builds anything. `src/llm/routers.py`
+otherwise raises the same thing inside the container, which costs an image build
+and a container per trial to learn that a variable is missing.
+
+Note what is NOT used: the repository's `.env`. `.dockerignore` keeps it out of
+the image deliberately, so credentials never get baked into a layer that could
+be pushed to a registry.
+
 ## Arms
 
 Main has no `--topology` flag. The arms `stirrup-agent` actually exposes map onto Harbor agent kwargs, and Harbor records each one in the trial's `config.json`, so the arm shows up in the result rather than being inferred from a directory name.

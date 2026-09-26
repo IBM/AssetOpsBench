@@ -1,0 +1,50 @@
+"""The Stirrup runner must hand its MCP servers the parent environment.
+
+mcp.client.stdio.stdio_client applies get_default_environment() when
+StdioServerParameters.env is None, and that inherits only HOME, LOGNAME, PATH,
+SHELL, TERM and USER. A server launched that way never sees COUCHDB_URL and
+falls back to http://localhost:5984, which is correct only when CouchDB happens
+to be published there. It is wrong for any containerised or remote CouchDB, and
+it fails as a connection error inside the tool rather than at startup.
+"""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+
+pytest.importorskip("stirrup.tools.mcp", reason="requires stirrup[mcp]")
+
+from agent.stirrup_agent.runner import StirrupAgentRunner
+
+
+def _config(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("COUCHDB_URL", "http://couchdb:5984")
+    monkeypatch.setenv("WO_DBNAME", "workorder")
+    runner = StirrupAgentRunner(model="watsonx/test", code_enabled=False)
+    return runner._build_mcp_config()
+
+
+def test_every_server_receives_couchdb_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(monkeypatch)
+    assert config.mcpServers, "no MCP servers configured"
+
+    for name, server in config.mcpServers.items():
+        assert server.env is not None, f"{name} would get the SDK default env"
+        assert server.env.get("COUCHDB_URL") == "http://couchdb:5984", name
+        assert server.env.get("WO_DBNAME") == "workorder", name
+
+
+def test_the_sdk_default_would_drop_couchdb_url() -> None:
+    """Pin the SDK behaviour this guards against, so an SDK change is visible."""
+    from mcp.client.stdio import DEFAULT_INHERITED_ENV_VARS, get_default_environment
+
+    assert "COUCHDB_URL" not in DEFAULT_INHERITED_ENV_VARS
+    os.environ["COUCHDB_URL"] = "http://couchdb:5984"
+    try:
+        assert "COUCHDB_URL" not in get_default_environment()
+    finally:
+        os.environ.pop("COUCHDB_URL", None)

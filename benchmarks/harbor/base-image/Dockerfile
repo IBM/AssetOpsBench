@@ -25,12 +25,15 @@ WORKDIR /opt/aob
 
 # Lockfile first so dependency layers survive source edits.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+# --group otel installs the OTLP exporter and httpx instrumentation. The task
+# sets OTEL_TRACES_FILE, which turns on the file exporter; without this group
+# it fails at export time on a missing google.protobuf and drops every batch.
+RUN uv sync --frozen --group otel --no-install-project
 
 # Repo, including the shared scenario corpus under
 # src/couchdb/scenarios_data/shared (7.7 MB in the open profile). Shared here
 # means pulled once, not copied into every task context.
 COPY . .
-RUN uv sync --frozen
+RUN uv sync --frozen --group otel
 
 CMD ["bash", "-lc", "sleep infinity"]

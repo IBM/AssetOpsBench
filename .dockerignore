@@ -1,0 +1,29 @@
+# Docker reads THIS file, not .gitignore. Anything not listed here is pulled
+# into the build context by `COPY . .` in benchmarks/harbor/base-image/Dockerfile
+# and baked into the runtime image, including files git ignores.
+
+# Credentials. AssetOpsBench's run_sdk_cli calls load_dotenv(), so a local .env
+# would otherwise end up inside every task image and every trial container.
+.env
+.env.*
+!.env.public
+
+# Host virtualenv: the image builds its own with `uv sync --frozen`.
+.venv/
+
+# Harbor output and generated tasks.
+jobs/
+benchmarks/harbor/datasets/
+
+# Caches and local noise.
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+traces/
+.DS_Store
+
+# NOTE: .git is deliberately NOT ignored. StirrupAgent.get_version_command runs
+# `git rev-parse --short HEAD` inside the container so every trial records the
+# AssetOpsBench commit it ran against in result.json.

@@ -24,7 +24,7 @@ pytest.importorskip(
 
 from harbor.models.trajectories import Trajectory
 
-from assetops_harbor.stirrup import StirrupAgent
+from assetops_harbor.stirrup import ROUTER_CREDENTIALS, StirrupAgent
 
 RUN_ID = "wosr-1__abc1234"
 
@@ -201,3 +201,74 @@ def test_fixtures_match_the_real_dataclasses() -> None:
     assert set(SDK_TRAJECTORY["turns"][0]) == turn_fields
     assert set(SDK_TRAJECTORY["turns"][0]["tool_calls"][0]) == call_fields
     assert set(PLAN_EXECUTE_TRAJECTORY[0]) == step_fields
+
+
+def test_populate_context_post_run_writes_trajectory_and_tokens(tmp_path: Path) -> None:
+    """Harbor never calls convert_trajectory itself.
+
+    Trial._sync_agent_output calls populate_context_post_run and then reads
+    logs_dir/trajectory.json back for model usage, so the hook must both write
+    the file and fill the context.
+    """
+    from harbor.models.agent.context import AgentContext
+
+    agent, logs_dir = _agent(tmp_path)
+    _write_record(logs_dir, SDK_TRAJECTORY)
+
+    context = AgentContext()
+    agent.populate_context_post_run(context)
+
+    written = logs_dir / "trajectory.json"
+    assert written.exists(), "trajectory.json was not written"
+    Trajectory.model_validate(json.loads(written.read_text()))
+
+    assert context.n_input_tokens == 2600
+    assert context.n_output_tokens == 92
+
+
+def test_populate_context_post_run_is_quiet_without_a_record(tmp_path: Path) -> None:
+    from harbor.models.agent.context import AgentContext
+
+    agent, logs_dir = _agent(tmp_path)
+    context = AgentContext()
+    agent.populate_context_post_run(context)
+
+    assert not (logs_dir / "trajectory.json").exists()
+    assert context.n_input_tokens is None
+
+
+def test_router_credentials_are_required_up_front(tmp_path: Path) -> None:
+    """Missing creds must fail before Harbor builds an image per trial."""
+    with pytest.raises(ValueError, match="TOKENROUTER_BASE_URL"):
+        StirrupAgent(logs_dir=tmp_path / "agent", model_name="tokenrouter/MiniMax-M3")
+
+
+def test_router_credentials_from_agent_env_satisfy_the_check(tmp_path: Path) -> None:
+    agent = StirrupAgent(
+        logs_dir=tmp_path / "agent",
+        model_name="tokenrouter/MiniMax-M3",
+        extra_env={
+            "TOKENROUTER_BASE_URL": "https://example.invalid/v1",
+            "TOKENROUTER_API_KEY": "k",
+        },
+    )
+    forwarded = agent._credential_env()
+    assert forwarded["TOKENROUTER_BASE_URL"] == "https://example.invalid/v1"
+    assert forwarded["TOKENROUTER_API_KEY"] == "k"
+    # Only what is set, never empty placeholders.
+    assert all(forwarded.values())
+    assert "OPENAI_API_KEY" not in forwarded or forwarded["OPENAI_API_KEY"]
+
+
+def test_unprefixed_models_need_no_router_creds(tmp_path: Path) -> None:
+    StirrupAgent(logs_dir=tmp_path / "agent", model_name="watsonx/llama-4")
+
+
+def test_router_map_matches_llm_routers() -> None:
+    """Catch drift from src/llm/routers.py, the source of truth.
+
+    Skips when the agent dependency tree is absent, since llm/__init__ imports
+    the LiteLLM and OpenAI backends.
+    """
+    routers = pytest.importorskip("llm.routers")
+    assert ROUTER_CREDENTIALS == routers.PROXY_ROUTERS
