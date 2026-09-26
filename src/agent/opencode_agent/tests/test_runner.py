@@ -183,6 +183,18 @@ def test_resolve_tokenrouter_model(monkeypatch):
     )  # pragma: allowlist secret
 
 
+def test_resolve_beatapi_model(monkeypatch):
+    monkeypatch.setenv("BEATAPI_BASE_URL", "https://api.beatapi.io/v1")
+    monkeypatch.setenv("BEATAPI_API_KEY", "example-key")
+    model, provider, env = _resolve_opencode_model_and_provider("beatapi/gpt-5.6-sol")
+    assert model == "beatapi/gpt-5.6-sol"
+    assert provider["beatapi"]["name"] == "BeatAPI"
+    assert provider["beatapi"]["npm"] == "@ai-sdk/openai-compatible"
+    assert provider["beatapi"]["options"]["baseURL"] == "https://api.beatapi.io/v1"
+    assert provider["beatapi"]["models"]["gpt-5.6-sol"]["name"] == "gpt-5.6-sol"
+    assert env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "example-key"
+
+
 def test_resolve_tokenrouter_anthropic_model(monkeypatch):
     monkeypatch.setenv("TOKENROUTER_BASE_URL", "https://router.example/v1")
     monkeypatch.setenv("TOKENROUTER_API_KEY", "tr-test")
@@ -192,13 +204,10 @@ def test_resolve_tokenrouter_anthropic_model(monkeypatch):
     assert model == "tokenrouter/anthropic/claude-opus-4.8"
     assert provider["tokenrouter"]["npm"] == "@ai-sdk/anthropic"
     assert provider["tokenrouter"]["options"]["baseURL"] == "https://router.example/v1"
-    assert (
-        provider["tokenrouter"]["models"]["anthropic/claude-opus-4.8"]
-        == {
-            "name": "anthropic/claude-opus-4.8",
-            "options": {"toolStreaming": False},
-        }
-    )
+    assert provider["tokenrouter"]["models"]["anthropic/claude-opus-4.8"] == {
+        "name": "anthropic/claude-opus-4.8",
+        "options": {"toolStreaming": False},
+    }
     assert (
         env["ASSETOPSBENCH_OPENCODE_API_KEY"] == "tr-test"
     )  # pragma: allowlist secret

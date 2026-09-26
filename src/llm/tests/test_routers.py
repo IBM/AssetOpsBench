@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from llm.routers import (
+    BEATAPI_PREFIX,
     LITELLM_PREFIX,
     TOKENROUTER_PREFIX,
     is_openai_compat,
@@ -15,6 +16,7 @@ from llm.routers import (
 
 
 def test_prefix_constants():
+    assert BEATAPI_PREFIX == "beatapi/"
     assert LITELLM_PREFIX == "litellm_proxy/"
     assert TOKENROUTER_PREFIX == "tokenrouter/"
 
@@ -24,6 +26,7 @@ def test_prefix_constants():
     [
         ("litellm_proxy/aws/claude-opus-4-6", "aws/claude-opus-4-6"),
         ("tokenrouter/MiniMax-M3", "MiniMax-M3"),
+        ("beatapi/gpt-5.6-sol", "gpt-5.6-sol"),
         ("anthropic/claude-sonnet-4-6", "anthropic/claude-sonnet-4-6"),
         ("gpt-4o", "gpt-4o"),
         ("", ""),
@@ -38,6 +41,7 @@ def test_resolve_model(model_id, expected):
     [
         ("litellm_proxy/aws/claude-opus-4-6", "litellm_proxy/"),
         ("tokenrouter/MiniMax-M3", "tokenrouter/"),
+        ("beatapi/gpt-5.6-sol", "beatapi/"),
         ("anthropic/claude-sonnet-4-6", None),
     ],
 )
@@ -46,6 +50,7 @@ def test_router_prefix(model_id, expected_prefix):
 
 
 def test_is_openai_compat():
+    assert is_openai_compat("beatapi/gpt-5.6-sol")
     assert is_openai_compat("tokenrouter/MiniMax-M3")
     assert not is_openai_compat("litellm_proxy/aws/claude-opus-4-6")
     assert not is_openai_compat("watsonx/meta-llama/x")
@@ -58,6 +63,15 @@ def test_resolve_router_creds_tokenrouter(monkeypatch):
     assert creds.prefix == "tokenrouter/"
     assert creds.base_url == "https://api.tokenrouter.com/v1"
     assert creds.api_key == "tr-key"
+
+
+def test_resolve_router_creds_beatapi(monkeypatch):
+    monkeypatch.setenv("BEATAPI_BASE_URL", "https://api.beatapi.io/v1")
+    monkeypatch.setenv("BEATAPI_API_KEY", "example-key")
+    creds = resolve_router_creds("beatapi/gpt-5.6-sol")
+    assert creds.prefix == "beatapi/"
+    assert creds.base_url == "https://api.beatapi.io/v1"
+    assert creds.api_key == "example-key"
 
 
 def test_resolve_router_creds_native_passthrough():
