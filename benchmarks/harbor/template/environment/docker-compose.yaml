@@ -1,0 +1,33 @@
+# Harbor supplies the `main` service itself (build or prebuilt image, plus a
+# keepalive command) and merges this file over it, task file last. Everything
+# below is additive.
+#
+# Note what is NOT here: a `ports:` block. Harbor namespaces containers,
+# networks and volumes per trial via the Compose project name
+# (<task>__<uuid7>__env), but it does NOT namespace host ports. A published
+# port would collide the moment two trials of this task run concurrently,
+# which is exactly the failure this whole design exists to remove.
+services:
+  main:
+    depends_on:
+      couchdb:
+        condition: service_healthy
+
+  couchdb:
+    image: couchdb:3.5
+    environment:
+      # The official image reads COUCHDB_USER; the AssetOpsBench clients read
+      # COUCHDB_USERNAME. They are different names for the same credential.
+      COUCHDB_USER: admin  # pragma: allowlist secret
+      COUCHDB_PASSWORD: password  # pragma: allowlist secret
+    expose:
+      - "5984"
+    # Harbor's generated overrides (env, mounts, deploy.resources) target
+    # `main` only, so a sidecar declares its own ceiling here or has none.
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5984/_up"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s

@@ -1,0 +1,54 @@
+schema_version = "1.4"
+
+[task]
+name = "assetopsbench/wosr-1"
+description = "Count work orders logged at the main site. AssetOpsBench scenario 1, wosr category."
+authors = [{ name = "AssetOpsBench Team" }]
+keywords = ["assetopsbench", "wosr", "industrial", "tool-use", "mcp"]
+
+[metadata]
+scenario_id = "1"
+category = "wosr"
+# Set by the adapter from the scenario folder: scenario_meta.json picks the
+# scorer, and evaluation.loader defaults to static_json when it is absent.
+scoring_method = "static_json"
+
+[agent]
+timeout_sec = 3600.0
+
+[verifier]
+timeout_sec = 900.0
+# Scenarios whose scenario_meta.json asks for llm_judge need egress and a key
+# in the verifier phase. static_json scenarios need neither, but the block is
+# harmless for them and one template serves both.
+network_mode = "public"
+env = { AOB_JUDGE_MODEL = "${AOB_JUDGE_MODEL:-}", LITELLM_API_KEY = "${LITELLM_API_KEY:-}", LITELLM_BASE_URL = "${LITELLM_BASE_URL:-}", WATSONX_APIKEY = "${WATSONX_APIKEY:-}", ANTHROPIC_API_KEY = "${ANTHROPIC_API_KEY:-}", OPENAI_API_KEY = "${OPENAI_API_KEY:-}" }
+
+[environment]
+build_timeout_sec = 900.0
+# No `cpus` pin. Harbor turns it into BOTH a Docker limit and a reservation on
+# `main`, so a value above what Docker Desktop is allocated fails the run
+# outright ("range of CPUs is from 0.01 to 2.00"), and two concurrent trials
+# reserve it twice. Operators who want limits pass --override-cpus at run time.
+memory_mb = 4096
+workdir = "/opt/aob"
+# Harbor injects this map into the `main` service only. mcphub merges
+# os.environ into every stdio MCP server it launches (uv run <name>-mcp-server),
+# so COUCHDB_URL reaches all six servers with no code change.
+#
+# AOB_SCENARIO_ID is read by the agent adapter and passed to stirrup-agent as
+# --scenario-id, which lands on the root OTEL span.
+#
+# The CouchDB credentials are the placeholder pair src/couchdb/docker-compose.yaml
+# already uses, for a per-trial container that publishes no host port and is
+# destroyed with the trial.
+env = { COUCHDB_URL = "http://couchdb:5984", COUCHDB_USERNAME = "admin", COUCHDB_PASSWORD = "password", SCENARIOS_DATA_DIR = "/opt/aob/src/couchdb/scenarios_data", AGENT_TRAJECTORY_DIR = "/logs/agent", OTEL_TRACES_FILE = "/logs/agent/traces.jsonl", AOB_SCENARIO_ID = "1" }  # pragma: allowlist secret
+
+# Harbor gates agent setup on this, so it is where the per-scenario load runs.
+# init_data.py drops and recreates each database, so a retry is idempotent.
+[environment.healthcheck]
+command = "uv run python src/couchdb/init_data.py 1"
+interval_sec = 5.0
+timeout_sec = 300.0
+start_period_sec = 5.0
+retries = 3
