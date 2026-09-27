@@ -29,7 +29,7 @@ benchmarks/harbor/datasets/assetopsbench-open/
 
 ```bash
 # 1. Build and push the runtime base (once per AssetOpsBench commit)
-docker build -t icr.io/assetopsbench/runtime:dev \
+docker build -t assetopsbench/runtime:dev \
   -f base-image/Dockerfile <path-to-AssetOpsBench>
 
 # 2. Generate the rest of the open profile from the template
@@ -174,7 +174,19 @@ The overlay adds a per-trial Docker-in-Docker daemon and points `DOCKER_HOST` at
 it. Stirrup's `DockerCodeExecToolProvider` builds its client with
 `docker.from_env()`, which honours `DOCKER_HOST`, so this needs no AssetOpsBench
 change. Code containers are created inside that daemon, on its own bridge, with
-no DNS entry for `couchdb` and no route into the trial's network.
+no DNS entry for `couchdb` and no environment at all: Stirrup injects only the
+variables named in its `env_vars` list, which the runner never sets, and its
+`load_dotenv()` finds nothing because `.dockerignore` keeps `.env` out of the
+image. The realistic bypass, reading `COUCHDB_URL` and opening a client, has
+neither a hostname nor a credential to work with.
+
+Be precise about what this is: containment, not a firewall. The daemon's own
+interface sits on the trial network so that `main` can reach it at
+`tcp://dind:2375`, and the inner bridge NATs outbound through it, so a code
+container that guessed CouchDB's IP could still reach port 5984. Closing that
+needs the inner containers on `--network none`, which is Stirrup's call rather
+than this overlay's. For a benchmark whose system prompt already forbids the
+shortcut, removing the name and the credentials is the part that matters.
 
 Parallelism holds: the daemon is a service of the trial's own Compose project,
 namespaced and destroyed with it. It does cost a container and an image pull per
@@ -192,9 +204,9 @@ Build and publish the code image once, since each dind daemon starts empty and
 Stirrup pulls on `ImageNotFound`:
 
 ```bash
-docker build -t icr.io/assetopsbench/code:dev \
+docker build -t assetopsbench/code:dev \
   -f src/agent/stirrup_agent/Dockerfile.code src/agent/stirrup_agent
-docker push icr.io/assetopsbench/code:dev
+docker push assetopsbench/code:dev
 ```
 
 Set `AOB_CODE_IMAGE` to override the reference. Note that `privileged: true` is

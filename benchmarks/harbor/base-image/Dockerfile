@@ -6,7 +6,7 @@
 # the whole environment/ directory, so a fat per-task context defeats the cache
 # and rebuilds the world for every scenario.
 #
-#   docker build -t icr.io/assetopsbench/runtime:$(git rev-parse --short HEAD) \
+#   docker build -t assetopsbench/runtime:$(git rev-parse --short HEAD) \
 #     -f base-image/Dockerfile <path-to-AssetOpsBench>
 FROM python:3.12-slim
 
