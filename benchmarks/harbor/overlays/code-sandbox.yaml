@@ -1,0 +1,120 @@
+# Opt-in overlay for the code track. Keeps agent-written code away from CouchDB.
+#
+#   harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
+#     --agent assetops_harbor.stirrup:StirrupAgent \
+#     --model tokenrouter/MiniMax-M3 \
+#     --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
+#     --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+#     --ak workspace_dir=/workspace-share
+#
+# Why this exists. With --code-backend local, Stirrup runs agent-written code in
+# the `main` container, which holds COUCHDB_URL and sits one DNS hop from the
+# couchdb sidecar. The code tool can then query the database directly and skip
+# the MCP layer, which is the thing the benchmark measures. The system prompt
+# forbids it ("Never use code to query backing services or bypass an available
+# MCP tool") but nothing enforces it.
+#
+# How this fixes it. Stirrup's DockerCodeExecToolProvider builds its client with
+# docker.from_env(), which honours DOCKER_HOST, so pointing it at a per-trial
+# Docker-in-Docker daemon needs no AssetOpsBench change. Code containers are
+# then created INSIDE that daemon, on its own internal bridge. They have no DNS
+# entry for `couchdb` and no route into the trial's Compose network.
+#
+# Parallelism is unaffected: the daemon is a service of this trial's Compose
+# project, named and namespaced like every other, and destroyed with the trial.
+# It does cost a container and an image pull per trial, so lower --n-concurrent
+# for the code arm.
+#
+# The shared workspace is not optional. DockerCodeExecToolProvider creates its
+# workspace with tempfile.mkdtemp(dir=temp_base_dir) on the MAIN container's
+# filesystem, bind-mounts that path into the code container, and writes spilled
+# MCP results straight through the mount. With DOCKER_HOST pointing at dind, the
+# daemon resolves the bind source inside DIND, so main and the code container
+# would be looking at two different directories and every spilled artifact would
+# be missing, with no error. One named volume mounted at the same absolute path
+# in both services makes the path resolve identically, and --workspace-dir puts
+# mkdtemp inside it. StirrupAgent refuses code_backend=docker without it.
+#
+# Each dind daemon starts with an empty image store, so the code image has to
+# get in somehow. Two ways, and the default needs no registry and no login:
+#
+#   1. Local tar (default). Build once, save once, export the path:
+#
+#        docker build -t assetops-code:dev \
+#          -f src/agent/stirrup_agent/Dockerfile.code src/agent/stirrup_agent
+#        docker save assetops-code:dev -o ~/assetops-code.tar
+#        export AOB_CODE_TAR=~/assetops-code.tar
+#
+#      The code-image-loader service loads that tar into the daemon before the
+#      agent starts. Nothing is pushed anywhere.
+#
+#   2. Registry. Push the image, then set both variables:
+#
+#        export AOB_CODE_IMAGE=icr.io/assetopsbench/code:dev
+#
+#      Stirrup calls images.get() and pulls on ImageNotFound, so the loader
+#      turns into a no-op and the daemon pulls instead.
+services:
+  main:
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+      STIRRUP_CODE_IMAGE: ${AOB_CODE_IMAGE:-assetops-code:dev}
+    volumes:
+      - code-workspace:/workspace-share
+    depends_on:
+      dind:
+        condition: service_healthy
+      code-image-loader:
+        condition: service_completed_successfully
+
+  # Loads the code image into this trial's daemon from a local tar, so the
+  # code track works without a registry account. Exits 0 either way: with no
+  # tar it does nothing and Stirrup falls back to pulling AOB_CODE_IMAGE.
+  code-image-loader:
+    image: docker:28-cli
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+    volumes:
+      - ${AOB_CODE_TAR:-/dev/null}:/image.tar:ro
+    command:
+      - sh
+      - -c
+      - |
+        if [ -s /image.tar ]; then
+          docker load -i /image.tar
+        else
+          echo "no AOB_CODE_TAR; the daemon will pull $$STIRRUP_CODE_IMAGE instead"
+        fi
+    depends_on:
+      dind:
+        condition: service_healthy
+
+  dind:
+    image: docker:28-dind
+    # Required by dockerd. Note that several Harbor cloud providers refuse
+    # privileged containers, so this overlay is local-first by nature.
+    privileged: true
+    environment:
+      # Plain tcp on 2375. The port is exposed only inside this trial's
+      # Compose network and never published to the host.
+      DOCKER_TLS_CERTDIR: ""
+    expose:
+      - "2375"
+    volumes:
+      # Compose namespaces both per project, so each trial gets its own layer
+      # store and its own workspace. Sharing either across trials would
+      # reintroduce exactly the cross-trial state this port removed.
+      - dind-storage:/var/lib/docker
+      # Same volume, same mount point as `main`, so a path created there
+      # resolves to the same files when the daemon binds it.
+      - code-workspace:/workspace-share
+    healthcheck:
+      test: ["CMD", "docker", "-H", "tcp://localhost:2375", "info"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+
+volumes:
+  dind-storage:
+  code-workspace:

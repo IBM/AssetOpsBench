@@ -148,6 +148,64 @@ files:
 git rm -r --cached jobs
 ```
 
+## The code track and CouchDB
+
+`--ak code_enabled=true` with the default `code_backend=local` runs agent-written
+code inside `main`, which holds `COUCHDB_URL` and sits one DNS hop from the
+couchdb sidecar. The code tool can then query the database directly and bypass
+the MCP layer the benchmark measures. Stirrup's system prompt forbids that
+("Never use code to query backing services or bypass an available MCP tool"),
+but nothing enforces it, and a trial that bypassed the tools looks identical to
+one that did not.
+
+`benchmarks/harbor/overlays/code-sandbox.yaml` closes it, opt-in per run:
+
+```bash
+harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
+  --agent assetops_harbor.stirrup:StirrupAgent \
+  --model tokenrouter/MiniMax-M3 \
+  --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
+  --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+  --ak workspace_dir=/workspace-share \
+  --n-concurrent 1
+```
+
+The overlay adds a per-trial Docker-in-Docker daemon and points `DOCKER_HOST` at
+it. Stirrup's `DockerCodeExecToolProvider` builds its client with
+`docker.from_env()`, which honours `DOCKER_HOST`, so this needs no AssetOpsBench
+change. Code containers are created inside that daemon, on its own bridge, with
+no DNS entry for `couchdb` and no route into the trial's network.
+
+Parallelism holds: the daemon is a service of the trial's own Compose project,
+namespaced and destroyed with it. It does cost a container and an image pull per
+trial, so lower `--n-concurrent` for this arm.
+
+`workspace_dir` is required, and `StirrupAgent` refuses `code_backend=docker`
+without it. `DockerCodeExecToolProvider` bind-mounts a directory it creates on
+the main container's filesystem and writes spilled MCP results straight through
+that mount. With `DOCKER_HOST` pointing at dind, the daemon resolves the bind
+source inside dind instead, so the two sides would see different directories and
+every spilled artifact would go missing with no error. The overlay shares one
+volume at `/workspace-share` in both services so the path resolves identically.
+
+Build and publish the code image once, since each dind daemon starts empty and
+Stirrup pulls on `ImageNotFound`:
+
+```bash
+docker build -t icr.io/assetopsbench/code:dev \
+  -f src/agent/stirrup_agent/Dockerfile.code src/agent/stirrup_agent
+docker push icr.io/assetopsbench/code:dev
+```
+
+Set `AOB_CODE_IMAGE` to override the reference. Note that `privileged: true` is
+required by dockerd and refused by several Harbor cloud providers, so this
+overlay is local-first.
+
+The stronger fix is to move the MCP servers into their own sidecar, leaving
+`main` with no CouchDB access at all. That also unlocks running any Harbor agent
+against AssetOpsBench, but it changes all six servers and the runner, so it
+belongs in its own change rather than here.
+
 ## Resource limits
 
 The task pins no `cpus`. Harbor renders that field into both a Docker limit and

@@ -24,7 +24,11 @@ pytest.importorskip(
 
 from harbor.models.trajectories import Trajectory
 
-from assetops_harbor.stirrup import ROUTER_CREDENTIALS, StirrupAgent
+from assetops_harbor.stirrup import (
+    ROUTER_CREDENTIALS,
+    SHARED_WORKSPACE,
+    StirrupAgent,
+)
 
 RUN_ID = "wosr-1__abc1234"
 
@@ -112,6 +116,7 @@ def test_docker_code_backend_is_rejected(tmp_path: Path) -> None:
         model_name="m",
         code_backend="docker",
         allow_docker_backend=True,
+        workspace_dir=SHARED_WORKSPACE,
     )
     assert agent.code_backend == "docker"
 
@@ -237,13 +242,30 @@ def test_populate_context_post_run_is_quiet_without_a_record(tmp_path: Path) -> 
     assert context.n_input_tokens is None
 
 
-def test_router_credentials_are_required_up_front(tmp_path: Path) -> None:
+@pytest.fixture
+def no_router_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip router credentials from the process environment.
+
+    _get_env falls back to os.environ by design, so a developer who exports
+    these for real runs would otherwise see this test pass or fail depending on
+    their shell.
+    """
+    for _base, _key in ROUTER_CREDENTIALS.values():
+        monkeypatch.delenv(_base, raising=False)
+        monkeypatch.delenv(_key, raising=False)
+
+
+def test_router_credentials_are_required_up_front(
+    tmp_path: Path, no_router_credentials: None
+) -> None:
     """Missing creds must fail before Harbor builds an image per trial."""
     with pytest.raises(ValueError, match="TOKENROUTER_BASE_URL"):
         StirrupAgent(logs_dir=tmp_path / "agent", model_name="tokenrouter/MiniMax-M3")
 
 
-def test_router_credentials_from_agent_env_satisfy_the_check(tmp_path: Path) -> None:
+def test_router_credentials_from_agent_env_satisfy_the_check(
+    tmp_path: Path, no_router_credentials: None
+) -> None:
     agent = StirrupAgent(
         logs_dir=tmp_path / "agent",
         model_name="tokenrouter/MiniMax-M3",
@@ -272,3 +294,31 @@ def test_router_map_matches_llm_routers() -> None:
     """
     routers = pytest.importorskip("llm.routers")
     assert ROUTER_CREDENTIALS == routers.PROXY_ROUTERS
+
+
+def test_docker_backend_requires_a_shared_workspace(tmp_path: Path) -> None:
+    """The dind bind-mount trap must fail loudly, not silently lose files."""
+    with pytest.raises(ValueError, match="workspace_dir"):
+        StirrupAgent(
+            logs_dir=tmp_path / "agent",
+            model_name="m",
+            code_enabled=True,
+            code_backend="docker",
+            allow_docker_backend=True,
+        )
+
+    agent = StirrupAgent(
+        logs_dir=tmp_path / "agent",
+        model_name="m",
+        code_enabled=True,
+        code_backend="docker",
+        allow_docker_backend=True,
+        workspace_dir=SHARED_WORKSPACE,
+    )
+    assert agent.workspace_dir == SHARED_WORKSPACE
+
+
+def test_local_backend_needs_no_workspace(tmp_path: Path) -> None:
+    agent = StirrupAgent(logs_dir=tmp_path / "agent", model_name="m", code_enabled=True)
+    assert agent.code_backend == "local"
+    assert agent.workspace_dir is None

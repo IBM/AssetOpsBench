@@ -57,6 +57,9 @@ from harbor.models.trajectories import (
 
 AOB_HOME = "/opt/aob"
 REMOTE_QUESTION_PATH = "/tmp/aob_instruction.txt"
+# Must match the mount point the code-sandbox overlay shares between `main`
+# and the dind daemon. See _require_shared_workspace below.
+SHARED_WORKSPACE = "/workspace-share"
 
 # Mirrors PROXY_ROUTERS in src/llm/routers.py, which is the source of truth.
 # Copied rather than imported because `llm/__init__` pulls in the LiteLLM and
@@ -109,6 +112,7 @@ class StirrupAgent(BaseInstalledAgent):
         max_turns: int = 30,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
+        workspace_dir: str | None = None,
         **kwargs: Any,
     ) -> None:
         if code_backend not in {"local", "docker"}:
@@ -130,8 +134,10 @@ class StirrupAgent(BaseInstalledAgent):
         self.max_turns = int(max_turns)
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
+        self.workspace_dir = workspace_dir
         super().__init__(*args, **kwargs)
         self._require_router_credentials()
+        self._require_shared_workspace()
 
     def _require_router_credentials(self) -> None:
         """Fail before Harbor builds anything if the router creds are missing.
@@ -150,6 +156,36 @@ class StirrupAgent(BaseInstalledAgent):
                     f"prefix. Export them, or pass them per run with "
                     f"--ae {missing[0]}=... ."
                 )
+
+    def _require_shared_workspace(self) -> None:
+        """Guard the Docker-in-Docker bind-mount trap.
+
+        DockerCodeExecToolProvider creates its workspace with
+        tempfile.mkdtemp(dir=temp_base_dir) on THIS container's filesystem, then
+        bind-mounts that path into the code container, and write_file_bytes
+        writes through the mount rather than through the Docker API.
+
+        With DOCKER_HOST pointing at a dind sidecar, the daemon resolves the
+        bind source inside dind, not here. The code container would mount an
+        empty directory, and every MCP result the workspace bridge spills to
+        disk would be invisible to the agent's code. Nothing errors; the files
+        simply are not there.
+
+        The overlay shares one volume at SHARED_WORKSPACE between both
+        containers so the path resolves identically on each side. Pointing
+        --workspace-dir at it is what makes mkdtemp land inside that volume.
+        """
+        if not self.code_enabled or self.code_backend != "docker":
+            return
+        if self.workspace_dir:
+            return
+        raise ValueError(
+            "code_backend='docker' needs workspace_dir set to a path shared "
+            f"with the Docker daemon, normally {SHARED_WORKSPACE!r} from "
+            "benchmarks/harbor/overlays/code-sandbox.yaml. Without it the code "
+            "container mounts an empty directory and spilled MCP results "
+            f"vanish silently. Pass --ak workspace_dir={SHARED_WORKSPACE}"
+        )
 
     def _credential_env(self) -> dict[str, str]:
         """Credentials to forward into the agent container.
@@ -209,6 +245,8 @@ class StirrupAgent(BaseInstalledAgent):
             flags += ["--temperature", str(self.temperature)]
         if self.reasoning_effort is not None:
             flags += ["--reasoning-effort", shlex.quote(self.reasoning_effort)]
+        if self.workspace_dir:
+            flags += ["--workspace-dir", shlex.quote(self.workspace_dir)]
 
         # AOB_SCENARIO_ID comes from the task's [environment].env, which Harbor
         # injects into the main service. It lands on the root OTEL span.
