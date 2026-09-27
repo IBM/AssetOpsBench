@@ -40,8 +40,31 @@ if [ -n "${AOB_JUDGE_MODEL:-}" ]; then
     judge_args+=(--judge-model "${AOB_JUDGE_MODEL}")
 fi
 
+# /logs/agent is Harbor's agent log directory, not a trajectory store: by the
+# time the verifier runs it also holds trajectory.json (the ATIF file the agent
+# writes from populate_context_post_run, which Harbor itself reads back) and
+# whatever else the agent left there, including subdirectories. Pointing the
+# evaluator at it directly means evaluation.loader.load_trajectories rglobs
+# every *.json underneath and logs a pydantic traceback for each one that is
+# not a PersistedTrajectory. Scoring survives that - the loader catches and
+# skips - but a 30-line ValidationError in test-stderr.txt on every passing
+# trial is exactly the noise that sends someone debugging the wrong thing.
+#
+# So hand the evaluator only the run records: top level, *.json, minus the
+# files Harbor and the agent own. An empty directory here scores 0 through
+# to_reward.py, the same as no record at all.
+TRAJ_DIR="$LOG_DIR/trajectories"
+mkdir -p "$TRAJ_DIR"
+for candidate in /logs/agent/*.json; do
+    [ -f "$candidate" ] || continue
+    case "$(basename "$candidate")" in
+        trajectory.json) continue ;;
+    esac
+    cp "$candidate" "$TRAJ_DIR/"
+done
+
 uv run evaluate \
-  --trajectories /logs/agent \
+  --trajectories "$TRAJ_DIR" \
   --scenarios /tests/scenarios \
   --reports-dir "$LOG_DIR/reports" \
   "${judge_args[@]}" \

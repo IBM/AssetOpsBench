@@ -17,8 +17,20 @@
 # How this fixes it. Stirrup's DockerCodeExecToolProvider builds its client with
 # docker.from_env(), which honours DOCKER_HOST, so pointing it at a per-trial
 # Docker-in-Docker daemon needs no AssetOpsBench change. Code containers are
-# then created INSIDE that daemon, on its own internal bridge. They have no DNS
-# entry for `couchdb` and no route into the trial's Compose network.
+# then created INSIDE that daemon, on its own internal bridge, so they get no
+# DNS entry for `couchdb` and no environment at all: Stirrup's backend injects
+# only the variables named in its `env_vars` list, which the runner never sets,
+# and its load_dotenv() finds nothing because .dockerignore keeps .env out of
+# the image. The realistic bypass - read COUCHDB_URL, open a client - therefore
+# has neither a hostname nor a credential to work with.
+#
+# Be precise about what this is: containment, not a firewall. dind's own eth0
+# sits on the trial network so that main can reach it at tcp://dind:2375, and
+# the inner bridge NATs outbound through it, so a code container that guessed
+# couchdb's IP could still reach port 5984. Closing that needs the inner
+# containers on `--network none`, which is Stirrup's call, not this overlay's.
+# For a benchmark whose system prompt already forbids the shortcut, removing
+# the name and the credentials is the part that matters.
 #
 # Parallelism is unaffected: the daemon is a service of this trial's Compose
 # project, named and namespaced like every other, and destroyed with the trial.

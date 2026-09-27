@@ -30,9 +30,12 @@ def test_every_server_receives_couchdb_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(monkeypatch)
-    assert config.mcpServers, "no MCP servers configured"
+    # The field is mcp_servers; "mcpServers" is only its validation alias,
+    # which is what runner.py passes to model_validate. Attribute access
+    # uses the Python name.
+    assert config.mcp_servers, "no MCP servers configured"
 
-    for name, server in config.mcpServers.items():
+    for name, server in config.mcp_servers.items():
         assert server.env is not None, f"{name} would get the SDK default env"
         assert server.env.get("COUCHDB_URL") == "http://couchdb:5984", name
         assert server.env.get("WO_DBNAME") == "workorder", name
