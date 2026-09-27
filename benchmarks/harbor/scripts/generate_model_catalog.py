@@ -135,6 +135,27 @@ def build_card(ckpt: Path) -> tuple[dict | None, str]:
     return card, note
 
 
+def carried_over(out: Path) -> list[dict]:
+    """Hub-backed cards from the existing catalog, which the scan cannot produce.
+
+    A hub card has no directory, so regenerating from disk would drop it and the
+    catalog would silently lose a model. Carry forward exactly the cards that
+    name a Hub repo and no local artifact; anything with an artifact_path is
+    rebuilt from the checkpoint, so a card whose directory has gone is correctly
+    dropped rather than preserved.
+    """
+    if not out.is_file():
+        return []
+    try:
+        existing = json.loads(out.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(existing, list):
+        return []
+    return [c for c in existing
+            if isinstance(c, dict) and c.get("hf_repo") and not c.get("artifact_path")]
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -154,6 +175,15 @@ def main() -> int:
         card, note = build_card(ckpt)
         print(note)
         (cards if card else skipped).append(card or ckpt.name)
+
+    scanned = {c["model_id"] for c in cards}
+    kept = [c for c in carried_over(args.out) if c["model_id"] not in scanned]
+    if kept:
+        print(f"\n{len(kept)} hub-backed card(s) carried over from {args.out}:")
+        for c in kept:
+            rev = (c.get("params") or {}).get("revision")
+            print(f"  {c['model_id']:22} {c['hf_repo']}{'@' + rev if rev else ''}")
+        cards.extend(kept)
 
     # Validate before writing: a catalog that fails the repo schema is worse
     # than no catalog, because it fails at seed time rather than here.
