@@ -124,17 +124,21 @@ def classify(card: dict) -> tuple[str, str | None, str]:
         return "runtime", None, f"{model_id}: written at run time by {created_by}"
     if not path:
         if hf_repo:
-            return "hub", str(hf_repo), f"{model_id}: {hf_repo} (via hf_repo; no params.model_path)"
+            rev0 = (card.get("params") or {}).get("revision")
+            tgt = f"{hf_repo}@{rev0}" if rev0 else str(hf_repo)
+            return "hub", tgt, f"{model_id}: {tgt} (via hf_repo; no params.model_path)"
         return "none", None, f"{model_id}: no params.model_path (classical model?)"
 
     path = str(path)
+    rev = (card.get("params") or {}).get("revision")
+    suffix = f"@{rev}" if rev else ""
     if hf_repo:
         if str(hf_repo) != path:
-            return "hub", path, (
+            return "hub", path + suffix, (
                 f"{model_id}: WARNING params.model_path={path} disagrees with "
                 f"hf_repo={hf_repo}; loading follows model_path"
             )
-        return "hub", path, f"{model_id}: {path}"
+        return "hub", path + suffix, f"{model_id}: {path}{suffix}"
 
     if source == "local_artifact":
         return "local", path, f"{model_id}: local checkpoint {path}"
@@ -142,8 +146,8 @@ def classify(card: dict) -> tuple[str, str | None, str]:
     # Nothing declared. Fall back to shape, and say so, because this is the
     # case that silently sends a local path to the Hub.
     if _REPO_RE.match(path):
-        return "hub", path, (
-            f"{model_id}: {path} (GUESSED from path shape; set hf_repo or "
+        return "hub", path + suffix, (
+            f"{model_id}: {path}{suffix} (GUESSED from path shape; set hf_repo or "
             f'source="local_artifact" to make this explicit)'
         )
     return "local", path, (
@@ -201,6 +205,16 @@ def tree_size(path: Path) -> int:
 # --------------------------------------------------------------------------- #
 # modes
 # --------------------------------------------------------------------------- #
+def split_ref(ref: str, override: str | None) -> tuple[str, str | None]:
+    """"org/name@branch" -> ("org/name", "branch"). --revision overrides the card."""
+    if override:
+        return ref.split("@", 1)[0], override
+    if "@" in ref:
+        repo, rev = ref.split("@", 1)
+        return repo, rev
+    return ref, None
+
+
 def report(repos: list[str], revision: str | None) -> int:
     from huggingface_hub import HfApi
 
@@ -209,17 +223,18 @@ def report(repos: list[str], revision: str | None) -> int:
     unknown = 0
     print(f"{'repo':52} {'files':>6} {'size':>10}")
     print("-" * 74)
-    for repo in repos:
+    for ref in repos:
+        repo, rev = split_ref(ref, revision)
         try:
-            info = api.model_info(repo, revision=revision, files_metadata=True)
+            info = api.model_info(repo, revision=rev, files_metadata=True)
         except Exception as exc:  # noqa: BLE001 - a report must not die on one repo
-            print(f"{repo:52} {'-':>6} {'ERROR':>10}  {exc}")
+            print(f"{ref:52} {'-':>6} {'ERROR':>10}  {exc}")
             continue
         sizes = [s.size for s in (info.siblings or [])]
         unknown += sum(1 for s in sizes if s is None)
         known = sum(s for s in sizes if s)
         total += known
-        print(f"{repo:52} {len(sizes):>6} {human(known):>10}  sha={(info.sha or '')[:8]}")
+        print(f"{ref:52} {len(sizes):>6} {human(known):>10}  sha={(info.sha or '')[:8]}")
     print("-" * 74)
     print(f"{'TOTAL':52} {'':>6} {human(total):>10}")
     if unknown:
@@ -243,14 +258,15 @@ def download(repos: list[str], revision: str | None, workers: int) -> int:
 
     failed: list[tuple[str, str]] = []
     grand = 0
-    for n, repo in enumerate(repos, 1):
-        print(f"[{n}/{len(repos)}] {repo}")
+    for n, ref in enumerate(repos, 1):
+        repo, rev = split_ref(ref, revision)
+        print(f"[{n}/{len(repos)}] {ref}")
         started = time.monotonic()
         try:
-            where = Path(snapshot_download(repo, revision=revision, max_workers=workers))
+            where = Path(snapshot_download(repo, revision=rev, max_workers=workers))
         except Exception as exc:  # noqa: BLE001
             print(f"          FAILED: {exc}", file=sys.stderr)
-            failed.append((repo, str(exc)))
+            failed.append((ref, str(exc)))
             continue
         # The repo root is two levels up from snapshots/<sha>.
         size = tree_size(where.parent.parent)
@@ -279,13 +295,14 @@ def check(repos: list[str], revision: str | None) -> int:
     print("offline   : HF_HUB_OFFLINE=1\n")
 
     missing: list[str] = []
-    for repo in repos:
+    for ref in repos:
+        repo, rev = split_ref(ref, revision)
         try:
-            where = Path(snapshot_download(repo, revision=revision))
-            print(f"  OK      {repo:52} {human(tree_size(where.parent.parent)):>10}")
+            where = Path(snapshot_download(repo, revision=rev))
+            print(f"  OK      {ref:52} {human(tree_size(where.parent.parent)):>10}")
         except Exception as exc:  # noqa: BLE001
-            print(f"  MISSING {repo:52} {type(exc).__name__}")
-            missing.append(repo)
+            print(f"  MISSING {ref:52} {type(exc).__name__}")
+            missing.append(ref)
 
     if missing:
         print(f"\n{len(missing)} repo(s) would hit the network at run time:", file=sys.stderr)
