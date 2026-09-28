@@ -121,7 +121,9 @@ def generate(
             text,
             flags=re.MULTILINE,
         )
-        text = text.replace('"assetopsbench", "wosr",', f'"assetopsbench", "{category}",')
+        text = text.replace(
+            '"assetopsbench", "wosr",', f'"assetopsbench", "{category}",'
+        )
         if runtime_image:
             text = re.sub(
                 r"^ARG AOB_RUNTIME_IMAGE=.*$",
