@@ -99,6 +99,49 @@ def status_of(card: dict) -> str:
     return str(card.get("status") or "active")
 
 
+# Params that name a SECOND Hub repo the card needs at load time. A card has
+# one params.model_path, but several wrappers pull more than one checkpoint:
+#
+#   KronosForecaster   tokenizer_path="NeoQuasar/Kronos-Tokenizer-base"
+#   MomentFMForecaster transformer_backbone="google/flan-t5-base"
+#
+# Caching only model_path leaves those to be fetched on first use. That works
+# wherever there is a network and fails inside the image, which is the worst
+# place to find out. Scan for them instead of maintaining a per-wrapper table.
+_AUX_PARAM_KEYS = (
+    "tokenizer_path",
+    "transformer_backbone",
+    "pretrained_model_name_or_path",
+    "checkpoint_path",
+    "base_model_path",
+    "backbone",
+)
+
+
+def aux_targets(card: dict, primary: str | None) -> list[str]:
+    """Hub repos this card needs beyond its primary target.
+
+    Sources, in order: an explicit `aux_repos` list on the card, then any
+    param in _AUX_PARAM_KEYS whose value is shaped like a Hub repo id. A value
+    that is a local directory does not match _REPO_RE and is left alone.
+    """
+    params = card.get("params") or {}
+    base = (primary or "").split("@")[0]
+    out: list[str] = []
+
+    def add(value) -> None:
+        v = str(value or "")
+        if not v or not _REPO_RE.match(v) or v == base or v in out:
+            return
+        out.append(v)
+
+    for extra in card.get("aux_repos") or []:
+        add(extra)
+    for key in _AUX_PARAM_KEYS:
+        add(params.get(key))
+    return out
+
+
 def classify(card: dict) -> tuple[str, str | None, str]:
     """Return (kind, target, why). kind is 'hub', 'local', 'runtime' or 'none'.
 
@@ -116,7 +159,18 @@ def classify(card: dict) -> tuple[str, str | None, str]:
                scratch.
     """
     model_id = card.get("model_id") or "<unnamed>"
-    path = (card.get("params") or {}).get("model_path")
+    # model_path is TTM's and Chronos's name for it, not a universal one.
+    # MOIRAI takes checkpoint_path, MOMENT pretrained_model_name_or_path,
+    # TimesFM v1 repo_id. A card using the right name for its wrapper is
+    # correct, and reporting it as "no params.model_path" reads as a defect.
+    params = card.get("params") or {}
+    path = None
+    path_key = "model_path"
+    for key in ("model_path", "checkpoint_path",
+                "pretrained_model_name_or_path", "repo_id"):
+        if params.get(key):
+            path, path_key = params[key], key
+            break
     created_by = str(card.get("created_by") or "")
     hf_repo = card.get("hf_repo")
     source = card.get("source")
@@ -127,19 +181,22 @@ def classify(card: dict) -> tuple[str, str | None, str]:
         if hf_repo:
             rev0 = (card.get("params") or {}).get("revision")
             tgt = f"{hf_repo}@{rev0}" if rev0 else str(hf_repo)
-            return "hub", tgt, f"{model_id}: {tgt} (via hf_repo; no params.model_path)"
-        return "none", None, f"{model_id}: no params.model_path (classical model?)"
+            return "hub", tgt, f"{model_id}: {tgt} (via hf_repo; card names no checkpoint)"
+        return "none", None, f"{model_id}: names no checkpoint (classical model?)"
 
     path = str(path)
-    rev = (card.get("params") or {}).get("revision")
+    rev = params.get("revision")
     suffix = f"@{rev}" if rev else ""
     if hf_repo:
         if str(hf_repo) != path:
             return "hub", path + suffix, (
-                f"{model_id}: WARNING params.model_path={path} disagrees with "
-                f"hf_repo={hf_repo}; loading follows model_path"
+                f"{model_id}: WARNING params.{path_key}={path} disagrees with "
+                f"hf_repo={hf_repo}; loading follows params.{path_key}"
             )
-        return "hub", path + suffix, f"{model_id}: {path}{suffix}"
+        note = f"{model_id}: {path}{suffix}"
+        if path_key != "model_path":
+            note += f" (via params.{path_key})"
+        return "hub", path + suffix, note
 
     if source == "local_artifact":
         return "local", path, f"{model_id}: local checkpoint {path}"
@@ -287,6 +344,32 @@ def download(repos: list[str], revision: str | None, workers: int) -> int:
     return 0
 
 
+def _serving_switch(card: dict) -> str | None:
+    """The constructor parameter that makes THIS estimator serve, if it has one.
+
+    Read the signature rather than assume. TTM and PatchTST take
+    fit_strategy="zero-shot"; PatchTSMixer takes train_model=False; Chronos,
+    MOIRAI, MOMENT, Toto, Kronos and every classical forecaster take neither.
+    Demanding a parameter that does not exist is worse than not checking.
+    """
+    import importlib
+    import inspect
+
+    dotted = card.get("sktime_class")
+    if not dotted or "." not in dotted:
+        return None
+    mod, _, name = dotted.rpartition(".")
+    try:
+        cls = getattr(importlib.import_module(mod), name)
+        sig = inspect.signature(cls.__init__).parameters
+    except Exception:  # noqa: BLE001 - an uninstalled wrapper is not a card defect
+        return None
+    for key in ("fit_strategy", "train_model"):
+        if key in sig:
+            return key
+    return None
+
+
 def validate_cards(cards: list[dict]) -> int:
     """Check the cards themselves, not just where their weights live.
 
@@ -297,10 +380,16 @@ def validate_cards(cards: list[dict]) -> int:
       schema      the repo's own validator, so a bad card fails here rather
                   than at seed time. Notably it requires base_model_id on a
                   finetuned card.
-      serve pins  params.fit_strategy and training_regime. Without both, TTM's
-                  default fit_strategy="minimal" re-tunes the weights on every
-                  fit and run_recipe takes the expanding-window refit path.
-                  This one is silent: the model loads, forecasts, and is wrong.
+      serve pins  params.fit_strategy and training_regime, but ONLY for an
+                  estimator that has such a switch. TTM and PatchTST default
+                  fit_strategy="minimal", which re-tunes the weights on every
+                  fit while run_recipe takes the expanding-window refit path,
+                  and that failure is silent: the model loads, forecasts, and
+                  is wrong. Most wrappers have no such parameter at all
+                  (Chronos, MOIRAI, MOMENT, Toto, Kronos), and classical
+                  estimators are SUPPOSED to fit on the series, so demanding
+                  the pin everywhere produces noise that buries the real
+                  findings.
     """
     problems: list[str] = []
 
@@ -320,14 +409,32 @@ def validate_cards(cards: list[dict]) -> int:
                 problems.append(f"{mid}: schema: {str(exc).splitlines()[0][:120]}")
 
         params = c.get("params") or {}
-        if str(params.get("fit_strategy", "")).lower() not in _ZERO_SHOT:
+
+        # A card that declares how it trains has made a decision; respect it.
+        # MOMENT builds its forecasting head fresh and must train it, and a
+        # detector that fits on the series it is given is not misconfigured.
+        if str(c.get("training_regime") or "") in ("fine_tune", "fit_on_series"):
+            continue
+
+        switch = _serving_switch(c)
+        if switch is None:
+            continue                  # nothing to pin on this estimator
+        if switch not in params:
             problems.append(
-                f"{mid}: params.fit_strategy is {params.get('fit_strategy')!r}; "
-                'a checkpoint card must pin "zero-shot" or it re-tunes on every fit')
-        if c.get("training_regime") != "zero_shot":
+                f"{mid}: params.{switch} is unset; {c.get('sktime_class', '?').rsplit('.', 1)[-1]}"
+                f" defaults to training, so the card re-tunes on every fit")
+        elif switch == "fit_strategy" and str(params[switch]).lower() not in _ZERO_SHOT:
             problems.append(
-                f"{mid}: training_regime is {c.get('training_regime')!r}; "
-                'pin "zero_shot" or run_recipe takes the refit path')
+                f"{mid}: params.fit_strategy is {params[switch]!r}; "
+                'pin "zero-shot" to serve the checkpoint as shipped')
+        elif switch == "train_model" and params[switch] is not False:
+            problems.append(
+                f"{mid}: params.train_model is {params[switch]!r}; set false to serve")
+        elif c.get("training_regime") != "zero_shot":
+            problems.append(
+                f"{mid}: params.{switch} serves but training_regime is "
+                f"{c.get('training_regime')!r}; pin \"zero_shot\" or run_recipe "
+                "takes the refit path")
 
     if problems:
         print(f"\n{len(problems)} card problem(s):", file=sys.stderr)
@@ -446,6 +553,14 @@ def main() -> int:
             repos.append(target)
         elif kind == "local" and target and target not in locals_:
             locals_.append(target)
+        # Auxiliary repos are needed whatever the primary kind: a local
+        # checkpoint can still name a Hub tokenizer or backbone.
+        if kind in ("hub", "local"):
+            for extra in aux_targets(card, target):
+                if extra not in repos:
+                    repos.append(extra)
+                    notes.append(f"{card.get('model_id', '?')}: + {extra} "
+                                 "(auxiliary checkpoint named in params)")
 
     if args.include:
         keep = re.compile(args.include)

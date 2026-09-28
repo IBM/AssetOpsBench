@@ -390,11 +390,22 @@ def main() -> int:
                         "series' own sampling rate)")
     p.add_argument("--default-context", type=int, default=512,
                    help="context to use for cards that declare none (default 512)")
+    p.add_argument("--explain", metavar="MODEL_ID",
+                   help="run only this card and print the full traceback")
     p.add_argument("--default-horizon", type=int, default=96,
                    help="horizon to use for cards that declare none (default 96)")
     args = p.parse_args()
 
     sys.path.insert(0, "src")
+    # huggingface_hub revalidates a cached file's etag over HTTP before using
+    # it, and httpx logs every one at INFO. Those lines look like downloads and
+    # interleave with the table. Cached weights are still served from cache.
+    import logging
+
+    for noisy_loggers in ("httpx", "httpcore", "urllib3", "filelock",
+                          "huggingface_hub", "transformers", "datasets"):
+        logging.getLogger(noisy_loggers).setLevel(logging.WARNING)
+
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -410,6 +421,12 @@ def main() -> int:
     raw = json.loads(cat.read_text(encoding="utf-8"))
     cards = [c for c in (raw if isinstance(raw, list) else raw.get("docs", [raw]))
              if (c.get("status") or "active") == "active"]
+    if args.explain:
+        cards = [c for c in cards if c.get("model_id") == args.explain]
+        if not cards:
+            print(f"no active card with model_id={args.explain!r}", file=sys.stderr)
+            return 1
+        print(f"card    : {json.dumps(cards[0], indent=2)}\n")
 
     y, column, filled, index, step = load_series(args.series, args.column)
 
@@ -474,7 +491,13 @@ def main() -> int:
                                   else f"environment: {text[:56]}")}
                     missing.update(want)
             else:
-                r = {"status": "ERROR", "note": f"{type(exc).__name__}: {text[:60]}"}
+                width = 200 if args.explain else 110
+                r = {"status": "ERROR", "note": f"{type(exc).__name__}: {text[:width]}"}
+                if args.explain:
+                    import traceback
+                    print()
+                    traceback.print_exc()
+                    print()
         if r["status"] in ("FAIL", "ERROR", "TRAINED"):
             failures += 1
         nums = (f"{r['skill']:>7.2f} {r['smape']:>8.2f} {r['naive']:>8.2f}"
