@@ -189,3 +189,17 @@ class TestPlanner:
 
         Planner(llm).generate_plan("Q", {"iot": "  - sites(): List sites"})
         assert "#Args" not in captured[0]
+
+    def test_generate_plan_prompt_requires_evidence_for_indirect_identifiers(
+        self, mock_llm
+    ):
+        captured = []
+        llm = mock_llm(_TWO_STEP)
+        original = llm.generate
+        llm.generate = lambda p, **kw: (captured.append(p), original(p))[1]
+
+        Planner(llm).generate_plan("Count work at the main site", {"iot": "sites()"})
+
+        assert "canonical" in captured[0]
+        assert "discovery or list tool" in captured[0]
+        assert "Do not plan a capability that no listed tool provides" in captured[0]

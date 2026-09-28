@@ -12,6 +12,7 @@ an MCP-native implementation:
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -19,8 +20,13 @@ from pathlib import Path
 from llm import LLMBackend, LLMResult
 from observability import agent_run_span, persist_trajectory
 
+from .escalation import (
+    EscalationAction,
+    extract_escalation_signals,
+    should_escalate,
+)
 from .executor import Executor
-from .models import OrchestratorResult
+from .models import OrchestratorResult, StepResult
 from .planner import Planner
 from ..runner import AgentRunner
 
@@ -76,6 +82,41 @@ Provide a concise, direct answer to the original question based on the results
 above. Do not repeat the individual steps — just give the final answer.
 """
 
+_VERIFY_PROMPT = """\
+You are reviewing the evidence gathered by a plan-execute industrial asset \
+operations agent before it gives a final answer.
+
+Original question: {question}
+
+Escalation reasons:
+{reasons}
+
+Step-by-step execution results:
+{results}
+
+Check for failed steps, missing evidence, conflicting evidence, alternative \
+explanations, and whether any work-order or action recommendation would be \
+premature. Provide concise verification notes only.
+"""
+
+_SUMMARIZE_WITH_VERIFICATION_PROMPT = """\
+You are summarizing the results of a multi-step task execution for an \
+industrial asset operations system.
+
+Original question: {question}
+
+Step-by-step execution results:
+{results}
+
+Verification notes:
+{verification}
+
+Provide a concise, direct answer to the original question based on the results \
+and verification notes above. Never claim that an action completed when required \
+evidence is missing or a tool failed. If completion cannot be established, say so \
+explicitly. Do not repeat the individual steps — just give the final answer.
+"""
+
 
 class PlanExecuteRunner(AgentRunner):
     """Entry-point for plan-and-execute workflows using MCP servers as tool providers.
@@ -94,15 +135,34 @@ class PlanExecuteRunner(AgentRunner):
         server_paths: Override MCP server specs.  Keys must match the server
                       names the planner will assign steps to.  Values are
                       either a uv entry-point name (str) or a Path to a
-                      script file.  Defaults to all five registered servers.
+                      script file.  Defaults to all six registered servers.
+        adaptive_escalation: Enable an experimental deterministic escalation
+                             policy that can add a verification pass before
+                             summarisation. Defaults to ``False``.
+        adaptive_recovery: Override whether bounded safe recovery runs. By
+                           default it follows ``adaptive_escalation``. The
+                           separate control exists for paired experiments.
+        max_recovery_attempts: Run-wide retry budget; each step can retry once.
     """
 
     def __init__(
         self,
         llm: LLMBackend,
         server_paths: dict[str, Path | str] | None = None,
+        adaptive_escalation: bool = False,
+        adaptive_recovery: bool | None = None,
+        max_recovery_attempts: int = 2,
     ) -> None:
         super().__init__(llm, server_paths)
+        if max_recovery_attempts < 0:
+            raise ValueError("max_recovery_attempts must be non-negative")
+        self._adaptive_escalation = adaptive_escalation
+        self._adaptive_recovery = (
+            adaptive_escalation if adaptive_recovery is None else adaptive_recovery
+        )
+        if self._adaptive_recovery and not adaptive_escalation:
+            raise ValueError("adaptive_recovery requires adaptive_escalation")
+        self._max_recovery_attempts = max_recovery_attempts
         self._meter = _TokenMeter(llm)
         self._planner = Planner(self._meter)
         self._executor = Executor(self._meter, server_paths)
@@ -141,19 +201,95 @@ class PlanExecuteRunner(AgentRunner):
             _log.info("Plan has %d step(s).", len(plan.steps))
 
             # 3. Execute
-            trajectory = await self._executor.execute_plan(plan, question)
+            trajectory = await self._executor.execute_plan(
+                plan,
+                question,
+                adaptive_recovery=self._adaptive_recovery,
+                max_recovery_attempts=self._max_recovery_attempts,
+            )
+
+            span.set_attribute("agent.escalation.enabled", self._adaptive_escalation)
+            escalation_decision = None
+            if self._adaptive_escalation:
+                signals = extract_escalation_signals(question, plan, trajectory)
+                escalation_decision = should_escalate(signals)
+                span.set_attribute(
+                    "agent.escalation.should_escalate",
+                    escalation_decision.should_escalate,
+                )
+                span.set_attribute(
+                    "agent.escalation.reasons",
+                    escalation_decision.reasons,
+                )
+                span.set_attribute(
+                    "agent.escalation.action", escalation_decision.action.value
+                )
+                span.set_attribute(
+                    "agent.escalation.dependency_depth", signals.dependency_depth
+                )
+                span.set_attribute(
+                    "agent.escalation.any_step_failed", signals.any_step_failed
+                )
+                span.set_attribute(
+                    "agent.escalation.uses_specialist_servers",
+                    signals.uses_specialist_servers,
+                )
+                span.set_attribute(
+                    "agent.escalation.recovery_attempted_steps",
+                    signals.recovery_attempted_steps,
+                )
+                span.set_attribute(
+                    "agent.escalation.recovered_steps", signals.recovered_steps
+                )
+                span.set_attribute(
+                    "agent.escalation.retry_blocked_steps",
+                    signals.retry_blocked_steps,
+                )
 
             # 4. Summarise
             _log.info("Summarising...")
             results_text = "\n\n".join(
-                f"Step {r.step_number} — {r.task} (server: {r.server}):\n"
+                f"Step {r.step_number} — {r.task} "
+                f"(server: {r.server}; tool: {r.tool or 'none'}; "
+                f"args: {json.dumps(r.tool_args, sort_keys=True, default=str)}):\n"
                 + (r.response if r.success else f"ERROR: {r.error}")
                 for r in trajectory
             )
             summarization_started = time.perf_counter()
-            answer = self._meter.generate(
-                _SUMMARIZE_PROMPT.format(question=question, results=results_text)
-            )
+            if (
+                escalation_decision
+                and escalation_decision.action is EscalationAction.VERIFY
+            ):
+                _log.info("Running adaptive escalation verification...")
+                try:
+                    verification = self._meter.generate(
+                        _VERIFY_PROMPT.format(
+                            question=question,
+                            reasons="\n".join(escalation_decision.reasons),
+                            results=results_text,
+                        )
+                    )
+                    answer = self._meter.generate(
+                        _SUMMARIZE_WITH_VERIFICATION_PROMPT.format(
+                            question=question,
+                            results=results_text,
+                            verification=verification,
+                        )
+                    )
+                except Exception:  # noqa: BLE001
+                    _log.exception(
+                        "Adaptive verification failed; reporting execution failure"
+                    )
+                    answer = _failure_answer(trajectory)
+            elif (
+                escalation_decision
+                and escalation_decision.action is EscalationAction.REPORT_FAILURE
+            ):
+                answer = _failure_answer(trajectory)
+            else:
+                answer = self._meter.generate(
+                    _SUMMARIZE_PROMPT.format(question=question, results=results_text)
+                )
             summarization_ms = (time.perf_counter() - summarization_started) * 1000
             duration_ms = (time.perf_counter() - run_started) * 1000
 
@@ -162,6 +298,12 @@ class PlanExecuteRunner(AgentRunner):
                 answer=answer,
                 plan=plan,
                 trajectory=trajectory,
+                escalation_action=(
+                    escalation_decision.action.value if escalation_decision else None
+                ),
+                escalation_reasons=(
+                    escalation_decision.reasons if escalation_decision else []
+                ),
             )
             span.set_attribute("agent.plan.steps", len(plan.steps))
             span.set_attribute("agent.answer.length", len(answer or ""))
@@ -183,3 +325,16 @@ class PlanExecuteRunner(AgentRunner):
                 trajectory=trajectory,
             )
             return result
+
+
+def _failure_answer(trajectory: list[StepResult]) -> str:
+    """Return an accurate deterministic answer when required evidence is absent."""
+    failures = [result for result in trajectory if not result.success]
+    details = "; ".join(
+        f"step {result.step_number} ({result.task}): {result.error or 'failed'}"
+        for result in failures
+    )
+    return (
+        "Unable to complete the request because required execution evidence could "
+        f"not be obtained. {details}"
+    )

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 import couchdb3
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from servers.iot.models import (
     AssetDetail,
@@ -90,6 +91,13 @@ mcp = FastMCP(
 DEFAULT_SITES = ["MAIN"]
 PAGE_SIZE = 1000
 RESERVED_FIELDS = {"_id", "_rev", "asset_id", "timestamp", "dataset", "type", "doctype"}
+
+_READ_ONLY_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=True,
+)
 
 
 _registry_sites_cache: Optional[List[str]] = None
@@ -194,7 +202,7 @@ def _installed_sensors(asset_id: str, site_name: Optional[str] = None) -> List[s
         return []
 
 
-@mcp.tool(title="List Sites")
+@mcp.tool(title="List Sites", annotations=_READ_ONLY_ANNOTATIONS)
 def sites() -> SitesResult:
     """List sorted site identifiers available in the asset registry.
 
@@ -205,7 +213,7 @@ def sites() -> SitesResult:
     return SitesResult(sites=known_sites())
 
 
-@mcp.tool(title="List Asset IDs")
+@mcp.tool(title="List Asset IDs", annotations=_READ_ONLY_ANNOTATIONS)
 def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
     """List asset identifiers registered at one site.
 
@@ -240,7 +248,7 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
         return _missing_db_error(asset_db) or ErrorResult(error=str(e))
 
 
-@mcp.tool(title="Get Asset Detail")
+@mcp.tool(title="Get Asset Detail", annotations=_READ_ONLY_ANNOTATIONS)
 def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResult]:
     """Return registry details for one asset.
 
@@ -313,7 +321,7 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
         return _missing_db_error(asset_db) or ErrorResult(error=str(e))
 
 
-@mcp.tool(title="List Measured Sensors")
+@mcp.tool(title="List Measured Sensors", annotations=_READ_ONLY_ANNOTATIONS)
 def measured_sensors(
     site_name: str, asset_id: str
 ) -> Union[SensorsResult, ErrorResult]:
@@ -353,7 +361,7 @@ def measured_sensors(
     )
 
 
-@mcp.tool(title="List Installed Sensors")
+@mcp.tool(title="List Installed Sensors", annotations=_READ_ONLY_ANNOTATIONS)
 def installed_sensors(
     site_name: str, asset_id: str
 ) -> Union[SensorsResult, ErrorResult]:
@@ -399,7 +407,7 @@ def installed_sensors(
         return _missing_db_error(asset_db) or ErrorResult(error=str(e))
 
 
-@mcp.tool(title="List Assets")
+@mcp.tool(title="List Assets", annotations=_READ_ONLY_ANNOTATIONS)
 def assets(
     site_name: str, assettype: Optional[str] = None
 ) -> Union[AssetsWithMetadataResult, ErrorResult]:
@@ -457,7 +465,7 @@ def assets(
         return _missing_db_error(asset_db) or ErrorResult(error=str(e))
 
 
-@mcp.tool(title="Find Assets By Sensors")
+@mcp.tool(title="Find Assets By Sensors", annotations=_READ_ONLY_ANNOTATIONS)
 def find_assets_by_sensors(
     site_name: str,
     sensors: List[str],
@@ -564,7 +572,7 @@ def find_assets_by_sensors(
     )
 
 
-@mcp.tool(title="Stream Extent")
+@mcp.tool(title="Stream Extent", annotations=_READ_ONLY_ANNOTATIONS)
 def stream_extent(
     site_name: str,
     asset_id: str,
@@ -673,7 +681,7 @@ def stream_extent(
         )
 
 
-@mcp.tool(title="Get Sensor History")
+@mcp.tool(title="Get Sensor History", annotations=_READ_ONLY_ANNOTATIONS)
 def history(
     site_name: str,
     asset_id: str,
@@ -822,7 +830,7 @@ def history(
     )
 
 
-@mcp.tool(title="Latest Reading")
+@mcp.tool(title="Latest Reading", annotations=_READ_ONLY_ANNOTATIONS)
 def latest_reading(
     site_name: str,
     asset_id: str,
@@ -922,7 +930,7 @@ def latest_reading(
     )
 
 
-@mcp.tool(title="Sensor Coverage")
+@mcp.tool(title="Sensor Coverage", annotations=_READ_ONLY_ANNOTATIONS)
 def sensor_coverage(
     site_name: str,
     asset_id: str,
@@ -993,7 +1001,7 @@ def sensor_coverage(
     )
 
 
-@mcp.tool(title="Sensor Statistics")
+@mcp.tool(title="Sensor Statistics", annotations=_READ_ONLY_ANNOTATIONS)
 def sensor_stats(
     site_name: str,
     asset_id: str,

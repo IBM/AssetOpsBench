@@ -80,6 +80,22 @@ def test_parse_noisy_count_answer_prefers_final_standalone_number():
     assert parse_structured_answer(raw) == 0
 
 
+def test_count_answer_does_not_treat_failed_step_number_as_the_answer():
+    model_answer = "The final count cannot be provided due to the failure in Step 1."
+
+    assert parse_structured_answer(model_answer) == model_answer
+    score = evaluate_static_json("1", model_answer)
+    assert score.strict_exact_match_accuracy == 0.0
+
+
+def test_count_answer_does_not_extract_an_unlabelled_number_from_prose():
+    model_answer = "The tool failed after examining 34 records."
+
+    assert parse_structured_answer(model_answer) == model_answer
+    score = evaluate_static_json("34", model_answer)
+    assert score.strict_exact_match_accuracy == 0.0
+
+
 def test_count_answer_compares_final_number_not_parenthetical_text():
     score = evaluate_static_json(
         "0",
