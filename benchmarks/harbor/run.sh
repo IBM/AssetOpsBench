@@ -122,6 +122,31 @@ uv run python benchmarks/harbor/adapter/generate_tasks.py \
   --skip-missing \
   --overwrite >/dev/null
 
+# Fail fast when a model's router is unreachable. Otherwise every trial builds
+# its containers, loads its data, retries the model for minutes and exits 1,
+# which is how a dropped VPN turns into a job of failed trials.
+router_reachable() {
+  local base_var
+  case "$1" in
+    litellm_proxy/*) base_var=LITELLM_BASE_URL ;;
+    tokenrouter/*) base_var=TOKENROUTER_BASE_URL ;;
+    *) return 0 ;;
+  esac
+  uv run --env-file "$env_file" python - "$base_var" <<'PY'
+import os, sys, urllib.error, urllib.request
+name = sys.argv[1]
+url = os.environ.get(name, "")
+if not url:
+    sys.exit(f"{name} is not set in the env file")
+try:
+    urllib.request.urlopen(url, timeout=15)
+except urllib.error.HTTPError:
+    pass  # the router answered; any HTTP status proves it is reachable
+except Exception as exc:
+    sys.exit(f"cannot reach {name} ({exc}); check the VPN or network")
+PY
+}
+
 for model_config in "${model_configs[@]}"; do
   read -r model_id reasoning_effort <<< "$model_config"
   [[ -z "${model_id:-}" ]] && continue
@@ -130,10 +155,19 @@ for model_config in "${model_configs[@]}"; do
   job_name="stirrup_agent__${model_slug%-}"
   job_path="$jobs_dir/$job_name"
 
+  if ! router_reachable "$model_id"; then
+    echo "Skipping $model_id: its router is unreachable" >&2
+    continue
+  fi
+
   echo "Running $model_id with reasoning effort ${reasoning_effort:-default} -> $job_path"
 
   if [[ -f "$job_path/config.json" ]]; then
-    uv run --env-file "$env_file" harbor jobs resume -p "$job_path" || true
+    # Drop trials whose agent crashed (e.g. the model was unreachable) so
+    # they run again; scored trials are kept, as run.sh's --skip-existing
+    # kept scenarios that already had a trajectory.
+    uv run --env-file "$env_file" harbor jobs resume -p "$job_path" \
+      --filter-error-type NonZeroAgentExitCodeError || true
     continue
   fi
 
