@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
+import sys
 from pathlib import Path
 
 import yaml
@@ -79,6 +81,8 @@ def generate(
     template: Path,
     output_dir: Path,
     overwrite: bool,
+    runtime_image: str | None = None,
+    data_dir: str | None = None,
 ) -> Path:
     source = scenario_root / f"scenario_{scenario_id}"
     if not source.is_dir():
@@ -108,6 +112,36 @@ def generate(
             f'scoring_method = "{scoring_method_for(source)}"',
         )
         text = text.replace("init_data.py 1", f"init_data.py {scenario_id}")
+        # The template's description and keywords are scenario 1's; replace
+        # them wholesale rather than leak that text into every task.
+        text = re.sub(
+            r'^description = ".*"$',
+            f'description = "AssetOpsBench scenario {scenario_id}, '
+            f'{category} category."',
+            text,
+            flags=re.MULTILINE,
+        )
+        text = text.replace('"assetopsbench", "wosr",', f'"assetopsbench", "{category}",')
+        if runtime_image:
+            text = re.sub(
+                r"^ARG AOB_RUNTIME_IMAGE=.*$",
+                f"ARG AOB_RUNTIME_IMAGE={runtime_image}",
+                text,
+                flags=re.MULTILINE,
+            )
+        if data_dir:
+            # A corpus baked in at data_dir: the per-task layer copies the
+            # scenario there, and only init_data.py reads it. The agent's own
+            # SCENARIOS_DATA_DIR stays on the repo copy, as in
+            # scenario_suite_runner, which sets it for the data load alone.
+            text = text.replace(
+                "/opt/aob/src/couchdb/scenarios_data/", f"{data_dir.rstrip('/')}/"
+            )
+            text = text.replace(
+                'command = "uv run python src/couchdb/init_data.py',
+                f'command = "SCENARIOS_DATA_DIR={data_dir} '
+                "uv run python src/couchdb/init_data.py",
+            )
         target.write_text(text, encoding="utf-8")
 
     # The question the agent sees.
@@ -202,11 +236,34 @@ def main() -> int:
         help="Harbor dataset name written into dataset.toml.",
     )
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--runtime-image",
+        help="Image each task builds FROM (default: the template's "
+        "assetopsbench/runtime:dev). Use the corpus image for an external corpus.",
+    )
+    parser.add_argument(
+        "--data-dir",
+        help="Path of the scenario corpus INSIDE the runtime image, e.g. "
+        "/opt/corpus/scenarios_data. The data load reads it; the agent does not.",
+    )
+    parser.add_argument(
+        "--skip-missing",
+        action="store_true",
+        help="Warn and skip profile scenarios with no folder under "
+        "--scenario-root, instead of failing.",
+    )
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     written = []
+    skipped = []
     for category, scenario_id in scenario_ids_by_category(args.profile):
+        if (
+            args.skip_missing
+            and not (args.scenario_root / f"scenario_{scenario_id}").is_dir()
+        ):
+            skipped.append(f"{category}-{scenario_id}")
+            continue
         written.append(
             generate(
                 category=category,
@@ -215,7 +272,15 @@ def main() -> int:
                 template=args.template,
                 output_dir=args.output_dir,
                 overwrite=args.overwrite,
+                runtime_image=args.runtime_image,
+                data_dir=args.data_dir,
             )
+        )
+    if skipped:
+        print(
+            f"skipped {len(skipped)} scenario(s) missing from "
+            f"{args.scenario_root}: {', '.join(skipped)}",
+            file=sys.stderr,
         )
 
     write_dataset_files(
