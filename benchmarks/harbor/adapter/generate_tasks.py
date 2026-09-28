@@ -132,7 +132,7 @@ def generate(
                 flags=re.MULTILINE,
             )
         if data_dir:
-            # A corpus baked in at data_dir: the per-task layer copies the
+            # A suite baked in at data_dir: the per-task layer copies the
             # scenario there, and only init_data.py reads it. The agent's own
             # SCENARIOS_DATA_DIR stays on the repo copy, as in
             # scenario_suite_runner, which sets it for the data load alone.
@@ -241,12 +241,12 @@ def main() -> int:
     parser.add_argument(
         "--runtime-image",
         help="Image each task builds FROM (default: the template's "
-        "assetopsbench/runtime:dev). Use the corpus image for an external corpus.",
+        "assetopsbench/runtime:dev). Use the suite image for an external suite.",
     )
     parser.add_argument(
         "--data-dir",
-        help="Path of the scenario corpus INSIDE the runtime image, e.g. "
-        "/opt/corpus/scenarios_data. The data load reads it; the agent does not.",
+        help="Path of the scenario suite INSIDE the runtime image, e.g. "
+        "/opt/suite/scenarios_data. The data load reads it; the agent does not.",
     )
     parser.add_argument(
         "--skip-missing",

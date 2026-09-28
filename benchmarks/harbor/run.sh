@@ -79,11 +79,11 @@ if [[ ! -f "$env_file" ]]; then
 fi
 
 runtime_image=assetopsbench/runtime:dev
-corpus_image=assetopsbench/runtime:corpus
-corpus_data_dir=/opt/corpus/scenarios_data
+suite_image=assetopsbench/runtime:suite
+suite_data_dir=/opt/suite/scenarios_data
 code_image=assetops-code:dev
 code_tar="${AOB_CODE_TAR:-$HOME/assetops-code.tar}"
-dataset_dir=benchmarks/harbor/datasets/assetopsbench-corpus
+dataset_dir=benchmarks/harbor/datasets/assetopsbench-suite
 
 if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
   printf 'Runtime image %s not found. Build it first:\n' "$runtime_image" >&2
@@ -91,12 +91,12 @@ if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
   exit 1
 fi
 
-# The corpus layer. Docker's cache makes this a no-op when neither the runtime
-# image nor the corpus changed.
-echo "Building $corpus_image from $scenario_dir"
-docker build -q -t "$corpus_image" \
+# The suite layer. Docker's cache makes this a no-op when neither the runtime
+# image nor the suite changed.
+echo "Building $suite_image from $scenario_dir"
+docker build -q -t "$suite_image" \
   --build-arg "AOB_RUNTIME_IMAGE=$runtime_image" \
-  -f benchmarks/harbor/corpus-image/Dockerfile "$scenario_dir"
+  -f benchmarks/harbor/suite-image/Dockerfile "$scenario_dir"
 
 # The code sandbox image, as a tar each trial's Docker-in-Docker daemon loads
 # (benchmarks/harbor/overlays/code-sandbox.yaml).
@@ -116,9 +116,9 @@ uv run python benchmarks/harbor/adapter/generate_tasks.py \
   --scenario-root "$scenario_dir" \
   --profile "$profile" \
   --output-dir "$dataset_dir" \
-  --dataset-name assetopsbench/corpus \
-  --runtime-image "$corpus_image" \
-  --data-dir "$corpus_data_dir" \
+  --dataset-name assetopsbench/suite \
+  --runtime-image "$suite_image" \
+  --data-dir "$suite_data_dir" \
   --skip-missing \
   --overwrite >/dev/null
 

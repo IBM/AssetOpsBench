@@ -1,24 +1,24 @@
-# Runtime image plus an external scenario corpus, for running a corpus that
+# Runtime image plus an external scenario suite, for running a suite that
 # does not ship in the repo (e.g. AssetOpsBenchScenarioGeneration/scenarios_data).
 #
-# The corpus's shared/ data is large (GBs of IoT history) and every scenario's
+# The suite's shared/ data is large (GBs of IoT history) and every scenario's
 # manifest resolves against it, so it goes in one layer that all tasks share,
-# rather than into each task's build context. The build context is the corpus
+# rather than into each task's build context. The build context is the suite
 # folder itself:
 #
-#   docker build -t assetopsbench/runtime:corpus \
-#     -f benchmarks/harbor/corpus-image/Dockerfile <path-to>/scenarios_data
+#   docker build -t assetopsbench/runtime:suite \
+#     -f benchmarks/harbor/suite-image/Dockerfile <path-to>/scenarios_data
 #
 # Generate tasks against it with
 #
 #   generate_tasks.py --scenario-root <path-to>/scenarios_data \
-#     --runtime-image assetopsbench/runtime:corpus \
-#     --data-dir /opt/corpus/scenarios_data
+#     --runtime-image assetopsbench/runtime:suite \
+#     --data-dir /opt/suite/scenarios_data
 #
-# The corpus sits beside the repo copy, not over it: only init_data.py reads it
+# The suite sits beside the repo copy, not over it: only init_data.py reads it
 # (through SCENARIOS_DATA_DIR on the healthcheck), matching
 # scenario_suite_runner, which sets that variable for the data load alone.
 ARG AOB_RUNTIME_IMAGE=assetopsbench/runtime:dev
 FROM ${AOB_RUNTIME_IMAGE}
 
-COPY . /opt/corpus/scenarios_data/
+COPY . /opt/suite/scenarios_data/

@@ -67,7 +67,7 @@ uv run harbor run \
   --n-concurrent 16
 ```
 
-## Running a full scenario corpus (the `benchmarks/run.sh` equivalent)
+## Running a full scenario suite (the `benchmarks/run.sh` equivalent)
 
 `benchmarks/harbor/run.sh` runs what `benchmarks/run.sh` runs, the same
 profile, the same `stirrup-agent` and the same Docker code sandbox, with the
@@ -85,13 +85,13 @@ bash benchmarks/harbor/run.sh \
 `-p` picks the profile (default `benchmarks/scenario_suite/all.yaml`), and `-n`
 the number of concurrent trials. The script:
 
-1. layers the corpus onto the runtime image as `assetopsbench/runtime:corpus`
-   (`corpus-image/Dockerfile`). The corpus lives at `/opt/corpus/scenarios_data`
+1. layers the suite onto the runtime image as `assetopsbench/runtime:suite`
+   (`suite-image/Dockerfile`). The suite lives at `/opt/suite/scenarios_data`
    and only `init_data.py` reads it, as in `scenario_suite_runner`;
 2. builds the code sandbox image and saves it to `~/assetops-code.tar` for the
    per-trial Docker-in-Docker daemon (`overlays/code-sandbox.yaml`);
 3. generates one task per scenario with `--runtime-image`, `--data-dir` and
-   `--skip-missing`, skipping profile entries the corpus lacks;
+   `--skip-missing`, skipping profile entries the suite lacks;
 4. runs one Harbor job per model at
    `<leaderboard>/harbor-jobs/stirrup_agent__<model>`, with credentials loaded
    from `.env` by `uv run --env-file` into the Harbor process only.
