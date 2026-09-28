@@ -78,6 +78,7 @@ def resolve_catalog(explicit: Path | None) -> tuple[Path, str]:
 # exists on disk. Conservative on purpose: a false positive costs a failed
 # download, a false negative costs a missing weight at run time.
 _REPO_RE = re.compile(r"^[A-Za-z0-9][\w.-]*/[\w.-]+$")
+_ZERO_SHOT = {"zero-shot", "zero_shot", "zeroshot"}
 
 
 # --------------------------------------------------------------------------- #
@@ -286,6 +287,57 @@ def download(repos: list[str], revision: str | None, workers: int) -> int:
     return 0
 
 
+def validate_cards(cards: list[dict]) -> int:
+    """Check the cards themselves, not just where their weights live.
+
+    --check verifies that a checkpoint is on disk or in the cache. That is
+    necessary and not sufficient: a card can point at real weights and still be
+    wrong. The two failures worth catching before a run:
+
+      schema      the repo's own validator, so a bad card fails here rather
+                  than at seed time. Notably it requires base_model_id on a
+                  finetuned card.
+      serve pins  params.fit_strategy and training_regime. Without both, TTM's
+                  default fit_strategy="minimal" re-tunes the weights on every
+                  fit and run_recipe takes the expanding-window refit path.
+                  This one is silent: the model loads, forecasts, and is wrong.
+    """
+    problems: list[str] = []
+
+    try:
+        sys.path.insert(0, "src")
+        from servers.tsfm.core import schemas
+    except ImportError:
+        schemas = None
+        print("  schema validator unavailable (run from the repo root to enable)")
+
+    for c in cards:
+        mid = c.get("model_id", "<unnamed>")
+        if schemas is not None:
+            try:
+                schemas.validate_model(dict(c))
+            except Exception as exc:  # noqa: BLE001 - report every card, not the first
+                problems.append(f"{mid}: schema: {str(exc).splitlines()[0][:120]}")
+
+        params = c.get("params") or {}
+        if str(params.get("fit_strategy", "")).lower() not in _ZERO_SHOT:
+            problems.append(
+                f"{mid}: params.fit_strategy is {params.get('fit_strategy')!r}; "
+                'a checkpoint card must pin "zero-shot" or it re-tunes on every fit')
+        if c.get("training_regime") != "zero_shot":
+            problems.append(
+                f"{mid}: training_regime is {c.get('training_regime')!r}; "
+                'pin "zero_shot" or run_recipe takes the refit path')
+
+    if problems:
+        print(f"\n{len(problems)} card problem(s):", file=sys.stderr)
+        for p_ in problems:
+            print(f"  {p_}", file=sys.stderr)
+        return 1
+    print(f"  {len(cards)} card(s) validate, and every one pins zero-shot serving")
+    return 0
+
+
 def check(repos: list[str], revision: str | None) -> int:
     """Resolve every repo with the network disabled, exactly as a trial will."""
     os.environ["HF_HUB_OFFLINE"] = "1"
@@ -430,7 +482,10 @@ def main() -> int:
         rc = download(repos, args.revision, args.workers) if repos else 0
         return max(rc, check_locals(locals_, root)) if locals_ else rc
     if args.check:
-        rc = check(repos, args.revision) if repos else 0
+        print("cards:")
+        rc = validate_cards(cards)
+        if repos:
+            rc = max(rc, check(repos, args.revision))
         return max(rc, check_locals(locals_, root))
     if locals_:
         print(f"{len(locals_)} local checkpoint(s), verified against {root}:")
