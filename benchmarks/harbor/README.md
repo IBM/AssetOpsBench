@@ -67,6 +67,39 @@ uv run harbor run \
   --n-concurrent 16
 ```
 
+## Running a full scenario corpus (the `benchmarks/run.sh` equivalent)
+
+`benchmarks/harbor/run.sh` runs what `benchmarks/run.sh` runs, the same
+profile, the same `stirrup-agent` and the same Docker code sandbox, with the
+scenarios in parallel:
+
+```bash
+bash benchmarks/harbor/run.sh \
+  -s <path-to>/AssetOpsBenchScenarioGeneration/scenarios_data \
+  -l ~/AssetOpsBenchRuns/leaderboard \
+  -n 4 \
+  -m "litellm_proxy/aws/claude-opus-5 high"
+```
+
+`-m` may repeat; without it the script runs `benchmarks/run.sh`'s model list.
+`-p` picks the profile (default `benchmarks/scenario_suite/all.yaml`), and `-n`
+the number of concurrent trials. The script:
+
+1. layers the corpus onto the runtime image as `assetopsbench/runtime:corpus`
+   (`corpus-image/Dockerfile`). The corpus lives at `/opt/corpus/scenarios_data`
+   and only `init_data.py` reads it, as in `scenario_suite_runner`;
+2. builds the code sandbox image and saves it to `~/assetops-code.tar` for the
+   per-trial Docker-in-Docker daemon (`overlays/code-sandbox.yaml`);
+3. generates one task per scenario with `--runtime-image`, `--data-dir` and
+   `--skip-missing`, skipping profile entries the corpus lacks;
+4. runs one Harbor job per model at
+   `<leaderboard>/harbor-jobs/stirrup_agent__<model>`, with credentials loaded
+   from `.env` by `uv run --env-file` into the Harbor process only.
+
+Re-running resumes an existing job and finishes only its incomplete trials,
+the equivalent of `--skip-existing`. Each trial with the code sandbox runs a
+privileged `dind` sidecar, so keep `-n` around 4 on a laptop-sized Docker VM.
+
 ## Why the MCP servers need an explicit env
 
 `StirrupAgentRunner._build_mcp_config` sets `env` on every stdio server. It has
