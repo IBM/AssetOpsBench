@@ -517,7 +517,37 @@ def main() -> int:
                         "ecosystem per RUN, so the weights land in several layers that pull in "
                         "parallel instead of one 21 GB blob.")
     p.add_argument("--print-repos", action="store_true", help="print just the repo ids, one per line")
+    p.add_argument("--from-list", type=Path, default=None, metavar="FILE",
+                   help="read repo ids from FILE instead of a catalog, one per "
+                        "line, '#' comments allowed. The image build uses this: "
+                        "the repo ids are public, so the build needs no access "
+                        "to a private catalog.")
     args = p.parse_args()
+
+    # --from-list: no catalog, no cards, just the repo ids a previous
+    # --print-repos wrote down. Everything private stayed in the catalog that
+    # produced the list; what is left is a set of public Hub repo names.
+    if args.from_list:
+        if not args.from_list.is_file():
+            print(f"no list at {args.from_list}", file=sys.stderr)
+            return 1
+        repos = []
+        for raw in args.from_list.read_text(encoding="utf-8").splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if line and line not in repos:
+                repos.append(line)
+        if args.include:
+            keep = re.compile(args.include)
+            repos = [r for r in repos if keep.search(r)]
+        if args.print_repos:
+            print("\n".join(repos))
+            return 0
+        print(f"{len(repos)} repo(s) from {args.from_list}\n")
+        if args.download:
+            return download(repos, args.revision, args.workers)
+        if args.check:
+            return check(repos, args.revision)
+        return report(repos, args.revision)
 
     catalog, origin = resolve_catalog(args.catalog)
     if not catalog.is_file():
@@ -527,8 +557,11 @@ def main() -> int:
                   file=sys.stderr)
         return 1
     if origin == "in-repo EXAMPLE":
+        # stderr: --print-repos is piped into a file, and a NOTE on stdout ends
+        # up inside the model list.
         print(f"NOTE: using the in-repo EXAMPLE catalog at {catalog}.\n"
-              f"      Set AOB_MODEL_CATALOG or SCENARIOS_DATA_DIR for the real one.\n")
+              f"      Set AOB_MODEL_CATALOG or SCENARIOS_DATA_DIR for the real one.\n",
+              file=sys.stderr)
 
     cards = load_cards(catalog)
     total_cards = len(cards)

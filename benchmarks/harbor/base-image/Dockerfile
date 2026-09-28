@@ -10,10 +10,15 @@
 #     -f base-image/Dockerfile <path-to-AssetOpsBench>
 FROM python:3.12-slim
 
+# HF_HOME fixes the Hugging Face cache at one path. The default follows $HOME,
+# so a container running as anyone but root looks elsewhere and refetches every
+# weight this image already carries.
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
-    AOB_HOME=/opt/aob
+    AOB_HOME=/opt/aob \
+    HF_HOME=/opt/hf \
+    HF_HUB_DISABLE_PROGRESS_BARS=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash ca-certificates curl git jq \
@@ -28,12 +33,23 @@ COPY pyproject.toml uv.lock ./
 # --group otel installs the OTLP exporter and httpx instrumentation. The task
 # sets OTEL_TRACES_FILE, which turns on the file exporter; without this group
 # it fails at export time on a missing google.protobuf and drops every batch.
-RUN uv sync --frozen --group otel --no-install-project
+RUN uv sync --frozen --group otel --extra tsfm --no-install-project
 
 # Repo, including the shared scenario corpus under
 # src/couchdb/scenarios_data/shared (7.7 MB in the open profile). Shared here
 # means pulled once, not copied into every task context.
 COPY . .
-RUN uv sync --frozen --group otel
+RUN uv sync --frozen --group otel --extra tsfm
+
+# Model weights, from benchmarks/harbor/base-image/models.txt: a committed list
+# of public Hub repo ids, exported from the model catalog with
+#
+#   preload_models.py --print-repos > benchmarks/harbor/base-image/models.txt
+#
+# The list rather than the catalog, because the catalog is private and a COPY
+# would write it into a layer for good. check_models_list.sh fails CI when the
+# two drift.
+RUN uv run python benchmarks/harbor/scripts/preload_models.py \
+        --from-list benchmarks/harbor/base-image/models.txt --download
 
 CMD ["bash", "-lc", "sleep infinity"]
