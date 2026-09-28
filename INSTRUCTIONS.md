@@ -112,6 +112,12 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `WATSONX_PROJECT_ID` | _(required)_                        | IBM WatsonX project ID      |
 | `WATSONX_URL`        | `https://us-south.ml.cloud.ibm.com` | WatsonX endpoint (optional) |
 
+**LLM completion budget** — applies to every `llm` backend (LiteLLM and OpenAI-compatible)
+
+| Variable             | Default | Description                                                                                                                                                    |
+| -------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AOB_LLM_MAX_TOKENS` | `2048`  | Completion-token cap per call. Reasoning models charge hidden reasoning against the same cap, so raise this when a run fails with `EmptyCompletionError` and `finish_reason='length'`. |
+
 **LiteLLM proxy** — used by every runner whenever `--model-id` carries the `litellm_proxy/` prefix
 
 | Variable           | Default      | Description                                                          |
