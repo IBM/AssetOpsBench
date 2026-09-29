@@ -20,8 +20,13 @@
 # going through Docker Desktop or Rancher file sharing costs little: the all
 # profile references 58 MB of the suite's 2.1 GB shared/ directory.
 #
-# The target shadows the scenario_<id>/ folder the task Dockerfile copies to the
-# same path. That is harmless, because the mount holds the same folders.
+# Two subdirectories, not the suite root. The data load needs only shared/ (the
+# paths every manifest names) and default/manifest.json; each task's own
+# scenario_<id>/ arrives through the task Dockerfile. Mounting the root instead
+# would put every OTHER scenario's groundtruth.txt inside the agent container,
+# where an agent can read the answer and score without touching CouchDB.
+# Mounting subdirectories also leaves the Dockerfile's scenario_<id>/ in place
+# rather than shadowing it.
 #
 # `:?` names the missing variable when AOB_PRIVATE_DIR is unset. A plain
 # ${AOB_PRIVATE_DIR} fails too, but as "invalid spec: :/opt/suite/...: empty
@@ -29,4 +34,5 @@
 services:
   main:
     volumes:
-      - ${AOB_PRIVATE_DIR:?set AOB_PRIVATE_DIR to the private suite's scenarios_data directory}:/opt/suite/scenarios_data:ro
+      - ${AOB_PRIVATE_DIR:?set AOB_PRIVATE_DIR to the private suite's scenarios_data directory}/shared:/opt/suite/scenarios_data/shared:ro
+      - ${AOB_PRIVATE_DIR:?set AOB_PRIVATE_DIR to the private suite's scenarios_data directory}/default:/opt/suite/scenarios_data/default:ro

@@ -409,6 +409,8 @@ is only the fallback: the scenario's own `scoring_method` still wins.
 
 The adapter copies every file that loader reads into `tests/scenarios/scenario_N/`: `question.txt`, `groundtruth.txt`, `groundtruth_eval.json`, `scenario_meta.json`, `rubric.json`, `reference_answer.json`. Copying only the first two would silently downgrade an `llm_judge` scenario to `static_json`.
 
+Those files stay out of `environment/`, which becomes the image the agent runs in. `init_data.py` is the only thing that reads the scenario folder there and it reads only `manifest.json`, so the adapter withholds every answer-bearing file from that copy. An agent that could read `groundtruth.txt` would score 1.0 without touching CouchDB, the same move `solution/solve.sh` makes from `/solution`, and the result would look like a perfect run rather than an error. `adapter/tests/test_generate_tasks.py` asserts it.
+
 `tests/test.sh` uses neither `set -e` nor `${VAR:?}`. A missing `reward.json` raises `RewardFileNotFoundError`, which Harbor classes as a harness failure rather than a score of zero and puts on its non-retryable list, so every exit path has to reach `to_reward.py`.
 
 ## What has been verified, and how

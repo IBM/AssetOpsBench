@@ -51,6 +51,16 @@ TEMPLATE_FILES = (
 # Every file evaluation.loader.load_scenario_dirs looks for in a scenario
 # folder. question.txt and groundtruth.txt are required; the rest are optional
 # scorer inputs, and scenario_meta.json is the one that selects the scorer.
+# Answer-bearing files. They belong in tests/scenarios/ for the verifier and in
+# solution/ for the oracle, never in the image the agent runs in.
+AGENT_WITHHELD_FILES = (
+    "groundtruth.txt",
+    "groundtruth_eval.json",
+    "reference_answer.json",
+    "rubric.json",
+    "scenario_meta.json",
+)
+
 SCENARIO_INPUT_FILES = (
     "question.txt",
     "groundtruth.txt",
@@ -162,7 +172,17 @@ def generate(
     shutil.copy(source / "question.txt", task_dir / "instruction.md")
 
     # Build context for the per-task image layer.
-    shutil.copytree(source, task_dir / "environment" / f"scenario_{scenario_id}")
+    # Only init_data.py reads this folder inside the agent container, and only
+    # manifest.json: the manifest's shared/... paths and default/manifest.json
+    # are the rest of the data load. Copying the whole scenario folder also
+    # ships groundtruth.txt, which an agent can read to answer without touching
+    # CouchDB, exactly as solution/solve.sh does from /solution. The verifier's
+    # copy under tests/scenarios/ is unaffected; that one is deliberate.
+    shutil.copytree(
+        source,
+        task_dir / "environment" / f"scenario_{scenario_id}",
+        ignore=shutil.ignore_patterns(*AGENT_WITHHELD_FILES),
+    )
 
     # Ground truth for the verifier. Note this ships inside the published task,
     # which is the open decision recorded in the design doc.

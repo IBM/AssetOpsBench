@@ -21,4 +21,9 @@
 ARG AOB_RUNTIME_IMAGE=assetopsbench/runtime:dev
 FROM ${AOB_RUNTIME_IMAGE}
 
-COPY . /opt/suite/scenarios_data/
+# shared/ and default/ only. The data load needs nothing else from the suite:
+# each task's own scenario_<id>/ comes from the task Dockerfile. Copying the
+# whole suite would bake every scenario's groundtruth.txt into the image the
+# agent runs in, and into any registry this image is pushed to.
+COPY shared/  /opt/suite/scenarios_data/shared/
+COPY default/ /opt/suite/scenarios_data/default/
