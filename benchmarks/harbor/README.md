@@ -104,16 +104,23 @@ Mini and larger profiles generate cleanly but do not yet run correctly. Each
 scenario's `manifest.json` names its CouchDB inputs as paths under `shared/` in
 the scenario root, for example `shared/work_order/work_order_mainte.csv`. The
 generator copies only `scenario_<id>/` into a task. `shared/` comes from the
-base image, which holds the repo's 7.7 MB open subset. The full corpus's
-`shared/` is about 2.1 GB, and 32 of the 35 mini scenarios name files that exist
-only there. The three FMEA scenarios are the exception.
+base image, which holds the repo's 7.7 MB open subset. All 35 mini scenarios
+name at least one file that exists only in the full corpus. The FMEA scenarios,
+for example, load `shared/catalog/assets_fmea.csv` and
+`shared/catalog/failure_modes_fmea.csv`, and the image has only `assets.csv` and
+`failure_modes.csv`.
+
+The files the profiles actually reference are small, even though the corpus's
+`shared/` directory is about 2.1 GB: 18 files and 1.5 MB for mini, 37 files and
+27 MB for lite, 47 files and 58 MB for all.
 
 The failure is silent. `src/couchdb/loader.py` logs `data file not found` and
 loads the collection empty rather than raising, so the healthcheck passes and the
 agent runs against missing data. The oracle cannot catch it: `solve.sh` writes
-the ground truth without touching CouchDB, so it scores 1.0 regardless. Until the
-corpus's `shared/` is layered into the runtime image, treat agent scores on these
-profiles as invalid.
+the ground truth without touching CouchDB, so it scores 1.0 regardless. An agent
+run shows it only in the MCP server logs, as `Database does not exist` in the
+trial's `agent/*.stdout.txt`. Until the referenced files reach the image, treat
+agent scores on these profiles as invalid.
 
 ## Why the MCP servers need an explicit env
 
