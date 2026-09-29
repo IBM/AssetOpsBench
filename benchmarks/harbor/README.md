@@ -151,11 +151,17 @@ Both run Stirrup with the Docker code sandbox (see
 [The code track and CouchDB](#the-code-track-and-couchdb) for the code image
 and `AOB_CODE_TAR`). Credentials come from `.env`.
 
-Open suite, from the repo's own data (no `--scenario-root`):
+Open suite. There is no `--scenario-root`, so the tasks use the repo's own
+`src/couchdb/scenarios_data`:
 
 ```bash
-uv run python benchmarks/harbor/adapter/generate_tasks.py --overwrite && \
-AOB_CODE_TAR=~/assetops-code.tar \
+export AOB_CODE_TAR=~/assetops-code.tar
+
+uv run python benchmarks/harbor/adapter/generate_tasks.py \
+  --profile benchmarks/scenario_suite/open.yaml \
+  --output-dir benchmarks/harbor/datasets/assetopsbench-open \
+  --dataset-name assetopsbench/open \
+  --overwrite && \
 uv run harbor run -y \
   -p benchmarks/harbor/datasets/assetopsbench-open \
   --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
@@ -163,7 +169,7 @@ uv run harbor run -y \
   --model litellm_proxy/azure/gpt-5.6-sol \
   --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
   --ak workspace_dir=/workspace-share \
-  --n-concurrent 2
+  --n-concurrent 4
 ```
 
 Mini suite through the mount:
@@ -185,12 +191,22 @@ uv run harbor run -y \
   --model litellm_proxy/azure/gpt-5.6-sol \
   --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
   --ak workspace_dir=/workspace-share \
-  --n-concurrent 2
+  --n-concurrent 4
 ```
+
+Mini is 35 tasks. Add `-i 'fmsr-*'`, or another category, to `harbor run` for a
+quick subset.
+
+Each trial with the sandbox runs its own privileged Docker daemon, so
+`--n-concurrent 4` suits a laptop-sized Docker VM. Lower it if Docker runs out of
+memory (see [Resource limits](#resource-limits)).
 
 For the local code backend instead, drop `code-sandbox.yaml` and
 `AOB_CODE_TAR`, and pass only `--ak code_enabled=true --ak code_backend=local`.
 Code then runs inside `main`, next to CouchDB and the scenario's ground truth.
+
+A private run loaded its data when no trial's `agent/*.stdout.txt` contains
+`Database does not exist`.
 
 ## Why the MCP servers need an explicit env
 
@@ -431,6 +447,12 @@ Run end to end with the runtime image built from `base-image/Dockerfile`:
 
 - `--agent oracle --n-concurrent 2` completes every open-profile task with 0 exceptions and a reward of 1.000.
 - Stirrup completes the same tasks, calls MCP tools, and `result.json` records real token usage per model.
+- Open suite, `litellm_proxy/azure/gpt-5.6-sol`, local code backend: 3 trials, 0 exceptions, mean reward 0.952. wosr-1 and wosr-2 scored 1.0. wosr-3 scored 0.857: it matched 6 of 7 keys and gave the queried window's end rather than the last observation's timestamp. No trajectory referenced `groundtruth`, `/tests` or `/solution`.
+- Private suite through `overlays/private-data.yaml`, mini's five FMSR tasks, the same model, Docker code sandbox, `--n-concurrent 2`: 5 trials, 0 exceptions, mean reward 0.760, 3/5 passed, in 5 minutes.
+  - **Data:** the catalog, IoT and FMSR tools returned data, with no `Database does not exist` in any trial.
+  - **Misses:** fmsr-914 answered `yes` from memory without a tool call, against a ground truth of `no`. fmsr-902 listed 4 of 6 failure modes.
+  - **Code sandbox:** it started in every trial but no agent called `code_exec`, so this run did not exercise sandboxed code.
+  - **Variance:** `gpt-5.6-sol` accepts only its default temperature, so answers vary between runs. fmsr-913 scored 1.0 here and 0.0 on a rerun, with its data loaded both times.
 
 To confirm per-trial isolation on your own machine, watch a concurrent run:
 
