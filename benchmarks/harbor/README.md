@@ -175,6 +175,58 @@ a run used, and it works on Harbor providers that cannot see the host's
 filesystem. `--extra-docker-compose` repeats, so the overlay combines with
 `overlays/code-sandbox.yaml`.
 
+### Smoke tests: open and private
+
+Both run Stirrup with the Docker code sandbox (see
+[The code track and CouchDB](#the-code-track-and-couchdb) for the code image
+and `AOB_CODE_TAR`). Credentials come from `.env`.
+
+Open suite, from the repo's own data (no `--scenario-root`):
+
+```bash
+uv run python benchmarks/harbor/adapter/generate_tasks.py --overwrite && \
+AOB_CODE_TAR=~/assetops-code.tar \
+uv run harbor run -y \
+  -p benchmarks/harbor/datasets/assetopsbench-open \
+  --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
+  --agent assetops_harbor.stirrup:StirrupAgent \
+  --model litellm_proxy/azure/gpt-5.6-sol \
+  --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+  --ak workspace_dir=/workspace-share \
+  --n-concurrent 2
+```
+
+Private suite, mini's FMSR tasks through the mount:
+
+```bash
+export AOB_PRIVATE_DIR=/path/to/scenarios_data AOB_CODE_TAR=~/assetops-code.tar
+
+uv run python benchmarks/harbor/adapter/generate_tasks.py \
+  --scenario-root "$AOB_PRIVATE_DIR" \
+  --profile benchmarks/scenario_suite/mini.yaml \
+  --output-dir benchmarks/harbor/datasets/assetopsbench-mini \
+  --dataset-name assetopsbench/mini \
+  --overwrite && \
+uv run harbor run -y \
+  -p benchmarks/harbor/datasets/assetopsbench-mini \
+  -i 'fmsr-*' \
+  --extra-docker-compose benchmarks/harbor/overlays/private-data.yaml \
+  --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
+  --agent assetops_harbor.stirrup:StirrupAgent \
+  --model litellm_proxy/azure/gpt-5.6-sol \
+  --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+  --ak workspace_dir=/workspace-share \
+  --n-concurrent 2
+```
+
+For the local code backend instead, drop `code-sandbox.yaml` and
+`AOB_CODE_TAR`, and pass only `--ak code_enabled=true --ak code_backend=local`.
+Code then runs inside `main`, next to CouchDB and the scenario's ground truth.
+
+A private run loaded its data when no trial's `agent/*.stdout.txt` contains
+`Database does not exist`. The oracle cannot show this, because it never
+touches CouchDB.
+
 ### Without the suite image or the mount, data loads silently empty
 
 Tasks generated from an external `--scenario-root` need one of the two at run
@@ -311,7 +363,8 @@ one that did not.
 `benchmarks/harbor/overlays/code-sandbox.yaml` closes it, opt-in per run:
 
 ```bash
-harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
+AOB_CODE_TAR=~/assetops-code.tar \
+uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
   --agent assetops_harbor.stirrup:StirrupAgent \
   --model tokenrouter/MiniMax-M3 \
   --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
@@ -350,18 +403,25 @@ source inside dind instead, so the two sides would see different directories and
 every spilled artifact would go missing with no error. The overlay shares one
 volume at `/workspace-share` in both services so the path resolves identically.
 
-Build and publish the code image once, since each dind daemon starts empty and
-Stirrup pulls on `ImageNotFound`:
+Each dind daemon starts with an empty image store. By default the overlay's
+`code-image-loader` service loads the code image from a local tar, so no
+registry is involved. Build and save it once, and again whenever
+`Dockerfile.code` changes:
 
 ```bash
-docker build -t assetopsbench/code:dev \
+docker build -t assetops-code:dev \
   -f src/agent/stirrup_agent/Dockerfile.code src/agent/stirrup_agent
-docker push assetopsbench/code:dev
+docker save assetops-code:dev -o ~/assetops-code.tar
+export AOB_CODE_TAR=~/assetops-code.tar
 ```
 
-Set `AOB_CODE_IMAGE` to override the reference. Note that `privileged: true` is
-required by dockerd and refused by several Harbor cloud providers, so this
-overlay is local-first.
+Export `AOB_CODE_TAR` in the shell that runs Harbor. When it is unset the loader
+skips without an error, and the first `code_exec` then fails with
+`pull access denied for assetops-code`. To pull from a registry instead, push
+the image and set `AOB_CODE_IMAGE` to its reference. `run.sh` builds and saves
+the tar itself when `~/assetops-code.tar` is missing. Note that
+`privileged: true` is required by dockerd and refused by several Harbor cloud
+providers, so this overlay is local-first.
 
 The stronger fix is to move the MCP servers into their own sidecar, leaving
 `main` with no CouchDB access at all. That also unlocks running any Harbor agent
@@ -430,6 +490,11 @@ Run end to end with the runtime image built from `base-image/Dockerfile`:
 
 - `--agent oracle --n-concurrent 2` completes every open-profile task with 0 exceptions and a reward of 1.000.
 - Stirrup completes the same tasks, calls MCP tools, and `result.json` records real token usage per model.
+- Open suite, `litellm_proxy/azure/gpt-5.6-sol`, local code backend: 3 trials, 0 exceptions, mean reward 0.952. wosr-1 and wosr-2 scored 1.0. wosr-3 scored 0.857: it matched 6 of 7 keys and gave the queried window's end rather than the last observation's timestamp. No trajectory referenced `groundtruth`, `/tests` or `/solution`.
+- Private suite through `overlays/private-data.yaml`, mini's five FMSR tasks, the same model, Docker code sandbox: 5 trials, 0 exceptions, mean reward 0.760, 3/5 passed, in 5 minutes.
+  - **Data:** the catalog, IoT and FMSR tools returned data, with no `Database does not exist` in any trial.
+  - **Misses:** fmsr-914 answered `yes` from memory without a tool call, against a ground truth of `no`. fmsr-902 listed 4 of 6 failure modes.
+  - **Code sandbox:** it started in every trial but no agent called `code_exec`, so this run did not exercise sandboxed code.
 
 To confirm per-trial isolation on your own machine, watch a concurrent run:
 
