@@ -145,15 +145,21 @@ the runner's behaviour and the SDK default it compensates for.
 ## Credentials
 
 The agent forwards credentials from the Harbor process into the container for
-the agent phase only. Exporting them in your shell is enough:
+the agent phase only. Putting them in the repo's `.env` is enough when you run
+from the repo root: `StirrupAgent` loads the nearest `.env` above the working
+directory before it checks for credentials.
 
 ```bash
-export TOKENROUTER_BASE_URL=... TOKENROUTER_API_KEY=...
-harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
+uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
   --agent assetops_harbor.stirrup:StirrupAgent --model tokenrouter/MiniMax-M3
 ```
 
-`--ae KEY=VALUE` overrides the shell for one run. The forwarded set is
+Precedence is `--ae KEY=VALUE`, then exported shell variables, then `.env`,
+which never overwrites a variable that is already set. The judge variables in
+`[verifier].env` (`AOB_JUDGE_MODEL` and the keys) come from `.env` too, because
+Harbor resolves them after the agent is constructed. `--agent oracle` does not
+load `.env`, so export `AOB_JUDGE_MODEL` or pass `--env-file .env` when running
+the oracle against `llm_judge` scenarios. The forwarded set is
 `CREDENTIAL_ENV_VARS` in `src/assetops_harbor/stirrup.py`: the LiteLLM and
 TokenRouter router pairs, the watsonx variables, and the common OpenAI,
 Anthropic, AWS and Gemini names.
@@ -163,9 +169,9 @@ when its pair is unset, before Harbor builds anything. `src/llm/routers.py`
 otherwise raises the same thing inside the container, which costs an image build
 and a container per trial to learn that a variable is missing.
 
-Note what is NOT used: the repository's `.env`. `.dockerignore` keeps it out of
-the image deliberately, so credentials never get baked into a layer that could
-be pushed to a registry.
+`.env` is read on the host only. `.dockerignore` keeps the file out of the image
+deliberately, so credentials never get baked into a layer that could be pushed
+to a registry, and only the names in `CREDENTIAL_ENV_VARS` reach the container.
 
 ## Arms
 

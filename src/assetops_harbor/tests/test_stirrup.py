@@ -33,6 +33,16 @@ from assetops_harbor.stirrup import (
 RUN_ID = "wosr-1__abc1234"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the developer's own .env out of these tests.
+
+    StirrupAgent loads the nearest .env above the cwd, so running from the repo
+    root would otherwise feed real credentials into every agent built here.
+    """
+    monkeypatch.chdir(tmp_path)
+
+
 def _agent(tmp_path: Path) -> tuple[StirrupAgent, Path]:
     logs_dir = tmp_path / RUN_ID / "agent"
     logs_dir.mkdir(parents=True)
@@ -250,9 +260,12 @@ def no_router_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     these for real runs would otherwise see this test pass or fail depending on
     their shell.
     """
-    for _base, _key in ROUTER_CREDENTIALS.values():
-        monkeypatch.delenv(_base, raising=False)
-        monkeypatch.delenv(_key, raising=False)
+    for pair in ROUTER_CREDENTIALS.values():
+        for name in pair:
+            # setenv first so teardown restores the original state even when
+            # the test itself writes the variable, which load_dotenv does.
+            monkeypatch.setenv(name, "")
+            monkeypatch.delenv(name)
 
 
 def test_router_credentials_are_required_up_front(
@@ -280,6 +293,34 @@ def test_router_credentials_from_agent_env_satisfy_the_check(
     # Only what is set, never empty placeholders.
     assert all(forwarded.values())
     assert "OPENAI_API_KEY" not in forwarded or forwarded["OPENAI_API_KEY"]
+
+
+def test_router_credentials_from_dotenv_satisfy_the_check(
+    tmp_path: Path, no_router_credentials: None
+) -> None:
+    (tmp_path / ".env").write_text(
+        "TOKENROUTER_BASE_URL=https://example.invalid/v1\nTOKENROUTER_API_KEY=k\n",
+        encoding="utf-8",
+    )
+    agent = StirrupAgent(logs_dir=tmp_path / "agent", model_name="tokenrouter/MiniMax-M3")
+    forwarded = agent._credential_env()
+    assert forwarded["TOKENROUTER_BASE_URL"] == "https://example.invalid/v1"
+    assert forwarded["TOKENROUTER_API_KEY"] == "k"
+
+
+def test_exported_variables_win_over_dotenv(
+    tmp_path: Path, no_router_credentials: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".env").write_text(
+        "TOKENROUTER_BASE_URL=https://example.invalid/v1\n"
+        "TOKENROUTER_API_KEY=from-file\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TOKENROUTER_API_KEY", "from-shell")
+    agent = StirrupAgent(logs_dir=tmp_path / "agent", model_name="tokenrouter/MiniMax-M3")
+    forwarded = agent._credential_env()
+    assert forwarded["TOKENROUTER_API_KEY"] == "from-shell"
+    assert forwarded["TOKENROUTER_BASE_URL"] == "https://example.invalid/v1"
 
 
 def test_unprefixed_models_need_no_router_creds(tmp_path: Path) -> None:
