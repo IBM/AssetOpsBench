@@ -5,11 +5,19 @@ scenario data to produce the public set; point it at the full corpus to produce
 the restricted set. The task template is shared, which is what keeps the two
 from drifting apart.
 
-    python adapter/generate_tasks.py \
-      --scenario-root <AssetOpsBench>/src/couchdb/scenarios_data \
-      --profile <AssetOpsBench>/benchmarks/scenario_suite/open.yaml \
-      --template datasets/assetopsbench-open/wosr-1 \
-      --output-dir datasets/assetopsbench-open
+    python benchmarks/harbor/adapter/generate_tasks.py --overwrite
+
+    python benchmarks/harbor/adapter/generate_tasks.py \
+      --scenario-root <path-to>/scenarios_data \
+      --profile benchmarks/scenario_suite/mini.yaml \
+      --output-dir benchmarks/harbor/datasets/assetopsbench-mini \
+      --overwrite
+
+Without --scenario-root, tasks load the repo's own scenarios_data, and each
+manifest's shared/ paths resolve against the repo copy in the runtime image.
+With any other root the scenarios form an external suite: the data load reads
+it at SUITE_DATA_DIR, where the suite image bakes it and
+overlays/private-data.yaml mounts it.
 
 Task names must stay stable across runs: Harbor content-hashes each task
 directory and pins dataset entries by digest, so a name derived from
@@ -29,6 +37,10 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_SCENARIO_ROOT = REPO_ROOT / "src/couchdb/scenarios_data"
+# Where an external suite sits inside the task container, baked in by
+# suite-image/Dockerfile or bind-mounted by overlays/private-data.yaml.
+SUITE_DATA_DIR = "/opt/suite/scenarios_data"
 CATEGORIES = ("car", "fcc", "fmea", "fmsr", "health", "tsfm", "wosr")
 TEMPLATE_FILES = (
     "task.toml",
@@ -132,8 +144,8 @@ def generate(
                 flags=re.MULTILINE,
             )
         if data_dir:
-            # A suite baked in at data_dir: the per-task layer copies the
-            # scenario there, and only init_data.py reads it. The agent's own
+            # An external suite, baked in or mounted at data_dir: the per-task
+            # layer copies the scenario there, and only init_data.py reads it. The agent's own
             # SCENARIOS_DATA_DIR stays on the repo copy, as in
             # scenario_suite_runner, which sets it for the data load alone.
             text = text.replace(
@@ -217,7 +229,13 @@ def write_dataset_files(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--scenario-root", type=Path, default=REPO_ROOT / "src/couchdb/scenarios_data"
+        "--scenario-root",
+        type=Path,
+        default=None,
+        help="Scenario folders to generate from. Default: the repo's "
+        "src/couchdb/scenarios_data. Any other root is an external suite, "
+        f"loaded from {SUITE_DATA_DIR}: build on the suite image, or run with "
+        "--extra-docker-compose benchmarks/harbor/overlays/private-data.yaml.",
     )
     parser.add_argument(
         "--profile",
@@ -244,17 +262,20 @@ def main() -> int:
         "assetopsbench/runtime:dev). Use the suite image for an external suite.",
     )
     parser.add_argument(
-        "--data-dir",
-        help="Path of the scenario suite INSIDE the runtime image, e.g. "
-        "/opt/suite/scenarios_data. The data load reads it; the agent does not.",
-    )
-    parser.add_argument(
         "--skip-missing",
         action="store_true",
         help="Warn and skip profile scenarios with no folder under "
         "--scenario-root, instead of failing.",
     )
     args = parser.parse_args()
+
+    # Naming the repo's own folder explicitly still means the repo copy.
+    external = (
+        args.scenario_root is not None
+        and args.scenario_root.resolve() != REPO_SCENARIO_ROOT.resolve()
+    )
+    args.scenario_root = args.scenario_root or REPO_SCENARIO_ROOT
+    data_dir = SUITE_DATA_DIR if external else None
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     written = []
@@ -275,7 +296,7 @@ def main() -> int:
                 output_dir=args.output_dir,
                 overwrite=args.overwrite,
                 runtime_image=args.runtime_image,
-                data_dir=args.data_dir,
+                data_dir=data_dir,
             )
         )
     if skipped:

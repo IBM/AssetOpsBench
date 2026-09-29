@@ -91,8 +91,8 @@ the number of concurrent trials. The script:
    and only `init_data.py` reads it, as in `scenario_suite_runner`;
 2. builds the code sandbox image and saves it to `~/assetops-code.tar` for the
    per-trial Docker-in-Docker daemon (`overlays/code-sandbox.yaml`);
-3. generates one task per scenario with `--runtime-image`, `--data-dir` and
-   `--skip-missing`, skipping profile entries the suite lacks;
+3. generates one task per scenario with `--scenario-root`, `--runtime-image`
+   and `--skip-missing`, skipping profile entries the suite lacks;
 4. runs one Harbor job per model at
    `<leaderboard>/harbor-jobs/stirrup_agent__<model>`, with credentials loaded
    from `.env` by `uv run --env-file` into the Harbor process only.
@@ -104,8 +104,10 @@ privileged `dind` sidecar, so keep `-n` around 4 on a laptop-sized Docker VM.
 ## Generating other profiles by hand
 
 `run.sh` wraps the generator. To generate a profile yourself, point
-`--scenario-root` at the suite and build the tasks on the suite image, so the
-data load can reach the suite's `shared/` directory:
+`--scenario-root` at the suite and build the tasks on the suite image. Any root
+other than the repo's own `src/couchdb/scenarios_data` marks the scenarios as an
+external suite, and the healthcheck then loads them from
+`/opt/suite/scenarios_data`, where the suite's `shared/` directory sits:
 
 ```bash
 docker build -t assetopsbench/runtime:suite \
@@ -114,7 +116,6 @@ docker build -t assetopsbench/runtime:suite \
 uv run python benchmarks/harbor/adapter/generate_tasks.py \
   --scenario-root /path/to/scenarios_data \
   --runtime-image assetopsbench/runtime:suite \
-  --data-dir /opt/suite/scenarios_data \
   --profile benchmarks/scenario_suite/mini.yaml \
   --output-dir benchmarks/harbor/datasets/assetopsbench-mini \
   --dataset-name assetopsbench/mini \
@@ -123,9 +124,8 @@ uv run python benchmarks/harbor/adapter/generate_tasks.py \
 
 | Flag | Default | Why a non-open profile needs it |
 | --- | --- | --- |
-| `--scenario-root` | `src/couchdb/scenarios_data` | Holds only scenarios 1–3; any other id fails with `scenario folder not found`. |
-| `--runtime-image` | the template's `assetopsbench/runtime:dev` | Only the suite image carries the suite's `shared/` data. |
-| `--data-dir` | none | Points the healthcheck's `SCENARIOS_DATA_DIR` at the suite inside that image. |
+| `--scenario-root` | `src/couchdb/scenarios_data` | The repo holds only scenarios 1–3. Another root also points the healthcheck's `SCENARIOS_DATA_DIR` at `/opt/suite/scenarios_data`. |
+| `--runtime-image` | the template's `assetopsbench/runtime:dev` | Only the suite image carries the suite's data. Leave it out when mounting instead. |
 | `--profile` | `benchmarks/scenario_suite/open.yaml` | Takes a path, not a profile name. |
 | `--output-dir` | `benchmarks/harbor/datasets/assetopsbench-open` | Otherwise the new tasks land beside the open ones and `dataset.toml` is rewritten to list only the new set. |
 | `--dataset-name` | `assetopsbench/open` | The name written into `dataset.toml`. |
@@ -144,15 +144,14 @@ than for open: these tasks carry ground truth from the restricted suite in
 
 `overlays/private-data.yaml` bind-mounts the directory in `AOB_PRIVATE_DIR` into
 `main`, read-only, at the same `/opt/suite/scenarios_data` the suite image uses.
-Generate with `--data-dir` but without `--runtime-image`, so the tasks build on
-the plain runtime image, and pass the overlay at run time:
+Generate without `--runtime-image`, so the tasks build on the plain runtime
+image, and pass the overlay at run time:
 
 ```bash
 export AOB_PRIVATE_DIR=/path/to/scenarios_data
 
 uv run python benchmarks/harbor/adapter/generate_tasks.py \
   --scenario-root "$AOB_PRIVATE_DIR" \
-  --data-dir /opt/suite/scenarios_data \
   --profile benchmarks/scenario_suite/mini.yaml \
   --output-dir benchmarks/harbor/datasets/assetopsbench-mini \
   --dataset-name assetopsbench/mini \
@@ -176,18 +175,17 @@ a run used, and it works on Harbor providers that cannot see the host's
 filesystem. `--extra-docker-compose` repeats, so the overlay combines with
 `overlays/code-sandbox.yaml`.
 
-### Without the suite image, data loads silently empty
+### Without the suite image or the mount, data loads silently empty
 
-Leave out `--runtime-image` and `--data-dir` and the tasks still generate, but
-they do not run correctly. Each scenario's `manifest.json` names its CouchDB
-inputs as paths under `shared/`, for example
-`shared/work_order/work_order_mainte.csv`. The generator copies only
-`scenario_<id>/` into a task, so without `--data-dir` the healthcheck resolves
-`shared/` against the runtime image's repo copy, the 7.7 MB open subset. All 35
-mini scenarios name at least one file that exists only in the suite. The FMEA
-scenarios, for example, load `shared/catalog/assets_fmea.csv` and
-`shared/catalog/failure_modes_fmea.csv`, and the repo has only `assets.csv` and
-`failure_modes.csv`.
+Tasks generated from an external `--scenario-root` need one of the two at run
+time. Each scenario's `manifest.json` names its CouchDB inputs as paths under
+`shared/`, for example `shared/work_order/work_order_mainte.csv`. The generator
+copies only `scenario_<id>/` into a task, so the suite's `shared/` directory
+reaches `/opt/suite/scenarios_data` only through the suite image or
+`overlays/private-data.yaml`. The repo copy does not stand in for it: the suite's
+`shared/` is not a superset of the repo's, and the FMEA scenarios, for example,
+load `shared/catalog/assets_fmea.csv` and `shared/catalog/failure_modes_fmea.csv`,
+which the repo does not have.
 
 The failure is silent. `src/couchdb/loader.py` logs `data file not found` and
 loads the collection empty rather than raising, so the healthcheck passes and the
