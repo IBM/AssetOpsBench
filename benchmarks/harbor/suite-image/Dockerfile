@@ -12,10 +12,10 @@
 # Generate tasks against it with
 #
 #   generate_tasks.py --scenario-root <path-to>/scenarios_data \
-#     --runtime-image assetopsbench/runtime:suite \
-#     --data-dir /opt/suite/scenarios_data
+#     --runtime-image assetopsbench/runtime:suite
 #
-# The suite sits beside the repo copy, not over it: only init_data.py reads it
+# An external --scenario-root is what points the data load at
+# /opt/suite/scenarios_data (SUITE_DATA_DIR in generate_tasks.py). The suite sits beside the repo copy, not over it: only init_data.py reads it
 # (through SCENARIOS_DATA_DIR on the healthcheck), matching
 # scenario_suite_runner, which sets that variable for the data load alone.
 ARG AOB_RUNTIME_IMAGE=assetopsbench/runtime:dev

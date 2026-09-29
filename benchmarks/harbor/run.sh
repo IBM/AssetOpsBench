@@ -80,7 +80,6 @@ fi
 
 runtime_image=assetopsbench/runtime:dev
 suite_image=assetopsbench/runtime:suite
-suite_data_dir=/opt/suite/scenarios_data
 code_image=assetops-code:dev
 code_tar="${AOB_CODE_TAR:-$HOME/assetops-code.tar}"
 dataset_dir=benchmarks/harbor/datasets/assetopsbench-suite
@@ -118,7 +117,6 @@ uv run python benchmarks/harbor/adapter/generate_tasks.py \
   --output-dir "$dataset_dir" \
   --dataset-name assetopsbench/suite \
   --runtime-image "$suite_image" \
-  --data-dir "$suite_data_dir" \
   --skip-missing \
   --overwrite >/dev/null
 
