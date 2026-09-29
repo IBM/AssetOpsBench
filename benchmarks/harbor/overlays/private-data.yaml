@@ -1,0 +1,30 @@
+# Opt-in overlay that mounts a private scenario suite into `main`, read-only.
+#
+#   export AOB_PRIVATE_DIR=<path-to>/AssetOpsBenchScenarioGeneration/scenarios_data
+#   harbor run -p benchmarks/harbor/datasets/assetopsbench-mini \
+#     --extra-docker-compose benchmarks/harbor/overlays/private-data.yaml ...
+#
+# Generate the tasks with --scenario-root "$AOB_PRIVATE_DIR". Any root other than
+# the repo's own makes the healthcheck run init_data.py with SCENARIOS_DATA_DIR
+# pointing at this mount, so each manifest's shared/... paths resolve against the
+# suite's own shared/ directory. The agent keeps the repo copy.
+#
+# The mount picks up changes to the suite on the next run, with no rebuild. It
+# is local-only: Harbor providers that cannot see the host's filesystem cannot
+# bind-mount it, and a run's results depend on the directory's contents at the
+# time.
+#
+# Only init_data.py reads the mount, and only the files a manifest names, so
+# going through Docker Desktop or Rancher file sharing costs little: the all
+# profile references 58 MB of the suite's 2.1 GB shared/ directory.
+#
+# The target shadows the scenario_<id>/ folder the task Dockerfile copies to the
+# same path. That is harmless, because the mount holds the same folders.
+#
+# `:?` names the missing variable when AOB_PRIVATE_DIR is unset. A plain
+# ${AOB_PRIVATE_DIR} fails too, but as "invalid spec: :/opt/suite/...: empty
+# section between colons", which does not say what to set.
+services:
+  main:
+    volumes:
+      - ${AOB_PRIVATE_DIR:?set AOB_PRIVATE_DIR to the private suite's scenarios_data directory}:/opt/suite/scenarios_data:ro
