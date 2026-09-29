@@ -60,6 +60,12 @@ SCENARIO_INPUT_FILES = (
     "reference_answer.json",
 )
 
+# Withheld from environment/, the build context for the image the agent runs in.
+# question.txt is excluded: the agent is meant to read the question, and gets it
+# as instruction.md. Deriving the rest from SCENARIO_INPUT_FILES means a scorer
+# input added there is withheld from the agent by default.
+AGENT_WITHHELD_FILES = tuple(f for f in SCENARIO_INPUT_FILES if f != "question.txt")
+
 
 def scoring_method_for(source: Path) -> str:
     """Mirror evaluation.loader: scenario_meta.json picks the scorer.
@@ -161,8 +167,13 @@ def generate(
     # The question the agent sees.
     shutil.copy(source / "question.txt", task_dir / "instruction.md")
 
-    # Build context for the per-task image layer.
-    shutil.copytree(source, task_dir / "environment" / f"scenario_{scenario_id}")
+    # Build context for the per-task image layer. Only init_data.py reads this
+    # folder in the agent container, and only manifest.json.
+    shutil.copytree(
+        source,
+        task_dir / "environment" / f"scenario_{scenario_id}",
+        ignore=shutil.ignore_patterns(*AGENT_WITHHELD_FILES),
+    )
 
     # Ground truth for the verifier. Note this ships inside the published task,
     # which is the open decision recorded in the design doc.
