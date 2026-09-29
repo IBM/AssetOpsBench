@@ -41,6 +41,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dotenv import find_dotenv, load_dotenv
 from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
@@ -136,6 +137,7 @@ class StirrupAgent(BaseInstalledAgent):
         self.reasoning_effort = reasoning_effort
         self.workspace_dir = workspace_dir
         super().__init__(*args, **kwargs)
+        _load_dotenv()
         self._require_router_credentials()
         self._require_shared_workspace()
 
@@ -153,7 +155,8 @@ class StirrupAgent(BaseInstalledAgent):
             if missing:
                 raise ValueError(
                     f"{' and '.join(missing)} must be set for the {prefix!r} model "
-                    f"prefix. Export them, or pass them per run with "
+                    f"prefix. Export them, add them to .env in the directory "
+                    f"you run harbor from, or pass them per run with "
                     f"--ae {missing[0]}=... ."
                 )
 
@@ -504,6 +507,19 @@ class StirrupAgent(BaseInstalledAgent):
             model_name=record.get("model"),
             llm_call_count=0,
         )
+
+
+def _load_dotenv() -> None:
+    """Fill unset variables from the nearest .env, searching up from the cwd.
+
+    Runs host-side, in the Harbor process. override=False keeps exported shell
+    variables ahead of the file, and --ae stays ahead of both because _get_env
+    checks the agent's extra env first. Only CREDENTIAL_ENV_VARS reach the agent
+    container, and .dockerignore keeps the file itself out of every image. The
+    verifier resolves its ${VAR:-} templates after the agent is constructed, so
+    AOB_JUDGE_MODEL and the judge keys are picked up from .env as well.
+    """
+    load_dotenv(find_dotenv(usecwd=True), override=False)
 
 
 def _as_bool(value: Any) -> bool:
