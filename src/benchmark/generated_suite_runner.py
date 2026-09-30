@@ -52,6 +52,7 @@ def run_target(run_dir: Path, output_dir: Path, name: str, agent: str, model: st
         (target_dir / "target.json").write_text(json.dumps(metadata, indent=2) + "\n")
     env = {**os.environ, "AGENT_TRAJECTORY_DIR": str(trajectories.resolve())}
     settings = {**metadata, **versions(agent), 'suite_sha256':suite_hash(files),
+                'repetition_index':int(os.environ['BENCHMARK_REPETITION_INDEX']) if os.environ.get('BENCHMARK_REPETITION_INDEX') else None,
                 'provider':{'claude':'anthropic','codex':'openai','openai':'z.ai' if model.startswith('zai/') else 'openai-compatible'}[agent],
                 'harness':AGENTS[agent], 'reasoning_effort':os.environ.get('GLM_REASONING_EFFORT') if model.startswith('zai/') else None,
                 'token_limit':None, 'temperature':None, 'timeout_seconds':timeout,

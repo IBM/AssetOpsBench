@@ -20,18 +20,24 @@ def main():
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--suite', type=Path, default=ROOT / config['suite'])
     parser.add_argument('--target', type=Path, default=ROOT / 'generated/comparisons/transformer/opus-5-5')
+    parser.add_argument('--experiment',type=Path,help='Repeated comparison experiment.json')
     args = parser.parse_args()
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == '/api/results':
-                models = []
-                for spec in config['targets']:
-                    key = spec['name']
-                    models.append({'key': key, 'name': NAMES[key], 'model_id': spec['model_id'],
-                                   **snapshot(args.suite, args.target.parent / key)})
-                body = json.dumps({'models': models, 'judge': config['judge'],
-                                   'updated': datetime.now(timezone.utc).isoformat()}).encode()
+                if args.experiment:
+                    from benchmark.repeated_comparison import load_experiment, snapshot as repeated_snapshot
+                    payload=repeated_snapshot(load_experiment(args.experiment),config)
+                else:
+                    models = []
+                    for spec in config['targets']:
+                        key = spec['name']
+                        models.append({'key': key, 'name': NAMES[key], 'model_id': spec['model_id'],
+                                       **snapshot(args.suite, args.target.parent / key)})
+                    payload={'models':models,'judge':config['judge']}
+                payload['updated']=datetime.now(timezone.utc).isoformat()
+                body = json.dumps(payload).encode()
                 mime = 'application/json'
             elif self.path == '/comparison.html':
                 body = (args.target.parent/'comparison.html').read_bytes()

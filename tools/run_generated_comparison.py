@@ -1,5 +1,6 @@
 """Run the configured targets concurrently on one captured database snapshot."""
 import hashlib
+import gzip
 import argparse
 import json
 import os
@@ -24,6 +25,9 @@ def main():
     config = json.loads((ROOT/'benchmarks/generated-comparison.json').read_text())
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-dir',type=Path,default=ROOT/'generated/comparisons/transformer')
+    parser.add_argument('--expected-snapshot-sha256')
+    parser.add_argument('--snapshot-file',type=Path,help='Reuse a captured snapshot, or save it on first use')
+    parser.add_argument('--repetition-index',type=int)
     args=parser.parse_args()
     output=args.output_dir.resolve()
     if any(output.glob('*/measurements/*.json')):
@@ -31,17 +35,26 @@ def main():
     base = os.environ['COUCHDB_URL'].rstrip('/')
     auth = (os.environ.get('COUCHDB_USERNAME','admin'),os.environ.get('COUCHDB_PASSWORD','password'))
     client = httpx.Client(auth=auth,timeout=120)
-    response = client.get(base+'/_all_dbs'); response.raise_for_status()
-    databases = [d for d in response.json() if not d.startswith(('_','eval_'))]
-    snapshot = {}
-    for db in databases:
-        response = client.get(base+'/'+db+'/_all_docs',params={'include_docs':'true','attachments':'true'})
-        response.raise_for_status()
-        docs = [row['doc'] for row in response.json()['rows'] if 'doc' in row]
-        for doc in docs: doc.pop('_rev',None)
-        snapshot[db] = docs
+    if args.snapshot_file and args.snapshot_file.exists():
+        snapshot=json.loads(gzip.decompress(args.snapshot_file.read_bytes()))
+    else:
+        response = client.get(base+'/_all_dbs'); response.raise_for_status()
+        databases = [d for d in response.json() if not d.startswith(('_','eval_'))]
+        snapshot = {}
+        for db in databases:
+            response = client.get(base+'/'+db+'/_all_docs',params={'include_docs':'true','attachments':'true'})
+            response.raise_for_status()
+            docs = [row['doc'] for row in response.json()['rows'] if 'doc' in row]
+            for doc in docs: doc.pop('_rev',None)
+            snapshot[db] = docs
     digest = hashlib.sha256(json.dumps(snapshot,sort_keys=True).encode()).hexdigest()
+    if args.expected_snapshot_sha256 and digest != args.expected_snapshot_sha256:
+        parser.error('Database snapshot differs from the reference repetition; no runs were launched.')
+    if args.snapshot_file and not args.snapshot_file.exists():
+        args.snapshot_file.parent.mkdir(parents=True,exist_ok=True)
+        args.snapshot_file.write_bytes(gzip.compress(json.dumps(snapshot).encode(),mtime=0))
     stamp = str(int(time.time()))
+    snapshot_stamp=str(int(args.snapshot_file.stat().st_mtime)) if args.snapshot_file else stamp
     workers = []
     servers = []
     for index,spec in enumerate(config['targets']):
@@ -65,9 +78,12 @@ def main():
              'BENCHMARK_DB_AUDIT_DIR':str(audit),
              'BENCHMARK_DB_RUN_ID_FILE':str(active_run_file),
              'BENCHMARK_CODEX_EXECUTABLE':'/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'}
-        policy={'snapshot_sha256':digest,'namespace':prefix,'snapshot_captured_at':stamp,
+        if args.repetition_index is not None:
+            env['BENCHMARK_REPETITION_INDEX']=str(args.repetition_index)
+        policy={'snapshot_sha256':digest,'namespace':prefix,'snapshot_captured_at':snapshot_stamp,
+                'namespace_created_at':stamp,
                 'reset_policy':'same initial snapshot per model; persisted within model in suite order',
-                'database_count':len(databases),'document_count':sum(map(len,snapshot.values()))}
+                'database_count':len(snapshot),'document_count':sum(map(len,snapshot.values()))}
         write_json(target/'environment.json',policy)
         command=[sys.executable,'-m','benchmark.generated_suite_runner',str(ROOT/config['suite']),
                  '--output-dir',str(output),'--name',name,'--agent',spec['agent'],'--model-id',spec['model_id'],

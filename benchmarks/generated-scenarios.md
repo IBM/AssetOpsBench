@@ -139,3 +139,36 @@ PYTHONPATH=src .venv/bin/python tools/live_evaluation/server.py
 ```
 
 Open `http://127.0.0.1:8765`. The final offline HTML shares the live view's layout.
+
+## Independent repetitions
+
+Keep the published transformer comparison as repetition 1 and execute two more:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/run_repeated_comparison.py \
+  --output-dir generated/comparisons/transformer-k3
+
+PYTHONPATH=src .venv/bin/python tools/live_evaluation/server.py --port 8766 \
+  --experiment generated/comparisons/transformer-k3/experiment.json
+```
+
+Repetitions run serially; the five model targets and independent grading workers
+run concurrently within each repetition. The launcher verifies the reference
+suite and initial database hash, preserves one snapshot, and clones fresh isolated
+namespaces for each repetition/model. Scenario order, harnesses, reasoning,
+timeouts and judge remain the same. Each measurement records its repetition index.
+
+When all three repetitions have finished:
+
+```bash
+uv run tools/publish_repeated_comparison.py \
+  --experiment generated/comparisons/transformer-k3/experiment.json
+```
+
+The report shows equal-weight means and sample standard deviations across full
+repetitions, individual repetition results, pooled metrics and per-scenario pass
+frequencies. Failed/retried invocation attempts remain in reliability metrics;
+they are not additional repetitions. Missing metrics remain missing. The live
+view uses only fully completed repetitions for its averages. The publisher checks
+suite/settings consistency and distinct judge sessions before emitting a final
+comparison, graphs, CSV/JSON data and portable compressed traces.
