@@ -10,8 +10,6 @@ it fails as a connection error inside the tool rather than at startup.
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 pytest.importorskip("stirrup.tools.mcp", reason="requires stirrup[mcp]")
@@ -41,13 +39,13 @@ def test_every_server_receives_couchdb_settings(
         assert server.env.get("WO_DBNAME") == "workorder", name
 
 
-def test_the_sdk_default_would_drop_couchdb_url() -> None:
+def test_the_sdk_default_would_drop_couchdb_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Pin the SDK behaviour this guards against, so an SDK change is visible."""
     from mcp.client.stdio import DEFAULT_INHERITED_ENV_VARS, get_default_environment
 
     assert "COUCHDB_URL" not in DEFAULT_INHERITED_ENV_VARS
-    os.environ["COUCHDB_URL"] = "http://couchdb:5984"
-    try:
-        assert "COUCHDB_URL" not in get_default_environment()
-    finally:
-        os.environ.pop("COUCHDB_URL", None)
+    # monkeypatch restores a COUCHDB_URL the developer already had set.
+    monkeypatch.setenv("COUCHDB_URL", "http://couchdb:5984")
+    assert "COUCHDB_URL" not in get_default_environment()
