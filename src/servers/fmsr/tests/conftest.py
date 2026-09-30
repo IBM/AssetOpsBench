@@ -13,11 +13,38 @@ def _fmsr_llm_available() -> bool:
     return bool(_llm_available)
 
 
+def _failure_mode_db_reachable() -> bool:
+    """True when the failure_mode database answers a query.
+
+    Mirrors _couchdb_reachable in the iot server's conftest: probe for real
+    rather than trusting COUCHDB_URL to be set, so a configured-but-down
+    CouchDB skips instead of failing.
+    """
+    try:
+        from servers.fmsr.main import fm_db
+
+        if not fm_db:
+            return False
+        fm_db.find({}, fields=["asset_class"], limit=1)
+        return True
+    except Exception:  # noqa: BLE001 - collection must not fail on import
+        return False
+
+
 requires_fmsr_llm = pytest.mark.skipif(
     not _fmsr_llm_available(),
     reason=(
         "FMSR LLM not configured: set FMSR_MODEL_ID to a tokenrouter/ or "
         "litellm_proxy/ model and that router's credentials"
+    ),
+)
+
+
+requires_failure_mode_db = pytest.mark.skipif(
+    not _failure_mode_db_reachable(),
+    reason=(
+        "failure_mode database not available "
+        "(set COUCHDB_URL and load the failure-mode catalog)"
     ),
 )
 
