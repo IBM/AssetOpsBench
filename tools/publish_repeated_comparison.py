@@ -123,7 +123,7 @@ def publish(experiment_path, dest, env_file):
     for name in ('run.json', 'scenarios.json', 'negative_scenarios.json'):
         path = dest / 'suite' / name; path.parent.mkdir(exist_ok=True)
         path.write_bytes((Path(experiment['suite']) / name).read_bytes())
-    write_json(dest / 'experiment.json', portable)
+    write_json(dest / 'experiment.json', json.loads(clean(json.dumps(portable))))
     published = load_experiment(dest / 'experiment.json')
     groups = rows_for(published, config)
     payload = snapshot(published, config)
@@ -162,14 +162,13 @@ def publish(experiment_path, dest, env_file):
     (dest / 'comparison.html').write_text(document)
     write_json(dest / 'summary.json', groups)
     existing = dest / 'manifest.json'
-    if not existing.exists():
-        write_json(existing, {'published_at': datetime.now(timezone.utc).isoformat(),
+    write_json(existing, {'published_at': json.loads(existing.read_text())['published_at'] if existing.exists() else datetime.now(timezone.utc).isoformat(),
                              'implementation_commit_at_publication': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                              'k': 3, 'scenario_count': 52, 'model_count': 5,'assigned_trials':780,
                              'graded_results':judged,
                              'execution_failed_cases':sum(m['summary']['execution_failed_cases'] for m in payload['models']),
                              'evidence_policy': 'Original repetition 1 is referenced; repetitions 2 and 3 include measurement-linked compressed full traces.',
-                             'redaction_policy': 'Credentials and local path prefixes removed; metrics and timestamps unchanged.'})
+                         'redaction_policy': 'Credentials and local path prefixes removed; metrics and timestamps unchanged.'})
     make_report(dest, published, config, groups, payload)
 
 
@@ -295,7 +294,7 @@ def make_report(dest, experiment, config, groups, payload):
 
 [Offline HTML](comparison.html) · [Individual results](cases.csv) · [Scenario averages](scenario-averages.csv) · [Summary JSON](summary.json) · [Experiment](experiment.json) · [Original repetition](../2026-09-30-transformer/README.md)
 
-The original k = 1 comparison was repeated twice on the **same 52 open-form scenarios** and the **same initial database snapshot**. Each repetition executes all five models; completed answers are graded in a fresh independent Fable 5.1 session, including Fable's own execution. This produces **156 assigned trials per model, 780 overall**, with **{judged} independent judgments**, **{failed} terminal execution failures**, and {attempts} retained invocation attempts.
+The original k = 1 comparison was repeated twice on the **same 52 open-form scenarios** and the **same initial database snapshot**. Each repetition executes all five models; completed answers are graded in a fresh independent Fable 5.1 session, including Fable's own execution. This produces **156 assigned trials per model, 780 overall**, with **{judged} independent judgments**, **{failed} terminal execution failure{'s' if failed!=1 else ''}**, and {attempts} retained invocation attempts.
 
 ![Average pass rates](graphs/pass-rate.png)
 
