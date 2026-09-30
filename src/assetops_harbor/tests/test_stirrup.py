@@ -25,6 +25,7 @@ pytest.importorskip(
 from harbor.models.trajectories import Trajectory
 
 from assetops_harbor.stirrup import (
+    ENV_FILE_ENV,
     FMSR_MODEL_ENV,
     ROUTER_CREDENTIALS,
     SETTING_ENV_VARS,
@@ -323,6 +324,28 @@ def test_exported_variables_win_over_dotenv(
     forwarded = agent._credential_env()
     assert forwarded["TOKENROUTER_API_KEY"] == "from-shell"
     assert forwarded["TOKENROUTER_BASE_URL"] == "https://example.invalid/v1"
+
+
+def test_aob_env_file_replaces_the_dotenv_search(
+    tmp_path: Path, no_router_credentials: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """run.sh's ENV_FILE is the only file read; the cwd's .env fills no gaps."""
+    (tmp_path / ".env").write_text(
+        "TOKENROUTER_BASE_URL=https://repo.invalid/v1\nTOKENROUTER_API_KEY=repo\n",
+        encoding="utf-8",
+    )
+    chosen = tmp_path / "chosen.env"
+    chosen.write_text(
+        "LITELLM_BASE_URL=https://chosen.invalid\nLITELLM_API_KEY=chosen\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(ENV_FILE_ENV, str(chosen))
+    agent = StirrupAgent(
+        logs_dir=tmp_path / "agent", model_name="litellm_proxy/azure/gpt-5.6-sol"
+    )
+    forwarded = agent._credential_env()
+    assert forwarded["LITELLM_API_KEY"] == "chosen"
+    assert "TOKENROUTER_API_KEY" not in forwarded
 
 
 def test_unprefixed_models_need_no_router_creds(tmp_path: Path) -> None:

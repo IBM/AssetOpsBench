@@ -70,8 +70,9 @@ well below what you use for the tools-only arm.
 ## The easy path: run.sh
 
 `benchmarks/harbor/run.sh` already does all of it. It builds the code image,
-saves the tar, exports both variables, generates the dataset and passes the
-overlay with the four required `--ak` flags.
+saves the tar (one per image id, in `~/.cache/assetopsbench`), points each job
+at its own tar, generates the dataset and passes the overlay with the four
+required `--ak` flags.
 
 ```bash
 ./benchmarks/harbor/run.sh \
@@ -197,8 +198,9 @@ one this overlay is known to work on.
 
 **"no AOB_CODE_TAR; the daemon will pull ..."** in the loader log. Expected when
 you went the registry route. If you meant to use a tar, the path in
-`AOB_CODE_TAR` is wrong or the file is empty. It defaults to
-`$HOME/assetops-code.tar` under `run.sh`.
+`AOB_CODE_TAR` is wrong or the file is empty. Under `run.sh` it is the job's
+own tar in `~/.cache/assetopsbench`, whose path is in `<job>.code-tar` beside
+the job.
 
 **Runs are much slower than the tools-only arm.** Each trial pays for a
 container and an image load. Lower `--n-concurrent`.

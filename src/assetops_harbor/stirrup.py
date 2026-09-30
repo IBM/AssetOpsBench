@@ -39,6 +39,7 @@ Three facts about ``stirrup-agent`` shape this file:
 from __future__ import annotations
 
 import json
+import os
 import shlex
 from datetime import UTC, datetime
 from pathlib import Path
@@ -84,6 +85,11 @@ FMSR_MODEL_ENV = "FMSR_MODEL_ID"
 # the in-container runner silently falls back to the agent's own --model-id, so
 # "explicit value wins" would hold for the CLI and not for Harbor.
 SETTING_ENV_VARS: tuple[str, ...] = (FMSR_MODEL_ENV,)
+
+# Names the one env file _load_dotenv reads, in place of the nearest .env.
+# benchmarks/harbor/run.sh sets it to its ENV_FILE, so a run with another file
+# cannot pick up variables from the repo's .env.
+ENV_FILE_ENV = "AOB_ENV_FILE"
 
 # Forwarded from the Harbor process into the agent container when present.
 # Harbor scopes them to the agent phase, so the verifier and build steps never
@@ -548,8 +554,12 @@ def _load_dotenv() -> None:
     file itself out of every image. The verifier resolves its ${VAR:-}
     templates after the agent is constructed, so AOB_JUDGE_MODEL and the judge
     keys are picked up from .env as well.
+
+    AOB_ENV_FILE, when set, is read instead of the nearest .env, so the file a
+    caller chose is the only one: its gaps are not filled from the repo's .env.
     """
-    load_dotenv(find_dotenv(usecwd=True), override=False)
+    path = os.environ.get(ENV_FILE_ENV) or find_dotenv(usecwd=True)
+    load_dotenv(path, override=False)
 
 
 def _as_bool(value: Any) -> bool:
