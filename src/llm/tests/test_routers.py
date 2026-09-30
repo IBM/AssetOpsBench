@@ -5,18 +5,11 @@ from __future__ import annotations
 import pytest
 
 from llm.routers import (
-    LITELLM_PREFIX,
-    TOKENROUTER_PREFIX,
     is_openai_compat,
     resolve_model,
     resolve_router_creds,
     router_prefix,
 )
-
-
-def test_prefix_constants():
-    assert LITELLM_PREFIX == "litellm_proxy/"
-    assert TOKENROUTER_PREFIX == "tokenrouter/"
 
 
 @pytest.mark.parametrize(
@@ -67,7 +60,7 @@ def test_resolve_router_creds_native_passthrough():
 def test_resolve_router_creds_strict_raises(monkeypatch):
     monkeypatch.delenv("TOKENROUTER_BASE_URL", raising=False)
     monkeypatch.delenv("TOKENROUTER_API_KEY", raising=False)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="TOKENROUTER_BASE_URL and TOKENROUTER_API_KEY must be set"):
         resolve_router_creds("tokenrouter/MiniMax-M3")
 
 
