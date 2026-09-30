@@ -94,7 +94,19 @@ bash benchmarks/harbor/run.sh \
 `-p` picks the profile (default `benchmarks/scenario_suite/all.yaml`), `-n`
 the number of concurrent trials, and `-r` the runtime image (otherwise
 `AOB_RUNTIME_IMAGE` from the shell, then from `.env`, then
-`assetopsbench/runtime:dev`). The script:
+`assetopsbench/runtime:dev`). Credentials come from `ENV_FILE`, the repo's
+`.env` by default, and only from that file: with another file, the repo's
+`.env` fills none of its gaps. Relative paths in `-s`, `-l`, `-p`, `ENV_FILE`
+and `AOB_CODE_TAR_DIR` are relative to the directory you run the script from.
+
+Before each model, the script checks that it can be served, and skips it
+otherwise. The model's router and `FMSR_MODEL_ID`'s must answer and must not
+reject their key (a 401 or 403 from `/models`). A model with no `litellm_proxy/`
+or `tokenrouter/` prefix also needs `FMSR_MODEL_ID` set to one, because the FMSR
+server would otherwise reject it and every fmsr scenario would run without
+`generate_failure_modes`.
+
+The script:
 
 1. resolves the runtime image, which every task image builds FROM. A published
    image, one whose local copy came from that registry or that is not local at
@@ -109,8 +121,14 @@ the number of concurrent trials, and `-r` the runtime image (otherwise
    `overlays/private-data.yaml` mounts its `shared/` at
    `/opt/suite/scenarios_data/shared`. Only `init_data.py` reads it, as in
    `scenario_suite_runner`;
-3. builds the code sandbox image and saves it to `~/assetops-code.tar` for the
-   per-trial Docker-in-Docker daemon (`overlays/code-sandbox.yaml`);
+3. builds the code sandbox image for the per-trial Docker-in-Docker daemon
+   (`overlays/code-sandbox.yaml`) on every run, which the build cache makes
+   cheap, so a change to `Dockerfile.code` is picked up. It saves the image as
+   a tar named after its id, in `AOB_CODE_TAR_DIR` (default
+   `~/.cache/assetopsbench`), once per image, and never rewrites it. Each job
+   records its tar, and a resume loads that one, so a job keeps one code image
+   from start to finish. `AOB_CODE_TAR` from your shell is not used. Old tars
+   stay until you delete them, and `~/assetops-code.tar` is no longer used;
 4. runs one Harbor job per profile, model and reasoning effort at
    `<leaderboard>/harbor-jobs/stirrup_agent__<profile>__<model>[__<effort>]`,
    with both overlays and with credentials loaded from `.env` by
@@ -129,14 +147,23 @@ effort are part of the job name so that a second effort, or another profile in
 the same leaderboard directory, starts its own job instead of resuming the
 first. Harbor still refuses to resume a job whose overlays have changed since it
 started; the script says so, and moving that job aside reruns the model from
-scratch. Several `run.sh` processes can share a leaderboard directory as long
-as they run different jobs.
+scratch.
+
+A resume runs again every trial that failed for a reason other than the model's
+own work: its API or the network, the environment, the verifier, or Ctrl-C.
+Harbor matches exact class names, so `run.sh` lists each one
+(`retry_error_types`), and `src/assetops_harbor/tests/test_run_sh.py` checks the
+list against the installed Harbor. A timeout, an exceeded context window or
+output limit, and a safety refusal are kept as results.
+
+Several `run.sh` processes can share a leaderboard directory. Only one works on
+a given job at a time: the other skips it and names the lock
+(`<job>.lock`). A lock whose process has died is taken over.
 
 The script exits non-zero when any model's job could not start or resume,
-including a model skipped because its router is unreachable, so a wrapper sees
-it. A trial that fails inside a job does not count. Each trial with the code
-sandbox runs a privileged `dind` sidecar, so keep `-n` around 4 on a
-laptop-sized Docker VM.
+including a model skipped by the checks above, so a wrapper sees it. A trial
+that fails inside a job does not count. Each trial with the code sandbox runs a
+privileged `dind` sidecar, so keep `-n` around 4 on a laptop-sized Docker VM.
 
 ## Generating other profiles by hand
 
@@ -320,7 +347,8 @@ the runner's behaviour and the SDK default it compensates for.
 The agent forwards credentials from the Harbor process into the container for
 the agent phase only. Putting them in the repo's `.env` is enough when you run
 from the repo root: `StirrupAgent` loads the nearest `.env` above the working
-directory before it checks for credentials.
+directory before it checks for credentials. `AOB_ENV_FILE`, when set, names the
+one file it loads instead; `run.sh` sets it to its `ENV_FILE`.
 
 ```bash
 uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
