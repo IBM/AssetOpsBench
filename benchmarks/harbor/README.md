@@ -142,7 +142,9 @@ The script:
 Re-running resumes an existing job and finishes only its incomplete trials,
 the equivalent of `--skip-existing`. A resume reuses the job's own tasks and
 settings: later changes to the template, the suite's scenario files or the
-generator apply to new jobs only, and so does a changed `-n`. The profile and
+generator apply to new jobs only, and so does a changed `-n`. A job started on
+another `-s` is not resumed: its tasks hold that suite's manifests, while
+`shared/` would come from the new one. The profile and
 effort are part of the job name so that a second effort, or another profile in
 the same leaderboard directory, starts its own job instead of resuming the
 first. Harbor still refuses to resume a job whose overlays have changed since it

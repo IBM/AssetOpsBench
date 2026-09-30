@@ -386,12 +386,16 @@ for model_config in "${model_configs[@]}"; do
   # Keyed by the job's full path, so the same job name under another
   # LEADERBOARD_DIR gets its own copy.
   tasks_dir="$tasks_root/$job_name-$(printf '%s' "$job_path" | cksum | cut -d' ' -f1)"
-  # The runtime image and code tar a job started on, beside the job rather than
-  # in it. Harbor's resume lock covers the task files but not the base they
-  # build FROM, so without the first a resume with another -r would mix two
-  # images in one job; the second makes a resume load the job's own code image.
+  # What a job started on, beside the job rather than in it. Harbor's resume
+  # lock covers the task files but not the base they build FROM, so without the
+  # runtime image record a resume with another -r would mix two images in one
+  # job. The code tar record makes a resume load the job's own code image. The
+  # suite record matters because a resume reuses the job's manifests but mounts
+  # shared/ from the current -s: another suite would pair one suite's manifests
+  # with another's data.
   image_record="$jobs_dir/$job_name.runtime-image"
   code_record="$jobs_dir/$job_name.code-tar"
+  suite_record="$jobs_dir/$job_name.suite"
 
   if ! check_model "$model_id"; then
     echo "Skipping $model_id" >&2
@@ -417,6 +421,12 @@ for model_config in "${model_configs[@]}"; do
       printf '%s started on runtime image %s, not %s (%s).\n' \
         "$job_path" "$(cut -f2 "$image_record")" "$runtime_image" "${runtime_id:0:12}" >&2
       printf 'Pass that image as -r to finish it, or move the job aside to rerun %s.\n' \
+        "$model_id" >&2
+      status=1
+    elif [[ -f "$suite_record" ]] && [[ "$(cat "$suite_record")" != "$scenario_dir" ]]; then
+      printf '%s started on the suite in %s, not %s.\n' \
+        "$job_path" "$(cat "$suite_record")" "$scenario_dir" >&2
+      printf 'Pass that directory as -s to finish it, or move the job aside to rerun %s.\n' \
         "$model_id" >&2
       status=1
     elif [[ ! -d "$tasks_dir" ]]; then
@@ -457,6 +467,7 @@ for model_config in "${model_configs[@]}"; do
 
   printf '%s\t%s\n' "$runtime_id" "$runtime_image" >"$image_record"
   printf '%s\n' "$code_tar" >"$code_record"
+  printf '%s\n' "$scenario_dir" >"$suite_record"
 
   effort_args=()
   if [[ -n "${reasoning_effort:-}" ]]; then
