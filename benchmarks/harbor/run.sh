@@ -15,8 +15,8 @@
 #
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh
 #
-# or published, passed as -r (or AOB_RUNTIME_IMAGE), e.g.
-# -r quay.io/assetopsbench/runtime:dev.
+# or published, passed as -r (or AOB_RUNTIME_IMAGE in the shell or ENV_FILE),
+# e.g. -r quay.io/assetopsbench/runtime:dev.
 #
 # Credentials are read from ENV_FILE (default .env) by `uv run --env-file`, into
 # the Harbor process only; StirrupAgent forwards them to the agent phase. They
@@ -37,7 +37,7 @@ leaderboard_dir="${LEADERBOARD_DIR:-}"
 n_concurrent="${N_CONCURRENT:-4}"
 profile="${PROFILE:-benchmarks/scenario_suite/all.yaml}"
 env_file="${ENV_FILE:-.env}"
-runtime_image="${AOB_RUNTIME_IMAGE:-assetopsbench/runtime:dev}"
+runtime_image="${AOB_RUNTIME_IMAGE:-}"
 model_configs=()
 
 while getopts ':s:l:n:p:r:m:' option; do
@@ -88,35 +88,6 @@ code_image=assetops-code:dev
 code_tar="${AOB_CODE_TAR:-$HOME/assetops-code.tar}"
 dataset_dir=benchmarks/harbor/datasets/assetopsbench-suite
 
-# Every task image builds FROM the runtime image, through the AOB_RUNTIME_IMAGE
-# build arg in the task's docker-compose.yaml. A reference whose first component
-# names a registry host (quay.io/..., localhost:5000/...) is pulled, so the run
-# gets the published image rather than a stale local copy; the build would not
-# pull it, because a local copy satisfies FROM. A bare name such as the default
-# is a local build from build-runtime-image.sh, published nowhere under that
-# name, so it has to exist already.
-registry="${runtime_image%%/*}"
-if [[ "$runtime_image" == */* && ( "$registry" == *.* || "$registry" == *:* || "$registry" == localhost ) ]]; then
-  if ! docker pull "$runtime_image"; then
-    if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
-      printf 'Could not pull runtime image %s\n' "$runtime_image" >&2
-      exit 1
-    fi
-    printf 'warning: could not pull %s; using the local copy, which may be stale\n' \
-      "$runtime_image" >&2
-  fi
-elif ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
-  printf 'Runtime image %s not found. Build it first:\n' "$runtime_image" >&2
-  printf '  bash benchmarks/harbor/scripts/build-runtime-image.sh\n' >&2
-  exit 1
-fi
-# Compose reads this on `harbor run` and again on `harbor jobs resume`, so a
-# resumed job finishes its trials on the image given now, not the one it
-# started with.
-export AOB_RUNTIME_IMAGE="$runtime_image"
-printf 'Runtime image: %s (%s)\n' "$runtime_image" \
-  "$(docker image inspect --format '{{.Id}}' "$runtime_image" | cut -c8-19)"
-
 # The suite's shared/ data reaches each trial through
 # overlays/private-data.yaml, a read-only bind mount of this directory's shared/.
 # Compose reads the variable on `harbor run` and again on `harbor jobs resume`.
@@ -127,6 +98,63 @@ if [[ ! -d "$scenario_dir/shared" ]]; then
   exit 2
 fi
 export AOB_PRIVATE_DIR="$scenario_dir"
+
+# Every task image builds FROM the runtime image, through the AOB_RUNTIME_IMAGE
+# build arg in the task's docker-compose.yaml. -r wins, then the shell's
+# AOB_RUNTIME_IMAGE, then ENV_FILE's, then the local default: the order
+# `uv run --env-file` gives Harbor, where the environment beats the file.
+if [[ -z "$runtime_image" ]]; then
+  runtime_image="$(uv run --env-file "$env_file" python -c \
+    'import os; print(os.environ.get("AOB_RUNTIME_IMAGE", ""))')"
+fi
+runtime_image="${runtime_image:-assetopsbench/runtime:dev}"
+
+# The reference without its tag or digest, spelled as .RepoDigests spells it.
+image_repo() {
+  local ref="${1%@*}"
+  if [[ "${ref##*/}" == *:* ]]; then ref="${ref%:*}"; fi
+  ref="${ref#docker.io/}"
+  printf '%s' "${ref#library/}"
+}
+
+# True when the local copy of $1 came from (or went to) that same repository,
+# i.e. it is a published image rather than a local build.
+from_registry() {
+  local repo digest
+  repo="$(image_repo "$1")"
+  while read -r digest; do
+    [[ "${digest%@*}" == "$repo" ]] && return 0
+  done < <(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1")
+  return 1
+}
+
+# A local copy satisfies FROM, so the build never refreshes a published image;
+# pull it here instead, on Docker Hub or any other registry. A local build that
+# was never pushed under this name (the default assetopsbench/runtime:dev) is
+# used as is, and a pull never replaces it.
+if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
+  if ! docker pull "$runtime_image"; then
+    printf 'Runtime image %s is not local and could not be pulled. Build it with\n' "$runtime_image" >&2
+    printf '  bash benchmarks/harbor/scripts/build-runtime-image.sh\n' >&2
+    exit 1
+  fi
+elif from_registry "$runtime_image" && ! docker pull "$runtime_image"; then
+  printf 'warning: could not pull %s; using the local copy, which may be stale\n' \
+    "$runtime_image" >&2
+fi
+
+# Pin the base for the whole run. A tag such as :dev can move while the run is
+# going (a rebuild, or another run's pull), and every trial resolves FROM when
+# it builds, so later trials would silently switch base. FROM cannot name an
+# image id, so tag this one under a name private to this process and remove it
+# on exit. Compose reads the variable on `harbor run` and on `harbor jobs resume`.
+runtime_id="$(docker image inspect --format '{{.Id}}' "$runtime_image")"
+runtime_id="${runtime_id#sha256:}"
+runtime_pin="aob-runtime-pin:${runtime_id:0:12}-$$"
+docker tag "$runtime_image" "$runtime_pin"
+trap 'docker rmi "$runtime_pin" >/dev/null 2>&1 || true' EXIT
+export AOB_RUNTIME_IMAGE="$runtime_pin"
+printf 'Runtime image: %s (%s)\n' "$runtime_image" "${runtime_id:0:12}"
 
 # The code sandbox image, as a tar each trial's Docker-in-Docker daemon loads
 # (benchmarks/harbor/overlays/code-sandbox.yaml).
@@ -175,6 +203,10 @@ except Exception as exc:
 PY
 }
 
+# Non-zero when a model's job could not run or resume. A trial that fails
+# inside a job does not count: Harbor records it and the loop moves on.
+status=0
+
 for model_config in "${model_configs[@]}"; do
   read -r model_id reasoning_effort <<< "$model_config"
   [[ -z "${model_id:-}" ]] && continue
@@ -182,6 +214,11 @@ for model_config in "${model_configs[@]}"; do
   model_slug="$(printf '%s' "$model_id" | tr -c 'A-Za-z0-9._-' '-' | tr -s '-')"
   job_name="stirrup_agent__${model_slug%-}"
   job_path="$jobs_dir/$job_name"
+  # The runtime image a job started on, beside the job rather than in it.
+  # Harbor's resume lock covers the task files but not the base they build
+  # FROM, so without this a resume with another -r would mix two images in
+  # one job.
+  image_record="$jobs_dir/$job_name.runtime-image"
 
   if ! router_reachable "$model_id"; then
     echo "Skipping $model_id: its router is unreachable" >&2
@@ -191,6 +228,14 @@ for model_config in "${model_configs[@]}"; do
   echo "Running $model_id with reasoning effort ${reasoning_effort:-default} -> $job_path"
 
   if [[ -f "$job_path/config.json" ]]; then
+    if [[ -f "$image_record" ]] && [[ "$(cut -f1 "$image_record")" != "$runtime_id" ]]; then
+      printf '%s started on runtime image %s, not %s (%s).\n' \
+        "$job_path" "$(cut -f2 "$image_record")" "$runtime_image" "${runtime_id:0:12}" >&2
+      printf 'Pass that image as -r to finish it, or move the job aside to rerun %s.\n' \
+        "$model_id" >&2
+      status=1
+      continue
+    fi
     # Drop trials whose agent crashed (e.g. the model was unreachable) so
     # they run again; scored trials are kept, as run.sh's --skip-existing
     # kept scenarios that already had a trajectory.
@@ -201,9 +246,13 @@ for model_config in "${model_configs[@]}"; do
       --filter-error-type NonZeroAgentExitCodeError; then
       printf 'Could not resume %s. If its tasks or overlays changed since it\n' "$job_path" >&2
       printf 'started, move it aside to rerun %s from scratch.\n' "$model_id" >&2
+      status=1
     fi
     continue
   fi
+
+  mkdir -p "$jobs_dir"
+  printf '%s\t%s\n' "$runtime_id" "$runtime_image" >"$image_record"
 
   effort_args=()
   if [[ -n "${reasoning_effort:-}" ]]; then
@@ -227,3 +276,5 @@ for model_config in "${model_configs[@]}"; do
     --job-name "$job_name" \
     -o "$jobs_dir" || true
 done
+
+exit "$status"

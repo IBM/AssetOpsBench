@@ -9,10 +9,14 @@
 # the image is tagged twice: assetopsbench/runtime:dev, the tag the task
 # template builds FROM by default, and assetopsbench/runtime:<commit>, the
 # short hash of the HEAD it was built from. :dev moves with every build; the
-# commit tag does not, so `run.sh -r assetopsbench/runtime:<commit>` pins a run
-# to one build. Unless they name an output (--push, --output, --load) it is
-# loaded into the local image store. publish-images.sh passes --platform, its
-# own tags and --push.
+# commit tag moves only when that same commit is rebuilt into a different image
+# (e.g. --no-cache, or after the build cache is pruned), so
+# `run.sh -r assetopsbench/runtime:<commit>` names the code a run used. Each
+# commit tag keeps its multi-GB image alive; list them with
+# `docker images assetopsbench/runtime` and `docker rmi` the ones you no longer
+# need. Unless they name an output (--push, --output, --load) it is loaded into
+# the local image store. publish-images.sh passes --platform, its own tags and
+# --push.
 #
 # Why an archive: base-image/Dockerfile does `COPY . .`, so a build from the
 # working tree takes whatever sits there, untracked and git-ignored files
@@ -52,7 +56,7 @@ has_tag=false
 has_output=false
 for arg in "$@"; do
   case "$arg" in
-    -t | --tag | --tag=*) has_tag=true ;;
+    -t* | --tag | --tag=*) has_tag=true ;;
     --push | --load | --output | --output=* | -o) has_output=true ;;
   esac
 done

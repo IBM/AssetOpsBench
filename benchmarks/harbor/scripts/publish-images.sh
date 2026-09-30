@@ -65,14 +65,16 @@ docker buildx build \
 
 cat <<NOTE
 
-Published. Users now pull instead of building:
+Published. Users now pull instead of building. To run on exactly this build:
 
-  docker pull ${NAMESPACE}/runtime:latest
-  export AOB_RUNTIME_IMAGE=${NAMESPACE}/runtime:latest
+  docker pull ${NAMESPACE}/runtime:${COMMIT}
+  export AOB_RUNTIME_IMAGE=${NAMESPACE}/runtime:${COMMIT}
 
-Each task's docker-compose.yaml passes AOB_RUNTIME_IMAGE to its Dockerfile as
-a build arg, so harbor run builds FROM that image; unset, it falls back to the
-local tag assetopsbench/runtime:dev. benchmarks/harbor/run.sh takes it as -r.
+or use ${NAMESPACE}/runtime:latest to follow the newest publish. Each task's
+docker-compose.yaml passes AOB_RUNTIME_IMAGE to its Dockerfile as a build arg,
+so harbor run builds FROM that image; unset, it falls back to the local tag
+assetopsbench/runtime:dev. benchmarks/harbor/run.sh takes it as -r, and pulls
+it first.
 
 For the code track, point the overlay at the published image rather than a tar:
 

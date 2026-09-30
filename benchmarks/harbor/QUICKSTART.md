@@ -45,8 +45,11 @@ the container the agent runs in. Commit a change first to include it.
 Each task's `environment/docker-compose.yaml` passes `AOB_RUNTIME_IMAGE` to
 its Dockerfile as a build arg, so `harbor run` builds FROM whatever that
 variable names when it runs, and from the local `assetopsbench/runtime:dev`
-when it is unset. Changing the image needs no task regeneration. `run.sh` takes
-it as `-r`.
+when it is unset. The variable lives in the shell, so set it again in a new
+one, or put it in `.env` and run Harbor as `uv run --env-file .env harbor run`.
+Changing the image needs no task regeneration, but tasks generated before the
+build arg existed ignore the variable; regenerate those once (step 3).
+`run.sh` takes the image as `-r`.
 
 ## 3. Generate the tasks
 
@@ -170,9 +173,11 @@ reach CouchDB. Confirm your checkout includes the `env` entry in
 `StirrupAgentRunner._build_mcp_config`, without which the MCP SDK hands each
 server a six-variable environment that omits `COUCHDB_URL`.
 
-**Trials fail instantly with a pull error** — the runtime image is missing, or
-it is tagged under a name the task Dockerfile does not reference. Redo step 2
-and check `docker images assetopsbench/runtime`.
+**Trials fail instantly with a pull error** — the build could not find its
+base. Either `AOB_RUNTIME_IMAGE` is unset in this shell, so the build fell back
+to the local `assetopsbench/runtime:dev`, which does not exist; or it names an
+image that is not local (check `echo $AOB_RUNTIME_IMAGE` and
+`docker images`). Redo step 2 in this shell.
 
 **`No module named 'google.protobuf'` during a run** — the image was built
 without the `otel` dependency group, which the file trace exporter needs.
