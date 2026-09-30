@@ -1,0 +1,239 @@
+{
+  "run_id": "fable-5-1_0030",
+  "scenario_id": "transformer_scenario_30",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "I suspect our past work orders on Transformer 1 at MAIN have been coded inconsistently, which makes our fault history useless for trending. Pull all work orders on Transformer 1, open and closed, and show me each one's number, description, status and failure code. Then read our failure code catalog and map each code to the closest transformer fault class or failure mode: partial discharge, low-energy arcing, high-energy arcing, oil overheating, core/winding thermal, tap changer wear, moisture ingress, cellulose ageing or oil dielectric degradation. Flag every work order whose code doesn't match its description, and every one that has no code at all, and suggest the correct code for each. Also run a fault classification on the latest oil sample and tell me whether any open work order is coded for a different fault than the gases currently indicate. Only propose recodes, and don't change anything yourself unless the work order is still open and the description clearly names the fault. In that case, update its failure code and list what you changed. If the catalog has no code that fits a fault class, say so and recommend a new code rather than forcing a poor match.",
+  "answer": "Everything I need is now in hand: the full MAIN sweep confirms only one work order exists on Transformer 1 (no variant asset names), the failure code catalog is loaded, and I have the latest oil sample. The DGA classifier tool returned \"LLM unavailable\" on both attempts, so I computed the IEC 60599 Rogers ratios directly from the gas values (this is deterministic arithmetic, not a model output). No further tool calls are needed.\n\n## 1. Work orders on Transformer 1 (MAIN) — open and closed\n\n| WO | Description | Status | Failure code |\n|---|---|---|---|\n| 1000051 | OLTC inspection – Transformer 1 on-load tap changer (suspected contact wear/coking) | WAPPR (open) | **none** |\n\nThat is the complete history: no COMP or CAN work orders exist for this asset, and a sweep of all MAIN work orders found nothing filed under a variant asset name. With a single record, trending isn't yet possible regardless of coding — but the coding problem is real, see below.\n\n## 2. Failure code catalog → transformer fault class mapping\n\n| Code | Catalog description | Closest transformer fault class |\n|---|---|---|\n| FC001 | equipment does not start | None (generic symptom, not a transformer fault class) |\n| FC002 | stops unexpectedly during operation | None — could be a *consequence* of high-energy arcing (Buchholz/pressure-relief trip) but does not identify the fault |\n| FC003 | abnormal noise | None — weak proxy for core looseness / DC magnetisation; not a listed class |\n| FC004 | fluid leak observed | Weak proxy for **moisture ingress** (leak path = ingress path); not a direct match |\n| FC005 | excessive vibration | None |\n| FC006 | overheating or high temperature reading | **Oil overheating** and **core/winding thermal** (cannot distinguish the two) |\n| FC007 | indicator light does not illuminate | None |\n| FC008 | gauge inaccurate | None (instrument fault, e.g. WTI/OTI) |\n| FC009 | structural damage or cracking | None — weak proxy for bushing/tank damage |\n| FC010 | part missing or loose | None — weak proxy for tap changer contact looseness, but not wear/coking |\n\n**Catalog gaps — no acceptable code exists for:** partial discharge, low-energy arcing, high-energy arcing, tap changer wear, moisture ingress, cellulose ageing, oil dielectric degradation. FC006 is the only code that legitimately maps to any of the nine classes, and it collapses two of them. The catalog is a generic mechanical-symptom list and is unfit for transformer fault trending as it stands.\n\n## 3. Flags\n\n**WO 1000051 — NO CODE (flagged).** The description clearly names the fault: **tap changer wear** (OLTC contact wear/coking). The catalog has no code for this class. The nearest candidates — FC010 (part loose) or FC006 (overheating) — would both be poor matches that would corrupt trending, so I did **not** force one.\n\n**Recommended action:** add a new code, e.g. `FC011 – tap changer contact wear / coking`, and apply it to 1000051. Since a new code needs to be created in the catalog first, I can't apply it yet.\n\n**Changes made by me: none.** The WO is open and the fault is clearly named, so it met your criteria for an update — but with no fitting code available, updating would violate your \"don't force a poor match\" rule, which takes precedence.\n\n## 4. Latest oil sample (2024-01-19) fault classification\n\nGases: H2 2850, CH4 7400, C2H6 5470, C2H4 16650, C2H2 7 ppm (TDCG ≈ 32,400 ppm — IEEE Condition 4).\n\nRogers ratios (IEC 60599):\n- C2H2/C2H4 = 0.0004 → code 0\n- CH4/H2 = 2.60 → code 2\n- C2H4/C2H6 = 3.04 → code 2\n\nCode **0-2-2 → T3: thermal fault > 700 °C**. Ethylene dominance with near-zero acetylene is a textbook high-temperature thermal signature in oil/metal — **core/winding thermal** fault class (hot-spot, circulating currents, or bad connection in the main tank). No arcing or partial-discharge signature is present.\n\n**Mismatch with open work order:** WO 1000051 is scoped for **tap changer wear**, but the gases indicate **core/winding thermal (T3)**. These can overlap only if the sample was drawn from — or contaminated by — the OLTC compartment; if this is a main-tank sample, the OLTC inspection will not address the fault the oil is showing. Recommend: (a) confirm the sampling point, and (b) if main-tank, either re-scope 1000051 or raise a separate WO coded FC006 (overheating) as the closest existing match, with the caveat that FC006 cannot distinguish oil overheating from core/winding thermal — a further reason to extend the catalog.\n\n## Recommended catalog additions (to make trending viable)\n\nFC011 tap changer contact wear/coking · FC012 partial discharge · FC013 low-energy arcing (D1) · FC014 high-energy arcing (D2) · FC015 oil overheating (T1/T2) · FC016 core/winding thermal (T3) · FC017 moisture ingress · FC018 cellulose ageing · FC019 oil dielectric degradation.\n\nOne caveat on the tooling: the automated DGA classifier was unavailable, so the T3 call above rests on my manual Rogers-ratio calculation. The ratios are unambiguous (well inside the T3 boundaries), so I'm confident in the class, but you may want to re-run the tool for an audit-trail record once it's back.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 4053.2402909593657
+      },
+      {
+        "index": 1,
+        "text": "I'll start by pulling the work orders, the failure code catalog, and the latest DGA reading in parallel.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 566.3148750318214
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "page_size": 0
+            },
+            "id": "toolu_01TP7f2zqriSZvn1EMhCNAqh",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":null,\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"ADDENDUM 2026-09-30 (asset-ops-assistant, reported by sagar.chethankumar@gmail.com): Add confirmatory DGA oil sample to scope. One-day-ahead drift forecast from 2024-01-15..18 samples: upper bounds H2 3068, CH4 7537, C2H6 5544, C2H4 16772, C2H2 9, CO 38 ppm -> worst-case TDCG 32,969 ppm = IEEE C57.104 Condition 4. Largest contributor to worst-case increase: methane (+187 ppm vs last sample); ethylene dominates absolute level. All six gases forecast, none carried forward. New WO creation was refused by the WO store (403); recorded here instead.\\n\\nADDENDUM 2 2026-09-30 (asset-ops-assistant, reported by sagar.chethankumar@gmail.com): CONDITION 4 CONFIRMED from latest measured sample 2024-01-19: TDCG = H2 2850 + CH4 7400 + C2H6 5470 + C2H4 16650 + C2H2 7 + CO 32 = 32,409 ppm (>4630). No gases carried forward. Site rule triggered: (1) PLANNED OUTAGE + INSPECTION, priority 1, proposed window 2024-01-20 to 2024-01-21 (MAIN schedule 2024-01-20..2024-02-09 has 0 scheduled WOs; earliest window selected). NOTIFY MANUFACTURER before outage. Recommend executing this OLTC inspection within that outage window. (2) MONTHLY DGA RESAMPLE due 2024-02-18 (30 days after latest sample), separate from the one-off confirmatory sample above. Attempted to create both as separate WOs (auto-numbered and explicit 1000052/1000053); WO store refused all creates with 403, so recorded here pending manual creation.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"WAPPR\",\"status_date\":null,\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 878.9709589909762
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__get_failure_codes",
+            "input": {},
+            "id": "toolu_01X5vJAnAcyw6wPokJ9m73cj",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 1107.7240409795195
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__latest_reading",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01Nvj5o957vTgoftFKApHYEW",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-19T00:00:00.000000\",\"values\":{\"hydrogen\":2850,\"oxygen\":5850,\"nitrogen\":27850,\"methane\":7400,\"co\":32,\"co2\":1340,\"ethylene\":16650,\"ethane\":5470,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},\"age_seconds\":85179355.170066,\"message\":\"latest reading for asset_id Transformer 1 at 2024-01-19T00:00:00.000000.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 1.0682920110411942
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 7,
+        "duration_ms": 4110.99600000307
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 7,
+        "duration_ms": 1.787666988093406
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "COMP",
+              "page_size": 0
+            },
+            "id": "toolu_01CLbupPzcSKqUpFwgk86uYs",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"COMP\",\"labor_code\":null,\"total\":0,\"work_orders\":[],\"message\":\"Found 0 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 7,
+        "duration_ms": 338.0075410241261
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "CAN",
+              "page_size": 0
+            },
+            "id": "toolu_019mnE4EFPbqYWKtzktrYNik",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"CAN\",\"labor_code\":null,\"total\":0,\"work_orders\":[],\"message\":\"Found 0 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 7,
+        "duration_ms": 1078.5061250207946
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "acetylene": 7,
+              "ethylene": 16650,
+              "ethane": 5470
+            },
+            "id": "toolu_01VmrmxQyT1QWKwwHmTiFkdv",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 7,
+        "duration_ms": 1252.1795419743285
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 9547.204292030074
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.6579999937675893
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "acetylene": 7,
+              "ethylene": 16650,
+              "ethane": 5470
+            },
+            "id": "toolu_01AK3vQYCYdaj5nhW45Ydt1k",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 648.1018329504877
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "page_size": 0
+            },
+            "id": "toolu_01WRo1Gcqmkg4qwmyYUQyx6z",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":null,\"labor_code\":null,\"total\":3,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"ADDENDUM 2026-09-30 (asset-ops-assistant, reported by sagar.chethankumar@gmail.com): Add confirmatory DGA oil sample to scope. One-day-ahead drift forecast from 2024-01-15..18 samples: upper bounds H2 3068, CH4 7537, C2H6 5544, C2H4 16772, C2H2 9, CO 38 ppm -> worst-case TDCG 32,969 ppm = IEEE C57.104 Condition 4. Largest contributor to worst-case increase: methane (+187 ppm vs last sample); ethylene dominates absolute level. All six gases forecast, none carried forward. New WO creation was refused by the WO store (403); recorded here instead.\\n\\nADDENDUM 2 2026-09-30 (asset-ops-assistant, reported by sagar.chethankumar@gmail.com): CONDITION 4 CONFIRMED from latest measured sample 2024-01-19: TDCG = H2 2850 + CH4 7400 + C2H6 5470 + C2H4 16650 + C2H2 7 + CO 32 = 32,409 ppm (>4630). No gases carried forward. Site rule triggered: (1) PLANNED OUTAGE + INSPECTION, priority 1, proposed window 2024-01-20 to 2024-01-21 (MAIN schedule 2024-01-20..2024-02-09 has 0 scheduled WOs; earliest window selected). NOTIFY MANUFACTURER before outage. Recommend executing this OLTC inspection within that outage window. (2) MONTHLY DGA RESAMPLE due 2024-02-18 (30 days after latest sample), separate from the one-off confirmatory sample above. Attempted to create both as separate WOs (auto-numbered and explicit 1000052/1000053); WO store refused all creates with 403, so recorded here pending manual creation.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"WAPPR\",\"status_date\":null,\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"},{\"wonum\":\"1000046\",\"description\":\"Bearing wear failure mode on Pump 3 - corrective action\",\"description_longdescription\":null,\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"PUMP3\",\"location\":\"MAIN-PUMPHOUSE\",\"status\":\"APPR\",\"status_date\":null,\"worktype\":\"CM\",\"wopriority\":1,\"reportdate\":\"2020-05-02T10:45:00+00:00\",\"reportedby\":\"AGENT.FMSR\",\"failurecode\":\"BEARING-WEAR\",\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":\"2020-05-03T12:00:00+00:00\",\"actstart\":null,\"actfinish\":null,\"estlabhrs\":6,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":320,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":[{\"laborcode\":\"MECHTECH2\",\"craft\":\"MECH\",\"laborhrs\":6,\"startdate\":\"2020-05-03T07:00:00+00:00\"}],\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000046\",\"dataset\":\"workorder\",\"type\":\"workorder\"},{\"wonum\":\"1000045\",\"description\":\"Investigate anomaly on Chiller 6 condenser water flow\",\"description_longdescription\":null,\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"CHILLER6\",\"location\":\"MAIN-MECH-CH6\",\"status\":\"WAPPR\",\"status_date\":null,\"worktype\":\"PdM\",\"wopriority\":2,\"reportdate\":\"2020-04-28T09:15:00+00:00\",\"reportedby\":\"AGENT.TSFM\",\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":\"2020-04-29T08:00:00+00:00\",\"targcompdate\":\"2020-04-30T17:00:00+00:00\",\"actstart\":null,\"actfinish\":null,\"estlabhrs\":4,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":[{\"laborcode\":\"HVACTECH1\",\"craft\":\"HVAC\",\"laborhrs\":4,\"startdate\":\"2020-04-29T08:00:00+00:00\"}],\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000045\",\"dataset\":\"workorder\",\"type\":\"workorder\"}],\"message\":\"Found 3 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 471.24020801857114
+      },
+      {
+        "index": 14,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 22074.37716703862
+      },
+      {
+        "index": 15,
+        "text": "Everything I need is now in hand: the full MAIN sweep confirms only one work order exists on Transformer 1 (no variant asset names), the failure code catalog is loaded, and I have the latest oil sample. The DGA classifier tool returned \"LLM unavailable\" on both attempts, so I computed the IEC 60599 Rogers ratios directly from the gas values (this is deterministic arithmetic, not a model output). No further tool calls are needed.\n\n## 1. Work orders on Transformer 1 (MAIN) — open and closed\n\n| WO | Description | Status | Failure code |\n|---|---|---|---|\n| 1000051 | OLTC inspection – Transformer 1 on-load tap changer (suspected contact wear/coking) | WAPPR (open) | **none** |\n\nThat is the complete history: no COMP or CAN work orders exist for this asset, and a sweep of all MAIN work orders found nothing filed under a variant asset name. With a single record, trending isn't yet possible regardless of coding — but the coding problem is real, see below.\n\n## 2. Failure code catalog → transformer fault class mapping\n\n| Code | Catalog description | Closest transformer fault class |\n|---|---|---|\n| FC001 | equipment does not start | None (generic symptom, not a transformer fault class) |\n| FC002 | stops unexpectedly during operation | None — could be a *consequence* of high-energy arcing (Buchholz/pressure-relief trip) but does not identify the fault |\n| FC003 | abnormal noise | None — weak proxy for core looseness / DC magnetisation; not a listed class |\n| FC004 | fluid leak observed | Weak proxy for **moisture ingress** (leak path = ingress path); not a direct match |\n| FC005 | excessive vibration | None |\n| FC006 | overheating or high temperature reading | **Oil overheating** and **core/winding thermal** (cannot distinguish the two) |\n| FC007 | indicator light does not illuminate | None |\n| FC008 | gauge inaccurate | None (instrument fault, e.g. WTI/OTI) |\n| FC009 | structural damage or cracking | None — weak proxy for bushing/tank damage |\n| FC010 | part missing or loose | None — weak proxy for tap changer contact looseness, but not wear/coking |\n\n**Catalog gaps — no acceptable code exists for:** partial discharge, low-energy arcing, high-energy arcing, tap changer wear, moisture ingress, cellulose ageing, oil dielectric degradation. FC006 is the only code that legitimately maps to any of the nine classes, and it collapses two of them. The catalog is a generic mechanical-symptom list and is unfit for transformer fault trending as it stands.\n\n## 3. Flags\n\n**WO 1000051 — NO CODE (flagged).** The description clearly names the fault: **tap changer wear** (OLTC contact wear/coking). The catalog has no code for this class. The nearest candidates — FC010 (part loose) or FC006 (overheating) — would both be poor matches that would corrupt trending, so I did **not** force one.\n\n**Recommended action:** add a new code, e.g. `FC011 – tap changer contact wear / coking`, and apply it to 1000051. Since a new code needs to be created in the catalog first, I can't apply it yet.\n\n**Changes made by me: none.** The WO is open and the fault is clearly named, so it met your criteria for an update — but with no fitting code available, updating would violate your \"don't force a poor match\" rule, which takes precedence.\n\n## 4. Latest oil sample (2024-01-19) fault classification\n\nGases: H2 2850, CH4 7400, C2H6 5470, C2H4 16650, C2H2 7 ppm (TDCG ≈ 32,400 ppm — IEEE Condition 4).\n\nRogers ratios (IEC 60599):\n- C2H2/C2H4 = 0.0004 → code 0\n- CH4/H2 = 2.60 → code 2\n- C2H4/C2H6 = 3.04 → code 2\n\nCode **0-2-2 → T3: thermal fault > 700 °C**. Ethylene dominance with near-zero acetylene is a textbook high-temperature thermal signature in oil/metal — **core/winding thermal** fault class (hot-spot, circulating currents, or bad connection in the main tank). No arcing or partial-discharge signature is present.\n\n**Mismatch with open work order:** WO 1000051 is scoped for **tap changer wear**, but the gases indicate **core/winding thermal (T3)**. These can overlap only if the sample was drawn from — or contaminated by — the OLTC compartment; if this is a main-tank sample, the OLTC inspection will not address the fault the oil is showing. Recommend: (a) confirm the sampling point, and (b) if main-tank, either re-scope 1000051 or raise a separate WO coded FC006 (overheating) as the closest existing match, with the caveat that FC006 cannot distinguish oil overheating from core/winding thermal — a further reason to extend the catalog.\n\n## Recommended catalog additions (to make trending viable)\n\nFC011 tap changer contact wear/coking · FC012 partial discharge · FC013 low-energy arcing (D1) · FC014 high-energy arcing (D2) · FC015 oil overheating (T1/T2) · FC016 core/winding thermal (T3) · FC017 moisture ingress · FC018 cellulose ageing · FC019 oil dielectric degradation.\n\nOne caveat on the tooling: the automated DGA classifier was unavailable, so the T3 call above rests on my manual Rogers-ratio calculation. The ratios are unambiguous (well inside the T3 boundaries), so I'm confident in the class, but you may want to re-run the tool for an audit-trail record once it's back.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 15040.095207979903
+      }
+    ],
+    "started_at": "2026-09-30T20:55:48.508668+00:00"
+  }
+}

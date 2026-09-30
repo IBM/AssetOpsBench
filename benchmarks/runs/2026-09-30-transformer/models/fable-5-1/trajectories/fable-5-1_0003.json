@@ -1,0 +1,112 @@
+{
+  "run_id": "fable-5-1_0003",
+  "scenario_id": "transformer_scenario_03",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "I want to know if Transformer 1 at MAIN is running hot compared with its load. Over the available data window, summarize top-oil temperature (oti), its alarm and trip readings (oti_a, oti_t), and the three phase currents (il1, il2, il3) with neutral current (inut), giving min, max and mean for each. Then tell me whether the highest oti reading happened at the same timestamp as the highest total phase current. Flag any phase whose mean current differs from the other phases' average by more than 10%. If oti has no data, use ati for context and say that the thermal correlation can't be confirmed.",
+  "answer": "**Transformer 1 (MAIN) — data window: 2024-01-15 to 2024-01-19 (5 daily readings)**\n\n| Sensor | Min | Max | Mean |\n|---|---|---|---|\n| oti (top-oil temp, °C) | 84 | 87 | 85.4 |\n| oti_a (oil temp alarm) | 1 | 2 | 1.8 |\n| oti_t (oil temp trip) | 1 | 1 | 1.0 |\n| il1 (A) | 100 | 102 | 100.6 |\n| il2 (A) | 103 | 106 | 104.6 |\n| il3 (A) | 94 | 96 | 95.0 |\n| inut (neutral, A) | 5 | 6 | 5.2 |\n\n**Peak oti vs. peak load:** The highest oti (87 °C) occurred on 2024-01-16. Total phase current (il1+il2+il3) peaked at 301 A on both 2024-01-16 and 2024-01-18. So yes — the oti peak coincides with a maximum-load timestamp (01-16), though 01-18 tied for peak load with a lower oti (86 °C). Load varied only 299–301 A across the window, so the temperature swing (84–87 °C) is not strongly load-driven; ambient (ati) tracked it more closely (79 °C on 01-16, 77 °C on 01-17).\n\n**Phase imbalance flag (>10% from other phases' average):**\n- il1: 100.6 vs 99.8 → +0.8% — OK\n- il2: 104.6 vs 97.8 → +7.0% — OK\n- il3: 95.0 vs 102.6 → −7.4% — OK\n\nNo phase exceeds the 10% threshold, though il2 runs consistently highest and il3 lowest (~10 A spread).\n\n**Note:** oti has full coverage, so the ati fallback was not needed. However, oti_a and oti_t are non-zero in every record (alarm flag = 2 on 4 of 5 days, trip flag = 1 throughout), which indicates the oil temperature alarm/trip conditions were active across the whole window — worth verifying whether these are true flags or stale/latched values.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 6542.869541037362
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__sensor_stats",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01VsN61ov1teLGFJyHFRwGGs",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 1347.349249990657
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__stream_extent",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01KKaoU6w4f1peBeB11qUCcM",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"sensor\":null,\"start_time\":\"2024-01-15T00:00:00.000000\",\"end_time\":\"2024-01-19T00:00:00.000000\",\"total_records\":5,\"exceeds_page_limit\":false,\"approx_interval_seconds\":86400,\"message\":\"5 record(s) for asset_id Transformer 1 from 2024-01-15T00:00:00.000000 to 2024-01-19T00:00:00.000000.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 9.5891670207493
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 3690.0221669930033
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "sensors": [
+                "oti",
+                "oti_a",
+                "oti_t",
+                "il1",
+                "il2",
+                "il3",
+                "inut",
+                "ati"
+              ]
+            },
+            "id": "toolu_01MsVYBW9pKGwQ153E7aSEqw",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"oti\":85,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5,\"ati\":78},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"oti\":87,\"oti_a\":2,\"oti_t\":1,\"il1\":102,\"il2\":103,\"il3\":96,\"inut\":6,\"ati\":79},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"oti\":84,\"oti_a\":1,\"oti_t\":1,\"il1\":101,\"il2\":104,\"il3\":94,\"inut\":5,\"ati\":77},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"oti\":86,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":106,\"il3\":95,\"inut\":5,\"ati\":78},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-19T00:00:00.000000\",\"oti\":85,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5,\"ati\":78}],\"returned\":5,\"next_cursor\":null,\"has_more\":false,\"start\":null,\"end\":null,\"message\":\"returned 5 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 662.1833749813959
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 12957.901582994964
+      },
+      {
+        "index": 6,
+        "text": "**Transformer 1 (MAIN) — data window: 2024-01-15 to 2024-01-19 (5 daily readings)**\n\n| Sensor | Min | Max | Mean |\n|---|---|---|---|\n| oti (top-oil temp, °C) | 84 | 87 | 85.4 |\n| oti_a (oil temp alarm) | 1 | 2 | 1.8 |\n| oti_t (oil temp trip) | 1 | 1 | 1.0 |\n| il1 (A) | 100 | 102 | 100.6 |\n| il2 (A) | 103 | 106 | 104.6 |\n| il3 (A) | 94 | 96 | 95.0 |\n| inut (neutral, A) | 5 | 6 | 5.2 |\n\n**Peak oti vs. peak load:** The highest oti (87 °C) occurred on 2024-01-16. Total phase current (il1+il2+il3) peaked at 301 A on both 2024-01-16 and 2024-01-18. So yes — the oti peak coincides with a maximum-load timestamp (01-16), though 01-18 tied for peak load with a lower oti (86 °C). Load varied only 299–301 A across the window, so the temperature swing (84–87 °C) is not strongly load-driven; ambient (ati) tracked it more closely (79 °C on 01-16, 77 °C on 01-17).\n\n**Phase imbalance flag (>10% from other phases' average):**\n- il1: 100.6 vs 99.8 → +0.8% — OK\n- il2: 104.6 vs 97.8 → +7.0% — OK\n- il3: 95.0 vs 102.6 → −7.4% — OK\n\nNo phase exceeds the 10% threshold, though il2 runs consistently highest and il3 lowest (~10 A spread).\n\n**Note:** oti has full coverage, so the ati fallback was not needed. However, oti_a and oti_t are non-zero in every record (alarm flag = 2 on 4 of 5 days, trip flag = 1 throughout), which indicates the oil temperature alarm/trip conditions were active across the whole window — worth verifying whether these are true flags or stale/latched values.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 4.693666996899992
+      }
+    ],
+    "started_at": "2026-09-30T20:31:57.787530+00:00"
+  }
+}

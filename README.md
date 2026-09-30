@@ -124,6 +124,18 @@ Some tasks focus on a single domain, others are multi-step end-to-end workflows.
 
 ## Leaderboards
 
+### Generated transformer comparison · September 30, 2026
+
+Five models completed 52 open-form scenarios, each graded in an independent Fable 5.1 session. The [run report](benchmarks/runs/2026-09-30-transformer/README.md) includes per-scenario results, full observed traces, runtime settings, token/tool metrics and the [offline HTML comparison](benchmarks/runs/2026-09-30-transformer/comparison.html).
+
+![Transformer pass rates](benchmarks/runs/2026-09-30-transformer/graphs/pass-rate.png)
+
+![Transformer execution times](benchmarks/runs/2026-09-30-transformer/graphs/execution-time.png)
+
+Timing covers the entire agent invocation; grading is measured separately. Results include three retained GLM retries. FMSR's unconfigured Watsonx backend affected tool availability across models; see the run report for the environment, rubric and interpretation limits.
+
+### Earlier benchmark results
+
 - To be revised (WIP with latest models)
 - Evaluated with **7 Large Language Models**
 - Trajectories scored using **LLM Judge (Llama-4-Maverick-17B)**

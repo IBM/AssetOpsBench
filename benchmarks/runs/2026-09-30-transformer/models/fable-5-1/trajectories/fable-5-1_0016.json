@@ -1,0 +1,147 @@
+{
+  "run_id": "fable-5-1_0016",
+  "scenario_id": "transformer_scenario_16",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "Acetylene is the gas that worries me most on Transformer 1 at MAIN. Between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, find the sample with the highest acetylene value. Run a DGA fault classification on that sample using hydrogen, methane, ethane, ethylene and acetylene. Then tell me whether the acetylene looks like it's coming from the main tank or from the tap changer. Weigh 'High-Energy Arcing', 'Low-Energy Arcing (Sparking)' and 'Tap Changer Mechanical Wear' against each other, and use the phase currents il1, il2, il3 and inut at that same timestamp to see whether the gassing lines up with load. Rank the three modes and give each a high, medium or low confidence. Recommend one next check, such as sampling the OLTC compartment separately. If acetylene is null or zero in every sample, say that arcing can't be confirmed from this window, classify the latest complete sample instead, and rank the modes on hydrogen and ethylene.",
+  "answer": "**Sample selected:** 2024-01-17T00:00:00 — acetylene 8 ppm (highest of 4 samples; range 6–8 ppm). Gases: H₂ 2800, CH₄ 7300, C₂H₆ 5500, C₂H₄ 16700, C₂H₂ 8 ppm.\n\n**DGA classification** (the `interpret_dga` tool was unavailable after two attempts, so ratios are computed manually per IEC 60599 / Rogers):\n- C₂H₂/C₂H₄ = 0.0005 → code 0\n- CH₄/H₂ = 2.61 → code 2\n- C₂H₄/C₂H₆ = 3.04 → code 2\n- IEC code **0‑2‑2 → T3, thermal fault > 700 °C** (Rogers agrees: CH₄/H₂ > 1, C₂H₄/C₂H₆ > 3). Ethylene‑dominant, extreme absolute levels; acetylene is trace.\n\n**Main tank vs. tap changer:** The acetylene looks like it is *not* coming from the tap changer. OLTC oil contamination/ingress characteristically drives C₂H₂ up strongly (C₂H₂/C₂H₄ typically ≥ 0.1–1). Here C₂H₂ is essentially nil against 16,700 ppm ethylene, which is a hot‑metal/overheating signature located in the **main tank** (or, at most, OLTC contact overheating if the compartments share oil — which the separate sample below will settle).\n\n**Load correlation at 2024-01-17:** il1 101 A, il2 104 A, il3 94 A, inut 5 A → ~5.7 % phase imbalance, neutral ~5 % of phase current. Load is flat across all four days (94–106 A) while gases are also flat (C₂H₂ 6–8 ppm, no trend). Gassing does **not** track any load change; a steady load with a steady, severe gas profile points to a persistent internal hot spot rather than intermittent, load‑triggered arcing.\n\n**Ranking of the three modes**\n1. **Tap Changer Mechanical Wear — MEDIUM.** Worn/coked OLTC contacts overheat and generate an ethylene‑rich T2/T3 pattern; this is the only one of the three compatible with the observed signature, but it requires the OLTC to communicate with the main‑tank oil and the T3 could equally be a core/lead/winding hot spot.\n2. **Low‑Energy Arcing (Sparking) — LOW.** Sparking would still lift C₂H₂/C₂H₄ toward ~0.1 or higher; 0.0005 rules it out as the primary driver, though 8 ppm could be a trace secondary contribution.\n3. **High‑Energy Arcing — LOW.** Would require hundreds–thousands of ppm C₂H₂ with C₂H₂/C₂H₄ > 1; not supported by any sample. Arcing cannot be confirmed from this window.\n\n**Recommended next check:** Draw a separate DGA sample from the OLTC diverter‑switch compartment and compare its C₂H₂/C₂H₄ against the main tank. If the OLTC oil is acetylene‑rich while the main tank stays near zero, the barrier is intact and the T3 fault is inside the main tank — then proceed to IR thermography, winding‑resistance and core‑ground tests. Given the absolute gas levels (H₂ 2800 / C₂H₄ 16,700 ppm), treat this as urgent regardless of the source.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 4281.741416954901
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "acetylene",
+                "hydrogen",
+                "methane",
+                "ethane",
+                "ethylene",
+                "il1",
+                "il2",
+                "il3",
+                "inut"
+              ]
+            },
+            "id": "toolu_01CmGfD7uskWrdYbnFUHRkGF",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"acetylene\":7,\"hydrogen\":2845,\"methane\":7406,\"ethane\":5467,\"ethylene\":16684,\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"acetylene\":6,\"hydrogen\":2950,\"methane\":7200,\"ethane\":5400,\"ethylene\":16500,\"il1\":102,\"il2\":103,\"il3\":96,\"inut\":6},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"acetylene\":8,\"hydrogen\":2800,\"methane\":7300,\"ethane\":5500,\"ethylene\":16700,\"il1\":101,\"il2\":104,\"il3\":94,\"inut\":5},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"acetylene\":7,\"hydrogen\":2900,\"methane\":7350,\"ethane\":5450,\"ethylene\":16600,\"il1\":100,\"il2\":106,\"il3\":95,\"inut\":5}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 1597.5742080481723
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 3173.5167499864474
+      },
+      {
+        "index": 3,
+        "text": "Highest acetylene in the window is 8 ppm at 2024-01-17T00:00:00. Running the DGA classification on that sample.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 4.773832974024117
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2800,
+              "methane": 7300,
+              "acetylene": 8,
+              "ethylene": 16700,
+              "ethane": 5500
+            },
+            "id": "toolu_01VPdwtRWykPxP2SfCEgJcZC",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1268.6446669977158
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2569.5133749977686
+      },
+      {
+        "index": 6,
+        "text": "The DGA tool returned \"LLM unavailable\"; retrying once before falling back to a manual IEC 60599 ratio calculation.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 0.46491704415529966
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2800,
+              "methane": 7300,
+              "acetylene": 8,
+              "ethylene": 16700,
+              "ethane": 5500
+            },
+            "id": "toolu_01TcwM8n3K3rKkN6skCUcEe7",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1217.761707957834
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 29041.94358299719
+      },
+      {
+        "index": 9,
+        "text": "**Sample selected:** 2024-01-17T00:00:00 — acetylene 8 ppm (highest of 4 samples; range 6–8 ppm). Gases: H₂ 2800, CH₄ 7300, C₂H₆ 5500, C₂H₄ 16700, C₂H₂ 8 ppm.\n\n**DGA classification** (the `interpret_dga` tool was unavailable after two attempts, so ratios are computed manually per IEC 60599 / Rogers):\n- C₂H₂/C₂H₄ = 0.0005 → code 0\n- CH₄/H₂ = 2.61 → code 2\n- C₂H₄/C₂H₆ = 3.04 → code 2\n- IEC code **0‑2‑2 → T3, thermal fault > 700 °C** (Rogers agrees: CH₄/H₂ > 1, C₂H₄/C₂H₆ > 3). Ethylene‑dominant, extreme absolute levels; acetylene is trace.\n\n**Main tank vs. tap changer:** The acetylene looks like it is *not* coming from the tap changer. OLTC oil contamination/ingress characteristically drives C₂H₂ up strongly (C₂H₂/C₂H₄ typically ≥ 0.1–1). Here C₂H₂ is essentially nil against 16,700 ppm ethylene, which is a hot‑metal/overheating signature located in the **main tank** (or, at most, OLTC contact overheating if the compartments share oil — which the separate sample below will settle).\n\n**Load correlation at 2024-01-17:** il1 101 A, il2 104 A, il3 94 A, inut 5 A → ~5.7 % phase imbalance, neutral ~5 % of phase current. Load is flat across all four days (94–106 A) while gases are also flat (C₂H₂ 6–8 ppm, no trend). Gassing does **not** track any load change; a steady load with a steady, severe gas profile points to a persistent internal hot spot rather than intermittent, load‑triggered arcing.\n\n**Ranking of the three modes**\n1. **Tap Changer Mechanical Wear — MEDIUM.** Worn/coked OLTC contacts overheat and generate an ethylene‑rich T2/T3 pattern; this is the only one of the three compatible with the observed signature, but it requires the OLTC to communicate with the main‑tank oil and the T3 could equally be a core/lead/winding hot spot.\n2.**Low‑Energy Arcing (Sparking) — LOW.** Sparking would still lift C₂H₂/C₂H₄ toward ~0.1 or higher; 0.0005 rules it out as the primary driver, though 8 ppm could be a trace secondary contribution.\n3. **High‑Energy Arcing — LOW.** Would require hundreds–thousands of ppm C₂H₂ with C₂H₂/C₂H₄ > 1; not supported by any sample. Arcing cannot be confirmed from this window.\n\n**Recommended next check:** Draw a separate DGA sample from the OLTC diverter‑switch compartment and compare its C₂H₂/C₂H₄ against the main tank. If the OLTC oil is acetylene‑rich while the main tank stays near zero, the barrier is intact and the T3 fault is inside the main tank — then proceed to IR thermography, winding‑resistance and core‑ground tests. Given the absolute gas levels (H₂ 2800 / C₂H₄ 16,700 ppm), treat this as urgent regardless of the source.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 3000.9002090082504
+      }
+    ],
+    "started_at": "2026-09-30T20:40:42.006171+00:00"
+  }
+}

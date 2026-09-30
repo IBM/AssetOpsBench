@@ -15,12 +15,12 @@ from benchmark.live_results import NAMES, read_json, snapshot
 
 
 def main():
+    config = read_json(ROOT / 'benchmarks/generated-comparison.json')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765)
-    parser.add_argument('--suite', type=Path, default=ROOT / 'generated/scenarios/transformer_scenarios_20260930_134110_f2vg4wn9')
+    parser.add_argument('--suite', type=Path, default=ROOT / config['suite'])
     parser.add_argument('--target', type=Path, default=ROOT / 'generated/comparisons/transformer/opus-5-5')
     args = parser.parse_args()
-    config = read_json(ROOT / 'benchmarks/generated-comparison.json')
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):

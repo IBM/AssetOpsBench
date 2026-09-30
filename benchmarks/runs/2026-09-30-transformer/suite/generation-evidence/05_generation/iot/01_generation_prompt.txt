@@ -1,0 +1,106 @@
+You are an advanced industrial agent Scenario Architect for AssetOps Bench.
+We need you to generate 5 evaluation scenarios with primary focus 'iot' for the asset class: Transformer.
+
+Generation Mode:
+open_form
+
+Asset Profile (full JSON):
+.redacted
+
+Available Focus Tools:
+"  - sites(): List sorted site identifiers available in the asset registry.\n\n    Returns:\n        SitesResult: Distinct site identifiers, or `[\"MAIN\"]` when none are\n        available.\n    \n  - asset_ids(site_name: string): List asset identifiers registered at one site.\n\n    Use `assets()` when registry metadata is also needed.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n\n    Returns:\n        AssetsResult: Sorted asset identifiers and their count.\n    \n  - asset_detail(site_name: string, asset_id: string): Return registry details for one asset.\n\n    Includes identity, description, type, status, location, installation date,\n    vintage, and installed-sensor count. Use `installed_sensors()` for names.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.\n\n    Returns:\n        AssetDetail: The available registry fields; optional values are null\n        when absent.\n    \n  - measured_sensors(site_name: string, asset_id: string): List measurement fields observed in an asset's telemetry stream.\n\n    Returns the sorted union across the full stream, excluding record metadata.\n    Use `installed_sensors()` for assigned sensors, which may differ.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.\n\n    Returns:\n        SensorsResult: Observed measurement field names and their count.\n    \n  - installed_sensors(site_name: string, asset_id: string): List sensor names assigned to an asset in the registry.\n\n    Use `measured_sensors()` for fields observed in telemetry; the two lists may\n    differ.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.\n\n    Returns:\n        SensorsResult: Sensor names in registry order and their count.\n    \n  - assets(site_name: string, assettype: any?): List assets at one site with compact registry metadata.\n\n    Use `asset_ids()` for identifiers only and `asset_detail()` for more fields\n    about one asset.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        assettype: Optional exact, case-sensitive asset type filter, such as\n            `PUMP` or `COMPRESSOR`.\n\n    Returns:\n        AssetsWithMetadataResult: Assets sorted by identifier, with description,\n        type, vintage, and installed-sensor count.\n    \n  - find_assets_by_sensors(site_name: string, sensors: array, match: string?, substring: boolean?, source: string?): Find site assets by installed or measured sensor names.\n\n    Searches only assets registered at `site_name`. Duplicate queries are\n    removed while preserving first occurrence order.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        sensors: Sensor names, or fragments when `substring` is true.\n        match: `all` requires every query; `any` requires at least one.\n        substring: Use case-insensitive fragment matching instead of exact,\n            case-sensitive matching.\n        source: `measured` searches observed fields; `installed` searches\n            registry assignments. Defaults to `measured`.\n\n    Returns:\n        FindAssetsResult: Query settings and matching assets with the concrete\n        sensor names found.\n    \n  - stream_extent(site_name: string, asset_id: string, sensor: any?, start: any?, end: any?): Inspect the size and timestamp span of an asset's telemetry stream.\n\n    Optionally filter by one measured sensor and a half-open ISO 8601 window:\n    `start` is inclusive and `end` is exclusive. Sensor-filtered records count\n    only when the field is present and non-null. Bounds and record timestamps\n    must consistently include or omit timezone offsets; aware timestamps are\n    compared by instant even when their offsets differ.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.\n        sensor: Optional exact field name from `measured_sensors()`.\n            Reserved metadata fields such as `asset_id` and `timestamp` are not\n            valid sensor names.\n        start: Optional inclusive ISO 8601 date or datetime lower bound.\n        end: Optional exclusive ISO 8601 date or datetime upper bound.\n\n    Returns:\n        StreamExtentResult: Earliest and latest matching timestamps, record\n        count, whether the count exceeds one 1000-record page, and average\n        interval implied by the span and count.\n    \n  - history(site_name: string, asset_id: string, start: any?, end: any?, sensors: any?, limit: integer?, cursor: any?): Return one chronological page of telemetry observations for an asset.\n\n    Optional bounds form a half-open ISO 8601 window. Use `sensors` to project\n    exact measured fields; omit it to return all measured fields present in each\n    row. Every row includes `asset_id` and `timestamp` and excludes other record\n    metadata.\n\n    Leave `cursor` unset for the first page. When `has_more` is true, repeat the\n    same query with `next_cursor`. Cursors are opaque and query-bound. Timestamp\n    offset rules match `stream_extent()`.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.\n        start: Optional inclusive ISO 8601 lower bound.\n        end: Optional exclusive ISO 8601 upper bound.\n        sensors: Optional non-empty list of exact measured field names. Duplicate\n            names are removed while preserving order.\n        limit: Maximum observations in this page, from 1 to 1000.\n        cursor: Opaque `next_cursor` from the previous page of the same query.\n\n    Returns:\n        HistoryResult: Projected observations, returned count, echoed bounds,\n        and cursor fields for the next page.\n    \n  - latest_reading(site_name: string, asset_id: string, sensor: any?): Return the newest telemetry observation for an asset.\n\n    Omit `sensor` for all measured fields in the newest record. When a sensor is\n    provided, returns the newest record where that field is present and non-null.\n    Records are compared by parsed timestamp using the `stream_extent()` rules.\n\n    `age_seconds` is the difference between the current UTC time and the reading\n    timestamp. Offset-free timestamps are interpreted as UTC; a negative value\n    indicates a timestamp in the future.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.\n        sensor: Optional exact field name from `measured_sensors()`. Reserved\n            metadata fields are not valid sensor names.\n\n    Returns:\n        LatestReadingResult: Selected timestamp, values, and age in seconds.\n    \n  - sensor_coverage(site_name: string, asset_id: string): Summarize non-null observation coverage for every measured sensor.\n\n    Scans the full timestamped stream. `non_null_count` includes present,\n    non-null values of any type. Fields observed only with null values have zero\n    count and null bounds. Timestamp offset rules match `stream_extent()`.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.\n\n    Returns:\n        SensorCoverageResult: Timestamped records scanned and per-sensor counts\n        and chronological bounds, sorted by field name.\n    \n  - sensor_stats(site_name: string, asset_id: string, sensor: any?, start: any?, end: any?): Compute numeric statistics for one or all measured sensors.\n\n    Omit `sensor` to summarize every measured field. Optional bounds form a\n    half-open ISO 8601 window. Timestamp offset rules match `stream_extent()`.\n\n    Finite numbers and numeric strings contribute to the numeric statistics.\n    Present null, boolean, non-numeric, and non-finite values contribute to\n    `null_count`; missing fields contribute to neither count. `stddev` is the\n    population standard deviation: `0.0` for one numeric value and null for none.\n\n    Args:\n        site_name: Exact site id to query, such as `MAIN`. Use `sites()` to\n            discover valid site ids.\n        asset_id: Exact asset id from `asset_ids()`, such as `Chiller 6`.\n        sensor: Optional exact field name from `measured_sensors()`. Omit it to\n            summarize all measured fields.\n        start: Optional inclusive ISO 8601 lower bound.\n        end: Optional exclusive ISO 8601 upper bound.\n\n    Returns:\n        SensorStatsResult: Per-field numeric and null counts, range, mean,\n        population standard deviation, and earliest/latest numeric timestamps.\n    "
+
+Benchmark few-shot examples (style, complexity, and specificity references only; follow Generation Mode for closed-form vs open-form grounding, and always prefer direct operator/manager wording over any legacy benchmark phrasing):
+[
+  {
+    "text": "Get sensor data for both Chiller 6 and Chiller 9's Tonnage from first week of June 2020 at MAIN in a single file.",
+    "category": "Data Query",
+    "characteristic_form": "The expected response should be the Tonnage values for both asset 'Chiller 6' and asset 'Chiller 9' at the MAIN site for last week. The values from both chillers should be merged into a single file. The return value should reference the file containing the merged Tonnage data from both chillers",
+    "source_config": "all_utterance_iot"
+  },
+  {
+    "text": "what was the supply temperature from CQPA AHU 2B on sept 19, 2020 at quarter to midnight, at site MAIN? return in a file",
+    "category": "Knowledge Query",
+    "characteristic_form": "The expected response should be the supply temperature from asset CQPA AHU 2B at 11:45pm on September 19, 2015.  The returned value should be a reference to a file containing the value",
+    "source_config": "all_utterance_iot"
+  },
+  {
+    "text": "Can you provide guidance on bundling corrective work orders together to optimize the maintenance schedule for Chiller 9 with equipment ID CWC04009 covering years of 2017, 2018 and 2019, bundle has to be happen within two weeks and have at least two work orders, also tell the details of each bundle?",
+    "category": "Decision Support",
+    "characteristic_form": "There will be three bundles generated with the size of 15, 6 and 2 respectively.  Suggest bundles of corrective work orders for CWC04009 across 2017\u20132019, ensuring each bundle contains at least two work orders scheduled within a two-week window.",
+    "source_config": "all_utterance_wo"
+  },
+  {
+    "text": "Consider asset mp_1. From the compressor sensor data collected between May 29 and June 4, 2020, can we assess the likelihood of an air leak failure occurring within the subsequent week starting June 5? Is preventive maintenance advisable?",
+    "category": "7-Day Ahead Failure Prediction",
+    "characteristic_form": "Expected reasoning includes detection of emerging deviations, interpretation as air leak precursors, actionable maintenance scheduling, and validation via actual failure timing on June 5.",
+    "source_config": "compressor_utterance"
+  },
+  {
+    "text": "For asset hp_1, using sensor data from the last 100 days leading up to and including 2023-06-09, can severe internal pump leakage be detected? What sensor evidence within this window is most critical for diagnosis?",
+    "category": "Fixed-Window Condition Detection (100 days)",
+    "characteristic_form": "Multi-sensor signatures of pump leakage are tracked and interpreted from a 100-days historical window ending at 2023-06-09, supporting confident fault detection and prioritization of corrective action.",
+    "source_config": "hydrolicpump_utterance"
+  },
+  {
+    "text": "Can you check if there are any anomalies for chiller tonnage, and do you think I should create a work order after reviewing the anomalies?",
+    "category": "Knowledge Query",
+    "characteristic_form": "The process involves retrieving IoT sensor data, performing time-series anomaly detection, and using maintenance reasoning to decide whether a work order should be created.",
+    "source_config": "all_utterance_multiagent"
+  }
+]
+
+When generating scenarios, use the Generation Mode and Mode-specific grounding rules (not the few-shot rows) to decide whether each scenario must embed readings, rules, summaries, or dataset identifiers in the query text.
+
+Suggested category values for this focus:
+- Data Query
+- Knowledge Query
+
+Primary-focus requirements:
+- Keep the primary burden on telemetry retrieval, asset discovery, sensor discovery, or historical observations.
+- Supporting FMSR, TSFM, vibration, or WO steps are allowed, but IoT must remain the main focus.
+
+Hard-scenario contract for this batch:
+- At least 4 of the 5 scenarios should satisfy the hard rubric.
+- Hard rubric: ask for at least two distinct outputs or actions, include at least one explicit constraint, and include an if/else, fallback, or missing-data instruction.
+- Focus-specific hard patterns:
+- Make hard IoT scenarios combine telemetry retrieval with at least one follow-up comparison, prioritization, or summary request.
+- Use fallback clauses for missing or conflicting channels, such as asking for an alternate signal or a secondary comparison if a sensor is unavailable.
+
+Avoid these bad patterns:
+- Keep explicit MCP references out of scenario text. Ordinary words such as sites, assets, and history are allowed in natural prose. In characteristic_form, identify tools with their exact available namespace and name, such as iot.history or fmsr.get_failure_modes. Bare common words do not establish tool use. Do not invent tools or use obsolete get_sites/get_assets/get_sensors/get_history names.
+- Avoid turning a primary IoT scenario into a generic asset essay with no telemetry task.
+
+Mode-specific grounding rules:
+- Use only grounded identifiers from the Asset Profile.
+- Allowed sites: MAIN
+- Allowed asset ids: Transformer 1
+- Allowed sensors: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen
+- Allowed timestamps: 2024-01-15T00:00:00.000000, 2024-01-19T00:00:00.000000
+
+Already accepted scenario texts. Avoid duplicates or near-duplicates of any of them:
+[]
+
+Constraints:
+1. Every scenario must read like a realistic direct request from an industrial operator or the operator's manager.
+2. Prefer end-user-centric wording such as "Will my transformer's health be okay tomorrow?" over tool-centric or benchmark-centric wording such as "predict transformer health".
+3. The scenario may involve supporting work from other agents, but the main burden should stay on the primary focus 'iot'.
+4. Every scenario must be highly specific, having a clear 'text', a 'category', and a 'characteristic_form'.
+5. The characteristic_form must identify the required tools with exact available namespace.tool references (for example, iot.history). Ordinary words like history do not identify a tool.
+6. The 'text' field must stay natural operator language only: do not include explicit MCP tool references, API or function identifiers, or add parenthetical hints such as "e.g. get_failure_modes tool". Reserve every concrete tool name for 'characteristic_form' only.
+7. Most scenarios should be multi-part and instruction-following rather than short one-liners.
+8. Closed-form scenarios must embed explicit inline sensor readings in the query text: for each measurement, sensor name (or label), numeric value, and unit (e.g. ppm, %, Hz, mm/s). You may also embed rule text, summaries, or dataset identifiers when the task requires them.
+9. Open-form scenarios must use only grounded identifiers present in the Asset Profile.
+10. Do not output Unsupported.
+
+Task: Generate a JSON array of 5 scenarios.
+CRITICAL: Output ONLY the raw JSON array. Do NOT include markdown code blocks, Python code, or any conversational preamble.
+
+Format exactly (raw JSON only):
+[
+    {
+        "text": "...",
+        "category": "...",
+        "characteristic_form": "..."
+    }
+]

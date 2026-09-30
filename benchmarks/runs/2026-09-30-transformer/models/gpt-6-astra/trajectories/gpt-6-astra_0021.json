@@ -1,0 +1,356 @@
+{
+  "run_id": "gpt-6-astra_0021",
+  "scenario_id": "transformer_scenario_21",
+  "runner": "codex-agent",
+  "model": "gpt-6-astra",
+  "question": "Will hydrogen and ethylene in Transformer 1's oil at site MAIN still be under the IEEE C57.104 Condition 1 limits over the next two days? Use the samples between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000 to forecast both gases 2 days ahead, which is one step per day. For each gas, give the point forecast and an 80% prediction interval for each day. Compare the forecasts with the Condition 1 limits of 100 ppm for hydrogen and 50 ppm for ethylene. If the upper bound of either gas crosses its limit on either day, tell me which gas and which day, and say whether I should bring the next oil sample forward. If the lower bound is also above the limit, call it a likely exceedance, not just a possible one. Before forecasting, check the two series for gaps and fit only on non-null samples. If either gas has fewer than 4 usable samples, don't run a model for it. Instead, project its last value forward using the average daily change between the first and last samples, and label that result as a linear extrapolation with no confidence interval.",
+  "answer": "**No—both gases show likely exceedances on both forecast days.** They were already above the specified Condition 1 limits.\n\nData check: January 15–18 contains four daily, non-null samples per gas, with no gaps. The query’s January 19 endpoint is exclusive. Both series qualify for modeling.\n\nLinear-trend regression forecasts with 80% prediction intervals (ppm):\n\n| Gas (limit) | Forecast day | Point forecast | 80% prediction interval |\n|---|---|---:|---:|\n| Hydrogen (100) | Jan 19, 2024 | 2,877.5 | 2,639.4–3,115.6 |\n| Hydrogen (100) | Jan 20, 2024 | 2,879.0 | 2,589.3–3,168.7 |\n| Ethylene (50) | Jan 19, 2024 | 16,608.0 | 16,273.6–16,942.4 |\n| Ethylene (50) | Jan 20, 2024 | 16,602.8 | 16,196.0–17,009.6 |\n\nBoth **lower and upper bounds exceed their limits on both days**, making these likely—not merely possible—exceedances.\n\n**Bring the next oil sample forward** and request prompt engineering review. These historical forecasts use only four samples; their intervals assume a linear trend with independent, normally distributed errors.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__measured_sensors",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "item_3",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"site_name\": \"MAIN\",\n  \"asset_id\": \"Transformer 1\",\n  \"total_sensors\": 30,\n  \"sensors\": [\n    \"acetylene\",\n    \"ati\",\n    \"co\",\n    \"co2\",\n    \"dbds\",\n    \"dielectric_rigidity\",\n    \"ethane\",\n    \"ethylene\",\n    \"hydrogen\",\n    \"il1\",\n    \"il2\",\n    \"il3\",\n    \"interfacial_v\",\n    \"inut\",\n    \"methane\",\n    \"nitrogen\",\n    \"oti\",\n    \"oti_a\",\n    \"oti_t\",\n    \"oxygen\",\n    \"power_factor\",\n    \"rated_mva\",\n    \"vl1\",\n    \"vl12\",\n    \"vl2\",\n    \"vl23\",\n    \"vl3\",\n    \"vl31\",\n    \"water_content\",\n    \"wti\"\n  ],\n  \"message\": \"found 30 sensors for asset_id Transformer 1 and site_name MAIN: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen, power_factor, rated_mva, vl1, vl12, vl2, vl23, vl3, vl31, water_content, wti.\"\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "site_name": "MAIN",
+                  "asset_id": "Transformer 1",
+                  "total_sensors": 30,
+                  "sensors": [
+                    "acetylene",
+                    "ati",
+                    "co",
+                    "co2",
+                    "dbds",
+                    "dielectric_rigidity",
+                    "ethane",
+                    "ethylene",
+                    "hydrogen",
+                    "il1",
+                    "il2",
+                    "il3",
+                    "interfacial_v",
+                    "inut",
+                    "methane",
+                    "nitrogen",
+                    "oti",
+                    "oti_a",
+                    "oti_t",
+                    "oxygen",
+                    "power_factor",
+                    "rated_mva",
+                    "vl1",
+                    "vl12",
+                    "vl2",
+                    "vl23",
+                    "vl3",
+                    "vl31",
+                    "water_content",
+                    "wti"
+                  ],
+                  "message": "found 30 sensors for asset_id Transformer 1 and site_name MAIN: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen, power_factor, rated_mva, vl1, vl12, vl2, vl23, vl3, vl31, water_content, wti."
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "hydrogen",
+                "ethylene"
+              ]
+            },
+            "id": "item_4",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"site_name\": \"MAIN\",\n  \"asset_id\": \"Transformer 1\",\n  \"observations\": [\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-15T00:00:00.000000\",\n      \"hydrogen\": 2845,\n      \"ethylene\": 16684\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-16T00:00:00.000000\",\n      \"hydrogen\": 2950,\n      \"ethylene\": 16500\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-17T00:00:00.000000\",\n      \"hydrogen\": 2800,\n      \"ethylene\": 16700\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-18T00:00:00.000000\",\n      \"hydrogen\": 2900,\n      \"ethylene\": 16600\n    }\n  ],\n  \"returned\": 4,\n  \"next_cursor\": null,\n  \"has_more\": false,\n  \"start\": \"2024-01-15T00:00:00.000000\",\n  \"end\": \"2024-01-19T00:00:00.000000\",\n  \"message\": \"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "site_name": "MAIN",
+                  "asset_id": "Transformer 1",
+                  "observations": [
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-15T00:00:00.000000",
+                      "hydrogen": 2845,
+                      "ethylene": 16684
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-16T00:00:00.000000",
+                      "hydrogen": 2950,
+                      "ethylene": 16500
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-17T00:00:00.000000",
+                      "hydrogen": 2800,
+                      "ethylene": 16700
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-18T00:00:00.000000",
+                      "hydrogen": 2900,
+                      "ethylene": 16600
+                    }
+                  ],
+                  "returned": 4,
+                  "next_cursor": null,
+                  "has_more": false,
+                  "start": "2024-01-15T00:00:00.000000",
+                  "end": "2024-01-19T00:00:00.000000",
+                  "message": "returned 4 observation(s) for asset_id Transformer 1; has_more=False."
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__recipe_template",
+            "input": {},
+            "id": "item_5",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"task_choices\": [\n    \"omitted / anything else  - FORECASTING: transforms -> single|ensemble -> conformal\",\n    \"tsfm_anomaly_detection   - detector path, producing dense anomaly labels\",\n    \"tsfm_classification | tsfm_regression | tsfm_clustering  - run_tabular_recipe only\"\n  ],\n  \"estimator_spec\": [\n    \"model_id     - a catalog card, e.g. {\\\"model_id\\\": \\\"ttm_r1_512_96\\\"}; its sktime_class and params are read from the card (see find_models / resolve_model)\",\n    \"sktime_class - an inline class path + params, e.g. {\\\"sktime_class\\\": \\\"sktime.forecasting.naive.NaiveForecaster\\\", \\\"params\\\": {\\\"strategy\\\": \\\"drift\\\"}}\"\n  ],\n  \"optional_blocks\": [\n    \"fh         - forecast horizon, e.g. [1, 2, 3]. Default [1, 2, 3, 4, 5]\",\n    \"transforms - list of transform specs applied to the target before the forecaster\",\n    \"ensemble   - {\\\"members\\\": [<estimator spec>, ...], \\\"combine\\\": \\\"mean|median|min|max|weighted|stack\\\", \\\"weights\\\": [...]} - use INSTEAD of estimator\",\n    \"conformal  - {\\\"coverage\\\": 0.9} for calibrated prediction intervals\",\n    \"finetune   - training block; see param_hints (lr, epochs, batch_size, ...)\",\n    \"save_to    - directory path; after a fine-tune, persist the fitted weights there and return checkpoint_path in the result (feed it to register_finetuned)\",\n    \"anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)\",\n    \"impute     - fill gaps before fitting\",\n    \"eval       - {\\\"metrics\\\": [\\\"smape\\\", ...]} - the first metric scores the backtest\"\n  ],\n  \"rules\": [\n    \"a recipe MUST carry an `estimator` or an `ensemble` (not both)\",\n    \"`model_id` must exist in the catalog; run_recipe errors if it does not\",\n    \"run_tabular_recipe extracts FLOps features first, then fits `estimator`; omit label_column for clustering\",\n    \"the series itself is never in the recipe - it arrives via dataset_path\"\n  ],\n  \"examples\": {\n    \"forecast_with_a_catalog_model\": {\n      \"estimator\": {\n        \"model_id\": \"ttm_96_28\"\n      },\n      \"fh\": [\n        1,\n        2,\n        3\n      ]\n    },\n    \"forecast_inline_estimator\": {\n      \"estimator\": {\n        \"sktime_class\": \"sktime.forecasting.naive.NaiveForecaster\",\n        \"params\": {\n          \"strategy\": \"drift\"\n        }\n      },\n      \"fh\": [\n        1,\n        2,\n        3,\n        4,\n        5\n      ],\n      \"eval\": {\n        \"metrics\": [\n          \"smape\"\n        ]\n      }\n    },\n    \"forecast_ensemble_with_intervals\": {\n      \"ensemble\": {\n        \"members\": [\n          {\n            \"sktime_class\": \"sktime.forecasting.naive.NaiveForecaster\",\n            \"params\": {\n              \"strategy\": \"drift\"\n            }\n          },\n          {\n            \"sktime_class\": \"sktime.forecasting.naive.NaiveForecaster\",\n            \"params\": {\n              \"strategy\": \"mean\"\n            }\n          }\n        ],\n        \"combine\": \"mean\"\n      },\n      \"fh\": [\n        1,\n        2,\n        3\n      ],\n      \"conformal\": {\n        \"coverage\": 0.9\n      }\n    },\n    \"anomaly_detection\": {\n      \"task\": \"tsfm_anomaly_detection\",\n      \"estimator\": {\n        \"sktime_class\": \"sktime.detection.lof.SubLOF\",\n        \"params\": {\n          \"window_size\": 24,\n          \"n_neighbors\": 5,\n          \"novelty\": true\n        }\n      }\n    },\n    \"tabular_classification\": {\n      \"task\": \"tsfm_classification\",\n      \"estimator\": {\n        \"sktime_class\": \"sklearn.ensemble.RandomForestClassifier\",\n        \"params\": {\n          \"n_estimators\": 100\n        }\n      }\n    }\n  }\n}"
+                }
+              ],
+              "structured_content": {
+                "task_choices": [
+                  "omitted / anything else  - FORECASTING: transforms -> single|ensemble -> conformal",
+                  "tsfm_anomaly_detection   - detector path, producing dense anomaly labels",
+                  "tsfm_classification | tsfm_regression | tsfm_clustering  - run_tabular_recipe only"
+                ],
+                "estimator_spec": [
+                  "model_id     - a catalog card, e.g. {\"model_id\": \"ttm_r1_512_96\"}; its sktime_class and params are read from the card (see find_models / resolve_model)",
+                  "sktime_class - an inline class path + params, e.g. {\"sktime_class\": \"sktime.forecasting.naive.NaiveForecaster\", \"params\": {\"strategy\": \"drift\"}}"
+                ],
+                "optional_blocks": [
+                  "fh         - forecast horizon, e.g. [1, 2, 3]. Default [1, 2, 3, 4, 5]",
+                  "transforms - list of transform specs applied to the target before the forecaster",
+                  "ensemble   - {\"members\": [<estimator spec>, ...], \"combine\": \"mean|median|min|max|weighted|stack\", \"weights\": [...]} - use INSTEAD of estimator",
+                  "conformal  - {\"coverage\": 0.9} for calibrated prediction intervals",
+                  "finetune   - training block; see param_hints (lr, epochs, batch_size, ...)",
+                  "save_to    - directory path; after a fine-tune, persist the fitted weights there and return checkpoint_path in the result (feed it to register_finetuned)",
+                  "anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)",
+                  "impute     - fill gaps before fitting",
+                  "eval       - {\"metrics\": [\"smape\", ...]} - the first metric scores the backtest"
+                ],
+                "rules": [
+                  "a recipe MUST carry an `estimator` or an `ensemble` (not both)",
+                  "`model_id` must exist in the catalog; run_recipe errors if it does not",
+                  "run_tabular_recipe extracts FLOps features first, then fits `estimator`; omit label_column for clustering",
+                  "the series itself is never in the recipe - it arrives via dataset_path"
+                ],
+                "examples": {
+                  "forecast_with_a_catalog_model": {
+                    "estimator": {
+                      "model_id": "ttm_96_28"
+                    },
+                    "fh": [
+                      1,
+                      2,
+                      3
+                    ]
+                  },
+                  "forecast_inline_estimator": {
+                    "estimator": {
+                      "sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+                      "params": {
+                        "strategy": "drift"
+                      }
+                    },
+                    "fh": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ],
+                    "eval": {
+                      "metrics": [
+                        "smape"
+                      ]
+                    }
+                  },
+                  "forecast_ensemble_with_intervals": {
+                    "ensemble": {
+                      "members": [
+                        {
+                          "sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+                          "params": {
+                            "strategy": "drift"
+                          }
+                        },
+                        {
+                          "sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+                          "params": {
+                            "strategy": "mean"
+                          }
+                        }
+                      ],
+                      "combine": "mean"
+                    },
+                    "fh": [
+                      1,
+                      2,
+                      3
+                    ],
+                    "conformal": {
+                      "coverage": 0.9
+                    }
+                  },
+                  "anomaly_detection": {
+                    "task": "tsfm_anomaly_detection",
+                    "estimator": {
+                      "sktime_class": "sktime.detection.lof.SubLOF",
+                      "params": {
+                        "window_size": 24,
+                        "n_neighbors": 5,
+                        "novelty": true
+                      }
+                    }
+                  },
+                  "tabular_classification": {
+                    "task": "tsfm_classification",
+                    "estimator": {
+                      "sktime_class": "sklearn.ensemble.RandomForestClassifier",
+                      "params": {
+                        "n_estimators": 100
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__find_models",
+            "input": {
+              "task_id": "tsfm_forecasting",
+              "top_k": 3
+            },
+            "id": "item_6",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"models\": [\n    {\n      \"_id\": \"model:ttm_96_28\",\n      \"model_id\": \"ttm_96_28\",\n      \"model_checkpoint\": \"ttm_96_28\",\n      \"model_family\": \"TinyTimeMixer\",\n      \"provenance\": \"pretrained\",\n      \"base_model_id\": null,\n      \"task_ids\": [\n        \"tsfm_forecasting\"\n      ],\n      \"context_length\": 96,\n      \"prediction_length\": 28,\n      \"domain\": \"general\",\n      \"frequency\": \"any\",\n      \"source\": \"local_artifact\",\n      \"artifact_path\": \"artifacts/tsfm_models/ttm_96_28\",\n      \"hf_repo\": \"ibm-granite/granite-timeseries-ttm-r2\",\n      \"description\": \"Pretrained TinyTimeMixer forecasting model, context length 96, prediction horizon 28. General-purpose zero-shot multivariate forecaster; good for short-context, short-horizon tasks.\",\n      \"trained_on\": [\n        \"pretraining-corpus\"\n      ],\n      \"tags\": [\n        \"ttm\",\n        \"forecasting\",\n        \"zero-shot\",\n        \"short-context\"\n      ],\n      \"status\": \"active\",\n      \"version\": \"r2\",\n      \"created_by\": \"seed\",\n      \"created_at\": \"2026-06-20T00:00:00+00:00\",\n      \"sktime_class\": \"sktime.forecasting.ttm.TinyTimeMixerForecaster\",\n      \"params\": {\n        \"model_path\": \"ibm-granite/granite-timeseries-ttm-r2\"\n      },\n      \"dataset\": \"model_catalog\"\n    }\n  ]\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "models": [
+                    {
+                      "_id": "model:ttm_96_28",
+                      "model_id": "ttm_96_28",
+                      "model_checkpoint": "ttm_96_28",
+                      "model_family": "TinyTimeMixer",
+                      "provenance": "pretrained",
+                      "base_model_id": null,
+                      "task_ids": [
+                        "tsfm_forecasting"
+                      ],
+                      "context_length": 96,
+                      "prediction_length": 28,
+                      "domain": "general",
+                      "frequency": "any",
+                      "source": "local_artifact",
+                      "artifact_path": "artifacts/tsfm_models/ttm_96_28",
+                      "hf_repo": "ibm-granite/granite-timeseries-ttm-r2",
+                      "description": "Pretrained TinyTimeMixer forecasting model, context length 96, prediction horizon 28. General-purpose zero-shot multivariate forecaster; good for short-context, short-horizon tasks.",
+                      "trained_on": [
+                        "pretraining-corpus"
+                      ],
+                      "tags": [
+                        "ttm",
+                        "forecasting",
+                        "zero-shot",
+                        "short-context"
+                      ],
+                      "status": "active",
+                      "version": "r2",
+                      "created_by": "seed",
+                      "created_at": "2026-06-20T00:00:00+00:00",
+                      "sktime_class": "sktime.forecasting.ttm.TinyTimeMixerForecaster",
+                      "params": {
+                        "model_path": "ibm-granite/granite-timeseries-ttm-r2"
+                      },
+                      "dataset": "model_catalog"
+                    }
+                  ]
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 4,
+        "text": "**No—both gases show likely exceedances on both forecast days.** They were already above the specified Condition 1 limits.\n\nData check: January 15–18 contains four daily, non-null samples per gas, with no gaps. The query’s January 19 endpoint is exclusive. Both series qualify for modeling.\n\nLinear-trend regression forecasts with 80% prediction intervals (ppm):\n\n| Gas (limit) | Forecast day | Point forecast | 80% prediction interval |\n|---|---|---:|---:|\n| Hydrogen (100) | Jan 19, 2024 | 2,877.5 | 2,639.4–3,115.6 |\n| Hydrogen (100) | Jan 20, 2024 | 2,879.0 | 2,589.3–3,168.7 |\n| Ethylene (50) | Jan 19, 2024 | 16,608.0 | 16,273.6–16,942.4 |\n| Ethylene (50) | Jan 20, 2024 | 16,602.8 | 16,196.0–17,009.6 |\n\nBoth **lower and upper bounds exceed their limits on both days**, making these likely—not merely possible—exceedances.\n\n**Bring the next oil sample forward** and request prompt engineering review. These historical forecasts use only four samples; their intervals assume a linear trend with independent, normally distributed errors.",
+        "tool_calls": [],
+        "input_tokens": 234395,
+        "output_tokens": 1096,
+        "duration_ms": null
+      }
+    ],
+    "started_at": "2026-09-30T20:42:46.896491+00:00"
+  }
+}

@@ -1,0 +1,143 @@
+## Condition monitoring, diagnostics, and degradation indicators
+
+- The paper combines two offline diagnostics for oil-immersed power transformers (PTs):
+  - **SFRA** covers mechanical condition: windings, core and tap changer.
+  - **DGA** covers electrical and thermal condition: the insulating oil and paper.
+- **SFRA as a fingerprint:** the frequency-response transfer function (amplitude in dB, phase angle) is compared against a baseline or between phases. Deviations indicate winding or magnetic-circuit abnormalities.
+- **SFRA quantitative indicator:** the correlation factor Rxy is computed in three bands:
+  - RLF: 1–100 kHz
+  - RMF: 100–600 kHz
+  - RHF: 600 kHz–1 MHz
+- **SFRA severity grading:**
+  - Normal: RLF ≥ 2.0, RMF ≥ 1.0 and RHF ≥ 0.6
+  - Slight deformation: 1.0 ≤ RLF < 2.0, or 0.6 ≤ RMF < 1.0
+  - Obvious deformation: 0.6 ≤ RLF < 1.0, or RMF < 0.6
+  - Severe deformation: RLF < 0.6
+- **Case, Phan Thiet 63 MVA, 110/22 kV, YNyn0d11:**
+  - Phase-pair RLF was 1.02–1.38, RMF 1.55–1.92 and RHF 1.08–1.36.
+  - Diagnosis: slight deformation.
+  - Note: the abstract lists this unit as 115/23/11 kV.
+- **Case, Ngai Giao 40 MVA, 110/22 kV:**
+  - RLF was 2.01–2.3, RMF 2.25–2.6 and RHF 1.85–2.52.
+  - Diagnosis: normal, matching EVNSPC.
+- **Other SFRA indicators noted from prior work:**
+  - A negative capacitance change from a peak-frequency shift indicates insulation deterioration.
+  - Tap changer coking shows as a low-frequency magnitude drop at 20 Hz–2 kHz.
+  - Tap changer pitting shows as a shift to higher frequencies.
+- **DGA indicators:**
+  - Individual gas concentrations compared against thresholds.
+  - Total combustible gas (TCG).
+  - Rogers / IEC ratios: CH₄/H₂, C₂H₂/C₂H₄ and C₂H₄/C₂H₆.
+  - Key-gas method using C₂H₄, CO, H₂ and C₂H₂.
+- **DGA case, T1 20 MVA, 110/22 kV:**
+  - H₂ 0, CH₄ 40.43, C₂H₆ 18.24, C₂H₄ 20.92, C₂H₂ 0 ppm.
+  - CO₂ 8932.66, CO 2131.18 ppm (Table 12 lists CO as 2031.18).
+  - O₂ 7805.28, N₂ 53315.2 ppm; TCG 2118 ppm.
+  - Diagnosis: thermal fault below 300 °C (T1), matching EVNSPC.
+  - CO is well above the 350 ppm IEC threshold.
+- **MATLAB decision-support tools:**
+  - SFRA-TRAFADI takes RLF, RMF and RHF as inputs.
+  - DGA-TRAFADI takes H₂, CH₄, C₂H₆, C₂H₄, C₂H₂, CO₂ and CO as inputs and uses the Rogers ratio method.
+
+## Maintenance practices, scheduling, and work-order–relevant context
+
+- Check mechanical integrity after transportation, periodically, and after short circuits.
+- Perform SFRA in these situations:
+  - On every new PT, to capture the baseline fingerprint.
+  - As part of routine electrical tests.
+  - After reinstallation.
+  - After long-term downstream short circuits.
+  - After tap changer repair.
+  - After vacuum treatment, oil filtration or oil regeneration.
+  - After any fault in the PT.
+- SFRA is commonly applied to transformers above 6 kV.
+- Oil samples are analyzed by a testing center (the Southern Vietnam Power Testing Company, EVNSPC) to support timely maintenance decisions.
+- Undetected winding deformation or core displacement can lead to costly repair or replacement. This motivates early diagnosis.
+
+## Sensor modalities, measurements, and signal interpretation
+
+- **SFRA test setup:**
+  - Injects a low-voltage sinusoid of 1–10 Vrms.
+  - Sweeps typically 20 Hz–2 MHz, depending on coil structure and the measurement system.
+  - Amplitude = 20·log10(|Vmeas|/|Vref|); phase = phase(Vmeas) − phase(Vref).
+- **Four SFRA measurement schemes:**
+  - End-to-end open-circuit (EEOC)
+  - End-to-end short-circuit (EESC)
+  - Capacitive inter-winding (CAP)
+  - Inductive inter-winding (IND)
+- **Rxy computation:**
+  - Compute the variances Dx and Dy, and the covariance Cxy.
+  - LRxy = Cxy/√(DxDy).
+  - Rxy = 10 if 1 − LRxy < 10⁻¹⁰; otherwise Rxy = −lg(1 − LRxy).
+  - Comparisons are made phase-to-phase, e.g. A-N vs B-N with the other windings open.
+- **Qualitative SFRA signatures** are illustrated for:
+  - LV winding buckling
+  - Twisting and loosened clamping
+  - Axial deformation
+  - Inter-turn short circuit
+- **DGA measurement:**
+  - Instrument: Agilent 7890A gas chromatograph, per ASTM D3612C, with a 1 ppm detection limit.
+  - Gases measured: O₂, N₂, H₂, CO, CO₂, CH₄, C₂H₆, C₂H₄, C₂H₂, C₃H₆ and C₄H₈.
+  - Units: µl/l (ppm).
+- **Gas-generation patterns:**
+  - 150–500 °C: mainly H₂ and CH₄, with less C₂H₄ and C₂H₆.
+  - Low-energy discharge: H₂, CH₄ and trace C₂H₂.
+  - High-energy discharge (700–1800 °C): a large increase in C₂H₂.
+
+## Failure modes, faults, and operational risks
+
+- **Mechanical faults (detected by SFRA):**
+  - Winding deformation, displacement, buckling, twisting and axial deformation
+  - Coil collapse, including localized collapse
+  - Loosened clamping
+  - Short or open circuits
+  - Loose core components, core movement and core-joint faults
+  - Core grounding damage
+  - Faults in the winding-to-bushing (porcelain input) connections
+  - On-load tap changer faults, including coking and pitting
+- **Electrical and thermal faults (detected by DGA, IEC 60599 classes):**
+  - PD: partial discharge
+  - D1: low-energy discharge
+  - D2: high-energy discharge
+  - T1: thermal fault below 300 °C
+  - T2: thermal fault 300–700 °C
+  - T3: thermal fault above 700 °C
+- **Rogers ratio (IEEE C57.104) categories:** no fault, corona PD, high-energy arc, low temperature, below 700 °C, and above 700 °C.
+- **Risks:**
+  - Undetected mechanical damage can cause dielectric or thermal damage, supply interruptions, and costly repair or replacement.
+  - The effect of a given deformation on the SFRA trace varies with transformer design.
+- **Limitation noted from prior work:** a transformer turns ratio (TTR) test detects short circuits but cannot identify discharges or internal damage.
+
+## Applicable standards, norms, or industry conventions (when mentioned)
+
+- **IEC 60076-18:** SFRA measurement on power transformers.
+- **DL/T 911-2004 (Chinese standard):** Rxy correlation-factor bands and deformation grading. The paper calls it the only standard giving a quantitative comparison of frequency responses.
+- **IEEE C57.104:** DGA fault classification and Rogers ratio thresholds.
+- **IEC 60599:** DGA fault classes (PD, D1, D2, T1–T3) and ratio limits. The paper sometimes misprints it as "IEC 60559".
+  - Single-gas thresholds (ppm): C₂H₂ 1, H₂ 100, CH₄ 120, C₂H₆ 65, CO 350, C₂H₄ 50.
+- **ASTM D3612C:** gas chromatography method for dissolved gases in oil.
+
+## Operator- and manager-style tasks phrased in natural language
+
+- "Compute RLF, RMF and RHF for the A-N vs B-N SFRA traces of the Phan Thiet 63 MVA transformer and classify the winding deformation severity."
+- "The latest SFRA shows RLF = 1.02 on phase pair C-A. Should we schedule an internal inspection or re-test?"
+- "Which transformers need a new SFRA fingerprint after this month's tap changer repairs and oil regeneration work?"
+- "Given H₂ 0, CH₄ 40.43, C₂H₆ 18.24, C₂H₄ 20.92, C₂H₂ 0, CO 2131 and CO₂ 8933 ppm, which IEC 60599 fault class applies?"
+- "List the gases in transformer T1's oil sample that exceed the IEC 60599 single-gas thresholds."
+- "After a downstream short circuit on the 110 kV feeder, create a work order for SFRA and DGA testing on the affected transformer."
+- "Compare our SFRA-TRAFADI and DGA-TRAFADI diagnoses with the EVNSPC reports and flag any disagreements."
+- "Summarize the combined mechanical (SFRA) and thermal/electrical (DGA) health of the 40 MVA Ngai Giao unit for the asset manager."
+
+## Gaps / not supported by this paper
+
+- No online or continuous monitoring. Both methods are periodic, offline or sample-based tests.
+- No DGA trending, gas-generation rates or sampling intervals are given.
+- No maintenance intervals, costs, work-order workflows or remaining-life estimates are given.
+- No thermal monitoring data (top-oil or hot-spot temperature, cooling type) for the cases studied.
+- The T2 63 MVA, 220 kV DGA results (Table 13) are truncated and not available.
+- Duval triangle procedures are mentioned only via prior work.
+- No specific SFRA thresholds are given for the CAP, IND or EESC schemes.
+- There are minor data inconsistencies:
+  - The Phan Thiet voltage rating differs between the abstract (115/23/11 kV) and the body (110/22 kV).
+  - The CO value differs between tables (2131.18 vs 2031.18 ppm).
+  - Table 6's heading says it covers temperature-based classes, but it also lists discharge faults.
