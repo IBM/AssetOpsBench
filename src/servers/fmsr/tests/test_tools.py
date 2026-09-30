@@ -513,12 +513,14 @@ class TestTransformerHealthIndexModel:
         assert "error" in data
 
     @pytest.mark.anyio
-    async def test_llm_unavailable_returns_error(self, no_llm):
+    async def test_predicts_without_llm(self, no_llm):
         data = await call_tool(mcp, "predict_health_index", {
             "asset_name": "Transformer1",
             **self.VALID_FEATURES
         })
-        assert "error" in data
+        assert "asset_name" in data
+        assert "health_index" in data
+        assert "condition" in data
 
     @requires_watsonx
     @pytest.mark.anyio

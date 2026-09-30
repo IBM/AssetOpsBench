@@ -848,14 +848,11 @@ def predict_health_index(
 
     Returns:
         HealthIndexResult with a health index score (0-100) and condition category.
-        ErrorResult if the LLM is unavailable or all retries fail.
+        ErrorResult if the model cannot produce a prediction.
     """
 
     if not asset_name:
         return ErrorResult(error="asset_name is required")
-
-    if not _llm_available:
-        return ErrorResult(error="LLM unavailable")
 
     try:
         score = _call_predict_health_index(
