@@ -16,7 +16,8 @@ from drifting apart.
 Without --scenario-root, tasks load the repo's own scenarios_data, and each
 manifest's shared/ paths resolve against the repo copy in the runtime image.
 With any other root the scenarios form an external suite: the data load reads
-it at SUITE_DATA_DIR, where overlays/private-data.yaml mounts it at run time.
+it at SUITE_DATA_DIR, where overlays/private-data.yaml mounts its shared/
+directory at run time.
 
 Task names must stay stable across runs: Harbor content-hashes each task
 directory and pins dataset entries by digest, so a name derived from
@@ -37,8 +38,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REPO_SCENARIO_ROOT = REPO_ROOT / "src/couchdb/scenarios_data"
-# Where an external suite sits inside the task container, bind-mounted by
-# overlays/private-data.yaml.
+# Where an external suite sits inside the task container: the per-task layer
+# copies scenario_<id>/ here, and overlays/private-data.yaml mounts shared/.
 SUITE_DATA_DIR = "/opt/suite/scenarios_data"
 CATEGORIES = ("car", "fcc", "fmea", "fmsr", "health", "tsfm", "wosr")
 TEMPLATE_FILES = (
@@ -73,6 +74,34 @@ def scoring_method_for(source: Path) -> str:
         if isinstance(meta, dict) and meta.get("scoring_method"):
             return str(meta["scoring_method"])
     return "static_json"
+
+
+def data_load_inputs(source: Path) -> list[Path]:
+    """Paths under a scenario folder that init_data.py reads, relative to it.
+
+    manifest.json, plus any file or directory a manifest value names inside the
+    folder itself; couchdb.loader tries the scenario folder before its parent.
+    An allowlist rather than a list of answer files to skip, so an answer under
+    any name (a backup, a new scorer input) stays out of the agent's image.
+    Paths into the sibling shared/ are left to overlays/private-data.yaml.
+    """
+    manifest_path = source / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"scenario has no manifest.json: {source}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    root = source.resolve()
+    inputs = [Path("manifest.json")]
+    for value in manifest.values():
+        # A value is a path, "default", inline documents, or a list of those.
+        for item in value if isinstance(value, list) else [value]:
+            if not isinstance(item, str) or Path(item).is_absolute():
+                continue
+            candidate = (source / item).resolve()
+            # Never the folder itself: that would copy the answers beside it.
+            inside = candidate != root and candidate.is_relative_to(root)
+            if inside and candidate.exists():
+                inputs.append(candidate.relative_to(root))
+    return list(dict.fromkeys(inputs))
 
 
 def scenario_ids_by_category(profile_path: Path) -> list[tuple[str, str]]:
@@ -135,10 +164,11 @@ def generate(
             '"assetopsbench", "wosr",', f'"assetopsbench", "{category}",'
         )
         if data_dir:
-            # An external suite, mounted at data_dir: the per-task layer copies
-            # the scenario there, and only init_data.py reads it. The agent's
-            # own SCENARIOS_DATA_DIR stays on the repo copy, as in
-            # scenario_suite_runner, which sets it for the data load alone.
+            # An external suite at data_dir: the per-task layer copies the
+            # scenario there beside the mounted shared/, and only init_data.py
+            # reads it. The agent's own SCENARIOS_DATA_DIR stays on the repo
+            # copy, as in scenario_suite_runner, which sets it for the data
+            # load alone.
             text = text.replace(
                 "/opt/aob/src/couchdb/scenarios_data/", f"{data_dir.rstrip('/')}/"
             )
@@ -152,8 +182,17 @@ def generate(
     # The question the agent sees.
     shutil.copy(source / "question.txt", task_dir / "instruction.md")
 
-    # Build context for the per-task image layer.
-    shutil.copytree(source, task_dir / "environment" / f"scenario_{scenario_id}")
+    # Build context for the per-task image layer: only what init_data.py reads.
+    # The image is the agent's container, so the answer files stay in tests/
+    # and solution/, which the agent never sees.
+    context = task_dir / "environment" / f"scenario_{scenario_id}"
+    context.mkdir(parents=True)
+    for relative in data_load_inputs(source):
+        if (source / relative).is_dir():
+            shutil.copytree(source / relative, context / relative, dirs_exist_ok=True)
+        else:
+            (context / relative).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(source / relative, context / relative)
 
     # Ground truth for the verifier. Note this ships inside the published task,
     # which is the open decision recorded in the design doc.
