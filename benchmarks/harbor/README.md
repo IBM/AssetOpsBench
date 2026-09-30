@@ -39,11 +39,11 @@ Prerequisites: Docker running, and `uv sync --dev --extra harbor`. Run every
 command from the repo root.
 
 ```bash
-# 1. Build the runtime base (once per AssetOpsBench commit). The tag is local
-#    and is the default AOB_RUNTIME_IMAGE in template/environment/Dockerfile;
-#    nothing is pulled or pushed.
-docker build -t assetopsbench/runtime:dev \
-  -f benchmarks/harbor/base-image/Dockerfile .
+# 1. Build the runtime base (once per AssetOpsBench commit). The script builds
+#    from `git archive HEAD`, so untracked files and uncommitted changes stay
+#    out of the image. The tag is local and is the default AOB_RUNTIME_IMAGE in
+#    template/environment/Dockerfile; nothing is pulled or pushed.
+bash benchmarks/harbor/scripts/build-runtime-image.sh
 
 # 2. Generate one task per scenario in the open profile. The defaults point at
 #    src/couchdb/scenarios_data, benchmarks/scenario_suite/open.yaml and

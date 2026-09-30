@@ -11,8 +11,7 @@
 #
 # Prerequisites: Docker running, `uv sync --extra harbor`, and the runtime image
 #
-#   docker build -t assetopsbench/runtime:dev \
-#     -f benchmarks/harbor/base-image/Dockerfile .
+#   bash benchmarks/harbor/scripts/build-runtime-image.sh
 #
 # Credentials are read from ENV_FILE (default .env) by `uv run --env-file`, into
 # the Harbor process only; StirrupAgent forwards them to the agent phase. They
@@ -85,7 +84,7 @@ dataset_dir=benchmarks/harbor/datasets/assetopsbench-suite
 
 if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
   printf 'Runtime image %s not found. Build it first:\n' "$runtime_image" >&2
-  printf '  docker build -t %s -f benchmarks/harbor/base-image/Dockerfile .\n' "$runtime_image" >&2
+  printf '  bash benchmarks/harbor/scripts/build-runtime-image.sh\n' >&2
   exit 1
 fi
 
