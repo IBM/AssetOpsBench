@@ -31,8 +31,8 @@ def _multiagent_budget_cap(total: int) -> int:
     return (total * 3) // 4
 
 
-_PROFILE_MAX_TOKENS = 4096
-_MULTIAGENT_MAX_TOKENS = 8192
+_PROFILE_MAX_TOKENS = 131072
+_MULTIAGENT_MAX_TOKENS = 131072
 DEFAULT_GENERATED_SCENARIOS_DIR = Path("generated/scenarios")
 
 

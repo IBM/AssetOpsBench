@@ -145,6 +145,13 @@ Add these without a following value:
 
 The selected backend and model handle research synthesis, profile building, generation, and review.
 
+All stages request an output budget of 128K (131,072) tokens, capped at the
+model's known maximum output length. Z.ai limits use its documented API limits;
+other exact model IDs use the installed LiteLLM catalog. Unknown model IDs and
+CLI aliases retain the 128K request budget because their limits cannot be
+resolved locally. Codex treats this budget as advisory; its CLI controls the
+actual output limit. This budget is a ceiling, not a requested response length.
+
 | Backend | Setup | Default model |
 | --- | --- | --- |
 | `codex` | Run `codex login`. | Your local Codex default |

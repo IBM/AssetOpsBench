@@ -21,8 +21,8 @@ from .pipeline import _make_executor
 _log = logging.getLogger(__name__)
 
 _MAX_DIGEST_BODY_CHARS = 28_000
-_DIGEST_PER_PAPER_MAX_TOKENS = 4096
-_DIGEST_MERGE_MAX_TOKENS = 4096
+_DIGEST_PER_PAPER_MAX_TOKENS = 131072
+_DIGEST_MERGE_MAX_TOKENS = 131072
 
 
 def _candidates_for_digest(bundle: EvidenceBundle) -> list[EvidenceCandidate]:

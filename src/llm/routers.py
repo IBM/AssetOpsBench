@@ -33,13 +33,14 @@ class RouterCreds(NamedTuple):
 
 # prefix -> (base_url_env_var, api_key_env_var)
 PROXY_ROUTERS: dict[str, tuple[str, str]] = {
+    "zai/": ("ZAI_BASE_URL", "ZAI_API_KEY"),
     LITELLM_PREFIX: ("LITELLM_BASE_URL", "LITELLM_API_KEY"),
     TOKENROUTER_PREFIX: ("TOKENROUTER_BASE_URL", "TOKENROUTER_API_KEY"),
 }
 
 # Prefixes whose endpoints speak the OpenAI Chat Completions API and can be
 # driven by the native ``openai`` SDK (llm.OpenAICompatBackend).
-OPENAI_COMPAT_PREFIXES: tuple[str, ...] = (TOKENROUTER_PREFIX,)
+OPENAI_COMPAT_PREFIXES: tuple[str, ...] = (TOKENROUTER_PREFIX, "zai/")
 
 
 def router_prefix(model_id: str) -> str | None:
@@ -78,6 +79,8 @@ def resolve_router_creds(model_id: str, *, strict: bool = True) -> RouterCreds |
         return None
     base_env, key_env = PROXY_ROUTERS[prefix]
     base_url = os.environ.get(base_env)
+    if prefix == "zai/" and not base_url:
+        base_url = "https://api.z.ai/api/paas/v4/"
     api_key = os.environ.get(key_env)
     if not base_url or not api_key:
         if strict:

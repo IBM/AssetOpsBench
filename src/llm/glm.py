@@ -21,7 +21,7 @@ class GLMBackend(LLMBackend):
     """
 
     def __init__(
-        self, model_id: str = DEFAULT_GLM_MODEL, *, timeout_seconds: float = 300,
+        self, model_id: str = DEFAULT_GLM_MODEL, *, timeout_seconds: float = 1200,
     ) -> None:
         self._model_id = model_id.strip()
         if not self._model_id:
