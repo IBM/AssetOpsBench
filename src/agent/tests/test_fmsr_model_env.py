@@ -73,3 +73,16 @@ def test_server_refuses_to_pick_a_model_for_you():
         _build_llm(None)
     with pytest.raises(RuntimeError, match="FMSR_MODEL_ID is not set"):
         _build_llm("")
+
+
+def test_server_supports_only_the_known_routers():
+    """Only llm.routers prefixes are accepted; anything else is rejected."""
+    import pytest
+
+    from llm.routers import PROXY_ROUTERS
+    from servers.fmsr.main import _build_llm
+
+    assert set(PROXY_ROUTERS) == {"litellm_proxy/", "tokenrouter/"}
+    for unsupported in ("watsonx/meta-llama/llama-3-3-70b-instruct", "gpt-4o"):
+        with pytest.raises(RuntimeError, match="no supported router prefix"):
+            _build_llm(unsupported)
