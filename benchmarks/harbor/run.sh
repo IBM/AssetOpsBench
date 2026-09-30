@@ -79,7 +79,6 @@ if [[ ! -f "$env_file" ]]; then
 fi
 
 runtime_image=assetopsbench/runtime:dev
-suite_image=assetopsbench/runtime:suite
 code_image=assetops-code:dev
 code_tar="${AOB_CODE_TAR:-$HOME/assetops-code.tar}"
 dataset_dir=benchmarks/harbor/datasets/assetopsbench-suite
@@ -90,12 +89,16 @@ if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
   exit 1
 fi
 
-# The suite layer. Docker's cache makes this a no-op when neither the runtime
-# image nor the suite changed.
-echo "Building $suite_image from $scenario_dir"
-docker build -q -t "$suite_image" \
-  --build-arg "AOB_RUNTIME_IMAGE=$runtime_image" \
-  -f benchmarks/harbor/suite-image/Dockerfile "$scenario_dir"
+# The suite's shared/ data reaches each trial through
+# overlays/private-data.yaml, a read-only bind mount of this directory's shared/.
+# Compose reads the variable on `harbor run` and again on `harbor jobs resume`.
+# A missing shared/ would not fail the mount: Docker creates the host directory,
+# and every collection then loads empty without an error.
+if [[ ! -d "$scenario_dir/shared" ]]; then
+  printf 'No shared/ directory in %s; is -s the suite'"'"'s scenarios_data?\n' "$scenario_dir" >&2
+  exit 2
+fi
+export AOB_PRIVATE_DIR="$scenario_dir"
 
 # The code sandbox image, as a tar each trial's Docker-in-Docker daemon loads
 # (benchmarks/harbor/overlays/code-sandbox.yaml).
@@ -116,7 +119,6 @@ uv run python benchmarks/harbor/adapter/generate_tasks.py \
   --profile "$profile" \
   --output-dir "$dataset_dir" \
   --dataset-name assetopsbench/suite \
-  --runtime-image "$suite_image" \
   --skip-missing \
   --overwrite >/dev/null
 
@@ -185,6 +187,7 @@ for model_config in "${model_configs[@]}"; do
     --ak allow_docker_backend=true \
     --ak workspace_dir=/workspace-share \
     ${effort_args[@]+"${effort_args[@]}"} \
+    --extra-docker-compose benchmarks/harbor/overlays/private-data.yaml \
     --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
     --n-concurrent "$n_concurrent" \
     --job-name "$job_name" \
