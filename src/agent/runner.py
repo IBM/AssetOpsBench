@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -21,6 +22,40 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "wo": "wo-mcp-server",
     "vibration": "vibration-mcp-server",
 }
+
+# Env var that pins the LLM used inside the FMSR MCP server
+# (generate_failure_modes).  See :func:`mcp_server_env`.
+FMSR_MODEL_ENV = "FMSR_MODEL_ID"
+
+
+def resolve_fmsr_model_id(agent_model_id: str | None) -> str | None:
+    """Return the model the FMSR server should use.
+
+    An explicit ``FMSR_MODEL_ID`` (shell or ``.env``) always wins; otherwise
+    the agent's own model id is used.  Empty strings count as unset.
+    """
+    explicit = (os.environ.get(FMSR_MODEL_ENV) or "").strip()
+    agent = agent_model_id.strip() if isinstance(agent_model_id, str) else ""
+    return explicit or agent or None
+
+
+def fmsr_env_overrides(agent_model_id: str | None) -> dict[str, str]:
+    """Env overrides that pin ``FMSR_MODEL_ID`` for spawned MCP servers.
+
+    The value is always set explicitly, even when it equals the agent's model
+    id, so the FMSR model is fixed and visible for every run.
+    """
+    fmsr_model = resolve_fmsr_model_id(agent_model_id)
+    return {FMSR_MODEL_ENV: fmsr_model} if fmsr_model else {}
+
+
+def mcp_server_env(agent_model_id: str | None) -> dict[str, str]:
+    """Full environment for MCP servers spawned via the MCP SDK stdio client.
+
+    That client passes only HOME/PATH/SHELL/... to child processes unless
+    ``env`` is given, so the parent environment is forwarded explicitly.
+    """
+    return {**os.environ, **fmsr_env_overrides(agent_model_id)}
 
 
 class AgentRunner(ABC):
