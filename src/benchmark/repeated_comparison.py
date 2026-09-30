@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 import math
 import statistics
-from .measurement import summarize
+from .measurement import exhausted_execution, summarize, summarize_cases
 
 
 def mean_sd(values):
@@ -22,6 +22,7 @@ def aggregate(repetitions, scenario_ids, *, require_complete=False):
     rows, all_attempts, per_repetition = [], [], []
     reference = None
     outcomes = defaultdict(list)
+    exhausted=exhausted_execution
     for index, attempts in repetitions:
         latest = {}
         for record in attempts:
@@ -40,20 +41,24 @@ def aggregate(repetitions, scenario_ids, *, require_complete=False):
             if sid not in latest or record['attempt'] > latest[sid]['attempt']:
                 latest[sid] = record
         cases = sorted(latest.values(), key=lambda r: r['execution_index'])
-        complete = set(latest) == expected and all(r['status'] == 'completed' and
-                    (r.get('grading') or {}).get('status') == 'completed' for r in cases)
+        complete = set(latest) == expected and all(exhausted(r) or (r['status'] == 'completed' and
+                    (r.get('grading') or {}).get('status') == 'completed') for r in cases)
         if require_complete and not complete:
             raise ValueError(f'Repetition {index} is incomplete; refusing a final average')
-        stats, reliability = summarize(cases), summarize(attempts)
+        stats, reliability = summarize_cases(cases,assigned_cases=len(expected)), summarize(attempts)
+        spent=[r['execution_duration_ms'] for r in attempts if r.get('execution_duration_ms') is not None]
+        reliability['total_execution_ms']=sum(spent) if spent else None
         calls, errors = reliability['tool_call_count']['total'], reliability['tool_errors']['total']
         reliability['tool_error_rate'] = errors / calls if errors is not None and calls else None
         per_repetition.append({'index': index, 'complete': complete, 'cases': stats, 'attempts': reliability,
                                'assigned_cases': len(expected)})
         for r in cases:
             grade = (r.get('grading') or {})
-            if grade.get('status') == 'completed':
-                outcomes[r['scenario_id']].append({'repetition': index, 'passed': grade['result']['score']['passed'],
-                                                  'score': grade['result']['score']['score'],
+            judged=grade.get('status') == 'completed'
+            if judged or exhausted(r):
+                outcomes[r['scenario_id']].append({'repetition': index, 'passed': grade['result']['score']['passed'] if judged else False,
+                                                  'graded':judged,'status':r['status'],
+                                                  'score': grade['result']['score']['score'] if judged else None,
                                                   'execution_duration_ms': r.get('execution_duration_ms'),
                                                   'grading_duration_ms': grade.get('duration_ms'),
                                                   **{key: (r.get('metrics') or {}).get(key) for key in
@@ -69,15 +74,18 @@ def aggregate(repetitions, scenario_ids, *, require_complete=False):
         means[metric] = {kind: mean_sd([r['cases'][metric][kind] for r in completed]) for kind in ('mean', 'total')}
     means['run_error_rate'] = mean_sd([r['attempts']['run_error_rate'] for r in completed])
     means['tool_error_rate'] = mean_sd([r['attempts']['tool_error_rate'] for r in completed])
+    means['total_execution_ms']=mean_sd([r['attempts']['total_execution_ms'] for r in completed])
     rubric_keys = sorted({k for r in completed for k in r['cases']['rubric_success_rates']})
     means['rubric_success_rates'] = {key: mean_sd([r['cases']['rubric_success_rates'].get(key, {}).get('success_rate')
                                                for r in completed]) for key in rubric_keys}
+    pooled=summarize_cases(rows,assigned_cases=len(expected)*len(repetitions))
     return {'k': len(repetitions), 'complete_repetitions': len(completed),
             'per_repetition': per_repetition, 'means': means,
-            'pooled_cases': summarize(rows), 'pooled_attempts': summarize(all_attempts),
+            'pooled_cases': pooled, 'pooled_attempts': summarize(all_attempts),
             'per_scenario': {sid: {'outcomes': outcomes[sid],
                                   'pass_fraction': statistics.mean(o['passed'] for o in outcomes[sid]) if outcomes[sid] else None,
-                                  'observed_judgments': len(outcomes[sid]),
+                                  'observed_judgments': sum(o['graded'] for o in outcomes[sid]),
+                                  'observed_outcomes':len(outcomes[sid]),
                                   **{key: mean_sd([o.get(key) for o in outcomes[sid]]) for key in
                                      ('score', 'execution_duration_ms', 'grading_duration_ms',
                                       'tool_call_count', 'input_tokens', 'output_tokens')}} for sid in sorted(expected)}}

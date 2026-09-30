@@ -130,13 +130,15 @@ def publish(experiment_path, dest, env_file):
     sessions=[]
     for model in payload['models']:
         for row in model['rows']:
+            if (row['record'].get('grading') or {}).get('status')!='completed':continue
             rep=next(rep for rep in published['repetitions'] if rep['index']==row['repetition'])
             path=Path(rep['root']).parent/row['record']['grading']['trace_file']
             raw=gzip.decompress(path.read_bytes()).decode() if path.suffix=='.gz' else path.read_text()
             events=[json.loads(line) for line in raw.splitlines()]
             sessions.extend(e['payload']['session_id'] for e in events if e['kind']=='judge_result')
-    if len(sessions)!=780 or len(set(sessions))!=780 or not all(sessions):
-        raise ValueError('Expected 780 distinct successful judge sessions')
+    judged=sum(m['summary']['graded'] for m in payload['models'])
+    if len(sessions)!=judged or len(set(sessions))!=judged or not all(sessions):
+        raise ValueError('Successful judge sessions are missing or not distinct')
     for model in payload['models']:
         for row in model['rows']:
             r = row.get('record')
@@ -163,7 +165,9 @@ def publish(experiment_path, dest, env_file):
     if not existing.exists():
         write_json(existing, {'published_at': datetime.now(timezone.utc).isoformat(),
                              'implementation_commit_at_publication': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-                             'k': 3, 'scenario_count': 52, 'model_count': 5,
+                             'k': 3, 'scenario_count': 52, 'model_count': 5,'assigned_trials':780,
+                             'graded_results':judged,
+                             'execution_failed_cases':sum(m['summary']['execution_failed_cases'] for m in payload['models']),
                              'evidence_policy': 'Original repetition 1 is referenced; repetitions 2 and 3 include measurement-linked compressed full traces.',
                              'redaction_policy': 'Credentials and local path prefixes removed; metrics and timestamps unchanged.'})
     make_report(dest, published, config, groups, payload)
@@ -204,9 +208,10 @@ def make_report(dest, experiment, config, groups, payload):
     for ax, metric, title in zip(axes, ['median_execution_ms', 'p95_execution_ms'], ['Median execution · mean ± SD', 'p95 execution · mean ± SD']):
         for i, (key, color) in enumerate(zip(keys, COLORS)):
             avg = groups[key]['means'][metric]
-            ax.errorbar(avg['mean'] / 1000, i, xerr=avg['sd'] / 1000, fmt='o', color=color, capsize=4)
+            if avg['mean'] is None:continue
+            ax.errorbar(avg['mean'] / 1000, i, xerr=avg['sd'] / 1000 if avg['sd'] is not None else None, fmt='o', color=color, capsize=4)
             for j, rep in enumerate(groups[key]['per_repetition']):
-                ax.scatter(rep['cases'][metric] / 1000, i + (j - 1) * .1, color=color, s=14, alpha=.35)
+                if rep['cases'][metric] is not None:ax.scatter(rep['cases'][metric] / 1000, i + (j - 1) * .1, color=color, s=14, alpha=.35)
         ax.set_yticks(range(5), labels); ax.invert_yaxis(); ax.set_xlim(left=0)
         ax.set_xlabel('Entire agent invocation (seconds)'); ax.set_title(title, loc='left', pad=14, fontweight='bold')
     save(fig, 'execution-time')
@@ -247,27 +252,30 @@ def make_report(dest, experiment, config, groups, payload):
     ax.set_title('Scenario repeatability · successful repetitions / 3', loc='left', pad=14, fontweight='bold')
     save(fig, 'scenario-repeatability')
 
-    columns = ['model', 'repetition', 'scenario_id', 'attempt', 'passed', 'score', 'execution_duration_ms', 'grading_duration_ms',
+    columns = ['model', 'repetition', 'scenario_id', 'attempt','status','grading_status', 'passed', 'score', 'execution_duration_ms', 'grading_duration_ms',
                'input_tokens', 'output_tokens', 'reasoning_tokens', 'cache_read_tokens', 'cache_write_tokens',
                'tool_call_count', 'tool_errors', 'database_writes_attempted', 'database_writes_succeeded', *RUBRICS, 'judge_rationale']
     with (dest / 'cases.csv').open('w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=columns, lineterminator='\n'); writer.writeheader()
         for model in payload['models']:
             for row in model['rows']:
-                r = row['record']; score = row['grade']['score']
+                r = row['record']; score = (row.get('grade') or {}).get('score')
                 values = {k: r.get(k, (row['metrics'] or {}).get(k)) for k in columns}
                 values.update(model=model['name'], repetition=row['repetition'], scenario_id=row['scenario_id'],
-                              passed=score['passed'], score=score['score'], grading_duration_ms=row['grading_ms'],
-                              judge_rationale=score['details'].get('suggestions', score['rationale']))
-                values.update({k: score['details'].get(k) for k in RUBRICS}); writer.writerow(values)
-    mean_columns=['model','scenario_id','pass_fraction','observed_judgments',
+                              grading_status=(r.get('grading') or {}).get('status'),
+                              passed=score['passed'] if score else False, score=score['score'] if score else None,
+                              grading_duration_ms=row['grading_ms'],
+                              judge_rationale=score['details'].get('suggestions', score['rationale']) if score else None)
+                values.update({k: score['details'].get(k) if score else None for k in RUBRICS}); writer.writerow(values)
+    mean_columns=['model','scenario_id','pass_fraction','observed_judgments','observed_outcomes',
                   *[f'{key}_{stat}' for key in ('score','execution_duration_ms','grading_duration_ms',
                                                'tool_call_count','input_tokens','output_tokens') for stat in ('mean','sd','observed_repetitions')]]
     with (dest/'scenario-averages.csv').open('w',newline='') as file:
         writer=csv.DictWriter(file,fieldnames=mean_columns,lineterminator='\n');writer.writeheader()
         for key,label in zip(keys,labels):
             for sid,result in groups[key]['per_scenario'].items():
-                values={'model':label,'scenario_id':sid,'pass_fraction':result['pass_fraction'],'observed_judgments':result['observed_judgments']}
+                values={'model':label,'scenario_id':sid,'pass_fraction':result['pass_fraction'],'observed_judgments':result['observed_judgments'],
+                        'observed_outcomes':result['observed_outcomes']}
                 for metric in ('score','execution_duration_ms','grading_duration_ms','tool_call_count','input_tokens','output_tokens'):
                     values.update({f'{metric}_{stat}':value for stat,value in result[metric].items()})
                 writer.writerow(values)
@@ -277,26 +285,29 @@ def make_report(dest, experiment, config, groups, payload):
     for key, label in zip(keys, labels):
         group = groups[key]; avg = group['means']
         rates = ' | '.join(f"{rep['cases']['pass_rate']:.1%}" for rep in group['per_repetition'])
-        table.append(f"| {label} | {rates} | {fmt(avg['pass_rate'],100)} | {fmt(avg['mean_score'],precision=3)} | {fmt(avg['median_execution_ms'],.001)} | {fmt(avg['p95_execution_ms'],.001)} | {fmt(avg['tool_call_count']['mean'])} |")
-        resources.append(f"| {label} | {fmt(avg['input_tokens']['total'])} | {fmt(avg['output_tokens']['total'])} | {fmt(avg['reasoning_tokens']['total'])} | {fmt(avg['run_error_rate'],100)} | {fmt(avg['tool_error_rate'],100)} |")
+        availability='/'.join(str(r['cases']['graded']) for r in group['per_repetition'])
+        table.append(f"| {label} | {rates} | {fmt(avg['pass_rate'],100)} | {fmt(avg['mean_score'],precision=3)} | {fmt(avg['median_execution_ms'],.001)} | {fmt(avg['p95_execution_ms'],.001)} | {fmt(avg['tool_call_count']['mean'])} | {availability} |")
+        resources.append(f"| {label} | {fmt(avg['input_tokens']['total'])} | {fmt(avg['output_tokens']['total'])} | {fmt(avg['reasoning_tokens']['total'])} | {fmt(avg['run_error_rate'],100)} | {fmt(avg['tool_error_rate'],100)} | {fmt(avg['total_execution_ms'],1/60000)} |")
     attempts = sum(g['pooled_attempts']['attempted'] for g in groups.values())
+    judged=sum(g['pooled_cases']['graded'] for g in groups.values())
+    failed=sum(g['pooled_cases']['execution_failed_cases'] for g in groups.values())
     (dest / 'README.md').write_text(f"""# Transformer · k = 3
 
 [Offline HTML](comparison.html) · [Individual results](cases.csv) · [Scenario averages](scenario-averages.csv) · [Summary JSON](summary.json) · [Experiment](experiment.json) · [Original repetition](../2026-09-30-transformer/README.md)
 
-The original k = 1 comparison was repeated twice on the **same 52 open-form scenarios** and the **same initial database snapshot**. Each repetition executes all five models and grades every scenario in a fresh independent Fable 5.1 session, including Fable's own execution. This produces **156 results per model, 780 independently graded results overall** and {attempts} retained invocation attempts.
+The original k = 1 comparison was repeated twice on the **same 52 open-form scenarios** and the **same initial database snapshot**. Each repetition executes all five models; completed answers are graded in a fresh independent Fable 5.1 session, including Fable's own execution. This produces **156 assigned trials per model, 780 overall**, with **{judged} independent judgments**, **{failed} terminal execution failures**, and {attempts} retained invocation attempts.
 
 ![Average pass rates](graphs/pass-rate.png)
 
-| Model | R1 | R2 | R3 | Mean pass ± SD (%) | Mean score ± SD | Median exec ± SD (s) | p95 exec ± SD (s) | Mean tools ± SD |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Model | R1 | R2 | R3 | Mean pass ± SD (%) | Mean score ± SD | Median exec ± SD (s) | p95 exec ± SD (s) | Mean tools ± SD | Judged R1/R2/R3 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 {chr(10).join(table)}
 
 ## Execution time
 
 ![Execution times across repetitions](graphs/execution-time.png)
 
-Timing surrounds the entire agent invocation; grading is measured separately. Each repetition's median and nearest-rank p95 use its 52 completed scenario invocations. The table averages those **three repetition statistics**; it does not relabel the pooled median as an average median. The interactive HTML also shows the pooled execution distribution and a separate repetition table.
+Timing surrounds the entire agent invocation; grading is measured separately. Each repetition's median and nearest-rank p95 use completed scenario invocations, with observed counts retained in JSON. The table averages those **three repetition statistics**; it does not relabel the pooled median as an average median. Retry-inclusive total execution time includes every measured invocation, including failures. The interactive HTML also shows the pooled execution distribution and a separate repetition table.
 
 ## Rubric and resource use
 
@@ -304,11 +315,11 @@ Timing surrounds the entire agent invocation; grading is measured separately. Ea
 
 ![Average resources](graphs/resources.png)
 
-| Model | Input tokens / repeat ± SD | Output tokens / repeat ± SD | Reported reasoning / repeat ± SD | Run error rate ± SD (%) | Tool error rate ± SD (%) |
-|---|---:|---:|---:|---:|---:|
+| Model | Input tokens / repeat ± SD | Output tokens / repeat ± SD | Reported reasoning / repeat ± SD | Run error rate ± SD (%) | Tool error rate ± SD (%) | Retry-inclusive exec / repeat ± SD (min) |
+|---|---:|---:|---:|---:|---:|---:|
 {chr(10).join(resources)}
 
-Token totals and mean tools use the latest successful invocation per scenario. Reliability retains every failed/retried attempt; a retry is not a new independent repetition. Token availability and observed denominators are stored in JSON. Missing values remain `null` or empty CSV cells. Costs remain separated into actual billed values and provider estimates in the raw measurements.
+Token totals and mean tools use the latest attempt per scenario, including reported metrics from terminal failures. Reliability and total execution time retain every failed/retried attempt; a retry is not a new independent repetition. Token availability and observed denominators are stored in JSON. Missing values remain `null` or empty CSV cells. Costs remain separated into actual billed values and provider estimates in the raw measurements.
 
 ## Scenario repeatability
 
@@ -318,7 +329,7 @@ Each cell reports successful repetitions out of three for one scenario/model pai
 
 ## Method and evidence
 
-Means give each full repetition equal weight. Whiskers and ± values show **sample standard deviation across three repetitions**, not a confidence interval or a significance claim. Rubric rates average the three repetition rates; the no-hallucinations column inverts the adverse raw `hallucinations` finding.
+Means give each finished repetition equal weight. Pass rates use all 52 assigned cases per repetition; an execution that exhausts its three-attempt budget is a known nonpassing outcome. Its judge score, rationale and rubric results remain unavailable, not invented as zeros or false rubric findings. Scores and rubric rates use actual judgments, with availability shown above and in JSON. Whiskers and ± values show **sample standard deviation across repetitions**, not a confidence interval or a significance claim. Missing metrics are excluded with observed counts retained. The no-hallucinations column inverts the adverse raw `hallucinations` finding.
 
 Repetitions 2 and 3 run serially, with five execution targets in parallel within each repetition and independent grading workers alongside them. Fresh per-model namespaces start from the preserved repetition-1 snapshot. State persists across scenario order within each model/repetition, with no per-scenario reset. Scenario and snapshot hashes, exact model IDs, runtime versions, reasoning, limits and judge settings are checked before averaging; per-repetition settings and timestamps are retained.
 
@@ -343,7 +354,7 @@ PYTHONPATH=src .venv/bin/python tools/run_repeated_comparison.py \\
 """)
     files = sorted(p for p in dest.rglob('*') if p.is_file() and p.name != 'checksums.sha256')
     (dest / 'checksums.sha256').write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(dest)}\n' for p in files))
-    print(f'Published k=3: 780 judgments, {attempts} retained attempts.', flush=True)
+    print(f'Published k=3: {judged} judgments, {failed} terminal execution failures, {attempts} retained attempts.', flush=True)
 
 
 def main():

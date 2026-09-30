@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from .measurement import observed_metrics, read_events, summarize
+from .measurement import observed_metrics, read_events, summarize, summarize_cases
 
 NAMES = {'opus-5-5': 'Opus 5.5', 'gpt-6-astra': 'GPT-6 Astra',
          'glm-5-3-low': 'GLM 5.3', 'gpt-6-1-sol': 'GPT-6.1 Sol', 'fable-5-1': 'Fable 5.1'}
@@ -52,5 +52,5 @@ def snapshot(suite, target):
                      'answer': (trace or {}).get('answer'), 'grade': result,
                      'duration_ms': elapsed, 'grading_ms': (grade or {}).get('duration_ms'),
                      'metrics': metrics, 'record': record})
-    return {'rows': rows, 'summary': summarize(list(latest.values())),
+    return {'rows': rows, 'summary': summarize_cases(list(latest.values()),assigned_cases=len(scenarios)),
             'attempt_summary': summarize(attempts), 'settings': read_json(target / 'settings.json')}

@@ -176,6 +176,24 @@ def summarize(records):
     return result
 
 
+def exhausted_execution(record):
+    budget=((record.get('settings') or {}).get('invocation_retry_policy') or {}).get('max_attempts',3)
+    return record['status'] in {'failed','timed_out'} and record['attempt']>=budget
+
+
+def summarize_cases(records, *, assigned_cases=None):
+    """Known final execution failures are nonpassing; their judge scores stay missing."""
+    result=summarize(records)
+    errors=sum(exhausted_execution(r) for r in records)
+    passed=sum(r['grading']['result']['score']['passed'] for r in records
+               if (r.get('grading') or {}).get('status')=='completed')
+    observed=result['graded']+errors
+    result.update(pass_rate=passed/observed if observed else None,passed=passed,
+                  execution_failed_cases=errors,outcome_observed=observed,
+                  assigned_cases=len(records) if assigned_cases is None else assigned_cases)
+    return result
+
+
 def refresh_capture(record):
     """Re-read this run's observed trace, preserving its measured invocation time."""
     events=read_events(Path(record['trace_file']))

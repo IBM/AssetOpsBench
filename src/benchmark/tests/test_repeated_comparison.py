@@ -41,6 +41,22 @@ def test_retry_does_not_change_repetition_weight_or_hide_failure_cost():
     assert result['pooled_attempts']['attempted'] == 4
     assert result['pooled_attempts']['run_error_rate'] == .25
     assert result['means']['input_tokens']['total']['mean'] == 100
+    assert result['means']['total_execution_ms']['mean'] == pytest.approx(590/3)
+
+
+def test_exhausted_execution_counts_as_nonpassing_without_inventing_a_judge_score():
+    failed=record('2',False,100,attempt=3)
+    failed.update(status='failed',grading=None)
+    result=aggregate([(1,[record('1',True,10),failed])],{'1','2'},require_complete=True)
+    stats=result['per_repetition'][0]['cases']
+    assert result['complete_repetitions']==1
+    assert stats['pass_rate']==.5
+    assert stats['graded']==1 and stats['execution_failed_cases']==1
+    assert stats['mean_score']==1  # The missing score was not fabricated as zero.
+    case=result['per_scenario']['2']
+    assert case['pass_fraction']==0 and case['observed_outcomes']==1
+    assert case['observed_judgments']==0 and case['score']['mean'] is None
+    assert case['execution_duration_ms']['mean']==100
 
 
 def test_partial_repeat_and_missing_tokens_are_not_zero_filled():
