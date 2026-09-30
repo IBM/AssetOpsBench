@@ -1,9 +1,9 @@
 """Generate Harbor task directories from AssetOpsBench scenarios.
 
 One adapter, two datasets. Point it at the open profile and the in-repo
-scenario data to produce the public set; point it at the full corpus to produce
-the restricted set. The task template is shared, which is what keeps the two
-from drifting apart.
+scenario data to produce the public set; point it at the private suite to
+produce the mini, lite and all sets. The task template is shared, which is what
+keeps the two from drifting apart.
 
     python benchmarks/harbor/adapter/generate_tasks.py --overwrite
 

@@ -1,36 +1,39 @@
 """Stirrup as a Harbor agent.
 
-Written against AssetOpsBench main (81265cb). Harbor's agent factory imports
-any ``module.path:ClassName`` passed to ``--agent`` directly, bypassing its
-built-in name enum, so this class needs no upstream registration and lives in
-the AssetOpsBench repo:
+Harbor's agent factory imports any ``module.path:ClassName`` passed to
+``--agent`` directly, bypassing its built-in name enum, so this class needs no
+upstream registration and lives in the AssetOpsBench repo. It is installed with
+the project, so no PYTHONPATH is needed:
 
-    PYTHONPATH=agent harbor run -p datasets/assetopsbench-open \
+    uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
       --agent assetops_harbor.stirrup:StirrupAgent \
-      --model watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 \
-      --ak code_enabled=false \
-      --n-concurrent 16
+      --model litellm_proxy/azure/gpt-5.6-sol \
+      --ak code_enabled=true --ak code_backend=local \
+      --n-concurrent 4
 
 The agent process runs INSIDE the task container, which is what keeps this
-phase small: the six MCP servers stay stdio children of Stirrup exactly as
-``mcphub.DEFAULT_SERVERS`` launches them today (``uv run <name>-mcp-server``),
-and they inherit this trial's COUCHDB_URL through mcphub's
-``{**os.environ, **(env or {})}`` merge. Nothing about the transport changes.
+phase small: the six MCP servers stay stdio children of Stirrup
+(``uv run <name>-mcp-server``), and they get this trial's COUCHDB_URL through
+the explicit ``env`` that ``agent.runner.mcp_server_env`` builds. Nothing about
+the transport changes.
 
-Three facts about main shape this file:
+Three facts about ``stirrup-agent`` shape this file:
 
-* ``stirrup-agent`` takes the question as a REQUIRED POSITIONAL argument
+* It takes the question as a REQUIRED POSITIONAL argument
   (``_cli_common.add_common_args``). There is no stdin path, so the question
   is uploaded to a file and passed as ``"$(cat ...)"``, which survives
   multi-line prose without the argv quoting hazards of inlining it.
-* There is no ``--topology`` flag. The arms main actually exposes are
+* There is no ``--topology`` flag. The arms it exposes are
   ``--code-enabled`` / ``--no-code``, ``--code-backend``, ``--max-turns``,
   ``--temperature`` and ``--reasoning-effort``.
 * ``--code-backend`` defaults to ``docker``, which spawns a sibling container
-  from ``STIRRUP_CODE_IMAGE``. There is no Docker daemon inside a Harbor task
-  container, so that default would fail every run. ``local`` is the right
-  backend here: the Harbor container is already a per-trial sandbox, so the
-  isolation the docker backend buys on a laptop is redundant.
+  from ``STIRRUP_CODE_IMAGE``. A plain Harbor task container has no Docker
+  daemon, so this adapter defaults to ``local`` and accepts ``docker`` only
+  with ``allow_docker_backend=true``, for runs that add
+  ``benchmarks/harbor/overlays/code-sandbox.yaml``. That overlay gives each
+  trial its own Docker-in-Docker daemon, whose code containers get neither
+  CouchDB's hostname nor the forwarded credentials. ``local`` runs that code
+  in ``main``, next to both.
 """
 
 from __future__ import annotations
@@ -132,10 +135,10 @@ class StirrupAgent(BaseInstalledAgent):
         if code_backend == "docker" and not allow_docker_backend:
             raise ValueError(
                 "code_backend='docker' spawns a sibling container from "
-                "STIRRUP_CODE_IMAGE, and a Harbor task container has no Docker "
-                "daemon. Use code_backend='local' (the Harbor container is "
-                "already a per-trial sandbox), or mount a Docker socket into "
-                "the task's compose file and pass allow_docker_backend=true."
+                "STIRRUP_CODE_IMAGE, and a plain Harbor task container has no "
+                "Docker daemon. Use code_backend='local', or add "
+                "--extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml "
+                "and pass allow_docker_backend=true."
             )
 
         # Harbor records every agent kwarg in the trial's config.json, so the
@@ -540,10 +543,11 @@ def _load_dotenv() -> None:
 
     Runs host-side, in the Harbor process. override=False keeps exported shell
     variables ahead of the file, and --ae stays ahead of both because _get_env
-    checks the agent's extra env first. Only CREDENTIAL_ENV_VARS reach the agent
-    container, and .dockerignore keeps the file itself out of every image. The
-    verifier resolves its ${VAR:-} templates after the agent is constructed, so
-    AOB_JUDGE_MODEL and the judge keys are picked up from .env as well.
+    checks the agent's extra env first. Only CREDENTIAL_ENV_VARS and
+    SETTING_ENV_VARS reach the agent container, and .dockerignore keeps the
+    file itself out of every image. The verifier resolves its ${VAR:-}
+    templates after the agent is constructed, so AOB_JUDGE_MODEL and the judge
+    keys are picked up from .env as well.
     """
     load_dotenv(find_dotenv(usecwd=True), override=False)
 

@@ -6,8 +6,9 @@
 # the whole environment/ directory, so a fat per-task context defeats the cache
 # and rebuilds the world for every scenario.
 #
-#   bash benchmarks/harbor/scripts/build-runtime-image.sh \
-#     -t assetopsbench/runtime:$(git rev-parse --short HEAD)
+#   bash benchmarks/harbor/scripts/build-runtime-image.sh
+#
+# tags it assetopsbench/runtime:dev and assetopsbench/runtime:<commit>.
 #
 # The script builds from `git archive HEAD`, so `COPY . .` below sees committed
 # files only, and passes that commit as AOB_COMMIT. A plain `docker build` of the
@@ -52,7 +53,7 @@ COPY pyproject.toml uv.lock ./
 # it fails at export time on a missing google.protobuf and drops every batch.
 RUN uv sync --frozen --group otel --extra tsfm --no-install-project
 
-# Repo, including the shared scenario corpus under
+# Repo, including the shared scenario data under
 # src/couchdb/scenarios_data/shared (7.7 MB in the open profile). Shared here
 # means pulled once, not copied into every task context.
 COPY . .
@@ -64,8 +65,9 @@ RUN uv sync --frozen --group otel --extra tsfm
 #   preload_models.py --print-repos > benchmarks/harbor/base-image/models.txt
 #
 # The list rather than the catalog, because the catalog is private and a COPY
-# would write it into a layer for good. check_models_list.sh fails CI when the
-# two drift.
+# would write it into a layer for good. Nothing checks that the two agree:
+# rerun the command above whenever the catalog's Hub entries change, or the new
+# models are not preloaded.
 RUN uv run python benchmarks/harbor/scripts/preload_models.py \
         --from-list benchmarks/harbor/base-image/models.txt --download
 

@@ -78,7 +78,7 @@ overlay with the four required `--ak` flags.
   -s /path/to/scenarios_data \
   -l /path/to/leaderboard \
   -n 2 \
-  -m "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+  -m "litellm_proxy/azure/gpt-5.6-sol max"
 ```
 
 `-n 2` rather than the default 4, for the reason above. Repeat `-m` to sweep

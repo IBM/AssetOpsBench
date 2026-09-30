@@ -63,13 +63,16 @@ uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
   --agent oracle --n-concurrent 2
 
 # 4. Run Stirrup, scenarios in parallel. assetops_harbor is installed as part
-#    of the project, so no PYTHONPATH is needed.
+#    of the project, so no PYTHONPATH is needed. Use a litellm_proxy/ or
+#    tokenrouter/ model: the FMSR server runs generate_failure_modes on the
+#    agent's model and accepts only those two routers, so a watsonx/ agent runs
+#    without that tool unless FMSR_MODEL_ID names a router model.
 uv run harbor run \
   -p benchmarks/harbor/datasets/assetopsbench-open \
   --agent assetops_harbor.stirrup:StirrupAgent \
-  --model watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 \
+  --model litellm_proxy/azure/gpt-5.6-sol \
   --ak code_enabled=false \
-  --n-concurrent 16
+  --n-concurrent 4
 ```
 
 ## Running a full scenario suite (the `benchmarks/run.sh` equivalent)
@@ -271,16 +274,18 @@ memory (see [Resource limits](#resource-limits)).
 
 For the local code backend instead, drop `code-sandbox.yaml` and
 `AOB_CODE_TAR`, and pass only `--ak code_enabled=true --ak code_backend=local`.
-Code then runs inside `main`, next to CouchDB and the runtime image's copy of
-the repo, which includes the open scenarios' ground truth.
+Code then runs inside `main`, as root, next to CouchDB and the model
+credentials the agent forwards. The runtime image carries no answer files, but
+the verifier later runs in that same container.
 
 A private run loaded its data when no trial's `agent/*.stdout.txt` contains
 `Database does not exist`.
 
 ## Why the MCP servers need an explicit env
 
-`StirrupAgentRunner._build_mcp_config` sets `env` on every stdio server. It has
-to. `mcp.client.stdio` applies `get_default_environment()` when
+`StirrupAgentRunner._build_mcp_config` sets `env` on every stdio server, from
+`mcp_server_env` in `src/agent/runner.py`, which the plan-execute executor uses
+too. It has to. `mcp.client.stdio` applies `get_default_environment()` when
 `StdioServerParameters.env` is None, and that inherits only HOME, LOGNAME, PATH,
 SHELL, TERM and USER. Without it, no server sees `COUCHDB_URL` and each falls
 back to `http://localhost:5984`.
@@ -340,7 +345,7 @@ to a registry, and only the names in `CREDENTIAL_ENV_VARS` reach the container.
 | `--ak temperature=0.2` | `--temperature 0.2` | omitted |
 | `--ak reasoning_effort=high` | `--reasoning-effort high` | omitted |
 
-`code_backend` defaults to `local` rather than `stirrup-agent`'s own default of `docker`. The docker backend spawns a sibling container from `STIRRUP_CODE_IMAGE`, and a Harbor task container has no Docker daemon, so that default would fail every run. The adapter rejects `docker` with that explanation unless you pass `allow_docker_backend=true` and wire a socket into the task's compose file. `local` is the right backend under Harbor anyway: the container is already a per-trial sandbox, so the isolation the docker backend buys on a laptop is redundant here.
+`code_backend` defaults to `local` rather than `stirrup-agent`'s own default of `docker`. The docker backend spawns a sibling container from `STIRRUP_CODE_IMAGE`, and a plain Harbor task container has no Docker daemon, so that default would fail every run. The adapter rejects `docker` with that explanation unless you pass `allow_docker_backend=true`, which is for runs that add `overlays/code-sandbox.yaml`: that overlay gives each trial its own Docker-in-Docker daemon, and `workspace_dir=/workspace-share` is then required too (see [CODE-SANDBOX.md](CODE-SANDBOX.md)). The two backends are not equivalent. `local` runs agent code in `main`, where it can reach CouchDB by name and read the forwarded credentials. Under the sandbox, code containers get neither; the overlay's header says what that does and does not block.
 
 ## Three things the existing CLI forced
 

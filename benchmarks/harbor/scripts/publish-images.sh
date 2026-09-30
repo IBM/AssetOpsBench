@@ -2,16 +2,16 @@
 # Build and publish the images the Harbor tasks depend on, for both
 # architectures, so nobody has to build them locally.
 #
-#   ./benchmarks/harbor/scripts/publish-images.sh assetopsbench v0.1.0
+#   ./benchmarks/harbor/scripts/publish-images.sh quay.io/assetopsbench v0.1.0
 #
-# Run from the repository root. Requires `docker login` and a buildx builder
-# that can do multi-platform builds:
+# Run from the repository root. Requires `docker login` to that registry and a
+# buildx builder that can do multi-platform builds:
 #
 #   docker buildx create --name aob --use --bootstrap
 #
 # Two images:
-#   <namespace>/runtime  the repo, its uv environment and the shared corpus.
-#                        Every task image layers its scenario onto this.
+#   <namespace>/runtime  the repo, its uv environment and the shared scenario
+#                        data. Every task image layers its scenario onto this.
 #   <namespace>/code     the sandbox for the code track (numpy, pandas, scipy).
 #                        Only needed by the code-sandbox overlay.
 #
@@ -23,7 +23,7 @@
 # are not published; commit them first.
 set -euo pipefail
 
-NAMESPACE="${1:?usage: publish-images.sh <dockerhub-namespace> [tag]}"
+NAMESPACE="${1:?usage: publish-images.sh <namespace, e.g. quay.io/assetopsbench> [tag]}"
 TAG="${2:-dev}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 
