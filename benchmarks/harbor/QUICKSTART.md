@@ -37,8 +37,9 @@ Or build it yourself, which takes a few minutes and needs no registry:
 bash benchmarks/harbor/scripts/build-runtime-image.sh
 ```
 
-The script builds `assetopsbench/runtime:dev` from `git archive HEAD`, not
-from your working tree, so untracked files such as local results never reach
+The script builds `assetopsbench/runtime:dev`, also tagged
+`assetopsbench/runtime:<commit>`, from `git archive HEAD`, not from your
+working tree, so untracked files such as local results never reach
 the container the agent runs in. Commit a change first to include it.
 
 Each task's `environment/docker-compose.yaml` passes `AOB_RUNTIME_IMAGE` to

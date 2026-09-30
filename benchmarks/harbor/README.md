@@ -43,8 +43,9 @@ command from the repo root.
 #    from `git archive HEAD`, so untracked files and uncommitted changes stay
 #    out of the image. The tag is local and is the default AOB_RUNTIME_IMAGE
 #    that each task's docker-compose.yaml passes to its Dockerfile; nothing is
-#    pulled or pushed. To use a published image instead, pull it and
-#    `export AOB_RUNTIME_IMAGE=<image>` before `harbor run`.
+#    pulled or pushed. It also tags assetopsbench/runtime:<commit>, which
+#    later builds do not move, to pin a run to this build. To use a published
+#    or pinned image, `export AOB_RUNTIME_IMAGE=<image>` before `harbor run`.
 bash benchmarks/harbor/scripts/build-runtime-image.sh
 
 # 2. Generate one task per scenario in the open profile. The defaults point at

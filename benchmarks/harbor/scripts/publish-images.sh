@@ -42,10 +42,16 @@ if ! docker buildx inspect >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "==> ${NAMESPACE}/runtime:${TAG} for ${PLATFORMS}"
+# The commit tag never moves, unlike TAG and latest, so a published run can
+# name the exact build it used. build-runtime-image.sh builds HEAD, so this is
+# the commit in the image whatever the working tree holds.
+COMMIT="$(git rev-parse HEAD | cut -c1-7)"
+
+echo "==> ${NAMESPACE}/runtime:${TAG} (${COMMIT}) for ${PLATFORMS}"
 bash benchmarks/harbor/scripts/build-runtime-image.sh \
     --platform "${PLATFORMS}" \
     -t "${NAMESPACE}/runtime:${TAG}" \
+    -t "${NAMESPACE}/runtime:${COMMIT}" \
     -t "${NAMESPACE}/runtime:latest" \
     --push
 

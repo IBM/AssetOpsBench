@@ -3,11 +3,14 @@
 #
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh --no-cache
-#   bash benchmarks/harbor/scripts/build-runtime-image.sh -t assetopsbench/runtime:abc1234
+#   bash benchmarks/harbor/scripts/build-runtime-image.sh -t myorg/runtime:test
 #
 # Arguments go to `docker buildx build` unchanged. Unless they name a tag (-t)
-# the image is tagged assetopsbench/runtime:dev, the tag the task template
-# builds FROM, and unless they name an output (--push, --output, --load) it is
+# the image is tagged twice: assetopsbench/runtime:dev, the tag the task
+# template builds FROM by default, and assetopsbench/runtime:<commit>, the
+# short hash of the HEAD it was built from. :dev moves with every build; the
+# commit tag does not, so `run.sh -r assetopsbench/runtime:<commit>` pins a run
+# to one build. Unless they name an output (--push, --output, --load) it is
 # loaded into the local image store. publish-images.sh passes --platform, its
 # own tags and --push.
 #
@@ -54,7 +57,7 @@ for arg in "$@"; do
   esac
 done
 defaults=()
-$has_tag || defaults+=(-t assetopsbench/runtime:dev)
+$has_tag || defaults+=(-t assetopsbench/runtime:dev -t "assetopsbench/runtime:${commit:0:7}")
 $has_output || defaults+=(--load)
 
 printf 'Building the runtime image from %s (git archive)\n' "${commit:0:7}" >&2
