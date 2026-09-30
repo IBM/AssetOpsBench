@@ -95,7 +95,7 @@ fi
 # A missing shared/ would not fail the mount: Docker creates the host directory,
 # and every collection then loads empty without an error.
 if [[ ! -d "$scenario_dir/shared" ]]; then
-  printf 'No shared/ directory in %s; is -s the suite'"'"'s scenarios_data?\n' "$scenario_dir" >&2
+  printf "No shared/ directory in %s; is -s the suite's scenarios_data?\n" "$scenario_dir" >&2
   exit 2
 fi
 export AOB_PRIVATE_DIR="$scenario_dir"
@@ -166,8 +166,14 @@ for model_config in "${model_configs[@]}"; do
     # Drop trials whose agent crashed (e.g. the model was unreachable) so
     # they run again; scored trials are kept, as run.sh's --skip-existing
     # kept scenarios that already had a trajectory.
-    uv run --env-file "$env_file" harbor jobs resume -p "$job_path" \
-      --filter-error-type NonZeroAgentExitCodeError || true
+    # Harbor refuses to resume once the tasks or overlays differ from the
+    # job's lock, e.g. a job started before run.sh switched to the shared/
+    # mount. Say so rather than skip the model silently.
+    if ! uv run --env-file "$env_file" harbor jobs resume -p "$job_path" \
+      --filter-error-type NonZeroAgentExitCodeError; then
+      printf 'Could not resume %s. If its tasks or overlays changed since it\n' "$job_path" >&2
+      printf 'started, move it aside to rerun %s from scratch.\n' "$model_id" >&2
+    fi
     continue
   fi
 

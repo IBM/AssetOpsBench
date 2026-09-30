@@ -15,19 +15,28 @@
 # answers to all of them. The task's own manifest.json comes from the per-task
 # image layer instead, which the generator builds without the answer files.
 #
-# The mount picks up changes to the suite on the next run, with no rebuild. It
-# is local-only: Harbor providers that cannot see the host's filesystem cannot
-# bind-mount it, and a run's results depend on the directory's contents at the
-# time.
+# Changes to shared/ take effect on the next run, with no rebuild. A changed
+# manifest.json does not: it is baked into each task's image, so regenerate the
+# tasks. The mount is local-only: Harbor providers that cannot see the host's
+# filesystem cannot bind-mount it, and a run's results depend on the directory's
+# contents at the time.
 #
 # Only init_data.py reads the mount, and only the files a manifest names, so
 # going through Docker Desktop or Rancher file sharing costs little: the all
 # profile references 58 MB of the suite's 2.1 GB shared/ directory.
 #
-# `:?` names the missing variable when AOB_PRIVATE_DIR is unset. A plain
-# ${AOB_PRIVATE_DIR} fails too, but as "invalid spec: :/opt/suite/...: empty
-# section between colons", which does not say what to set.
+# `:?` names the missing variable when AOB_PRIVATE_DIR is unset.
+# create_host_path: false makes a wrong path fail the trial at start. Otherwise
+# Docker creates an empty shared/ on the host and every collection loads empty
+# while the healthcheck still passes. That includes a relative AOB_PRIVATE_DIR,
+# which Compose resolves against the task's environment/ directory, not the
+# shell's; use an absolute path. The long syntax also accepts a path with ':'.
 services:
   main:
     volumes:
-      - ${AOB_PRIVATE_DIR:?set AOB_PRIVATE_DIR to the private suite's scenarios_data directory}/shared:/opt/suite/scenarios_data/shared:ro
+      - type: bind
+        source: ${AOB_PRIVATE_DIR:?set AOB_PRIVATE_DIR to the private suite's scenarios_data directory}/shared
+        target: /opt/suite/scenarios_data/shared
+        read_only: true
+        bind:
+          create_host_path: false

@@ -100,7 +100,10 @@ the number of concurrent trials. The script:
    process only.
 
 Re-running resumes an existing job and finishes only its incomplete trials,
-the equivalent of `--skip-existing`. Each trial with the code sandbox runs a
+the equivalent of `--skip-existing`. Harbor refuses to resume a job whose tasks
+or overlays have changed since it started, such as one from before `run.sh`
+mounted only `shared/`; the script says so, and moving that job aside reruns
+the model from scratch. Each trial with the code sandbox runs a
 privileged `dind` sidecar, so keep `-n` around 4 on a laptop-sized Docker VM.
 
 ## Generating other profiles by hand
@@ -112,6 +115,7 @@ suite, and the healthcheck then loads them from `/opt/suite/scenarios_data`,
 where the overlay mounts the suite's `shared/` directory:
 
 ```bash
+# Absolute: Compose resolves a relative path against each task's environment/.
 export AOB_PRIVATE_DIR=/path/to/scenarios_data
 
 uv run python benchmarks/harbor/adapter/generate_tasks.py \
@@ -151,10 +155,11 @@ than for open: these tasks carry ground truth from the private suite in
 Each scenario's `manifest.json` names its CouchDB inputs as paths under
 `shared/`, for example `shared/work_order/work_order_mainte.csv`, and
 `init_data.py` resolves them against the parent of the scenario folder. The
-generator copies only `scenario_<id>/` into a task, minus the files the verifier
-reads (`groundtruth.txt`, `rubric.json` and the rest of the list under
-[Scoring](#scoring)). For an external `--scenario-root` it copies that folder to
-`/opt/suite/scenarios_data/`, and the healthcheck runs
+generator copies into a task only what that load reads from `scenario_<id>/`:
+`manifest.json` and any file it names inside the folder. That is an allowlist,
+so `groundtruth.txt`, `rubric.json` and any other answer file stays out under
+whatever name. For an external `--scenario-root` it copies them to
+`/opt/suite/scenarios_data/scenario_<id>/`, and the healthcheck runs
 `SCENARIOS_DATA_DIR=/opt/suite/scenarios_data init_data.py <id>`. The overlay
 bind-mounts `$AOB_PRIVATE_DIR/shared` beside it read-only, so `shared/` resolves
 against the suite's own copy. The agent's `SCENARIOS_DATA_DIR` stays on the repo
@@ -163,9 +168,11 @@ copy.
 The overlay mounts `shared/` and nothing else. Every other folder in the suite
 is a `scenario_<id>/` holding that scenario's answers, and `main` is the agent's
 container, so mounting the whole directory would let any task read the ground
-truth for all of them. With only `shared/` mounted and the answer files left out
-of the build context, a trial's `main` holds no private ground truth; the
-verifier's copy arrives in `/tests` only after the agent phase ends.
+truth for all of them. With only `shared/` mounted and only the manifest in the
+build context, a trial's `main` holds no private ground truth; the verifier's
+copy arrives in `/tests` only after the agent phase ends. The overlay also
+refuses a path that does not exist (`bind source path does not exist`) rather
+than mount an empty directory.
 
 The mount sits beside the repo copy rather than over it, because the suite's
 `shared/` is not a superset of the repo's. It lacks files that scenarios 1–3
