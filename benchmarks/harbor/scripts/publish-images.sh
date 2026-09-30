@@ -62,13 +62,11 @@ cat <<NOTE
 Published. Users now pull instead of building:
 
   docker pull ${NAMESPACE}/runtime:latest
-  docker tag  ${NAMESPACE}/runtime:latest assetopsbench/runtime:dev
+  export AOB_RUNTIME_IMAGE=${NAMESPACE}/runtime:latest
 
-The second line matters. benchmarks/harbor/template/environment/Dockerfile
-references the local tag assetopsbench/runtime:dev through its
-AOB_RUNTIME_IMAGE build arg, so the pulled image has to carry that tag. If you
-publish under a different namespace, change that default instead of asking
-every user to retag.
+Each task's docker-compose.yaml passes AOB_RUNTIME_IMAGE to its Dockerfile as
+a build arg, so harbor run builds FROM that image; unset, it falls back to the
+local tag assetopsbench/runtime:dev. benchmarks/harbor/run.sh takes it as -r.
 
 For the code track, point the overlay at the published image rather than a tar:
 

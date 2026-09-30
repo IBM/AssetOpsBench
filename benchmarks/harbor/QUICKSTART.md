@@ -23,11 +23,12 @@ uv sync --dev --extra harbor
 
 ## 2. Get the runtime image
 
-Every task image layers its scenario onto one shared runtime image. Pull it:
+Every task image layers its scenario onto one shared runtime image. Pull the
+published one (currently linux/arm64 only) and point the tasks at it:
 
 ```bash
-docker pull assetopsbench/runtime:latest
-docker tag assetopsbench/runtime:latest assetopsbench/runtime:dev
+docker pull quay.io/assetopsbench/runtime:dev
+export AOB_RUNTIME_IMAGE=quay.io/assetopsbench/runtime:dev
 ```
 
 Or build it yourself, which takes a few minutes and needs no registry:
@@ -40,10 +41,11 @@ The script builds `assetopsbench/runtime:dev` from `git archive HEAD`, not
 from your working tree, so untracked files such as local results never reach
 the container the agent runs in. Commit a change first to include it.
 
-Either way the local tag `assetopsbench/runtime:dev` is what the task
-Dockerfiles reference, through the `AOB_RUNTIME_IMAGE` build arg in
-`benchmarks/harbor/template/environment/Dockerfile`. Change that default if you
-publish under a different namespace.
+Each task's `environment/docker-compose.yaml` passes `AOB_RUNTIME_IMAGE` to
+its Dockerfile as a build arg, so `harbor run` builds FROM whatever that
+variable names when it runs, and from the local `assetopsbench/runtime:dev`
+when it is unset. Changing the image needs no task regeneration. `run.sh` takes
+it as `-r`.
 
 ## 3. Generate the tasks
 

@@ -1,6 +1,6 @@
 # Harbor supplies the `main` service itself (build or prebuilt image, plus a
 # keepalive command) and merges this file over it, task file last. Everything
-# below is additive.
+# below is additive: Compose merges main's build.args into Harbor's build block.
 #
 # Note what is NOT here: a `ports:` block. Harbor namespaces containers,
 # networks and volumes per trial via the Compose project name
@@ -9,6 +9,18 @@
 # which is exactly the failure this whole design exists to remove.
 services:
   main:
+    # The runtime image this task layers onto, picked at run time rather than
+    # baked into the task. Harbor runs `docker compose build` with the shell's
+    # environment, so
+    #
+    #   AOB_RUNTIME_IMAGE=quay.io/assetopsbench/runtime:dev harbor run ...
+    #
+    # builds FROM that image, and unset keeps the local tag that
+    # build-runtime-image.sh produces. The Dockerfile's ARG default is the
+    # same fallback for a build outside Compose.
+    build:
+      args:
+        AOB_RUNTIME_IMAGE: ${AOB_RUNTIME_IMAGE:-assetopsbench/runtime:dev}
     depends_on:
       couchdb:
         condition: service_healthy

@@ -7,11 +7,16 @@
 # shared database.
 #
 #   bash benchmarks/harbor/run.sh -s SCENARIO_DIR -l LEADERBOARD_DIR \
-#     [-n N_CONCURRENT] [-p PROFILE] [-m "MODEL_ID REASONING_EFFORT"]...
+#     [-n N_CONCURRENT] [-p PROFILE] [-r RUNTIME_IMAGE] \
+#     [-m "MODEL_ID REASONING_EFFORT"]...
 #
-# Prerequisites: Docker running, `uv sync --extra harbor`, and the runtime image
+# Prerequisites: Docker running, `uv sync --extra harbor`, and the runtime image,
+# either built locally
 #
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh
+#
+# or published, passed as -r (or AOB_RUNTIME_IMAGE), e.g.
+# -r quay.io/assetopsbench/runtime:dev.
 #
 # Credentials are read from ENV_FILE (default .env) by `uv run --env-file`, into
 # the Harbor process only; StirrupAgent forwards them to the agent phase. They
@@ -24,7 +29,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s -s SCENARIO_DIR -l LEADERBOARD_DIR [-n N_CONCURRENT] [-p PROFILE] [-m "MODEL_ID EFFORT"]...\n' "$0" >&2
+  printf 'Usage: %s -s SCENARIO_DIR -l LEADERBOARD_DIR [-n N_CONCURRENT] [-p PROFILE] [-r RUNTIME_IMAGE] [-m "MODEL_ID EFFORT"]...\n' "$0" >&2
 }
 
 scenario_dir="${SCENARIO_DIR:-}"
@@ -32,14 +37,16 @@ leaderboard_dir="${LEADERBOARD_DIR:-}"
 n_concurrent="${N_CONCURRENT:-4}"
 profile="${PROFILE:-benchmarks/scenario_suite/all.yaml}"
 env_file="${ENV_FILE:-.env}"
+runtime_image="${AOB_RUNTIME_IMAGE:-assetopsbench/runtime:dev}"
 model_configs=()
 
-while getopts ':s:l:n:p:m:' option; do
+while getopts ':s:l:n:p:r:m:' option; do
   case "$option" in
     s) scenario_dir="$OPTARG" ;;
     l) leaderboard_dir="$OPTARG" ;;
     n) n_concurrent="$OPTARG" ;;
     p) profile="$OPTARG" ;;
+    r) runtime_image="$OPTARG" ;;
     m) model_configs+=("$OPTARG") ;;
     :) printf 'Option -%s requires an argument.\n' "$OPTARG" >&2; usage; exit 2 ;;
     \?) printf 'Unknown option: -%s\n' "$OPTARG" >&2; usage; exit 2 ;;
@@ -77,16 +84,38 @@ if [[ ! -f "$env_file" ]]; then
   exit 2
 fi
 
-runtime_image=assetopsbench/runtime:dev
 code_image=assetops-code:dev
 code_tar="${AOB_CODE_TAR:-$HOME/assetops-code.tar}"
 dataset_dir=benchmarks/harbor/datasets/assetopsbench-suite
 
-if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
+# Every task image builds FROM the runtime image, through the AOB_RUNTIME_IMAGE
+# build arg in the task's docker-compose.yaml. A reference whose first component
+# names a registry host (quay.io/..., localhost:5000/...) is pulled, so the run
+# gets the published image rather than a stale local copy; the build would not
+# pull it, because a local copy satisfies FROM. A bare name such as the default
+# is a local build from build-runtime-image.sh, published nowhere under that
+# name, so it has to exist already.
+registry="${runtime_image%%/*}"
+if [[ "$runtime_image" == */* && ( "$registry" == *.* || "$registry" == *:* || "$registry" == localhost ) ]]; then
+  if ! docker pull "$runtime_image"; then
+    if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
+      printf 'Could not pull runtime image %s\n' "$runtime_image" >&2
+      exit 1
+    fi
+    printf 'warning: could not pull %s; using the local copy, which may be stale\n' \
+      "$runtime_image" >&2
+  fi
+elif ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
   printf 'Runtime image %s not found. Build it first:\n' "$runtime_image" >&2
   printf '  bash benchmarks/harbor/scripts/build-runtime-image.sh\n' >&2
   exit 1
 fi
+# Compose reads this on `harbor run` and again on `harbor jobs resume`, so a
+# resumed job finishes its trials on the image given now, not the one it
+# started with.
+export AOB_RUNTIME_IMAGE="$runtime_image"
+printf 'Runtime image: %s (%s)\n' "$runtime_image" \
+  "$(docker image inspect --format '{{.Id}}' "$runtime_image" | cut -c8-19)"
 
 # The suite's shared/ data reaches each trial through
 # overlays/private-data.yaml, a read-only bind mount of this directory's shared/.

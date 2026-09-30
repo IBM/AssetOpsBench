@@ -41,8 +41,10 @@ command from the repo root.
 ```bash
 # 1. Build the runtime base (once per AssetOpsBench commit). The script builds
 #    from `git archive HEAD`, so untracked files and uncommitted changes stay
-#    out of the image. The tag is local and is the default AOB_RUNTIME_IMAGE in
-#    template/environment/Dockerfile; nothing is pulled or pushed.
+#    out of the image. The tag is local and is the default AOB_RUNTIME_IMAGE
+#    that each task's docker-compose.yaml passes to its Dockerfile; nothing is
+#    pulled or pushed. To use a published image instead, pull it and
+#    `export AOB_RUNTIME_IMAGE=<image>` before `harbor run`.
 bash benchmarks/harbor/scripts/build-runtime-image.sh
 
 # 2. Generate one task per scenario in the open profile. The defaults point at
@@ -83,18 +85,26 @@ bash benchmarks/harbor/run.sh \
 ```
 
 `-m` may repeat; without it the script runs `benchmarks/run.sh`'s model list.
-`-p` picks the profile (default `benchmarks/scenario_suite/all.yaml`), and `-n`
-the number of concurrent trials. The script:
+`-p` picks the profile (default `benchmarks/scenario_suite/all.yaml`), `-n`
+the number of concurrent trials, and `-r` the runtime image (default
+`assetopsbench/runtime:dev`, or `AOB_RUNTIME_IMAGE`). The script:
 
-1. exports `AOB_PRIVATE_DIR` as the `-s` directory, so
+1. exports `AOB_RUNTIME_IMAGE` as the `-r` image, which every task image builds
+   FROM. A registry reference such as `quay.io/assetopsbench/runtime:dev` is
+   pulled first, so the run uses the published image rather than a stale local
+   copy; a bare name like the default must already exist locally. The image
+   changes only the base: each task still adds its own `manifest.json`, and
+   `shared/` still comes from the mount below. A resumed job finishes on the
+   image given now;
+2. exports `AOB_PRIVATE_DIR` as the `-s` directory, so
    `overlays/private-data.yaml` mounts its `shared/` at
    `/opt/suite/scenarios_data/shared`. Only `init_data.py` reads it, as in
    `scenario_suite_runner`;
-2. builds the code sandbox image and saves it to `~/assetops-code.tar` for the
+3. builds the code sandbox image and saves it to `~/assetops-code.tar` for the
    per-trial Docker-in-Docker daemon (`overlays/code-sandbox.yaml`);
-3. generates one task per scenario with `--scenario-root` and
+4. generates one task per scenario with `--scenario-root` and
    `--skip-missing`, skipping profile entries the suite lacks;
-4. runs one Harbor job per model at
+5. runs one Harbor job per model at
    `<leaderboard>/harbor-jobs/stirrup_agent__<model>`, with both overlays and
    with credentials loaded from `.env` by `uv run --env-file` into the Harbor
    process only.
