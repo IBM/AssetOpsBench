@@ -7,14 +7,12 @@
 # Generate the tasks with --scenario-root "$AOB_PRIVATE_DIR". Any root other than
 # the repo's own makes the healthcheck run init_data.py with SCENARIOS_DATA_DIR
 # pointing at this mount, so each manifest's shared/... paths resolve against the
-# suite's own shared/ directory. The agent keeps the repo copy, as it does with
-# the suite image.
+# suite's own shared/ directory. The agent keeps the repo copy.
 #
-# The alternative to suite-image/Dockerfile, which bakes the same directory into
-# an image at the same path. The mount needs no rebuild when the suite changes,
-# so it suits iterating on scenario data. The image is the one to report from:
-# it pins the data a run used, and it works on Harbor providers that cannot see
-# the host's filesystem, which a bind mount cannot.
+# The mount picks up changes to the suite on the next run, with no rebuild. It
+# is local-only: Harbor providers that cannot see the host's filesystem cannot
+# bind-mount it, and a run's results depend on the directory's contents at the
+# time.
 #
 # Only init_data.py reads the mount, and only the files a manifest names, so
 # going through Docker Desktop or Rancher file sharing costs little: the all

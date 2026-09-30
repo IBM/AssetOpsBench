@@ -120,42 +120,6 @@ uv run python benchmarks/harbor/adapter/generate_tasks.py \
   --output-dir benchmarks/harbor/datasets/assetopsbench-mini \
   --dataset-name assetopsbench/mini \
   --overwrite
-```
-
-| Flag | Default | Why a non-open profile needs it |
-| --- | --- | --- |
-| `--scenario-root` | `src/couchdb/scenarios_data` | The repo holds only scenarios 1–3. Another root also points the healthcheck's `SCENARIOS_DATA_DIR` at `/opt/suite/scenarios_data`. |
-| `--runtime-image` | the template's `assetopsbench/runtime:dev` | Only the suite image carries the suite's data. Leave it out when mounting instead. |
-| `--profile` | `benchmarks/scenario_suite/open.yaml` | Takes a path, not a profile name. |
-| `--output-dir` | `benchmarks/harbor/datasets/assetopsbench-open` | Otherwise the new tasks land beside the open ones and `dataset.toml` is rewritten to list only the new set. |
-| `--dataset-name` | `assetopsbench/open` | The name written into `dataset.toml`. |
-| `--skip-missing` | off | Only when the profile lists ids the suite lacks, such as `wosr-62` in `all.yaml`. |
-
-Then run steps 3 and 4 with `-p benchmarks/harbor/datasets/assetopsbench-mini`.
-Mini expands to 35 tasks. 32 score with `static_json`; the three FMEA scenarios
-(9001, 9003, 9027) carry a `scenario_meta.json` that selects `fmea`, which is
-also registered without a judge, so no `AOB_JUDGE_MODEL` is needed.
-
-The output lands under `datasets/`, which is gitignored. That matters more here
-than for open: these tasks carry ground truth from the restricted suite in
-`tests/` and `solution/`.
-
-### Mounting the suite instead of baking it
-
-`overlays/private-data.yaml` bind-mounts the directory in `AOB_PRIVATE_DIR` into
-`main`, read-only, at the same `/opt/suite/scenarios_data` the suite image uses.
-Generate without `--runtime-image`, so the tasks build on the plain runtime
-image, and pass the overlay at run time:
-
-```bash
-export AOB_PRIVATE_DIR=/path/to/scenarios_data
-
-uv run python benchmarks/harbor/adapter/generate_tasks.py \
-  --scenario-root "$AOB_PRIVATE_DIR" \
-  --profile benchmarks/scenario_suite/mini.yaml \
-  --output-dir benchmarks/harbor/datasets/assetopsbench-mini \
-  --dataset-name assetopsbench/mini \
-  --overwrite
 
 uv run harbor run -y \
   -p benchmarks/harbor/datasets/assetopsbench-mini \
@@ -165,38 +129,120 @@ uv run harbor run -y \
   --n-concurrent 3
 ```
 
+| Flag | Default | Why a non-open profile needs it |
+| --- | --- | --- |
+| `--scenario-root` | `src/couchdb/scenarios_data` | The repo holds only scenarios 1–3. Any other root also points the healthcheck's `SCENARIOS_DATA_DIR` at `/opt/suite/scenarios_data`, where the overlay mounts the suite. |
+| `--profile` | `benchmarks/scenario_suite/open.yaml` | Takes a path, not a profile name. |
+| `--output-dir` | `benchmarks/harbor/datasets/assetopsbench-open` | Otherwise the new tasks land beside the open ones and `dataset.toml` is rewritten to list only the new set. |
+| `--dataset-name` | `assetopsbench/open` | The name written into `dataset.toml`. |
+| `--skip-missing` | off | Only when the profile lists ids the suite lacks, such as `wosr-62` in `all.yaml`. |
+
+Mini expands to 35 tasks. 32 score with `static_json`; the three FMEA scenarios
+(9001, 9003, 9027) carry a `scenario_meta.json` that selects `fmea`, which is
+also registered without a judge, so no `AOB_JUDGE_MODEL` is needed. `-i 'fmsr-*'`
+on `harbor run` limits a run to one category.
+
+The output lands under `datasets/`, which is gitignored. That matters more here
+than for open: these tasks carry ground truth from the private suite in
+`tests/` and `solution/`.
+
+### How the private data gets in
+
+Each scenario's `manifest.json` names its CouchDB inputs as paths under
+`shared/`, for example `shared/work_order/work_order_mainte.csv`, and
+`init_data.py` resolves them against the parent of the scenario folder. The
+generator copies only `scenario_<id>/` into a task. For an external
+`--scenario-root` it copies that folder to `/opt/suite/scenarios_data/`, and
+the healthcheck runs `SCENARIOS_DATA_DIR=/opt/suite/scenarios_data init_data.py <id>`.
+The overlay bind-mounts `AOB_PRIVATE_DIR` there read-only, so `shared/` resolves
+against the suite's own copy. The agent's `SCENARIOS_DATA_DIR` stays on the repo
+copy.
+
+The mount sits beside the repo copy rather than over it, because the suite's
+`shared/` is not a superset of the repo's. It lacks files that scenarios 1–3
+need, such as `work_order/workorders.csv`, and its `catalog/*.csv` differ.
+Only the files a manifest names are read, and the suite's `shared/` is about
+2.1 GB. The profiles reference far less of it: 1.5 MB for mini, 27 MB for lite
+and 58 MB for all. So going through Docker Desktop or Rancher file sharing
+costs little.
+
 Harbor passes its own environment to `docker compose`, so an exported
 `AOB_PRIVATE_DIR`, or one loaded with `--env-file`, reaches the overlay. When it
 is unset, Compose refuses the file and names the variable.
 
-Use the mount while iterating on scenario data, since an edit shows up in the
-next run with no rebuild. Report results from the suite image: it pins the data
-a run used, and it works on Harbor providers that cannot see the host's
-filesystem. `--extra-docker-compose` repeats, so the overlay combines with
-`overlays/code-sandbox.yaml`.
+### Without the mount, data loads silently empty
 
-### Without the suite image or the mount, data loads silently empty
-
-Tasks generated from an external `--scenario-root` need one of the two at run
-time. Each scenario's `manifest.json` names its CouchDB inputs as paths under
-`shared/`, for example `shared/work_order/work_order_mainte.csv`. The generator
-copies only `scenario_<id>/` into a task, so the suite's `shared/` directory
-reaches `/opt/suite/scenarios_data` only through the suite image or
-`overlays/private-data.yaml`. The repo copy does not stand in for it: the suite's
-`shared/` is not a superset of the repo's, and the FMEA scenarios, for example,
-load `shared/catalog/assets_fmea.csv` and `shared/catalog/failure_modes_fmea.csv`,
-which the repo does not have.
-
+Tasks from an external `--scenario-root` need the overlay. Without it, nothing
+is at `/opt/suite/scenarios_data/shared`, and every manifest file is missing.
 The failure is silent. `src/couchdb/loader.py` logs `data file not found` and
-loads the collection empty rather than raising, so the healthcheck passes and the
-agent runs against missing data. The oracle cannot catch it: `solve.sh` writes
-the ground truth without touching CouchDB, so it scores 1.0 regardless. An agent
-run shows it only in the MCP server logs, as `Database does not exist` in the
-trial's `agent/*.stdout.txt`. Treat agent scores from such a dataset as invalid.
+loads the collection empty rather than raising, so the healthcheck passes and
+the agent runs against missing data. The oracle cannot catch it: `solve.sh`
+writes the ground truth without touching CouchDB, so it scores 1.0 regardless.
+An agent run shows it only in the MCP server logs, as `Database does not exist`
+in the trial's `agent/*.stdout.txt`.
 
-The suite image carries all of `shared/`, about 2.1 GB. The files the profiles
-actually reference are far smaller: 18 files and 1.5 MB for mini, 37 files and
-27 MB for lite, 47 files and 58 MB for all.
+### Smoke tests: open and private
+
+Both run Stirrup with the Docker code sandbox (see
+[The code track and CouchDB](#the-code-track-and-couchdb) for the code image
+and `AOB_CODE_TAR`). Credentials come from `.env`.
+
+Open suite. There is no `--scenario-root`, so the tasks use the repo's own
+`src/couchdb/scenarios_data`:
+
+```bash
+export AOB_CODE_TAR=~/assetops-code.tar
+
+uv run python benchmarks/harbor/adapter/generate_tasks.py \
+  --profile benchmarks/scenario_suite/open.yaml \
+  --output-dir benchmarks/harbor/datasets/assetopsbench-open \
+  --dataset-name assetopsbench/open \
+  --overwrite && \
+uv run harbor run -y \
+  -p benchmarks/harbor/datasets/assetopsbench-open \
+  --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
+  --agent assetops_harbor.stirrup:StirrupAgent \
+  --model litellm_proxy/azure/gpt-5.6-sol \
+  --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+  --ak workspace_dir=/workspace-share \
+  --n-concurrent 4
+```
+
+Mini suite through the mount:
+
+```bash
+export AOB_PRIVATE_DIR=/path/to/scenarios_data AOB_CODE_TAR=~/assetops-code.tar
+
+uv run python benchmarks/harbor/adapter/generate_tasks.py \
+  --scenario-root "$AOB_PRIVATE_DIR" \
+  --profile benchmarks/scenario_suite/mini.yaml \
+  --output-dir benchmarks/harbor/datasets/assetopsbench-mini \
+  --dataset-name assetopsbench/mini \
+  --overwrite && \
+uv run harbor run -y \
+  -p benchmarks/harbor/datasets/assetopsbench-mini \
+  --extra-docker-compose benchmarks/harbor/overlays/private-data.yaml \
+  --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
+  --agent assetops_harbor.stirrup:StirrupAgent \
+  --model litellm_proxy/azure/gpt-5.6-sol \
+  --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+  --ak workspace_dir=/workspace-share \
+  --n-concurrent 4
+```
+
+Mini is 35 tasks. Add `-i 'fmsr-*'`, or another category, to `harbor run` for a
+quick subset.
+
+Each trial with the sandbox runs its own privileged Docker daemon, so
+`--n-concurrent 4` suits a laptop-sized Docker VM. Lower it if Docker runs out of
+memory (see [Resource limits](#resource-limits)).
+
+For the local code backend instead, drop `code-sandbox.yaml` and
+`AOB_CODE_TAR`, and pass only `--ak code_enabled=true --ak code_backend=local`.
+Code then runs inside `main`, next to CouchDB and the scenario's ground truth.
+
+A private run loaded its data when no trial's `agent/*.stdout.txt` contains
+`Database does not exist`.
 
 ## Why the MCP servers need an explicit env
 
@@ -311,7 +357,8 @@ one that did not.
 `benchmarks/harbor/overlays/code-sandbox.yaml` closes it, opt-in per run:
 
 ```bash
-harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
+AOB_CODE_TAR=~/assetops-code.tar \
+uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
   --agent assetops_harbor.stirrup:StirrupAgent \
   --model tokenrouter/MiniMax-M3 \
   --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
@@ -350,18 +397,24 @@ source inside dind instead, so the two sides would see different directories and
 every spilled artifact would go missing with no error. The overlay shares one
 volume at `/workspace-share` in both services so the path resolves identically.
 
-Build and publish the code image once, since each dind daemon starts empty and
-Stirrup pulls on `ImageNotFound`:
+Each dind daemon starts with an empty image store. By default the overlay's
+`code-image-loader` service loads the code image from a local tar, so no
+registry is involved. Build and save it once, and again whenever
+`Dockerfile.code` changes:
 
 ```bash
-docker build -t assetopsbench/code:dev \
+docker build -t assetops-code:dev \
   -f src/agent/stirrup_agent/Dockerfile.code src/agent/stirrup_agent
-docker push assetopsbench/code:dev
+docker save assetops-code:dev -o ~/assetops-code.tar
+export AOB_CODE_TAR=~/assetops-code.tar
 ```
 
-Set `AOB_CODE_IMAGE` to override the reference. Note that `privileged: true` is
-required by dockerd and refused by several Harbor cloud providers, so this
-overlay is local-first.
+Export `AOB_CODE_TAR` in the shell that runs Harbor. When it is unset the loader
+skips without an error, and the first `code_exec` then fails with
+`pull access denied for assetops-code`. To pull from a registry instead, push
+the image and set `AOB_CODE_IMAGE` to its reference. Note that
+`privileged: true` is required by dockerd and refused by several Harbor cloud
+providers, so this overlay is local-first.
 
 The stronger fix is to move the MCP servers into their own sidecar, leaving
 `main` with no CouchDB access at all. That also unlocks running any Harbor agent
@@ -430,6 +483,12 @@ Run end to end with the runtime image built from `base-image/Dockerfile`:
 
 - `--agent oracle --n-concurrent 2` completes every open-profile task with 0 exceptions and a reward of 1.000.
 - Stirrup completes the same tasks, calls MCP tools, and `result.json` records real token usage per model.
+- Open suite, `litellm_proxy/azure/gpt-5.6-sol`, local code backend: 3 trials, 0 exceptions, mean reward 0.952. wosr-1 and wosr-2 scored 1.0. wosr-3 scored 0.857: it matched 6 of 7 keys and gave the queried window's end rather than the last observation's timestamp. No trajectory referenced `groundtruth`, `/tests` or `/solution`.
+- Private suite through `overlays/private-data.yaml`, mini's five FMSR tasks, the same model, Docker code sandbox, `--n-concurrent 2`: 5 trials, 0 exceptions, mean reward 0.760, 3/5 passed, in 5 minutes.
+  - **Data:** the catalog, IoT and FMSR tools returned data, with no `Database does not exist` in any trial.
+  - **Misses:** fmsr-914 answered `yes` from memory without a tool call, against a ground truth of `no`. fmsr-902 listed 4 of 6 failure modes.
+  - **Code sandbox:** it started in every trial but no agent called `code_exec`, so this run did not exercise sandboxed code.
+  - **Variance:** `gpt-5.6-sol` accepts only its default temperature, so answers vary between runs. fmsr-913 scored 1.0 here and 0.0 on a rerun, with its data loaded both times.
 
 To confirm per-trial isolation on your own machine, watch a concurrent run:
 

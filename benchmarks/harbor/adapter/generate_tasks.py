@@ -16,8 +16,7 @@ from drifting apart.
 Without --scenario-root, tasks load the repo's own scenarios_data, and each
 manifest's shared/ paths resolve against the repo copy in the runtime image.
 With any other root the scenarios form an external suite: the data load reads
-it at SUITE_DATA_DIR, where the suite image bakes it and
-overlays/private-data.yaml mounts it.
+it at SUITE_DATA_DIR, where overlays/private-data.yaml mounts it at run time.
 
 Task names must stay stable across runs: Harbor content-hashes each task
 directory and pins dataset entries by digest, so a name derived from
@@ -38,8 +37,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REPO_SCENARIO_ROOT = REPO_ROOT / "src/couchdb/scenarios_data"
-# Where an external suite sits inside the task container, baked in by
-# suite-image/Dockerfile or bind-mounted by overlays/private-data.yaml.
+# Where an external suite sits inside the task container, bind-mounted by
+# overlays/private-data.yaml.
 SUITE_DATA_DIR = "/opt/suite/scenarios_data"
 CATEGORIES = ("car", "fcc", "fmea", "fmsr", "health", "tsfm", "wosr")
 TEMPLATE_FILES = (
@@ -93,7 +92,6 @@ def generate(
     template: Path,
     output_dir: Path,
     overwrite: bool,
-    runtime_image: str | None = None,
     data_dir: str | None = None,
 ) -> Path:
     source = scenario_root / f"scenario_{scenario_id}"
@@ -136,17 +134,10 @@ def generate(
         text = text.replace(
             '"assetopsbench", "wosr",', f'"assetopsbench", "{category}",'
         )
-        if runtime_image:
-            text = re.sub(
-                r"^ARG AOB_RUNTIME_IMAGE=.*$",
-                f"ARG AOB_RUNTIME_IMAGE={runtime_image}",
-                text,
-                flags=re.MULTILINE,
-            )
         if data_dir:
-            # An external suite, baked in or mounted at data_dir: the per-task
-            # layer copies the scenario there, and only init_data.py reads it. The agent's own
-            # SCENARIOS_DATA_DIR stays on the repo copy, as in
+            # An external suite, mounted at data_dir: the per-task layer copies
+            # the scenario there, and only init_data.py reads it. The agent's
+            # own SCENARIOS_DATA_DIR stays on the repo copy, as in
             # scenario_suite_runner, which sets it for the data load alone.
             text = text.replace(
                 "/opt/aob/src/couchdb/scenarios_data/", f"{data_dir.rstrip('/')}/"
@@ -234,8 +225,8 @@ def main() -> int:
         default=None,
         help="Scenario folders to generate from. Default: the repo's "
         "src/couchdb/scenarios_data. Any other root is an external suite, "
-        f"loaded from {SUITE_DATA_DIR}: build on the suite image, or run with "
-        "--extra-docker-compose benchmarks/harbor/overlays/private-data.yaml.",
+        f"loaded from {SUITE_DATA_DIR}: run with --extra-docker-compose "
+        "benchmarks/harbor/overlays/private-data.yaml.",
     )
     parser.add_argument(
         "--profile",
@@ -256,11 +247,6 @@ def main() -> int:
         help="Harbor dataset name written into dataset.toml.",
     )
     parser.add_argument("--overwrite", action="store_true")
-    parser.add_argument(
-        "--runtime-image",
-        help="Image each task builds FROM (default: the template's "
-        "assetopsbench/runtime:dev). Use the suite image for an external suite.",
-    )
     parser.add_argument(
         "--skip-missing",
         action="store_true",
@@ -295,7 +281,6 @@ def main() -> int:
                 template=args.template,
                 output_dir=args.output_dir,
                 overwrite=args.overwrite,
-                runtime_image=args.runtime_image,
                 data_dir=data_dir,
             )
         )
