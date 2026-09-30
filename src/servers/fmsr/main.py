@@ -135,22 +135,33 @@ def _parse_failure_mode_list(text: str) -> List[str]:
 
 
 # ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
+# FMSR_MODEL_ID is the only source for the model generate_failure_modes uses.
+# There is deliberately no built-in default: a hardcoded one silently sent every
+# run at a single provider and demanded that provider's credentials whatever
+# model the agent was being benchmarked on.  Agent runners always set this for
+# the servers they spawn (the user's explicit value if given, otherwise the
+# agent's own --model-id), so an unset value means the server was started
+# standalone without being told which model to use.  Empty values count as unset.
 
-_DEFAULT_MODEL_ID = "watsonx/meta-llama/llama-3-3-70b-instruct"
 _MAX_RETRIES = 3
-_MODEL_ID = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
+_MODEL_ID = (os.environ.get("FMSR_MODEL_ID") or "").strip() or None
 
 
-def _build_llm():
+def _build_llm(model_id: str | None = _MODEL_ID):
     from llm import make_backend
 
-    if _MODEL_ID.startswith("watsonx/"):
+    if not model_id:
+        raise RuntimeError(
+            "FMSR_MODEL_ID is not set; the generate_* tools need a model id, "
+            "e.g. tokenrouter/<model> or litellm_proxy/<provider>/<model>"
+        )
+    if model_id.startswith("watsonx/"):
         missing = [
             v for v in ("WATSONX_APIKEY", "WATSONX_PROJECT_ID") if not os.environ.get(v)
         ]
         if missing:
             raise RuntimeError(f"Missing env vars for WatsonX: {missing}")
-    elif _MODEL_ID.startswith("tokenrouter/"):
+    elif model_id.startswith("tokenrouter/"):
         missing = [
             v
             for v in ("TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL")
@@ -164,16 +175,19 @@ def _build_llm():
         ]
         if missing:
             raise RuntimeError(f"Missing env vars for LiteLLM: {missing}")
-    return make_backend(_MODEL_ID)
+    return make_backend(model_id)
 
 
 try:
-    _llm = _build_llm()
+    _llm = _build_llm(_MODEL_ID)
     _llm_available = True
+    _llm_error: str | None = None
+    logger.info("FMSR LLM: %s", _MODEL_ID)
 except Exception as _e:  # noqa: BLE001
-    logger.warning("LLM unavailable (generate_* tools disabled): %s", _e)
+    logger.warning("LLM %r unavailable (generate_* tools disabled): %s", _MODEL_ID, _e)
     _llm = None
     _llm_available = False
+    _llm_error = f"{_MODEL_ID}: {_e}" if _MODEL_ID else str(_e)
 
 
 def _call_failure_mode_generation(
@@ -338,7 +352,7 @@ def generate_failure_modes(
     if max_modes <= 0:
         return ErrorResult(error="max_modes must be greater than 0")
     if not _llm_available:
-        return ErrorResult(error="LLM unavailable")
+        return ErrorResult(error=f"LLM unavailable ({_llm_error})")
 
     try:
         base = _known_failure_modes(key)
