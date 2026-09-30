@@ -122,13 +122,27 @@ _FAILURE_MODE_EXTEND_PROMPT = (
 )
 
 
+def _strip_emphasis(item: str) -> str:
+    """Drop one wrapping run of markdown emphasis, e.g. **Cavitation** -> Cavitation.
+
+    Models that format their answer as a list leave the markers in place, and
+    they would otherwise be stored as part of the failure-mode name.
+    """
+    return re.sub(r"^(\*{1,3}|_{1,3})(.+?)\1$", r"\2", item.strip()).strip()
+
+
 def _parse_failure_mode_list(text: str) -> List[str]:
     items: List[str] = []
     for line in text.splitlines():
         item = line.strip()
         if not item:
             continue
+        # Emphasis first: "*Cavitation*" is italic, not a bullet plus a stray
+        # asterisk, and stripping bullets first would leave "Cavitation*".
+        item = _strip_emphasis(item)
         item = re.sub(r"^\s*(?:[-*•]|\d+[\.\)])\s*", "", item).strip()
+        # Again, for "- **Bearing wear**" where the bullet hid the emphasis.
+        item = _strip_emphasis(item)
         if item:
             items.append(item)
     return items
@@ -327,6 +341,54 @@ def _known_failure_modes(asset_class: str) -> List[str]:
     ]
 
 
+# The exact messages _find_failure_mode_doc raises when there is no catalog to
+# read, as opposed to a catalog that failed to read. Compared by value because
+# this module raises them itself a few lines above.
+_CATALOG_ABSENT = ("database not connected", _MISSING_DATABASE_ERROR)
+
+
+def _optional_known_failure_modes(asset_class: str) -> tuple[List[str], str]:
+    """Stored modes as optional context for the generate path, plus a note.
+
+    generate_failure_modes documents "a new or extended list": extended when
+    modes are stored, new when they are not. An absent or uninitialised catalog
+    is that from-scratch case, so it yields ([], note) rather than failing.
+
+    A read that fails for any other reason propagates. Stored modes may exist
+    and be temporarily unreadable, and generating a list that quietly ignores
+    them would hide a real fault behind plausible output.
+    """
+    try:
+        modes = [
+            mode.strip() for mode in _known_failure_modes(asset_class) if mode and mode.strip()
+        ]
+    except RuntimeError as exc:
+        # Raised by _find_failure_mode_doc: either there is no catalog to read,
+        # or a read against an existing one failed. Only the former is the
+        # from-scratch case; the latter means stored modes may exist.
+        if str(exc) not in _CATALOG_ABSENT:
+            raise
+        return [], _no_context(asset_class, exc, "not initialised")
+    except Exception as exc:  # noqa: BLE001
+        # couchdb3's truthiness check performs a request, so an unreachable
+        # server surfaces here as a transport error before any RuntimeError
+        # wrapping. We cannot establish that a catalog exists, which is the
+        # from-scratch case. A transport error raised mid-read still arrives as
+        # the RuntimeError above and stays an error.
+        return [], _no_context(asset_class, exc, "unreachable")
+    return modes, f"{len(modes)} stored mode(s) as context"
+
+
+def _no_context(asset_class: str, exc: Exception, why: str) -> str:
+    logger.info(
+        "generate_failure_modes: no stored context for '%s', catalog %s (%s)",
+        asset_class,
+        why,
+        exc,
+    )
+    return f"no stored context (failure_mode catalog {why})"
+
+
 @mcp.tool(title="Generate Failure Modes")
 def generate_failure_modes(
     asset_class: str,
@@ -354,8 +416,12 @@ def generate_failure_modes(
         return ErrorResult(error=f"LLM unavailable ({_llm_error})")
 
     try:
-        base = _known_failure_modes(key)
-        base = [mode.strip() for mode in base if mode and mode.strip()]
+        base, context_note = _optional_known_failure_modes(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("generate_failure_modes failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+    try:
         raw = _call_failure_mode_generation(key, base, max_modes)
         seen = {mode.lower() for mode in base}
         generated: List[str] = []
@@ -374,8 +440,8 @@ def generate_failure_modes(
             failure_modes=base + generated,
             source=f"LLM:{_MODEL_ID}",
             message=(
-                f"generated {len(generated)} new failure mode(s) for asset_class '{key}' "
-                f"using {len(base)} stored mode(s) as context; nothing was persisted."
+                f"generated {len(generated)} new failure mode(s) for asset_class "
+                f"'{key}' using {context_note}; nothing was persisted."
             ),
         )
     except Exception as exc:  # noqa: BLE001
