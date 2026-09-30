@@ -80,7 +80,7 @@ SDK_TRAJECTORY = {
                 {
                     "name": "get_work_orders",
                     "input": {"site": "MAIN"},
-                    "id": "",  # ToolCall.id defaults to "" on main
+                    "id": "",  # ToolCall.id defaults to ""
                     "output": {"count": 42},
                     "duration_ms": None,
                 }

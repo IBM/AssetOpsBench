@@ -7,31 +7,13 @@ Three modes over one source of truth, the model catalog:
     preload_models.py --download   # fill the cache (resumable)
     preload_models.py --check      # offline: does the cache satisfy every card?
 
-`--report` and `--check` need only `huggingface_hub`. None of the modes needs
-torch, sktime or any per-model library, so the cache can be built and validated
-before any of the dependency work lands.
+Only `huggingface_hub` is required. The cache is whatever it resolves
+(`HF_HUB_CACHE`, else `$HF_HOME/hub`); every mode prints the path it uses.
+`--check` resolves with `HF_HUB_OFFLINE=1`, as a trial without network would.
 
-Where the cache goes
---------------------
-Whatever `huggingface_hub` resolves, which is `HF_HUB_CACHE` if set, else
-`$HF_HOME/hub`, else `~/.cache/huggingface/hub`. Every mode prints the path it
-is using, so set the variable and read it back rather than trusting a default.
-
-A warmed cache is safe to mount read-only into a trial: with the files present
-and `HF_HUB_OFFLINE=1`, resolution reads the tree and writes nothing, and a repo
-that is missing raises `LocalEntryNotFoundError` instead of quietly going to the
-network. `--check` is that same code path, run ahead of time.
-
-Which field is authoritative
-----------------------------
-`params.model_path`, not `hf_repo`. The resolver builds the estimator with
-`Est(**card["params"])`, so `model_path` is the string that reaches
-`from_pretrained`. `hf_repo` is metadata and can drift; it is used only as a
-fallback, and a disagreement between the two is reported because it means one
-of them is wrong.
-
-Fine-tuned cards are skipped: `register_finetuned` points `model_path` at a
-local checkpoint directory, and there is nothing on the Hub to fetch.
+`params.model_path` is authoritative, since the estimator is built with
+`Est(**card["params"])`; `hf_repo` is a fallback, and a disagreement between
+the two is reported. Cards an agent writes at run time are skipped.
 """
 
 from __future__ import annotations
@@ -45,19 +27,9 @@ import sys
 import time
 from pathlib import Path
 
-# The catalog is one global file, not per-scenario data, and the copy in this
-# repo is only an example. Resolution order, most explicit first:
-#
-#   1. --catalog
-#   2. $AOB_MODEL_CATALOG
-#   3. $SCENARIOS_DATA_DIR/shared/tsfm/model_catalog.json
-#   4. the in-repo example
-#
-# Step 3 is the one that matters. At run time CouchDB is seeded from the
-# manifest key "model_catalog": "shared/tsfm/model_catalog.json", resolved
-# against SCENARIOS_DATA_DIR. Defaulting to the same file means the weights
-# baked into an image are the weights the agent can actually discover. Point
-# them at different files and every model outside the example misses the cache.
+# Catalog resolution: --catalog, $AOB_MODEL_CATALOG,
+# $SCENARIOS_DATA_DIR/shared/tsfm/model_catalog.json (the file CouchDB is
+# seeded from), then the in-repo copy.
 CATALOG_REL = Path("shared/tsfm/model_catalog.json")
 EXAMPLE_CATALOG = Path("src/couchdb/scenarios_data") / CATALOG_REL
 
@@ -74,9 +46,7 @@ def resolve_catalog(explicit: Path | None) -> tuple[Path, str]:
         return Path(root) / CATALOG_REL, "$SCENARIOS_DATA_DIR"
     return EXAMPLE_CATALOG, "in-repo EXAMPLE"
 
-# "owner/name". A local checkpoint is an absolute path, or a relative one that
-# exists on disk. Conservative on purpose: a false positive costs a failed
-# download, a false negative costs a missing weight at run time.
+# "owner/name", the shape of a Hub repo id.
 _REPO_RE = re.compile(r"^[A-Za-z0-9][\w.-]*/[\w.-]+$")
 _ZERO_SHOT = {"zero-shot", "zero_shot", "zeroshot"}
 
@@ -99,15 +69,8 @@ def status_of(card: dict) -> str:
     return str(card.get("status") or "active")
 
 
-# Params that name a SECOND Hub repo the card needs at load time. A card has
-# one params.model_path, but several wrappers pull more than one checkpoint:
-#
-#   KronosForecaster   tokenizer_path="NeoQuasar/Kronos-Tokenizer-base"
-#   MomentFMForecaster transformer_backbone="google/flan-t5-base"
-#
-# Caching only model_path leaves those to be fetched on first use. That works
-# wherever there is a network and fails inside the image, which is the worst
-# place to find out. Scan for them instead of maintaining a per-wrapper table.
+# Params that name a second Hub repo a card needs at load time, e.g. Kronos's
+# tokenizer_path or MOMENT's transformer_backbone.
 _AUX_PARAM_KEYS = (
     "tokenizer_path",
     "transformer_backbone",
@@ -145,9 +108,8 @@ def aux_targets(card: dict, primary: str | None) -> list[str]:
 def classify(card: dict) -> tuple[str, str | None, str]:
     """Return (kind, target, why). kind is 'hub', 'local', 'runtime' or 'none'.
 
-    Branch on what the card DECLARES, not on the shape of the path. Path shape
-    cannot tell a two-segment local checkpoint ("tuned/ttm_ft") from a Hub repo
-    id, and guessing wrong sends a local model to huggingface.co.
+    Branch on what the card declares; path shape alone cannot tell a
+    two-segment local checkpoint from a Hub repo id.
 
       runtime  created_by starts with "agent." - the checkpoint does not exist
                until a trial writes it, so it must not be verified at build time.
@@ -159,10 +121,9 @@ def classify(card: dict) -> tuple[str, str | None, str]:
                scratch.
     """
     model_id = card.get("model_id") or "<unnamed>"
-    # model_path is TTM's and Chronos's name for it, not a universal one.
-    # MOIRAI takes checkpoint_path, MOMENT pretrained_model_name_or_path,
-    # TimesFM v1 repo_id. A card using the right name for its wrapper is
-    # correct, and reporting it as "no params.model_path" reads as a defect.
+    # Wrappers name the checkpoint differently: model_path (TTM, Chronos),
+    # checkpoint_path (MOIRAI), pretrained_model_name_or_path (MOMENT),
+    # repo_id (TimesFM v1).
     params = card.get("params") or {}
     path = None
     path_key = "model_path"
@@ -345,12 +306,10 @@ def download(repos: list[str], revision: str | None, workers: int) -> int:
 
 
 def _serving_switch(card: dict) -> str | None:
-    """The constructor parameter that makes THIS estimator serve, if it has one.
+    """The constructor parameter that makes this estimator serve, if any.
 
-    Read the signature rather than assume. TTM and PatchTST take
-    fit_strategy="zero-shot"; PatchTSMixer takes train_model=False; Chronos,
-    MOIRAI, MOMENT, Toto, Kronos and every classical forecaster take neither.
-    Demanding a parameter that does not exist is worse than not checking.
+    TTM and PatchTST take fit_strategy, PatchTSMixer train_model; most others
+    take neither, so read the signature rather than assume.
     """
     import importlib
     import inspect
@@ -373,23 +332,11 @@ def _serving_switch(card: dict) -> str | None:
 def validate_cards(cards: list[dict]) -> int:
     """Check the cards themselves, not just where their weights live.
 
-    --check verifies that a checkpoint is on disk or in the cache. That is
-    necessary and not sufficient: a card can point at real weights and still be
-    wrong. The two failures worth catching before a run:
-
       schema      the repo's own validator, so a bad card fails here rather
-                  than at seed time. Notably it requires base_model_id on a
-                  finetuned card.
-      serve pins  params.fit_strategy and training_regime, but ONLY for an
-                  estimator that has such a switch. TTM and PatchTST default
-                  fit_strategy="minimal", which re-tunes the weights on every
-                  fit while run_recipe takes the expanding-window refit path,
-                  and that failure is silent: the model loads, forecasts, and
-                  is wrong. Most wrappers have no such parameter at all
-                  (Chronos, MOIRAI, MOMENT, Toto, Kronos), and classical
-                  estimators are SUPPOSED to fit on the series, so demanding
-                  the pin everywhere produces noise that buries the real
-                  findings.
+                  than at seed time.
+      serve pins  params.fit_strategy/train_model and training_regime, for an
+                  estimator that has such a switch. Unpinned, TTM and PatchTST
+                  silently re-tune on every fit.
     """
     problems: list[str] = []
 
@@ -474,9 +421,7 @@ def check(repos: list[str], revision: str | None) -> int:
 
 
 def check_locals(targets: list[str], root: Path) -> int:
-    """Local checkpoints are shipped, not fetched, so the only question is
-    whether they are actually there. A missing one fails at fit time exactly
-    like a cache miss, so it belongs in the same gate."""
+    """Local checkpoints are shipped, not fetched: check they are there."""
     missing = []
     for target in targets:
         ok, detail = check_local(target, root)
@@ -513,20 +458,14 @@ def main() -> int:
                         "find_models and search can discover. Deprecate a card to drop its "
                         "weights from the image without losing its lineage.")
     p.add_argument("--include", default=None, metavar="REGEX",
-                   help="only act on repos matching this regex. Lets a Dockerfile fetch one "
-                        "ecosystem per RUN, so the weights land in several layers that pull in "
-                        "parallel instead of one 21 GB blob.")
+                   help="only act on repos matching this regex")
     p.add_argument("--print-repos", action="store_true", help="print just the repo ids, one per line")
     p.add_argument("--from-list", type=Path, default=None, metavar="FILE",
                    help="read repo ids from FILE instead of a catalog, one per "
-                        "line, '#' comments allowed. The image build uses this: "
-                        "the repo ids are public, so the build needs no access "
-                        "to a private catalog.")
+                        "line, '#' comments allowed (the image build uses this)")
     args = p.parse_args()
 
-    # --from-list: no catalog, no cards, just the repo ids a previous
-    # --print-repos wrote down. Everything private stayed in the catalog that
-    # produced the list; what is left is a set of public Hub repo names.
+    # --from-list: just the repo ids a previous --print-repos wrote down.
     if args.from_list:
         if not args.from_list.is_file():
             print(f"no list at {args.from_list}", file=sys.stderr)
@@ -615,8 +554,7 @@ def main() -> int:
         print(f"  {n}")
     print()
 
-    # Only bail early when there is nothing of EITHER kind. A catalog of purely
-    # local checkpoints still has to be verified; returning here skipped it.
+    # A catalog of only local checkpoints still has to be verified.
     if not repos and not locals_:
         print("nothing to fetch and nothing to verify")
         return 0

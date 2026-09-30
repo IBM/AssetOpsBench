@@ -4,33 +4,18 @@
 #   harbor run -p benchmarks/harbor/datasets/assetopsbench-mini \
 #     --extra-docker-compose benchmarks/harbor/overlays/private-data.yaml ...
 #
-# Generate the tasks with --scenario-root "$AOB_PRIVATE_DIR". Any root other than
-# the repo's own makes the healthcheck run init_data.py with SCENARIOS_DATA_DIR
-# pointing at /opt/suite/scenarios_data, so each manifest's shared/... paths
-# resolve against the suite's own shared/ directory. The agent keeps the repo copy.
+# Generate the tasks with --scenario-root "$AOB_PRIVATE_DIR": the healthcheck
+# then loads each scenario from /opt/suite/scenarios_data, where its manifest's
+# shared/... paths resolve against this mount. The agent keeps the repo copy.
 #
-# Only shared/ is mounted. Every scenario_<id>/ folder beside it holds that
-# scenario's ground truth (groundtruth.txt, rubric.json, ...), and `main` is
-# where the agent runs, so mounting the whole suite would let one task read the
-# answers to all of them. The task's own manifest.json comes from the per-task
-# image layer instead, which the generator builds without the answer files.
+# Only shared/ is mounted: every scenario_<id>/ beside it holds that scenario's
+# answers, and `main` is the agent's container. Changes to shared/ apply on the
+# next run; a changed manifest.json needs the tasks regenerated.
 #
-# Changes to shared/ take effect on the next run, with no rebuild. A changed
-# manifest.json does not: it is baked into each task's image, so regenerate the
-# tasks. The mount is local-only: Harbor providers that cannot see the host's
-# filesystem cannot bind-mount it, and a run's results depend on the directory's
-# contents at the time.
-#
-# Only init_data.py reads the mount, and only the files a manifest names, so
-# going through Docker Desktop or Rancher file sharing costs little: the all
-# profile references 58 MB of the suite's 2.1 GB shared/ directory.
-#
-# `:?` names the missing variable when AOB_PRIVATE_DIR is unset.
-# create_host_path: false makes a wrong path fail the trial at start. Otherwise
-# Docker creates an empty shared/ on the host and every collection loads empty
-# while the healthcheck still passes. That includes a relative AOB_PRIVATE_DIR,
-# which Compose resolves against the task's environment/ directory, not the
-# shell's; use an absolute path. The long syntax also accepts a path with ':'.
+# `:?` names the variable when AOB_PRIVATE_DIR is unset, and
+# create_host_path: false fails the trial on a wrong path instead of mounting an
+# empty directory that loads every collection empty. Use an absolute path:
+# Compose resolves a relative one against the task's environment/ directory.
 services:
   main:
     volumes:

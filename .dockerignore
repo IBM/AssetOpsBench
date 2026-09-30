@@ -1,14 +1,8 @@
-# Docker reads THIS file, not .gitignore. Anything not listed here is pulled
-# into the build context by `COPY . .` in benchmarks/harbor/base-image/Dockerfile
-# and baked into the runtime image, including files git ignores.
-#
-# benchmarks/harbor/scripts/build-runtime-image.sh builds from `git archive HEAD`,
-# so untracked files never reach it, and base-image/Dockerfile refuses a build
-# that does not come through it. This file still applies to that context.
+# Filters the runtime image's build context, which build-runtime-image.sh makes
+# from `git archive HEAD`: committed files not listed here are baked into the
+# image by `COPY . .` in benchmarks/harbor/base-image/Dockerfile.
 
-# Credentials. AssetOpsBench's run_sdk_cli calls load_dotenv(), so a local .env
-# would otherwise end up inside every task image and every trial container.
-# Unlike .gitignore, a bare name matches only at the context root, hence **/.
+# Credentials. A bare name matches only at the context root, hence **/.
 **/.env
 **/.env.*
 !**/.env.public
@@ -16,9 +10,7 @@
 # Host virtualenv: the image builds its own with `uv sync --frozen`.
 .venv/
 
-# Agent-written checkpoints, never an input. artifacts/tsfm_models/ is
-# deliberately NOT here: those are shipped weights that local_artifact cards
-# resolve against, ttm_energy_168_24 included.
+# Agent-written checkpoints. artifacts/tsfm_models/ ships in the image.
 artifacts/output/
 
 # Harbor output and generated tasks.
@@ -34,16 +26,14 @@ benchmarks/harbor/datasets/
 traces/
 .DS_Store
 
-# Answers. `main` is the agent's container, and the verifier reads the copies
-# Harbor uploads to /tests after the agent phase, never these. Every other file
-# of a scenario folder stays: manifest.json is what init_data.py loads.
+# Answers: the image is the agent's container. The verifier reads the copies
+# Harbor uploads to /tests after the agent phase.
 src/couchdb/scenarios_data/**/groundtruth*
 src/couchdb/scenarios_data/**/rubric.json
 src/couchdb/scenarios_data/**/reference_answer.json
 src/couchdb/scenarios_data/**/scenario_meta.json
 
-# Local work that is not part of the benchmark. reports/ once carried a results
-# table with a ground_truth column for private scenarios into the image.
+# Local work that is not part of the benchmark.
 reports/
 logs/
 src/tmp/
@@ -51,8 +41,6 @@ src/tmp/
 notebook/kdd_tutorial/
 artifacts/kdd_tutorial/
 
-# Git data. Even a one-commit .git holds every committed blob, answers included
-# (`git show HEAD:src/couchdb/scenarios_data/scenario_1/groundtruth.txt`), and
-# its reflog names whoever built the image. The commit reaches the image as
-# /opt/aob/.aob-commit instead, from the AOB_COMMIT build arg.
+# Git data holds every committed blob, answers included. The commit reaches the
+# image as /opt/aob/.aob-commit instead.
 .git

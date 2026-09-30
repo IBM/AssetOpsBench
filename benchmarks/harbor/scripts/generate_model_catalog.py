@@ -1,10 +1,5 @@
 #!/usr/bin/env python
-"""Build the model catalog from the checkpoints actually on disk.
-
-Hand-maintaining the catalog is how it drifts: swap a checkpoint directory and
-every card silently points at nothing, which `preload_models.py --check` then
-reports as five missing models. Generating from the directories makes the
-weights the source of truth, so that failure mode disappears.
+"""Build the model catalog's local cards from the checkpoints on disk.
 
     # see what would be written
     uv run python benchmarks/harbor/scripts/generate_model_catalog.py
@@ -30,8 +25,7 @@ from - go in an optional `meta.json` beside the checkpoint:
       "trained_on": ["EnergyBench"]
     }
 
-Keeping that beside the weights rather than in the catalog means moving a
-checkpoint carries its metadata with it.
+Hub-backed cards in the existing catalog are carried over unchanged.
 """
 
 from __future__ import annotations

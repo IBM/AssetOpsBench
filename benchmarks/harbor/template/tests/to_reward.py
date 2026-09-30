@@ -1,13 +1,7 @@
-"""Map an AssetOpsBench EvalReport onto Harbor's reward contract.
+"""Map an AssetOpsBench EvalReport onto Harbor's reward.json.
 
-Harbor's entire reward surface is ``dict[str, float | int]`` written to
-/logs/verifier/reward.json, and it aggregates each key independently across
-trials (mean by default).
-
-Only scores belong in that dict. Token counts and cost already reach Harbor
-through AgentContext and the ATIF trajectory, and mixing a [0,1] score with a
-tool-call count in the same dict produces a leaderboard column whose mean means
-nothing.
+Harbor averages each key across trials, so only scores belong here; token
+counts and cost reach Harbor through the ATIF trajectory.
 """
 
 from __future__ import annotations

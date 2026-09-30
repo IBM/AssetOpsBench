@@ -1,10 +1,5 @@
 """Generate Harbor task directories from AssetOpsBench scenarios.
 
-One adapter, two datasets. Point it at the open profile and the in-repo
-scenario data to produce the public set; point it at the private suite to
-produce the mini, lite and all sets. The task template is shared, which is what
-keeps the two from drifting apart.
-
     python benchmarks/harbor/adapter/generate_tasks.py --overwrite
 
     python benchmarks/harbor/adapter/generate_tasks.py \
@@ -13,16 +8,12 @@ keeps the two from drifting apart.
       --output-dir benchmarks/harbor/datasets/assetopsbench-mini \
       --overwrite
 
-Without --scenario-root, tasks load the repo's own scenarios_data, and each
-manifest's shared/ paths resolve against the repo copy in the runtime image.
-With any other root the scenarios form an external suite: the data load reads
-it at SUITE_DATA_DIR, where overlays/private-data.yaml mounts its shared/
-directory at run time.
+Without --scenario-root, tasks load the repo's own scenarios_data. Any other
+root is an external suite, loaded from SUITE_DATA_DIR, where
+overlays/private-data.yaml mounts its shared/ directory.
 
-Task names must stay stable across runs: Harbor content-hashes each task
-directory and pins dataset entries by digest, so a name derived from
-enumeration order churns digests and breaks version pinning. Names here come
-from category and scenario id only.
+Task names come from category and scenario id only, so they stay stable across
+runs.
 """
 
 from __future__ import annotations
@@ -62,12 +53,7 @@ SCENARIO_INPUT_FILES = (
 
 
 def scoring_method_for(source: Path) -> str:
-    """Mirror evaluation.loader: scenario_meta.json picks the scorer.
-
-    The loader always sets scoring_method, defaulting to static_json, and
-    evaluator._score_one prefers it over --scorer-default. Recording it in the
-    task metadata keeps task.toml honest about how the task is actually graded.
-    """
+    """Mirror evaluation.loader: scenario_meta.json picks the scorer."""
     meta_path = source / "scenario_meta.json"
     if meta_path.exists():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -80,10 +66,8 @@ def data_load_inputs(source: Path) -> list[Path]:
     """Paths under a scenario folder that init_data.py reads, relative to it.
 
     manifest.json, plus any file or directory a manifest value names inside the
-    folder itself; couchdb.loader tries the scenario folder before its parent.
-    An allowlist rather than a list of answer files to skip, so an answer under
-    any name (a backup, a new scorer input) stays out of the agent's image.
-    Paths into the sibling shared/ are left to overlays/private-data.yaml.
+    folder. An allowlist, so an answer file under any name stays out of the
+    agent's image. Paths into the sibling shared/ are left to the overlay.
     """
     manifest_path = source / "manifest.json"
     if not manifest_path.is_file():
@@ -151,8 +135,7 @@ def generate(
             f'scoring_method = "{scoring_method_for(source)}"',
         )
         text = text.replace("init_data.py 1", f"init_data.py {scenario_id}")
-        # The template's description and keywords are scenario 1's; replace
-        # them wholesale rather than leak that text into every task.
+        # The template's description is scenario 1's; replace it wholesale.
         text = re.sub(
             r'^description = ".*"$',
             f'description = "AssetOpsBench scenario {scenario_id}, '
@@ -164,11 +147,9 @@ def generate(
             '"assetopsbench", "wosr",', f'"assetopsbench", "{category}",'
         )
         if data_dir:
-            # An external suite at data_dir: the per-task layer copies the
-            # scenario there beside the mounted shared/, and only init_data.py
-            # reads it. The agent's own SCENARIOS_DATA_DIR stays on the repo
-            # copy, as in scenario_suite_runner, which sets it for the data
-            # load alone.
+            # External suite: the scenario is copied to data_dir, beside the
+            # mounted shared/, and only init_data.py reads it. The agent's
+            # SCENARIOS_DATA_DIR stays on the repo copy.
             text = text.replace(
                 "/opt/aob/src/couchdb/scenarios_data/", f"{data_dir.rstrip('/')}/"
             )
@@ -182,9 +163,8 @@ def generate(
     # The question the agent sees.
     shutil.copy(source / "question.txt", task_dir / "instruction.md")
 
-    # Build context for the per-task image layer: only what init_data.py reads.
-    # The image is the agent's container, so the answer files stay in tests/
-    # and solution/, which the agent never sees.
+    # Build context for the per-task image, the agent's container: only what
+    # init_data.py reads. Answers go to tests/ and solution/ only.
     context = task_dir / "environment" / f"scenario_{scenario_id}"
     context.mkdir(parents=True)
     for relative in data_load_inputs(source):
@@ -194,12 +174,8 @@ def generate(
             (context / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(source / relative, context / relative)
 
-    # Ground truth for the verifier. Note this ships inside the published task,
-    # which is the open decision recorded in the design doc.
-    #
-    # Copy EVERY file evaluation.loader.load_scenario_dirs reads, not just the
-    # answer. scenario_meta.json is what selects a non-default scorer; omit it
-    # and the scenario silently falls back to static_json and scores wrongly.
+    # Ground truth for the verifier: every file evaluation.loader reads, since
+    # without scenario_meta.json a scenario silently falls back to static_json.
     verifier_scenarios = task_dir / "tests" / "scenarios" / f"scenario_{scenario_id}"
     verifier_scenarios.mkdir(parents=True, exist_ok=True)
     for name in SCENARIO_INPUT_FILES:
@@ -232,15 +208,14 @@ def write_dataset_files(
 ) -> None:
     """Emit dataset.toml and metric.py beside the generated tasks.
 
-    Task digests are left to `harbor dataset add`, which content-hashes each
-    task directory. Writing them by hand would go stale on the next run.
+    Task digests are left to `harbor dataset add`.
     """
     shutil.copy(REPO_ROOT / "benchmarks/harbor/metric.py", output_dir / "metric.py")
 
     names = "\n".join(f"#   harbor dataset add {d.name}" for d in task_dirs)
     (output_dir / "dataset.toml").write_text(
-        "# Generated by harbor/adapter/generate_tasks.py. Task digests are added by\n"
-        "# `harbor dataset add <task-dir>`, which content-hashes each task directory.\n"
+        "# Generated by benchmarks/harbor/adapter/generate_tasks.py. Task digests\n"
+        "# are added by `harbor dataset add <task-dir>`.\n"
         'schema_version = "1.0"\n\n'
         "[dataset]\n"
         f'name = "{dataset_name}"\n'

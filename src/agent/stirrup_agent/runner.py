@@ -241,17 +241,9 @@ class StirrupAgentRunner(AgentRunner):
                 "command": "uv",
                 "args": ["run", "--directory", str(_REPO_ROOT), cmd_arg],
                 "cwd": str(_REPO_ROOT),
-                # Without this the MCP SDK applies get_default_environment(),
-                # which inherits only HOME/LOGNAME/PATH/SHELL/TERM/USER. Every
-                # server would then miss COUCHDB_URL, COUCHDB_USERNAME,
-                # COUCHDB_PASSWORD, SCENARIOS_DATA_DIR and the *_DBNAME
-                # overrides, and silently fall back to http://localhost:5984 --
-                # correct only when CouchDB happens to be published there.
-                # mcphub already passes the parent environment through for the
-                # other runners; this keeps Stirrup consistent with it.
-                # mcp_server_env also pins FMSR_MODEL_ID so the FMSR server's
-                # generate_failure_modes uses this run's model; the server has
-                # no default of its own.
+                # Without it the MCP SDK passes only HOME/PATH/..., so servers
+                # would miss COUCHDB_URL and the rest. It also pins
+                # FMSR_MODEL_ID; see mcp_server_env.
                 "env": env,
             }
         return MCPConfig.model_validate({"mcpServers": servers})

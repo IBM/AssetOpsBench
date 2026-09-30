@@ -1,39 +1,18 @@
 """Stirrup as a Harbor agent.
 
-Harbor's agent factory imports any ``module.path:ClassName`` passed to
-``--agent`` directly, bypassing its built-in name enum, so this class needs no
-upstream registration and lives in the AssetOpsBench repo. It is installed with
-the project, so no PYTHONPATH is needed:
+Harbor imports any ``module.path:ClassName`` passed to ``--agent``, so this
+class needs no upstream registration:
 
     uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
       --agent assetops_harbor.stirrup:StirrupAgent \
       --model litellm_proxy/azure/gpt-5.6-sol \
-      --ak code_enabled=true --ak code_backend=local \
-      --n-concurrent 4
+      --ak code_enabled=false --n-concurrent 4
 
-The agent process runs INSIDE the task container, which is what keeps this
-phase small: the six MCP servers stay stdio children of Stirrup
-(``uv run <name>-mcp-server``), and they get this trial's COUCHDB_URL through
-the explicit ``env`` that ``agent.runner.mcp_server_env`` builds. Nothing about
-the transport changes.
-
-Three facts about ``stirrup-agent`` shape this file:
-
-* It takes the question as a REQUIRED POSITIONAL argument
-  (``_cli_common.add_common_args``). There is no stdin path, so the question
-  is uploaded to a file and passed as ``"$(cat ...)"``, which survives
-  multi-line prose without the argv quoting hazards of inlining it.
-* There is no ``--topology`` flag. The arms it exposes are
-  ``--code-enabled`` / ``--no-code``, ``--code-backend``, ``--max-turns``,
-  ``--temperature`` and ``--reasoning-effort``.
-* ``--code-backend`` defaults to ``docker``, which spawns a sibling container
-  from ``STIRRUP_CODE_IMAGE``. A plain Harbor task container has no Docker
-  daemon, so this adapter defaults to ``local`` and accepts ``docker`` only
-  with ``allow_docker_backend=true``, for runs that add
-  ``benchmarks/harbor/overlays/code-sandbox.yaml``. That overlay gives each
-  trial its own Docker-in-Docker daemon, whose code containers get neither
-  CouchDB's hostname nor the forwarded credentials. ``local`` runs that code
-  in ``main``, next to both.
+``stirrup-agent`` runs inside the task container, with the MCP servers as its
+stdio children. ``--code-backend`` defaults to ``local`` here rather than
+``docker``, because a plain task container has no Docker daemon; ``docker``
+needs ``allow_docker_backend=true`` and
+``benchmarks/harbor/overlays/code-sandbox.yaml``.
 """
 
 from __future__ import annotations
@@ -62,38 +41,26 @@ from harbor.models.trajectories import (
 
 AOB_HOME = "/opt/aob"
 REMOTE_QUESTION_PATH = "/tmp/aob_instruction.txt"
-# Must match the mount point the code-sandbox overlay shares between `main`
-# and the dind daemon. See _require_shared_workspace below.
+# The volume the code-sandbox overlay shares between `main` and dind.
 SHARED_WORKSPACE = "/workspace-share"
 
-# Mirrors PROXY_ROUTERS in src/llm/routers.py, which is the source of truth.
-# Copied rather than imported because `llm/__init__` pulls in the LiteLLM and
-# OpenAI backends, and this module runs host-side inside Harbor. The test suite
-# asserts the two stay in step.
+# Mirrors PROXY_ROUTERS in src/llm/routers.py; importing it would pull the LLM
+# backends into the host-side Harbor process. A test keeps the two in step.
 ROUTER_CREDENTIALS: dict[str, tuple[str, str]] = {
     "litellm_proxy/": ("LITELLM_BASE_URL", "LITELLM_API_KEY"),
     "tokenrouter/": ("TOKENROUTER_BASE_URL", "TOKENROUTER_API_KEY"),
 }
 
-# Mirrors FMSR_MODEL_ENV in src/agent/runner.py. Defined literally for the same
-# reason as ROUTER_CREDENTIALS above: importing agent.runner would pull the agent
-# SDKs into the host-side Harbor process. The test suite asserts they stay in step.
+# Mirrors FMSR_MODEL_ENV in src/agent/runner.py, for the same reason.
 FMSR_MODEL_ENV = "FMSR_MODEL_ID"
 
-# Not credentials, but settings the agent phase needs from the host. Without
-# FMSR_MODEL_ID here an operator's explicit choice never reaches the container and
-# the in-container runner silently falls back to the agent's own --model-id, so
-# "explicit value wins" would hold for the CLI and not for Harbor.
+# Settings, not credentials, forwarded to the agent phase alongside them.
 SETTING_ENV_VARS: tuple[str, ...] = (FMSR_MODEL_ENV,)
 
 # Names the one env file _load_dotenv reads, in place of the nearest .env.
-# benchmarks/harbor/run.sh sets it to its ENV_FILE, so a run with another file
-# cannot pick up variables from the repo's .env.
 ENV_FILE_ENV = "AOB_ENV_FILE"
 
-# Forwarded from the Harbor process into the agent container when present.
-# Harbor scopes them to the agent phase, so the verifier and build steps never
-# see them. `--ae KEY=VALUE` still takes precedence over the host environment.
+# Forwarded into the agent container, for the agent phase only, when set.
 CREDENTIAL_ENV_VARS: tuple[str, ...] = (
     "LITELLM_BASE_URL",
     "LITELLM_API_KEY",
@@ -147,9 +114,7 @@ class StirrupAgent(BaseInstalledAgent):
                 "and pass allow_docker_backend=true."
             )
 
-        # Harbor records every agent kwarg in the trial's config.json, so the
-        # arm is visible in the result rather than inferred from a directory
-        # name. These are the arms main exposes; there is no topology flag yet.
+        # Harbor records every agent kwarg in the trial's config.json.
         self.code_enabled = _as_bool(code_enabled)
         self.code_backend = code_backend
         self.max_turns = int(max_turns)
@@ -162,16 +127,9 @@ class StirrupAgent(BaseInstalledAgent):
         self._require_shared_workspace()
 
     def _require_router_credentials(self) -> None:
-        """Fail before Harbor builds anything if the router creds are missing.
+        """Fail before Harbor builds anything if router credentials are missing.
 
-        llm.routers.resolve_router_creds raises inside the container otherwise,
-        which costs an image build and a container per trial to learn that a
-        variable is unset.
-
-        FMSR_MODEL_ID is checked alongside --model-id because the FMSR server may
-        be pinned to a different router than the agent. Its credentials would
-        otherwise be missing only at the first generate_failure_modes call, well
-        into the trial.
+        Checks FMSR_MODEL_ID's router too, which may differ from the agent's.
         """
         models = {"--model-id": (self.model_name or "").strip()}
         fmsr_model = (self._get_env(FMSR_MODEL_ENV) or "").strip()
@@ -194,22 +152,12 @@ class StirrupAgent(BaseInstalledAgent):
                     )
 
     def _require_shared_workspace(self) -> None:
-        """Guard the Docker-in-Docker bind-mount trap.
+        """Require workspace_dir for the docker backend.
 
-        DockerCodeExecToolProvider creates its workspace with
-        tempfile.mkdtemp(dir=temp_base_dir) on THIS container's filesystem, then
-        bind-mounts that path into the code container, and write_file_bytes
-        writes through the mount rather than through the Docker API.
-
-        With DOCKER_HOST pointing at a dind sidecar, the daemon resolves the
-        bind source inside dind, not here. The code container would mount an
-        empty directory, and every MCP result the workspace bridge spills to
-        disk would be invisible to the agent's code. Nothing errors; the files
-        simply are not there.
-
-        The overlay shares one volume at SHARED_WORKSPACE between both
-        containers so the path resolves identically on each side. Pointing
-        --workspace-dir at it is what makes mkdtemp land inside that volume.
+        Stirrup bind-mounts a workspace created on `main` into the code
+        container, but with DOCKER_HOST pointing at dind the daemon resolves
+        that path inside dind. Without the shared volume at SHARED_WORKSPACE,
+        spilled MCP results silently go missing.
         """
         if not self.code_enabled or self.code_backend != "docker":
             return
@@ -224,12 +172,7 @@ class StirrupAgent(BaseInstalledAgent):
         )
 
     def _credential_env(self) -> dict[str, str]:
-        """Credentials and agent-phase settings to forward into the container.
-
-        _get_env reads resolved env vars, then --ae overrides, then the Harbor
-        process environment, so an exported shell variable reaches the agent
-        without being named on the command line.
-        """
+        """Credentials and settings to forward: --ae first, then the host env."""
         found = {}
         for name in (*CREDENTIAL_ENV_VARS, *SETTING_ENV_VARS):
             value = self._get_env(name)
@@ -241,14 +184,7 @@ class StirrupAgent(BaseInstalledAgent):
         """No-op: the repo and its uv environment are baked into the task image."""
 
     def get_version_command(self) -> str | None:
-        """Record the AssetOpsBench commit as the agent version.
-
-        Harbor writes this into result.json, so every trial carries the exact
-        repo state it ran against. The runtime image has no .git, since its
-        blobs would hold scenario answers; build-runtime-image.sh records the
-        commit in .aob-commit instead. Detection is best-effort in Harbor, so
-        an image built without that file simply reports no version.
-        """
+        """Record the AssetOpsBench commit, from .aob-commit, in result.json."""
         return f"cut -c1-7 {AOB_HOME}/.aob-commit"
 
     async def run(
@@ -259,10 +195,8 @@ class StirrupAgent(BaseInstalledAgent):
     ) -> None:
         run_id = self.run_id
 
-        # The question is a required positional on main and scenario questions
-        # are multi-line prose, so stage it as a file and let bash read it back
-        # inside double quotes. upload_file rather than the /logs bind mount,
-        # because not every Harbor provider mounts logs the same way.
+        # stirrup-agent takes the question as a positional argument, so stage
+        # the multi-line text as a file and read it back inside double quotes.
         staged = self.logs_dir / "instruction.txt"
         staged.parent.mkdir(parents=True, exist_ok=True)
         staged.write_text(instruction, encoding="utf-8")
@@ -286,8 +220,7 @@ class StirrupAgent(BaseInstalledAgent):
         if self.workspace_dir:
             flags += ["--workspace-dir", shlex.quote(self.workspace_dir)]
 
-        # AOB_SCENARIO_ID comes from the task's [environment].env, which Harbor
-        # injects into the main service. It lands on the root OTEL span.
+        # AOB_SCENARIO_ID comes from the task's [environment].env.
         command = (
             f"uv run stirrup-agent {' '.join(flags)} "
             f'--scenario-id "${{AOB_SCENARIO_ID:-}}" '
@@ -301,13 +234,7 @@ class StirrupAgent(BaseInstalledAgent):
 
     @property
     def run_id(self) -> str:
-        """Harbor's trial name, so AGENT_TRAJECTORY_DIR files never collide.
-
-        observability.persistence writes ``{run_id}.json`` into
-        AGENT_TRAJECTORY_DIR, which the task config points at /logs/agent. The
-        old ``{agent}_{scenario}`` convention would collide across arms sharing
-        a log directory, so pass Harbor's own name through instead.
-        """
+        """Harbor's trial name, so ``{run_id}.json`` records never collide."""
         return self.logs_dir.parent.name or "stirrup-run"
 
     # ------------------------------------------------------------------ #
@@ -317,11 +244,8 @@ class StirrupAgent(BaseInstalledAgent):
     def populate_context_post_run(self, context: AgentContext) -> None:
         """Write trajectory.json and fill the run's token counts.
 
-        Harbor never calls convert_trajectory() on its own. Each agent invokes it
-        from here and persists the result, exactly as harbor.agents.installed
-        .claude_code and .codex do. Trial._sync_agent_output then reads
-        logs_dir/trajectory.json back to populate model usage, so without this
-        hook there is no trajectory file and no token accounting.
+        Harbor does not call convert_trajectory() itself; it reads
+        trajectory.json back to populate model usage.
         """
         try:
             trajectory = self.convert_trajectory(self.logs_dir)
@@ -355,13 +279,8 @@ class StirrupAgent(BaseInstalledAgent):
     def convert_trajectory(self, logs_dir: Path) -> Trajectory | None:
         """Map the AssetOpsBench persisted record onto Harbor's ATIF schema.
 
-        This lives in the agent adapter, not in src/observability/, so the
-        telemetry code stays untouched. Harbor reads token and cost totals back
-        out of the ATIF trajectory to populate AgentContext, so a correct
-        mapping also buys the run's token accounting for free.
-
         Handles both shapes persistence._serialize_trajectory emits: the SDK
-        runners' Trajectory dataclass (a dict with "turns") and plan-execute's
+        runners' Trajectory (a dict with "turns") and plan-execute's
         list[StepResult].
         """
         record = self._load_record(logs_dir)
@@ -482,10 +401,8 @@ class StirrupAgent(BaseInstalledAgent):
     def _steps_from_plan_execute(
         self, raw: list, record: dict
     ) -> tuple[list[Step], int, int]:
-        """plan_execute.models.StepResult: step_number, task, server, response,
-        error, tool, tool_args, duration_ms. No token counts on this shape, so
-        FinalMetrics stays zero and Harbor falls back to whatever the run
-        reported elsewhere.
+        """plan_execute.models.StepResult. It has no token counts, so
+        FinalMetrics stays zero.
         """
         steps: list[Step] = []
 
@@ -545,18 +462,10 @@ class StirrupAgent(BaseInstalledAgent):
 
 
 def _load_dotenv() -> None:
-    """Fill unset variables from the nearest .env, searching up from the cwd.
+    """Fill unset variables from AOB_ENV_FILE, else the nearest .env.
 
-    Runs host-side, in the Harbor process. override=False keeps exported shell
-    variables ahead of the file, and --ae stays ahead of both because _get_env
-    checks the agent's extra env first. Only CREDENTIAL_ENV_VARS and
-    SETTING_ENV_VARS reach the agent container, and .dockerignore keeps the
-    file itself out of every image. The verifier resolves its ${VAR:-}
-    templates after the agent is constructed, so AOB_JUDGE_MODEL and the judge
-    keys are picked up from .env as well.
-
-    AOB_ENV_FILE, when set, is read instead of the nearest .env, so the file a
-    caller chose is the only one: its gaps are not filled from the repo's .env.
+    Runs host-side; exported variables win. The verifier resolves its env after
+    the agent is constructed, so judge settings are picked up from it too.
     """
     path = os.environ.get(ENV_FILE_ENV) or find_dotenv(usecwd=True)
     load_dotenv(path, override=False)

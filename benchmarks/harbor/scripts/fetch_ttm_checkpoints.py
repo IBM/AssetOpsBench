@@ -1,19 +1,13 @@
 #!/usr/bin/env python
 """Pull TTM checkpoints from the granite series into artifacts/tsfm_models/.
 
-The locally exported checkpoints failed with:
-
-    ValueError: Fit strategy is 'zero-shot', but the model weights in the
-    configuration are mismatched compared to the pretrained model.
-
 sktime's TTM wrapper requires
 
     context_length / num_patches == patch_length == patch_stride
 
-and when that fails it rewrites patch_length and patch_stride, which changes
-every tensor shape, and then zero-shot refuses to load. The granite checkpoints
-satisfy the invariant, so they are a working substitute while the export is
-fixed.
+and otherwise rewrites the patch geometry, so a zero-shot load fails with
+"the model weights in the configuration are mismatched". Only revisions that
+satisfy it are fetched.
 
     # what is published, and the geometry of each
     uv run python benchmarks/harbor/scripts/fetch_ttm_checkpoints.py --list
@@ -109,7 +103,7 @@ def cmd_fetch(repo: str, revision: str, name: str | None, dest_root: Path) -> in
     ok, detail = geometry(cfg)
     print(f"    geometry: {detail}")
     if not ok:
-        print("    REFUSING: this revision has the same skew that broke the local export.",
+        print("    REFUSING: this revision cannot load zero-shot in sktime.",
               file=sys.stderr)
         return 1
 
@@ -124,8 +118,7 @@ def cmd_fetch(repo: str, revision: str, name: str | None, dest_root: Path) -> in
         model.save_pretrained(staged)
         print(f"    saved {sum(f.stat().st_size for f in staged.rglob('*') if f.is_file())/1024:.0f} KB")
 
-        # Reload exactly as a card would, and forecast. This is the check the
-        # local checkpoints failed, so run it before anything lands on disk.
+        # Reload exactly as a card would, and forecast, before anything lands.
         fc = TinyTimeMixerForecaster(model_path=str(staged), fit_strategy="zero-shot")
         n = max(ctx * 2, ctx + horizon + 10)
         t = np.arange(n)

@@ -1,40 +1,21 @@
 #!/usr/bin/env bash
-# Harbor counterpart of benchmarks/run.sh.
-#
-# Same scenarios, same stirrup-agent CLI and the same code-execution sandbox,
-# but each scenario runs as a Harbor trial with its own Compose project and its
-# own CouchDB, so scenarios run concurrently instead of one at a time against a
-# shared database.
+# Harbor counterpart of benchmarks/run.sh: the same scenarios, stirrup-agent and
+# code sandbox, but each scenario is a Harbor trial with its own CouchDB, so
+# scenarios run concurrently. See benchmarks/harbor/README.md.
 #
 #   bash benchmarks/harbor/run.sh -s SCENARIO_DIR -l LEADERBOARD_DIR \
 #     [-n N_CONCURRENT] [-p PROFILE] [-r RUNTIME_IMAGE] \
 #     [-m "MODEL_ID REASONING_EFFORT"]...
 #
-# Prerequisites: Docker running, `uv sync --extra harbor`, and the runtime image,
-# either built locally
+# Needs Docker, `uv sync --extra harbor` and the runtime image, built with
+# scripts/build-runtime-image.sh or published and passed as -r (or
+# AOB_RUNTIME_IMAGE). Credentials come from ENV_FILE (default: the repo's .env),
+# the only file read. Relative paths are relative to the caller's directory.
 #
-#   bash benchmarks/harbor/scripts/build-runtime-image.sh
-#
-# or published, passed as -r (or AOB_RUNTIME_IMAGE in the shell or ENV_FILE),
-# e.g. -r quay.io/assetopsbench/runtime:dev.
-#
-# Credentials are read from ENV_FILE (default: the repo's .env) by
-# `uv run --env-file`, into the Harbor process only; StirrupAgent forwards them
-# to the agent phase. They never enter an image. ENV_FILE is the only file read:
-# with another file, the repo's .env fills none of its gaps.
-#
-# Relative paths in -s, -l, -p, ENV_FILE and AOB_CODE_TAR_DIR are relative to
-# the directory the script is run from.
-#
-# One Harbor job per profile, model and reasoning effort, at
+# One Harbor job per profile, model and effort, at
 # LEADERBOARD_DIR/harbor-jobs/stirrup_agent__<profile>__<model>[__<effort>].
-# Re-running resumes that job, finishing only the trials it has not completed,
-# which is the equivalent of run.sh's --skip-existing. A resume keeps the
-# settings the job started with, so a changed -n applies to new jobs only. Only
-# one run.sh works on a job at a time; another skips it.
-#
-# Exits non-zero when a model's job could not start or resume, including a
-# model skipped by the checks before it.
+# Re-running resumes it with its original settings. Exits non-zero when a
+# model's job could not start or resume, or the model was skipped.
 
 set -euo pipefail
 
@@ -83,8 +64,7 @@ fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Paths the caller gives are relative to where the script was run, as for any
-# command; the defaults are the repo's own. Resolved before the cd below.
+# Resolve caller paths before the cd below.
 caller_dir="$PWD"
 absolute() {
   case "$1" in
@@ -126,21 +106,16 @@ if [[ ! -f "$env_file" ]]; then
   printf 'Credentials file not found: %s (set ENV_FILE)\n' "$env_file" >&2
   exit 2
 fi
-# StirrupAgent reads this file in place of the nearest .env, so the repo's .env
-# cannot fill the gaps of another ENV_FILE.
+# StirrupAgent reads this file instead of the nearest .env.
 export AOB_ENV_FILE="$env_file"
 
-# Each job builds from its own copy of the tasks, generated when the job starts
-# and never regenerated. Harbor refuses to resume a job whose tasks differ from
-# its lock, so regenerating on every run left a job unresumable after any change
-# to the template, the suite's scenario files or the generator; and one shared
-# folder let a second run.sh delete tasks a running job was still reading. The
-# copies hold every scenario's answers (tests/, solution/), so they stay in the
-# repo's gitignored datasets/ rather than beside the results.
+# Each job gets its own copy of the tasks, generated once when it starts:
+# Harbor refuses to resume a job whose tasks changed, and a shared folder could
+# be rewritten under a running job. The copies hold answers, so they stay in the
+# gitignored datasets/ rather than beside the results.
 tasks_root="$repo_root/benchmarks/harbor/datasets/jobs"
 
-# Everything the script creates for itself goes on exit: the runtime image pin,
-# a code tar it did not finish writing, and the lock of the job it was on.
+# Removed on exit: the runtime image pin, a partial code tar, the job lock.
 runtime_pin=""
 code_tar_partial=""
 job_lock=""
@@ -151,21 +126,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The suite's shared/ data reaches each trial through
-# overlays/private-data.yaml, a read-only bind mount of this directory's shared/.
-# Compose reads the variable on `harbor run` and again on `harbor jobs resume`.
-# A missing shared/ would not fail the mount: Docker creates the host directory,
-# and every collection then loads empty without an error.
+# overlays/private-data.yaml mounts $AOB_PRIVATE_DIR/shared into each trial.
 if [[ ! -d "$scenario_dir/shared" ]]; then
   printf "No shared/ directory in %s; is -s the suite's scenarios_data?\n" "$scenario_dir" >&2
   exit 2
 fi
 export AOB_PRIVATE_DIR="$scenario_dir"
 
-# Every task image builds FROM the runtime image, through the AOB_RUNTIME_IMAGE
-# build arg in the task's docker-compose.yaml. -r wins, then the shell's
-# AOB_RUNTIME_IMAGE, then ENV_FILE's, then the local default: the order
-# `uv run --env-file` gives Harbor, where the environment beats the file.
+# -r wins, then the shell's AOB_RUNTIME_IMAGE, then ENV_FILE's, then the local
+# default.
 if [[ -z "$runtime_image" ]]; then
   runtime_image="$(uv run --env-file "$env_file" python -c \
     'import os; print(os.environ.get("AOB_RUNTIME_IMAGE", ""))')"
@@ -191,10 +160,8 @@ from_registry() {
   return 1
 }
 
-# A local copy satisfies FROM, so the build never refreshes a published image;
-# pull it here instead, on Docker Hub or any other registry. A local build that
-# was never pushed under this name (the default assetopsbench/runtime:dev) is
-# used as is, and a pull never replaces it.
+# A build never refreshes a published image it already has, so pull it here. A
+# local build (e.g. the default assetopsbench/runtime:dev) is used as is.
 if ! docker image inspect "$runtime_image" >/dev/null 2>&1; then
   if ! docker pull "$runtime_image"; then
     printf 'Runtime image %s is not local and could not be pulled. Build it with\n' "$runtime_image" >&2
@@ -206,11 +173,9 @@ elif from_registry "$runtime_image" && ! docker pull "$runtime_image"; then
     "$runtime_image" >&2
 fi
 
-# Pin the base for the whole run. A tag such as :dev can move while the run is
-# going (a rebuild, or another run's pull), and every trial resolves FROM when
-# it builds, so later trials would silently switch base. FROM cannot name an
-# image id, so tag this one under a name private to this process and remove it
-# on exit. Compose reads the variable on `harbor run` and on `harbor jobs resume`.
+# Pin the base for the whole run: a tag such as :dev can move mid-run, and each
+# trial resolves FROM when it builds. FROM cannot name an image id, so tag it
+# under a name private to this process.
 runtime_id="$(docker image inspect --format '{{.Id}}' "$runtime_image")"
 runtime_id="${runtime_id#sha256:}"
 runtime_pin="aob-runtime-pin:${runtime_id:0:12}-$$"
@@ -218,14 +183,9 @@ docker tag "$runtime_image" "$runtime_pin"
 export AOB_RUNTIME_IMAGE="$runtime_pin"
 printf 'Runtime image: %s (%s)\n' "$runtime_image" "${runtime_id:0:12}"
 
-# The code sandbox image, as a tar each trial's Docker-in-Docker daemon loads
-# (benchmarks/harbor/overlays/code-sandbox.yaml). It is built on every run,
-# which the build cache makes cheap, so a change to Dockerfile.code is picked
-# up. The tar is named after the image id and written once, so a new build never
-# rewrites the file a running job's trials load. Each job records its tar and a
-# resume loads that one; a new job loads this run's. AOB_CODE_TAR from the
-# environment is ignored here, since every job sets its own. Old tars stay in
-# AOB_CODE_TAR_DIR until removed.
+# The code sandbox image, as a tar each trial's dind loads. Rebuilt every run
+# (cheap when cached) and saved once per image id, so a running job's tar is
+# never rewritten. Old tars stay in AOB_CODE_TAR_DIR until removed.
 code_image=assetops-code:dev
 docker build -q -t "$code_image" \
   -f src/agent/stirrup_agent/Dockerfile.code src/agent/stirrup_agent >/dev/null
@@ -255,16 +215,10 @@ slug() {
 profile_name="$(basename "$profile")"
 profile_slug="$(slug "${profile_name%.*}")"
 
-# Fail fast when a model cannot be served. Otherwise every trial builds its
-# containers, loads its data, retries the model for minutes and exits 1, which
-# is how a dropped VPN or an expired key turns into a job of failed trials.
-#
-# Each router in use must answer, and must not reject its key: GET /models
-# answers 401 or 403 to a bad key, and any other answer, 404 included, passes.
-# The routers in use are the model's and FMSR_MODEL_ID's. A model with no router
-# prefix is not probed, but it needs FMSR_MODEL_ID: the FMSR server otherwise
-# runs generate_failure_modes on the agent's model, accepts only router models,
-# and every fmsr scenario would run without that tool.
+# Fail fast when a model cannot be served, rather than a job of failed trials.
+# The model's and FMSR_MODEL_ID's routers must answer GET /models without a 401
+# or 403. A model with no router prefix needs FMSR_MODEL_ID, since the FMSR
+# server accepts only router models.
 check_model() {
   uv run --env-file "$env_file" python - "$1" <<'PY'
 import os
@@ -312,9 +266,8 @@ for prefix in dict.fromkeys(p for p in (router(model), router(fmsr_model)) if p)
 PY
 }
 
-# One run.sh per job at a time: two resuming the same job would run its trials
-# twice into the same directories. mkdir is atomic, and the lock holds its
-# owner's PID, so a lock left by a run.sh that died is taken over.
+# One run.sh per job at a time. mkdir is atomic; the lock holds its owner's
+# PID, so a lock left by a dead run.sh is taken over.
 lock_job() {
   local lock="$1" owner
   if mkdir "$lock" 2>/dev/null; then
@@ -330,12 +283,10 @@ lock_job() {
   printf '%s\n' "$$" >"$lock/pid"
 }
 
-# Trials a resume runs again: those that failed for a reason other than the
-# model's own work, i.e. its API or the network, the environment, the verifier,
-# or Ctrl-C. Harbor matches the exact class name, so every subclass is listed.
-# Kept as results: AgentTimeoutError, ContextWindowExceededError,
-# OutputTokenExceededError and AgentSafetyRefusalError. Names from Harbor 0.23;
-# src/assetops_harbor/tests/test_run_sh.py checks them against the installed one.
+# Trials a resume reruns: failures not caused by the model's own work (API,
+# network, environment, verifier, Ctrl-C). Harbor matches exact class names;
+# src/assetops_harbor/tests/test_run_sh.py checks them against Harbor. Timeouts,
+# context/output overruns and safety refusals are kept as results.
 retry_error_types=(
   CancelledError
   NonZeroAgentExitCodeError
@@ -366,33 +317,23 @@ for error_type in "${retry_error_types[@]}"; do
   retry_filters+=(--filter-error-type "$error_type")
 done
 
-# Non-zero when a model's job could not start or resume, or was skipped. A
-# trial that fails inside a job does not count: Harbor records it and the loop
-# moves on.
+# Non-zero when a model's job could not start or resume, or was skipped.
 status=0
 
 for model_config in "${model_configs[@]}"; do
   read -r model_id reasoning_effort <<< "$model_config"
   [[ -z "${model_id:-}" ]] && continue
 
-  # The profile and effort are in the name because a resume runs the job's own
-  # saved settings. Named after the model alone, a second effort or another
-  # profile resumed the first job instead of starting its own.
+  # Profile and effort are in the name so each gets its own job.
   job_name="stirrup_agent__${profile_slug}__$(slug "$model_id")"
   if [[ -n "${reasoning_effort:-}" ]]; then
     job_name+="__$(slug "$reasoning_effort")"
   fi
   job_path="$jobs_dir/$job_name"
-  # Keyed by the job's full path, so the same job name under another
-  # LEADERBOARD_DIR gets its own copy.
+  # Keyed by the job's full path, so another LEADERBOARD_DIR gets its own copy.
   tasks_dir="$tasks_root/$job_name-$(printf '%s' "$job_path" | cksum | cut -d' ' -f1)"
-  # What a job started on, beside the job rather than in it. Harbor's resume
-  # lock covers the task files but not the base they build FROM, so without the
-  # runtime image record a resume with another -r would mix two images in one
-  # job. The code tar record makes a resume load the job's own code image. The
-  # suite record matters because a resume reuses the job's manifests but mounts
-  # shared/ from the current -s: another suite would pair one suite's manifests
-  # with another's data.
+  # What the job started on, which Harbor's own resume check does not cover: the
+  # runtime image, the code tar, and the suite whose shared/ the mount supplies.
   image_record="$jobs_dir/$job_name.runtime-image"
   code_record="$jobs_dir/$job_name.code-tar"
   suite_record="$jobs_dir/$job_name.suite"
@@ -437,11 +378,7 @@ for model_config in "${model_configs[@]}"; do
       printf 'The code image %s started with is gone (%s).\n' "$job_path" "$job_code_tar" >&2
       printf 'Move the job aside to rerun %s from scratch.\n' "$model_id" >&2
       status=1
-    # Drop the trials in retry_error_types so they run again; scored trials
-    # are kept, as run.sh's --skip-existing kept scenarios that already had a
-    # trajectory. Harbor refuses to resume once the overlays differ from the
-    # job's lock. The tasks cannot differ: the job builds from its own copy.
-    # Say so rather than skip the model silently.
+    # Rerun the trials in retry_error_types; scored trials are kept.
     elif ! AOB_CODE_TAR="$job_code_tar" uv run --env-file "$env_file" \
       harbor jobs resume -p "$job_path" "${retry_filters[@]}"; then
       printf 'Could not resume %s. If its overlays changed since it started,\n' "$job_path" >&2
@@ -453,9 +390,7 @@ for model_config in "${model_configs[@]}"; do
     continue
   fi
 
-  # A new job, so its own tasks from scratch: the generator overwrites tasks
-  # but never removes them, so a folder left from an attempt that never
-  # started would join this one.
+  # The generator never removes tasks, so clear any left by a failed start.
   rm -rf "$tasks_dir"
   uv run python benchmarks/harbor/adapter/generate_tasks.py \
     --scenario-root "$scenario_dir" \
@@ -474,10 +409,8 @@ for model_config in "${model_configs[@]}"; do
     effort_args=(--ak "reasoning_effort=$reasoning_effort")
   fi
 
-  # harbor run exits 0 when trials fail, recording them in the job, so the loop
-  # moves on to the next model as run.sh's --continue-on-error did. Non-zero
-  # means the job itself could not run, e.g. a rejected config or StirrupAgent
-  # refusing its credentials, which aborts the job as the first trial starts.
+  # harbor run exits 0 when trials fail; non-zero means the job itself could not
+  # run, e.g. a rejected config or missing credentials.
   if ! AOB_CODE_TAR="$code_tar" uv run --env-file "$env_file" harbor run -y \
     -p "$tasks_dir" \
     --agent assetops_harbor.stirrup:StirrupAgent \

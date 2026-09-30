@@ -1,23 +1,14 @@
-# AssetOpsBench runtime base image.
-#
-# Built once per repo commit and published. Every Harbor task layers only its
-# own scenario folder on top of this, which keeps each task's build context at
-# a few KB. That matters: Harbor tags a task image by a SHA-256 content hash of
-# the whole environment/ directory, so a fat per-task context defeats the cache
-# and rebuilds the world for every scenario.
+# AssetOpsBench runtime base image. Every Harbor task layers only its own
+# scenario folder on top, keeping each task's build context small.
 #
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh
 #
-# tags it assetopsbench/runtime:dev and assetopsbench/runtime:<commit>.
-#
-# The script builds from `git archive HEAD`, so `COPY . .` below sees committed
-# files only, and passes that commit as AOB_COMMIT. A plain `docker build` of the
-# working tree would also copy untracked files, which .dockerignore alone cannot
-# anticipate, so without AOB_COMMIT the `commit` stage fails the build.
+# The script builds from `git archive HEAD` and passes the commit as
+# AOB_COMMIT; a plain `docker build` of the working tree fails the `commit`
+# stage, since it would copy untracked files too.
 
-# Its own stage so the check fails fast without the ARG reaching the stage
-# below: every RUN after an ARG misses the cache when its value changes, and
-# AOB_COMMIT changes with every commit.
+# A separate stage, so AOB_COMMIT (new every commit) does not bust the cache of
+# the stage below.
 FROM python:3.12-slim AS commit
 ARG AOB_COMMIT
 RUN test -n "$AOB_COMMIT" || { \
@@ -28,9 +19,8 @@ RUN test -n "$AOB_COMMIT" || { \
 
 FROM python:3.12-slim
 
-# HF_HOME fixes the Hugging Face cache at one path. The default follows $HOME,
-# so a container running as anyone but root looks elsewhere and refetches every
-# weight this image already carries.
+# HF_HOME pins the Hugging Face cache, so a non-root user finds the preloaded
+# weights.
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
@@ -48,31 +38,23 @@ WORKDIR /opt/aob
 
 # Lockfile first so dependency layers survive source edits.
 COPY pyproject.toml uv.lock ./
-# --group otel installs the OTLP exporter and httpx instrumentation. The task
-# sets OTEL_TRACES_FILE, which turns on the file exporter; without this group
-# it fails at export time on a missing google.protobuf and drops every batch.
+# --group otel: the task sets OTEL_TRACES_FILE, whose exporter needs it.
 RUN uv sync --frozen --group otel --extra tsfm --no-install-project
 
-# Repo, including the shared scenario data under
-# src/couchdb/scenarios_data/shared (7.7 MB in the open profile). Shared here
-# means pulled once, not copied into every task context.
+# Repo, including src/couchdb/scenarios_data/shared, pulled once rather than
+# copied into every task context.
 COPY . .
 RUN uv sync --frozen --group otel --extra tsfm
 
-# Model weights, from benchmarks/harbor/base-image/models.txt: a committed list
-# of public Hub repo ids, exported from the model catalog with
+# Model weights, from base-image/models.txt: public Hub repo ids exported from
+# the model catalog, so the build needs no access to a private catalog. Nothing
+# keeps the two in step; rerun this whenever the catalog's Hub entries change:
 #
 #   preload_models.py --print-repos > benchmarks/harbor/base-image/models.txt
-#
-# The list rather than the catalog, because the catalog is private and a COPY
-# would write it into a layer for good. Nothing checks that the two agree:
-# rerun the command above whenever the catalog's Hub entries change, or the new
-# models are not preloaded.
 RUN uv run python benchmarks/harbor/scripts/preload_models.py \
         --from-list benchmarks/harbor/base-image/models.txt --download
 
-# The image has no .git (see .dockerignore): the commit it was built from is
-# this file, which StirrupAgent.get_version_command reads into result.json.
+# No .git in the image; StirrupAgent.get_version_command reads the commit here.
 COPY --from=commit /aob-commit /opt/aob/.aob-commit
 
 CMD ["bash", "-lc", "sleep infinity"]

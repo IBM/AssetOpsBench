@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build and publish the images the Harbor tasks depend on, for both
-# architectures, so nobody has to build them locally.
+# architectures.
 #
 #   ./benchmarks/harbor/scripts/publish-images.sh quay.io/assetopsbench v0.1.0
 #
@@ -16,11 +16,7 @@
 #                        Only needed by the code-sandbox overlay.
 #
 # The runtime image is built by build-runtime-image.sh from `git archive HEAD`,
-# so only committed files can land in the published image, and .dockerignore
-# then drops env files and scenario answers from those. The image carries no
-# .git; the commit it was built from is /opt/aob/.aob-commit, which
-# StirrupAgent.get_version_command records for each trial. Uncommitted changes
-# are not published; commit them first.
+# so uncommitted changes are not published.
 set -euo pipefail
 
 NAMESPACE="${1:?usage: publish-images.sh <namespace, e.g. quay.io/assetopsbench> [tag]}"
@@ -42,9 +38,7 @@ if ! docker buildx inspect >/dev/null 2>&1; then
     exit 1
 fi
 
-# The commit tag never moves, unlike TAG and latest, so a published run can
-# name the exact build it used. build-runtime-image.sh builds HEAD, so this is
-# the commit in the image whatever the working tree holds.
+# Unlike TAG and latest, the commit tag names the exact build a run used.
 COMMIT="$(git rev-parse HEAD | cut -c1-7)"
 
 echo "==> ${NAMESPACE}/runtime:${TAG} (${COMMIT}) for ${PLATFORMS}"
@@ -70,11 +64,8 @@ Published. Users now pull instead of building. To run on exactly this build:
   docker pull ${NAMESPACE}/runtime:${COMMIT}
   export AOB_RUNTIME_IMAGE=${NAMESPACE}/runtime:${COMMIT}
 
-or use ${NAMESPACE}/runtime:latest to follow the newest publish. Each task's
-docker-compose.yaml passes AOB_RUNTIME_IMAGE to its Dockerfile as a build arg,
-so harbor run builds FROM that image; unset, it falls back to the local tag
-assetopsbench/runtime:dev. benchmarks/harbor/run.sh takes it as -r, and pulls
-it first.
+or use ${NAMESPACE}/runtime:latest to follow the newest publish.
+benchmarks/harbor/run.sh takes the image as -r.
 
 For the code track, point the overlay at the published image rather than a tar:
 

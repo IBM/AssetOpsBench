@@ -1,15 +1,12 @@
 # Running AssetOpsBench on Harbor
 
 Runs the benchmark's scenarios in parallel, each with its own CouchDB, using
-[Harbor](https://github.com/harbor-framework/harbor). Start to finish in about
-ten minutes, most of it waiting on an image pull.
-
-`README.md` in this directory explains how it works and why. This file is just
-the steps.
+[Harbor](https://github.com/harbor-framework/harbor). `README.md` in this
+directory explains how it works; this file is just the steps.
 
 ## 1. Prerequisites
 
-- Docker, running. Give it at least 4 GB of memory in Docker Desktop settings.
+- Docker, running, with at least 4 GB of memory.
 - [uv](https://docs.astral.sh/uv/)
 - An API key for whichever model you want to evaluate.
 
@@ -19,7 +16,7 @@ cd AssetOpsBench
 uv sync --dev --extra harbor
 ```
 
-`--extra harbor` matters. Harbor is optional and a plain `uv sync` leaves it out.
+Harbor is optional, so a plain `uv sync` leaves it out.
 
 ## 2. Get the runtime image
 
@@ -31,25 +28,19 @@ docker pull quay.io/assetopsbench/runtime:dev
 export AOB_RUNTIME_IMAGE=quay.io/assetopsbench/runtime:dev
 ```
 
-Or build it yourself, which takes a few minutes and needs no registry:
+Or build it yourself, which takes a few minutes:
 
 ```bash
 bash benchmarks/harbor/scripts/build-runtime-image.sh
 ```
 
-The script builds `assetopsbench/runtime:dev`, also tagged
-`assetopsbench/runtime:<commit>`, from `git archive HEAD`, not from your
-working tree, so untracked files such as local results never reach
-the container the agent runs in. Commit a change first to include it.
+The script builds `assetopsbench/runtime:dev` (also tagged with the commit)
+from `git archive HEAD`, so untracked files and uncommitted changes never reach
+the image. Commit a change first to include it.
 
-Each task's `environment/docker-compose.yaml` passes `AOB_RUNTIME_IMAGE` to
-its Dockerfile as a build arg, so `harbor run` builds FROM whatever that
-variable names when it runs, and from the local `assetopsbench/runtime:dev`
-when it is unset. The variable lives in the shell, so set it again in a new
-one, or put it in `.env` and run Harbor as `uv run --env-file .env harbor run`.
-Changing the image needs no task regeneration, but tasks generated before the
-build arg existed ignore the variable; regenerate those once (step 3).
-`run.sh` takes the image as `-r`.
+`harbor run` builds each task FROM `AOB_RUNTIME_IMAGE`, or the local
+`assetopsbench/runtime:dev` when it is unset. Set it in every new shell, or put
+it in `.env` and run `uv run --env-file .env harbor run ...`.
 
 ## 3. Generate the tasks
 
@@ -58,8 +49,8 @@ uv run python benchmarks/harbor/adapter/generate_tasks.py --overwrite
 ```
 
 One Harbor task per scenario appears under
-`benchmarks/harbor/datasets/assetopsbench-open/`. They are gitignored and you
-can regenerate them at any time.
+`benchmarks/harbor/datasets/assetopsbench-open/`. They are gitignored and can
+be regenerated at any time.
 
 ## 4. Check it works, before spending tokens
 
@@ -68,9 +59,8 @@ uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
   --agent oracle --n-concurrent 2
 ```
 
-Expect 3 trials, 0 exceptions, Passed 1.000, Reward 1.000. The oracle writes the
-known answer, so a perfect score means the environment, the data load and the
-scoring all work. Anything less is a setup problem, not a model problem.
+Expect 3 trials, 0 exceptions, reward 1.000. The oracle writes the known
+answer, so anything less is a setup problem, not a model problem.
 
 While it runs, in another shell:
 
@@ -79,8 +69,7 @@ docker ps --format '{{.Names}}\t{{.Ports}}' | grep couchdb
 ```
 
 Two CouchDB containers under different project prefixes, neither publishing a
-host port. That is the per-trial isolation, and it is why the scenarios can run
-at the same time without overwriting each other's data.
+host port: that is the per-trial isolation.
 
 ## 5. Run an agent
 
@@ -95,15 +84,13 @@ uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
   -o ~/AssetOpsBenchRuns/harbor
 ```
 
-Export the credentials your model needs and the agent forwards them into the
-agent phase only. The supported names are in `CREDENTIAL_ENV_VARS` in
-`src/assetops_harbor/stirrup.py`: the LiteLLM and TokenRouter pairs, the watsonx
-variables, and the usual OpenAI, Anthropic, AWS and Gemini names. The agent
-checks for the pair its model needs at construction time, so a missing key fails
-the job immediately instead of after three trials.
+Credentials can also live in the repo's `.env`. The agent forwards them into
+the agent phase only (the names are in `CREDENTIAL_ENV_VARS` in
+`src/assetops_harbor/stirrup.py`) and fails at once if its model's router pair
+is missing. `--ae KEY=VALUE` overrides them for a single run.
 
-`--ae KEY=VALUE` overrides the shell for a single run. `code_enabled=false` runs
-the tools-only track, which is the arm comparable to the other runners.
+`code_enabled=false` runs the tools-only track. To let the agent run code, use
+the Docker sandbox in [CODE-SANDBOX.md](CODE-SANDBOX.md).
 
 ## 6. Read the results
 
@@ -119,71 +106,19 @@ the tools-only track, which is the arm comparable to the other runners.
 uv run harbor view ~/AssetOpsBenchRuns/harbor
 ```
 
-## The code track
-
-Agent-written code runs in the same container as the MCP servers by default,
-which means it can query CouchDB directly and bypass the tools the benchmark
-measures. `benchmarks/harbor/overlays/code-sandbox.yaml` moves it into a
-per-trial Docker-in-Docker daemon:
-
-```bash
-uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
-  --agent assetops_harbor.stirrup:StirrupAgent \
-  --model tokenrouter/MiniMax-M3 \
-  --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
-  --ak code_enabled=true --ak code_backend=docker \
-  --ak allow_docker_backend=true --ak workspace_dir=/workspace-share \
-  --n-concurrent 1
-```
-
-`workspace_dir=/workspace-share` is required, not optional. Stirrup creates its
-workspace on the main container's filesystem and bind-mounts that path into the
-code container, so with `DOCKER_HOST` pointing at the daemon the path has to
-exist on both sides. The overlay's shared volume is what makes it resolve.
-
-Code containers get no DNS entry for `couchdb` and no environment at all, so the
-realistic shortcut has neither a hostname nor a credential. Read the README
-section "The code track and CouchDB" for what this does and does not guarantee.
-Lower `--n-concurrent` for this arm: each trial now runs a Docker daemon of its
-own.
-
-Supply the sandbox image one of two ways. Point at a published one:
-
-```bash
-export AOB_CODE_IMAGE=assetopsbench/code:latest
-```
-
-Or hand the daemon a local tar, which needs no registry at all:
-
-```bash
-docker save assetops-code:dev -o ~/assetops-code.tar
-export AOB_CODE_TAR=~/assetops-code.tar
-```
-
 ## Common problems
 
-**`range of CPUs is from 0.01 to 2.00`** — Docker Desktop has fewer CPUs than
-the run wants. Raise it in settings, or pass `--cpus ignore`.
+**`range of CPUs is from 0.01 to 2.00`**: Docker has fewer CPUs than the run
+wants. Raise it in Docker's settings, or pass `--cpus ignore`.
 
-**`unknown scorer 'llm_judge'`** — you are calling `evaluate` by hand without
-`--scorer-default`. The task's `tests/test.sh` passes it; copy what it does.
+**Trials fail instantly with a pull error**: the build could not find its
+base. `AOB_RUNTIME_IMAGE` is unset in this shell and there is no local
+`assetopsbench/runtime:dev`, or it names an image that is not local. Redo
+step 2 in this shell.
 
-**`All connection attempts failed` inside a tool** — the MCP servers cannot
-reach CouchDB. Confirm your checkout includes the `env` entry in
-`StirrupAgentRunner._build_mcp_config`, without which the MCP SDK hands each
-server a six-variable environment that omits `COUCHDB_URL`.
+**`unknown scorer 'llm_judge'`**: you are calling `evaluate` by hand without
+`--scorer-default`. Copy what the task's `tests/test.sh` does.
 
-**Trials fail instantly with a pull error** — the build could not find its
-base. Either `AOB_RUNTIME_IMAGE` is unset in this shell, so the build fell back
-to the local `assetopsbench/runtime:dev`, which does not exist; or it names an
-image that is not local (check `echo $AOB_RUNTIME_IMAGE` and
-`docker images`). Redo step 2 in this shell.
-
-**`No module named 'google.protobuf'` during a run** — the image was built
-without the `otel` dependency group, which the file trace exporter needs.
-Rebuild with `benchmarks/harbor/scripts/build-runtime-image.sh`, whose
-Dockerfile passes it.
-
-**The verifier scores 0 but the agent clearly answered** — check
+**The verifier scores 0 but the agent clearly answered**: check
 `verifier/test-stderr.txt`. The evaluator joins records to scenarios on
-`scenario_id`, so a record carrying the wrong id yields no pairs and no score.
+`scenario_id`, so a record with the wrong id yields no score.

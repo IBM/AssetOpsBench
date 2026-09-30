@@ -1,11 +1,7 @@
 #!/usr/bin/env python
-"""Apply the six audited fixes to a model catalog, in place.
+"""Apply the audited fixes to a model catalog, in place.
 
-Generated from YOUR file rather than transcribed, so a card that has moved on
-since it was last read is still handled correctly. Every edit is reported, and
-an edit already present is reported as such rather than reapplied.
-
-The fixes, and why each one is needed:
+Every edit is reported; one already present is skipped. The fixes:
 
   ttm, tspulse_ad, tspulse_clf
       "params": {} hands the wrapper its own defaults, which name a checkpoint:

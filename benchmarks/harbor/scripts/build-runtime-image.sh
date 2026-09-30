@@ -5,29 +5,16 @@
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh --no-cache
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh -t myorg/runtime:test
 #
-# Arguments go to `docker buildx build` unchanged. Unless they name a tag (-t)
-# the image is tagged twice: assetopsbench/runtime:dev, the tag the task
-# template builds FROM by default, and assetopsbench/runtime:<commit>, the
-# short hash of the HEAD it was built from. :dev moves with every build; the
-# commit tag moves only when that same commit is rebuilt into a different image
-# (e.g. --no-cache, or after the build cache is pruned), so
-# `run.sh -r assetopsbench/runtime:<commit>` names the code a run used. Each
-# commit tag keeps its multi-GB image alive; list them with
-# `docker images assetopsbench/runtime` and `docker rmi` the ones you no longer
-# need. Unless they name an output (--push, --output, --load) it is loaded into
-# the local image store. publish-images.sh passes --platform, its own tags and
-# --push.
+# Arguments go to `docker buildx build` unchanged. Without a -t the image is
+# tagged assetopsbench/runtime:dev (the task template's default) and
+# assetopsbench/runtime:<commit>; without --push/--output/--load it is loaded
+# locally. Each commit tag keeps a multi-GB image alive, so `docker rmi` old ones.
 #
-# Why an archive: base-image/Dockerfile does `COPY . .`, so a build from the
-# working tree takes whatever sits there, untracked and git-ignored files
-# included. An untracked reports/results_table.csv, with a ground_truth column
-# for 56 private scenarios, once reached the image that way, readable by any
-# agent running code in `main`. The archive holds only what HEAD commits and no
-# .git, whose blobs would hold the answers .dockerignore drops. The commit
-# travels as the AOB_COMMIT build arg instead, which the Dockerfile requires.
-#
-# Uncommitted changes and new files are not built. The script warns about both;
-# commit them first to include them.
+# Why an archive: `COPY . .` in base-image/Dockerfile would otherwise take
+# untracked and git-ignored files too, which is how a local results table with
+# private ground truth once reached the image. The archive holds only what HEAD
+# commits, and no .git; the commit travels as the AOB_COMMIT build arg.
+# Uncommitted changes are not built; the script warns about them.
 set -euo pipefail
 
 repo_root="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"

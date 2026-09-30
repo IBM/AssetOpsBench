@@ -1,22 +1,15 @@
 """Dataset-level metric: AssetOpsBench category rollups.
 
-Harbor's built-in metrics are sum, min, max and mean. Anything else is a uv
-script over a JSONL of per-trial rewards, which Harbor runs automatically when
-metric.py is listed in the dataset's [[files]].
+Harbor runs this when metric.py is listed in the dataset's [[files]].
 
-Two modes, following the CRMArena adapter's metric.py:
+  -i/-o        Harbor's own path. Harbor passes rewards only, with no task
+               identity, so this reports overall figures only.
+  --job-dir    Reads a finished job's <trial>/result.json files, whose
+               task_name carries the category (wosr-1, fmsr-12), and reports
+               per-category means.
 
-  -i/-o        Harbor's own path. Harbor passes rewards ONLY, with no task
-               identity, so this mode can report overall figures and nothing
-               per category.
-  --job-dir    Walks a finished job's trials/<name>/result.json files, where
-               task_name carries the category prefix (wosr-1, fmsr-12), and
-               reports per-category means.
-
-Do not smuggle the category into the reward dict to work around the first
-mode's blindness: Harbor aggregates every reward key by mean across all trials,
-and a key present on only one category's trials counts as zero everywhere else,
-which produces a per-category column that is quietly wrong.
+Do not put the category into the reward dict instead: Harbor averages each
+reward key over all trials, counting it as zero where it is absent.
 """
 
 from __future__ import annotations

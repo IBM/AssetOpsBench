@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 # Oracle. Writes the ground-truth answer in the shape observability.persistence
-# writes, so `--agent oracle` should score 1.0 on every scenario.
-#
-# Nothing in this design requires an oracle, but Harbor's adapter guidelines
-# treat a 100% oracle pass as the gate that proves a task is scorable at all,
-# and for an LLM-judge benchmark it doubles as a judge sanity check: a scenario
-# where the oracle does not score 1.0 has a scorer or ground-truth problem, not
-# an agent problem.
+# writes, so `--agent oracle` should score 1.0; a scenario that does not has a
+# scorer or ground-truth problem.
 set -euo pipefail
 
 mkdir -p /logs/agent
