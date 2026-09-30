@@ -153,6 +153,49 @@ class TestGenerateFailureModes:
 
         assert data["error"].startswith("LLM unavailable")
 
+    @pytest.mark.anyio
+    async def test_generates_without_the_catalog(self, monkeypatch):
+        """A missing failure_mode database must not stop generation.
+
+        The tool's contract is "a new or extended list": extended when modes are
+        stored, new when they are not. An uninitialised catalog is the from-scratch
+        case, not an error.
+        """
+        from servers.fmsr import main as fmsr
+
+        def _no_db(_asset_class):
+            raise RuntimeError("database not connected")
+
+        monkeypatch.setattr(fmsr, "_known_failure_modes", _no_db)
+        monkeypatch.setattr(fmsr, "_llm_available", True)
+        monkeypatch.setattr(
+            fmsr,
+            "_call_failure_mode_generation",
+            lambda key, known, n: ["Seal leakage", "Bearing wear"],
+        )
+
+        data = await call_tool(
+            fmsr.mcp, "generate_failure_modes", {"asset_class": "pump", "max_modes": 5}
+        )
+        assert "error" not in data, data
+        assert data["known"] == []
+        assert data["generated"] == ["Seal leakage", "Bearing wear"]
+        assert "catalog not initialised" in data["message"]
+
+    @pytest.mark.anyio
+    async def test_generates_when_db_handle_is_absent(
+        self, monkeypatch, mock_failure_mode_generation
+    ):
+        """fm_db unset is the other 'never initialised' signal."""
+        monkeypatch.setattr("servers.fmsr.main.fm_db", None)
+
+        data = await call_tool(
+            mcp, "generate_failure_modes", {"asset_class": "pump", "max_modes": 3}
+        )
+        assert "error" not in data, data
+        assert data["known"] == []
+        assert data["generated"]
+
     @requires_fmsr_llm
     @requires_failure_mode_db
     @pytest.mark.anyio
