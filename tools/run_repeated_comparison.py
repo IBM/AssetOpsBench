@@ -15,9 +15,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--baseline', type=Path, default=ROOT / 'benchmarks/runs/2026-09-30-transformer/models')
     parser.add_argument('--output-dir', type=Path, default=ROOT / 'generated/comparisons/transformer-k3')
+    parser.add_argument('--resume', action='store_true', help='Keep finished repetitions and launch only pending repetitions')
     args = parser.parse_args()
     baseline, output = args.baseline.resolve(), args.output_dir.resolve()
-    if (output / 'experiment.json').exists():
+    if (output / 'experiment.json').exists() and not args.resume:
         parser.error('Experiment already exists; use a fresh output directory.')
     config = json.loads((ROOT / 'benchmarks/generated-comparison.json').read_text())
     suite = ROOT / config['suite']
@@ -39,9 +40,32 @@ def main():
               'repetitions': [{'index': 1, 'root': str(baseline), 'status': 'completed'},
                               *[{'index': i, 'root': str(output / f'repetition-{i}'), 'status': 'pending'} for i in (2, 3)]],
               'execution_policy': 'repetitions serial; five model targets concurrent; independent live grading'}
+    if args.resume:
+        previous=json.loads((output/'experiment.json').read_text())
+        if any(previous[key] != record[key] for key in ('baseline','suite','snapshot_sha256','k')):
+            parser.error('Resume configuration differs from the existing experiment.')
+        record=previous
+        if record.get('error'):
+            record.setdefault('interruptions',[]).append({'end':record['end'],'error':record.pop('error')})
+        record.update(status='running',end=None)
     write_json(output / 'experiment.json', record)
     try:
         for repetition in record['repetitions'][1:]:
+            from benchmark.repeated_comparison import aggregate
+            ids=set()
+            for name in ('scenarios.json','negative_scenarios.json'):
+                ids.update(str(row['id']) for row in json.loads((suite/name).read_text()))
+            existing=[list((Path(repetition['root'])/spec['name']/'measurements').glob('*.json')) for spec in config['targets']]
+            if any(existing):
+                # Never reclone databases or replay finished cases while resuming orchestration.
+                for files in existing:
+                    aggregate([(repetition['index'],[json.loads(p.read_text()) for p in files])],ids,require_complete=True)
+                from benchmark.comparison_report import render
+                render(Path(repetition['root']),Path(repetition['root'])/'comparison.html')
+                repetition.update(status='completed',end=repetition.get('end') or record.get('interruptions',[{}])[-1].get('end'))
+                write_json(output/'experiment.json',record)
+                print('Repetition',repetition['index'],'already finished; preserved',flush=True)
+                continue
             repetition.update(status='running', start=datetime.now(timezone.utc).isoformat())
             write_json(output / 'experiment.json', record)
             command = [sys.executable, str(ROOT / 'tools/run_generated_comparison.py'),
@@ -49,10 +73,6 @@ def main():
                        '--snapshot-file', str(output / 'snapshot.json.gz'), '--repetition-index', str(repetition['index'])]
             print('Repetition', repetition['index'], 'starting', flush=True)
             subprocess.run(command, cwd=ROOT, check=True)
-            from benchmark.repeated_comparison import aggregate
-            ids=set()
-            for name in ('scenarios.json','negative_scenarios.json'):
-                ids.update(str(row['id']) for row in json.loads((suite/name).read_text()))
             for spec in config['targets']:
                 records=[json.loads(p.read_text()) for p in (Path(repetition['root'])/spec['name']/'measurements').glob('*.json')]
                 aggregate([(repetition['index'],records)],ids,require_complete=True)
