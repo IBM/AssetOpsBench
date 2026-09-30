@@ -80,6 +80,7 @@ def aggregate(repetitions, scenario_ids, *, require_complete=False):
                                                for r in completed]) for key in rubric_keys}
     pooled=summarize_cases(rows,assigned_cases=len(expected)*len(repetitions))
     return {'k': len(repetitions), 'complete_repetitions': len(completed),
+            'median_pass_rate': statistics.median(r['cases']['pass_rate'] for r in completed) if completed else None,
             'per_repetition': per_repetition, 'means': means,
             'pooled_cases': pooled, 'pooled_attempts': summarize(all_attempts),
             'per_scenario': {sid: {'outcomes': outcomes[sid],

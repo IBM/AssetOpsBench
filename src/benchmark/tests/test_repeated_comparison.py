@@ -44,6 +44,18 @@ def test_retry_does_not_change_repetition_weight_or_hide_failure_cost():
     assert result['means']['total_execution_ms']['mean'] == pytest.approx(590/3)
 
 
+def test_median_pass_rate_resists_one_high_repeat_and_excludes_unfinished_repeats():
+    ids={'1','2','3','4'}
+    repeats=[(index,[record(sid,index==3 or sid=='1',10) for sid in ids]) for index in (1,2,3)]
+    result=aggregate(repeats,ids,require_complete=True)
+    assert result['median_pass_rate']==.25
+    assert result['means']['pass_rate']['mean']==.5
+    assert result['pooled_cases']['pass_rate']==.5
+    partial=aggregate([repeats[0],(2,[record('1',False,10)]),(3,[])],ids)
+    assert partial['median_pass_rate']==.25
+    assert aggregate([(1,[])],ids)['median_pass_rate'] is None
+
+
 def test_exhausted_execution_counts_as_nonpassing_without_inventing_a_judge_score():
     failed=record('2',False,100,attempt=3)
     failed.update(status='failed',grading=None)

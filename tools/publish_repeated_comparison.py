@@ -286,7 +286,7 @@ def make_report(dest, experiment, config, groups, payload):
         group = groups[key]; avg = group['means']
         rates = ' | '.join(f"{rep['cases']['pass_rate']:.1%}" for rep in group['per_repetition'])
         availability='/'.join(str(r['cases']['graded']) for r in group['per_repetition'])
-        table.append(f"| {label} | {rates} | {fmt(avg['pass_rate'],100)} | {fmt(avg['mean_score'],precision=3)} | {fmt(avg['median_execution_ms'],.001)} | {fmt(avg['p95_execution_ms'],.001)} | {fmt(avg['tool_call_count']['mean'])} | {availability} |")
+        table.append(f"| {label} | {rates} | {group['median_pass_rate']:.1%} | {fmt(avg['pass_rate'],100)} | {fmt(avg['mean_score'],precision=3)} | {fmt(avg['median_execution_ms'],.001)} | {fmt(avg['p95_execution_ms'],.001)} | {fmt(avg['tool_call_count']['mean'])} | {availability} |")
         resources.append(f"| {label} | {fmt(avg['input_tokens']['total'])} | {fmt(avg['output_tokens']['total'])} | {fmt(avg['reasoning_tokens']['total'])} | {fmt(avg['run_error_rate'],100)} | {fmt(avg['tool_error_rate'],100)} | {fmt(avg['total_execution_ms'],1/60000)} |")
     attempts = sum(g['pooled_attempts']['attempted'] for g in groups.values())
     judged=sum(g['pooled_cases']['graded'] for g in groups.values())
@@ -299,8 +299,8 @@ The original k = 1 comparison was repeated twice on the **same 52 open-form scen
 
 ![Average pass rates](graphs/pass-rate.png)
 
-| Model | R1 | R2 | R3 | Mean pass ± SD (%) | Mean score ± SD | Median exec ± SD (s) | p95 exec ± SD (s) | Mean tools ± SD | Judged R1/R2/R3 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Model | R1 | R2 | R3 | Median pass | Mean pass ± SD (%) | Mean score ± SD | Median exec ± SD (s) | p95 exec ± SD (s) | Mean tools ± SD | Judged R1/R2/R3 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 {chr(10).join(table)}
 
 ## Execution time
@@ -329,7 +329,7 @@ Each cell reports successful repetitions out of three for one scenario/model pai
 
 ## Method and evidence
 
-Means give each finished repetition equal weight. Pass rates use all 52 assigned cases per repetition; an execution that exhausts its three-attempt budget is a known nonpassing outcome. Its judge score, rationale and rubric results remain unavailable, not invented as zeros or false rubric findings. Scores and rubric rates use actual judgments, with availability shown above and in JSON. Whiskers and ± values show **sample standard deviation across repetitions**, not a confidence interval or a significance claim. Missing metrics are excluded with observed counts retained. The no-hallucinations column inverts the adverse raw `hallucinations` finding.
+Means give each finished repetition equal weight. The HTML's main cards and pass-rate plot show the **median of the three repetition pass rates**; counts and the outcome bar retain all assigned trials. The repetition table and exported graphs retain means and sample SD. Pass rates use all 52 assigned cases per repetition; an execution that exhausts its three-attempt budget is a known nonpassing outcome. Its judge score, rationale and rubric results remain unavailable, not invented as zeros or false rubric findings. Scores and rubric rates use actual judgments, with availability shown above and in JSON. Whiskers and ± values show **sample standard deviation across repetitions**, not a confidence interval or a significance claim. Missing metrics are excluded with observed counts retained. The no-hallucinations column inverts the adverse raw `hallucinations` finding.
 
 Repetitions 2 and 3 run serially, with five execution targets in parallel within each repetition and independent grading workers alongside them. Fresh per-model namespaces start from the preserved repetition-1 snapshot. State persists across scenario order within each model/repetition, with no per-scenario reset. Scenario and snapshot hashes, exact model IDs, runtime versions, reasoning, limits and judge settings are checked before averaging; per-repetition settings and timestamps are retained.
 
