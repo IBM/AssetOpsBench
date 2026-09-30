@@ -7,11 +7,24 @@
 # and rebuilds the world for every scenario.
 #
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh \
-#     -t assetopsbench/runtime:$(git rev-parse --short HEAD) --load
+#     -t assetopsbench/runtime:$(git rev-parse --short HEAD)
 #
-# The script builds from a clean one-commit clone of HEAD, so `COPY . .` below
-# sees committed files only. A plain `docker build` of the working tree would
-# also copy untracked files, which .dockerignore alone cannot anticipate.
+# The script builds from `git archive HEAD`, so `COPY . .` below sees committed
+# files only, and passes that commit as AOB_COMMIT. A plain `docker build` of the
+# working tree would also copy untracked files, which .dockerignore alone cannot
+# anticipate, so without AOB_COMMIT the `commit` stage fails the build.
+
+# Its own stage so the check fails fast without the ARG reaching the stage
+# below: every RUN after an ARG misses the cache when its value changes, and
+# AOB_COMMIT changes with every commit.
+FROM python:3.12-slim AS commit
+ARG AOB_COMMIT
+RUN test -n "$AOB_COMMIT" || { \
+        echo "build with benchmarks/harbor/scripts/build-runtime-image.sh," \
+             "not docker build: it builds HEAD, never the working tree" >&2; \
+        exit 1; } \
+    && echo "$AOB_COMMIT" > /aob-commit
+
 FROM python:3.12-slim
 
 # HF_HOME fixes the Hugging Face cache at one path. The default follows $HOME,
@@ -55,5 +68,9 @@ RUN uv sync --frozen --group otel --extra tsfm
 # two drift.
 RUN uv run python benchmarks/harbor/scripts/preload_models.py \
         --from-list benchmarks/harbor/base-image/models.txt --download
+
+# The image has no .git (see .dockerignore): the commit it was built from is
+# this file, which StirrupAgent.get_version_command reads into result.json.
+COPY --from=commit /aob-commit /opt/aob/.aob-commit
 
 CMD ["bash", "-lc", "sleep infinity"]

@@ -235,10 +235,12 @@ class StirrupAgent(BaseInstalledAgent):
         """Record the AssetOpsBench commit as the agent version.
 
         Harbor writes this into result.json, so every trial carries the exact
-        repo state it ran against. Detection is best-effort in Harbor, so a
-        task image built without git history simply reports no version.
+        repo state it ran against. The runtime image has no .git, since its
+        blobs would hold scenario answers; build-runtime-image.sh records the
+        commit in .aob-commit instead. Detection is best-effort in Harbor, so
+        an image built without that file simply reports no version.
         """
-        return f"git -C {AOB_HOME} rev-parse --short HEAD"
+        return f"cut -c1-7 {AOB_HOME}/.aob-commit"
 
     async def run(
         self,

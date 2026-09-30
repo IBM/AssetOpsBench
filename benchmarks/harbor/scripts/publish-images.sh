@@ -15,12 +15,12 @@
 #   <namespace>/code     the sandbox for the code track (numpy, pandas, scipy).
 #                        Only needed by the code-sandbox overlay.
 #
-# The runtime image is built by build-runtime-image.sh from a clean one-commit
-# clone of HEAD, so only committed files can land in the published image, and
-# .dockerignore then drops env files and scenario answers from those. The clone
-# keeps a one-commit .git, because StirrupAgent.get_version_command runs
-# `git rev-parse` inside the container to record the commit each trial ran
-# against. Uncommitted changes are not published; commit them first.
+# The runtime image is built by build-runtime-image.sh from `git archive HEAD`,
+# so only committed files can land in the published image, and .dockerignore
+# then drops env files and scenario answers from those. The image carries no
+# .git; the commit it was built from is /opt/aob/.aob-commit, which
+# StirrupAgent.get_version_command records for each trial. Uncommitted changes
+# are not published; commit them first.
 set -euo pipefail
 
 NAMESPACE="${1:?usage: publish-images.sh <dockerhub-namespace> [tag]}"

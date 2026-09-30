@@ -40,7 +40,7 @@ command from the repo root.
 
 ```bash
 # 1. Build the runtime base (once per AssetOpsBench commit). The script builds
-#    from a clean clone of HEAD, so untracked files and uncommitted changes stay
+#    from `git archive HEAD`, so untracked files and uncommitted changes stay
 #    out of the image. The tag is local and is the default AOB_RUNTIME_IMAGE in
 #    template/environment/Dockerfile; nothing is pulled or pushed.
 bash benchmarks/harbor/scripts/build-runtime-image.sh

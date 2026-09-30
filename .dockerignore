@@ -2,9 +2,9 @@
 # into the build context by `COPY . .` in benchmarks/harbor/base-image/Dockerfile
 # and baked into the runtime image, including files git ignores.
 #
-# benchmarks/harbor/scripts/build-runtime-image.sh builds from a clean clone of
-# HEAD, so untracked files never reach it. This file still applies inside that
-# clone, and it is the only guard for a plain `docker build .` of the tree.
+# benchmarks/harbor/scripts/build-runtime-image.sh builds from `git archive HEAD`,
+# so untracked files never reach it, and base-image/Dockerfile refuses a build
+# that does not come through it. This file still applies to that context.
 
 # Credentials. AssetOpsBench's run_sdk_cli calls load_dotenv(), so a local .env
 # would otherwise end up inside every task image and every trial container.
@@ -50,6 +50,8 @@ src/tmp/
 notebook/kdd_tutorial/
 artifacts/kdd_tutorial/
 
-# NOTE: .git is deliberately NOT ignored. StirrupAgent.get_version_command runs
-# `git rev-parse --short HEAD` inside the container so every trial records the
-# AssetOpsBench commit it ran against in result.json.
+# Git data. Even a one-commit .git holds every committed blob, answers included
+# (`git show HEAD:src/couchdb/scenarios_data/scenario_1/groundtruth.txt`), and
+# its reflog names whoever built the image. The commit reaches the image as
+# /opt/aob/.aob-commit instead, from the AOB_COMMIT build arg.
+.git

@@ -36,7 +36,7 @@ Or build it yourself, which takes a few minutes and needs no registry:
 bash benchmarks/harbor/scripts/build-runtime-image.sh
 ```
 
-The script builds `assetopsbench/runtime:dev` from a clean clone of HEAD, not
+The script builds `assetopsbench/runtime:dev` from `git archive HEAD`, not
 from your working tree, so untracked files such as local results never reach
 the container the agent runs in. Commit a change first to include it.
 
