@@ -1,5 +1,7 @@
 # Comparing agents on generated scenarios
 
+For setup and copyable commands, see [Run agents and evaluate their results](../docs/running-evaluations.md).
+
 Use `python -m benchmark.generated_suite_runner` from the repository with
 `PYTHONPATH=src`. The runner requires a completed generation manifest and the
 exact requested positive/negative counts. It reads both scenario JSON files,

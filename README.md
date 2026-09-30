@@ -66,6 +66,7 @@ Or jump in instantly:
 - 🚀 **[Run on Colab](https://colab.research.google.com/github/IBM/AssetOpsBench/blob/main-0.x/notebook/LLM_Agent.ipynb)** — no install required (illustration of LLM Agent)
 - 🎮 **[Try the HF Playground](https://huggingface.co/spaces/ibm-research/AssetOps-Bench)** — interactive demo
 - 📖 **[Read INSTRUCTIONS.md](./INSTRUCTIONS.md)** — full setup, MCP servers, plan-execute runner
+- **[Run agents and evaluate results](./docs/running-evaluations.md)** — copyable execution, grading, live progress and three-repetition commands
 
 > [!NOTE]
 > Active development is on `main`. The codebase used for various publication venues continues to be maintained on separate branches, for example, ACL 2026 [`IndustryAssetEQA`](https://github.com/IBM/AssetOpsBench/tree/IndustryAssetEQA) and prior experimental work is maintained on [`main-0.x`](https://github.com/IBM/AssetOpsBench/tree/main-0.x).

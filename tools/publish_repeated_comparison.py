@@ -72,7 +72,13 @@ def export_repetition(source, dest, suite, clean):
         for name in ('target.json', 'settings.json', 'environment.json'):
             write_json(output / name, json.loads(portable((target / name).read_text())))
         for path in (target / 'measurements').glob('*.json'):
-            write_json(output / 'measurements' / path.name, json.loads(portable(path.read_text())))
+            record=json.loads(portable(path.read_text()))
+            if 'agent_error' not in record:
+                raw=json.loads(path.read_text())
+                events=[json.loads(line) for line in Path(raw['trace_file']).read_text().splitlines()]
+                record['agent_error']=next((e.get('error') for e in reversed(events) if e['kind']=='run_error'),None)
+                record=json.loads(clean(json.dumps(record)))
+            write_json(output / 'measurements' / path.name, record)
         for path in (target / 'trajectories').glob('*.json'):
             write_json(output / 'trajectories' / path.name, json.loads(portable(path.read_text())))
     (dest / 'comparison.html').write_text(portable((source / 'comparison.html').read_text()))

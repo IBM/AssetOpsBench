@@ -375,10 +375,12 @@ See [docs/observability.md](docs/observability.md) for span attribute reference,
 
 ## Evaluation
 
+**[Run agents and evaluate their results](docs/running-evaluations.md)** — step-by-step commands for the Transformer suite, independent Fable grading, five-model execution, live progress and three repetitions.
+
 Offline scoring of saved trajectories against ground-truth scenarios. Three-stage flow:
 
 ```
-agent run  →  trajectory (run_id)  →  uv run evaluate  →  reports/<run_id>.json
+agent run  →  trajectory (run_id)  →  uv run evaluate  →  reports/_aggregate.json
 ```
 
 End-to-end against a ground-truth file:
@@ -396,11 +398,11 @@ uv run evaluate \
   --judge-model litellm_proxy/azure/gpt-5.4
 ```
 
-Output lands under `reports/` — one `<run_id>.json` per trajectory plus `_aggregate.json` for the rollup.
+Output lands in `reports/_aggregate.json`; its `results` array contains each trajectory's score and rubric details.
 
 > [!NOTE]
-> If `llm_judge` is used, `--judge-model` must not match the trajectory's `model`
-> for any evaluated run. The evaluator now rejects self-judging rows with a clear error.
+> Same-model judging is rejected by default. `--allow-self-judge` explicitly permits it;
+> the native Claude Code judge still uses a fresh, tool-free session separate from execution.
 
 Scorer families follow MLflow's evaluator/scorer split: `llm_judge` is wired up; `exact_string_match`, `numeric_match`, and `semantic_similarity` ship as skeletons (raise `NotImplementedError`).
 

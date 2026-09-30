@@ -125,6 +125,7 @@ def run_target(run_dir: Path, output_dir: Path, name: str, agent: str, model: st
         finally:
             events=read_events(trace_file)
             record['metrics']=observed_metrics(events)
+            record['agent_error']=next((e.get('error') for e in reversed(events) if e['kind']=='run_error'),None)
             audit_root=os.environ.get('BENCHMARK_DB_AUDIT_DIR')
             if audit_root:
                 audit_file=Path(audit_root)/f'{audit_id if os.environ.get("BENCHMARK_DB_PROXY_URL") else run_id}.jsonl'

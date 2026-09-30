@@ -1,12 +1,14 @@
 # Evaluation
 
+For copyable Transformer execution and grading commands, see [Run agents and evaluate their results](running-evaluations.md).
+
 Offline scoring of saved agent trajectories against ground-truth scenarios.
 
 The evaluation module follows the three-stage pattern used by SWE-bench,
 HELM, and τ-bench:
 
 ```
-agent run  →  trajectory (run_id)  →  evaluate  →  reports/<run_id>.json
+agent run  →  trajectory (run_id)  →  evaluate  →  reports/_aggregate.json
 ```
 
 Re-scoring from saved trajectories is first-class: re-run with a
@@ -27,8 +29,8 @@ The vocabulary follows MLflow's evaluation split:
   `(scenario, answer, trajectory_text)` and returns a `ScorerResult`.
   Scorers fall into three families:
   - **Code-Based** — deterministic, no LLM. `static_json` is implemented for structured outputs such as JSON objects, arrays, Python-style dictionaries, tuple lists, and count-only answers. `exact_string_match` and `numeric_match` are *skeleton only* in this branch.
-  - **LLM-As-Judge** — `llm_judge`. Six-criterion rubric, requires a
-    LiteLLM-routable model passed via `--judge-model`.
+  - **LLM-As-Judge** — `llm_judge`. Six-criterion rubric, requires
+    a model supported by `llm.make_backend` passed via `--judge-model`, including native `claude-code/` judges.
   - **Semantic-Score** — similarity-based, no LLM call. *Skeleton only*
     in this branch.
 - **Evaluator** — orchestrates a batch: loads scenarios + trajectories,
@@ -105,20 +107,17 @@ Operational metrics:
   tool_calls_total:  1
   duration_ms_p50:   14690.6
 
-Reports written: reports/<run_id>.json (1 files)
-Aggregate:       reports/_aggregate.json
+Aggregate report written: reports/_aggregate.json
 ```
 
 ## Output layout
 
 ```
 reports/
-├── <run_id>.json        # one ScenarioResult per trajectory
-├── <run_id>.json
 └── _aggregate.json      # EvalReport: totals, by_scenario_type, ops rollup
 ```
 
-Per-run file (`reports/<run_id>.json`):
+Each entry in `reports/_aggregate.json` → `results` is a `ScenarioResult`:
 
 ```json
 {
@@ -180,7 +179,7 @@ Aggregate (`reports/_aggregate.json`) is the full `EvalReport`:
     "duration_ms_p95":    14690.6,
     "est_cost_usd_total": 0.001959
   },
-  "results": [ /* one ScenarioResult per run, same shape as the per-run files */ ]
+  "results": [ /* one ScenarioResult per run, with the shape shown above */ ]
 }
 ```
 
@@ -238,8 +237,9 @@ To customise: edit `_PROMPT_TEMPLATE` in
 
 When `llm_judge` is active and `--judge-model` is provided, evaluation
 aborts any row where the trajectory `model` matches the judge model
-(after normalizing the `litellm_proxy/` prefix). This avoids
-out-of-the-box self-evaluation bias.
+(after normalizing supported routing prefixes). Pass `--allow-self-judge` to
+explicitly permit the same model. Native Claude Code judging still starts a
+fresh, tool-free session independent of the executing agent.
 
 Example error:
 
