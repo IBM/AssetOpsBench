@@ -28,8 +28,10 @@ The fixes, and why each one is needed:
     uv run python benchmarks/harbor/scripts/apply_catalog_fixes.py
     uv run python benchmarks/harbor/scripts/apply_catalog_fixes.py --write
 
-Dry run by default. --move-energy also repoints ttm_energy_168_24 at
-artifacts/tsfm_models/, which requires moving the directory yourself first.
+Dry run by default. --move-energy also repoints ttm_energy_168_24 from
+artifacts/output/tuned_models/ to artifacts/tsfm_models/, where the repo now
+keeps it. The repo's own catalog already points there; use the flag on a
+catalog that does not yet, such as a private suite's (--catalog PATH).
 """
 
 from __future__ import annotations
@@ -150,10 +152,15 @@ def main() -> int:
               file=sys.stderr)
         for ref, ids in dupes.items():
             print(f"  {ref}  <- {', '.join(ids)}", file=sys.stderr)
-    if not args.move_energy:
-        print("\nttm_energy_168_24 still points at artifacts/output/tuned_models/. "
-              "Move the\ndirectory to artifacts/tsfm_models/ and rerun with "
-              "--move-energy when ready.", file=sys.stderr)
+    stale = [
+        c for c in cards
+        if c.get("model_id") == "ttm_energy_168_24"
+        and (c.get("params") or {}).get("model_path") == ENERGY_OLD
+    ]
+    if stale and not args.move_energy:
+        print(f"\nttm_energy_168_24 still points at {ENERGY_OLD}, which no longer "
+              f"exists.\nRerun with --move-energy to repoint it at {ENERGY_NEW}.",
+              file=sys.stderr)
     return 0
 
 

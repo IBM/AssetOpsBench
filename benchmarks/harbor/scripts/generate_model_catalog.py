@@ -42,7 +42,9 @@ import sys
 from pathlib import Path
 
 SKTIME_CLASS = "sktime.forecasting.ttm.TinyTimeMixerForecaster"
-DEFAULT_ROOTS = [Path("artifacts/tsfm_models"), Path("artifacts/output/tuned_models")]
+# Shipped checkpoints only. artifacts/output/ is where agents write during a
+# trial, never an input, so its contents must not become catalog cards.
+DEFAULT_ROOTS = [Path("artifacts/tsfm_models")]
 DEFAULT_OUT = Path("src/couchdb/scenarios_data/shared/tsfm/model_catalog.json")
 
 

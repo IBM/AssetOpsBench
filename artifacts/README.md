@@ -8,10 +8,18 @@ read-only while the other stays writable.
 artifacts/
   tsfm_models/      read-only. Committed here, baked into the image.
   output/
-    tuned_models/   writable. An agent writes here during a trial. Never committed.
+    tuned_models/   writable. For checkpoints an agent fine-tunes during a trial. Never committed.
 ```
 
 ## tsfm_models/ - shipped checkpoints
+
+It holds four TinyTimeMixer checkpoints (`ttm_512_96`, `ttm_512_720`,
+`ttm_1536_96`, `ttm_1536_720`) and `ttm_energy_168_24`, a TTM fine-tuned for
+energy load forecasting. A fine-tuned checkpoint that ships with the repo
+belongs here, not in `output/`, whose contents are never committed or baked
+into the image. It can carry a `meta.json` beside the weights for what they
+cannot say themselves (domain, lineage, training data), which
+`benchmarks/harbor/scripts/generate_model_catalog.py` reads.
 
 Each entry is a `save_pretrained` directory (`config.json` plus weights) that a
 catalog card points at:
@@ -50,14 +58,15 @@ on. A model tuned on internal or customer data is derived from that data and
 does not belong in a public repository whatever the base model's licence says.
 Those go in the private set instead.
 
-Plain git is fine at these sizes. A TTM checkpoint is low single-digit MB.
+Plain git is fine at these sizes: the weights here run from 0.15 MB to 20 MB.
 Reach for Git LFS if a file approaches 50 MB.
 
 ## output/tuned_models/ - agent output
 
-`run_recipe`'s `save_to` writes here, and `register_finetuned` then points a new
-card at it. Created inside the trial container, so it is isolated per trial and
-discarded with it. `.gitignore` and `.dockerignore` both exclude it: nothing in
+The place for checkpoints an agent fine-tunes during a trial: `run_recipe`'s
+`save_to` names the directory, and `register_finetuned` then points a new card
+at it. Nothing enforces the location, since `save_to` takes any path. Created
+inside the trial container, so it is isolated per trial and discarded with it. `.gitignore` and `.dockerignore` both exclude it: nothing in
 here is an input to anything.
 
 Cards for these models carry `created_by: "agent.tsfm.finetune"`, which is what
