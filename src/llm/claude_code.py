@@ -8,6 +8,7 @@ import subprocess
 from tempfile import TemporaryDirectory
 
 from .base import LLMBackend, LLMResult
+from observability.benchmark_trace import emit
 
 
 class ClaudeCodeBackend(LLMBackend):
@@ -39,6 +40,7 @@ class ClaudeCodeBackend(LLMBackend):
             raise ValueError("Claude Code does not expose a temperature setting")
         if max_tokens is not None and max_tokens <= 0:
             raise ValueError("max_tokens must be positive")
+        emit("judge_input", prompt=prompt, model=self._model_id, temperature=temperature, max_tokens=max_tokens)
         command = [
             self._executable, "--safe-mode", "--print", "--output-format", "json",
             "--model", self._model_id, "--tools", "", "--no-session-persistence",
@@ -77,6 +79,7 @@ class ClaudeCodeBackend(LLMBackend):
         if process.returncode or payload.get("is_error") or payload.get("subtype") != "success":
             detail = payload.get("errors") or payload.get("result") or payload.get("subtype")
             raise RuntimeError(f"Claude Code generation failed: {str(detail)[:800]}")
+        emit("judge_result", payload=payload)
         result = payload.get("result")
         if not isinstance(result, str) or not result.strip():
             raise RuntimeError("Claude Code returned an empty text result")

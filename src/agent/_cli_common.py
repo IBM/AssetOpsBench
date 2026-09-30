@@ -152,4 +152,10 @@ def run_sdk_cli(
     if getattr(args, "run_id", None) is None:
         args.run_id = str(uuid.uuid4())
     set_run_context(run_id=args.run_id, scenario_id=getattr(args, "scenario_id", None))
-    asyncio.run(run_coro(args))
+    from observability.benchmark_trace import emit
+    emit('invocation_input', question=args.question, model=args.model_id)
+    try:
+        asyncio.run(run_coro(args))
+    except BaseException as error:
+        emit('run_error', error={'type':type(error).__name__, 'message':str(error)})
+        raise

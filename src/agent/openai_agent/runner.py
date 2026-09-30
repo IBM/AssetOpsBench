@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import logging
+import os
 import time
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -27,6 +28,7 @@ from openai import AsyncOpenAI
 from agents import (
     Agent,
     ModelProvider,
+    ModelSettings,
     OpenAIChatCompletionsModel,
     RunConfig,
     Runner,
@@ -35,6 +37,8 @@ from agents import (
 from agents.mcp import MCPServerStdio
 
 from observability import agent_run_span, persist_trajectory
+from observability.benchmark_trace import emit, instrument_model, plain, tool_result_error
+import uuid
 
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
@@ -66,12 +70,37 @@ def _build_run_config(model_id: str) -> RunConfig | None:
 
     class _LiteLLMModelProvider(ModelProvider):
         def get_model(self, model_name: str | None):
-            return OpenAIChatCompletionsModel(
+            return instrument_model(OpenAIChatCompletionsModel(
                 model=model_name or resolved,
                 openai_client=client,
-            )
+            ))
 
-    return RunConfig(model_provider=_LiteLLMModelProvider())
+    settings = None
+    effort = os.environ.get("GLM_REASONING_EFFORT") if model_id.startswith("zai/") else None
+    if effort:
+        if effort not in {"low", "high", "max"}:
+            raise ValueError("GLM_REASONING_EFFORT must be low, high or max")
+        settings = ModelSettings(extra_body={"thinking": {"type": "enabled"},
+                                             "reasoning_effort": effort})
+    return RunConfig(model_provider=_LiteLLMModelProvider(), model_settings=settings)
+
+
+class MeasuredMCPServer(MCPServerStdio):
+    async def call_tool(self, tool_name, arguments, meta=None):
+        identifier = str(uuid.uuid4())
+        start = time.perf_counter()
+        emit('tool_start', id=identifier, name=tool_name, server=self.name, arguments=arguments)
+        try:
+            output = await super().call_tool(tool_name, arguments, meta)
+        except BaseException as error:
+            emit('tool_end', id=identifier, name=tool_name, server=self.name, arguments=arguments,
+                 duration_ms=(time.perf_counter()-start)*1000,
+                 error={'type': type(error).__name__, 'message': str(error)})
+            raise
+        emit('tool_end', id=identifier, name=tool_name, server=self.name, arguments=arguments,
+             duration_ms=(time.perf_counter()-start)*1000, output=output,
+             error=tool_result_error(output))
+        return output
 
 
 def _build_mcp_servers(
@@ -87,11 +116,14 @@ def _build_mcp_servers(
     for name, spec in server_paths.items():
         cmd_arg = str(spec) if isinstance(spec, Path) else spec
         servers.append(
-            MCPServerStdio(
+            MeasuredMCPServer(
                 name=name,
                 params={
                     "command": "uv",
                     "args": ["run", cmd_arg],
+                    "env": {key: os.environ[key] for key in (
+                        "COUCHDB_URL", "COUCHDB_USERNAME", "COUCHDB_PASSWORD"
+                    ) if key in os.environ},
                 },
                 cache_tools_list=True,
             )
@@ -109,6 +141,7 @@ def _build_trajectory(result) -> Trajectory:
     turn_index = 0
     text_parts: list[str] = []
     tool_calls: list[ToolCall] = []
+    calls_by_id = {}
 
     def _flush() -> None:
         nonlocal text_parts, tool_calls, turn_index
@@ -148,12 +181,16 @@ def _build_trajectory(result) -> Trajectory:
                     )
                 except (json.JSONDecodeError, TypeError):
                     tc_input = {"raw": tc_args}
-                tool_calls.append(ToolCall(name=tc_name, input=tc_input, id=tc_id))
+                call = ToolCall(name=tc_name, input=tc_input, id=tc_id)
+                tool_calls.append(call)
+                if tc_id: calls_by_id[tc_id] = call
         elif item_type == "tool_call_output_item":
             output = getattr(item, "output", None)
-            # Attach output to the last matching tool call
-            if tool_calls:
-                tool_calls[-1].output = output
+            raw = getattr(item, 'raw_item', None)
+            identifier = raw.get('call_id') if isinstance(raw,dict) else getattr(raw,'call_id',None)
+            matching = calls_by_id.get(identifier) if identifier else (tool_calls[-1] if tool_calls else None)
+            if matching is not None:
+                matching.output = output
 
     # Flush remaining
     _flush()
@@ -214,6 +251,7 @@ class OpenAIAgentRunner(AgentRunner):
         with agent_run_span(
             "openai-agent", model=self._model_id, question=question
         ) as span:
+            emit('capabilities', tool_events=True, request_timings=True, compaction_events=False)
             run_started = time.perf_counter()
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
             mcp_servers = _build_mcp_servers(self._server_paths)
@@ -247,7 +285,10 @@ class OpenAIAgentRunner(AgentRunner):
                     **run_kwargs,
                 )
 
+                emit('sdk_result', payload={'items':[{'type':i.type, 'raw_item':plain(getattr(i,'raw_item',None)), 'output':plain(getattr(i,'output',None))} for i in result.new_items], 'responses':result.raw_responses})
+                emit('provider_summary', payload={'usage':plain(getattr(getattr(result,'context_wrapper',None),'usage',None))})
                 answer = result.final_output or ""
+                emit("final_answer", answer=answer)
                 trajectory = _build_trajectory(result)
                 trajectory.started_at = started_at
 

@@ -68,6 +68,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "litellm_proxy/anthropic/claude-opus-4-5). "
         "Required when any scenario routes to llm_judge.",
     )
+    p.add_argument("--allow-self-judge", action="store_true", help="Allow same model in a separate judge runtime")
     p.add_argument(
         "-v",
         "--verbose",
@@ -121,9 +122,11 @@ def main(argv: list[str] | None = None) -> int:
     _maybe_install_judge(args.judge_model)
     _validate_scorer_default(args.scorer_default)
 
+    judge_options={"allow_self_judge":True} if args.allow_self_judge else {}
     report = Evaluator(
         default_scorer=args.scorer_default,
         judge_model=args.judge_model,
+        **judge_options,
     ).evaluate(
         trajectories_path=args.trajectories,
         scenarios_paths=list(args.scenarios),
