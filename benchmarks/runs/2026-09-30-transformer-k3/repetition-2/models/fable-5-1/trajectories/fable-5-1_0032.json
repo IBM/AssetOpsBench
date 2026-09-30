@@ -1,0 +1,173 @@
+{
+  "run_id": "fable-5-1_0032",
+  "scenario_id": "transformer_scenario_32",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "Several work orders on Transformer 1 at site MAIN are sitting in pending approval, and I want them cleared out properly rather than rubber-stamped. Pull every pending-approval work order on Transformer 1 and give me each one's number, description, priority, reported date and any failure code. Then check the latest oil sample and run a dissolved gas fault classification on it. Use the five fault gases (hydrogen, methane, ethane, ethylene and acetylene), and use co to check whether the paper is involved.\n\nSort each pending work order into one of three outcomes:\n- Approve it if its description matches the fault the gases currently indicate, or if it is a routine oil sampling job.\n- Cancel it if another open or pending work order on Transformer 1 already covers the same job. Keep the older one, cancel the newer one, and put the older work order's number in the cancellation reason.\n- Otherwise, leave it pending and tell me in one sentence why.\n\nFor any work order you approve that deals with arcing, discharge or tap changer work, raise its priority to 1 if the latest acetylene is above 1 ppm. Don't change the priority of anything else. Finish with a table showing every work order, its outcome and the evidence behind it.\n\nIf the latest sample is missing any of the five fault gases, so the classification can't be made reliably, don't approve anything other than routine oil sampling jobs, and don't cancel anything except exact duplicates. Say which gas was missing. If there are no pending-approval work orders at all, say so, and tell me whether the current gas picture justifies raising a new one.",
+  "answer": "## Pending-approval work orders on Transformer 1 (MAIN)\n\nOnly one work order existed on this asset in any status, and it was pending approval:\n\n| WO # | Description | Priority | Reported | Failure code |\n|---|---|---|---|---|\n| 1000051 | OLTC inspection \u2013 Transformer 1 on-load tap changer (suspected contact wear/coking) | 1 | 2026-09-30 19:04 UTC | none (no tap-changer code in FCC catalog) |\n\n## Latest oil sample (2024-01-19) \u2013 DGA classification\n\nAll five fault gases were present, so classification is reliable. The `interpret_dga` tool's LLM backend was unavailable on two attempts, so I applied the IEC 60599 Rogers Ratio method directly:\n\n| Gas | ppm |\n|---|---|\n| H2 | 2850 |\n| CH4 | 7400 |\n| C2H6 | 5470 |\n| C2H4 | 16650 |\n| C2H2 | 7 |\n| CO | 32 (CO2 1340) |\n\n- C2H2/C2H4 = 0.0004 \u2192 code 0; CH4/H2 = 2.60 \u2192 code 2; C2H4/C2H6 = 3.04 \u2192 code 1\n- **Result: T2 thermal fault, 300\u2013700 \u00b0C** (ethylene-dominant, code 0-2-1). Acetylene is 7 ppm \u2014 above the 1 ppm threshold, though far too low relative to ethylene to indicate arcing.\n- **Paper involvement:** CO is only 32 ppm (CO2/CO \u2248 42), so cellulose is not significantly involved. The heating is in oil/metal, which is consistent with OLTC contact heating/coking.\n\n## Outcomes\n\n| WO # | Outcome | Priority | Evidence |\n|---|---|---|---|\n| 1000051 | **Approved** (WAPPR \u2192 APPR) | 1 (unchanged \u2014 already 1) | Description (OLTC contact wear/coking) matches the T2 thermal fault indicated by the gases; low CO rules out paper, pointing to metal/oil heating such as tap-changer contacts. Tap-changer work with C2H2 = 7 ppm > 1 ppm mandates priority 1, which it already carried, so no change was made. No other open/pending WO on Transformer 1 exists, so nothing was a duplicate and nothing was cancelled or left pending. |\n\nNote: the \"latest\" sample is dated 2024-01-19 (~2.7 years old); a fresh oil sample would be worthwhile before the OLTC inspection is executed.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 9,
+        "duration_ms": 3705.738707969431
+      },
+      {
+        "index": 1,
+        "text": "I'll start by pulling all work orders on Transformer 1 and the latest oil sample in parallel.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 9,
+        "duration_ms": 560.315917013213
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "page_size": 0
+            },
+            "id": "toolu_014f8Nbz1iwPrShgwFs6NPPo",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":null,\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"WAPPR\",\"status_date\":null,\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 9,
+        "duration_ms": 827.6249170303345
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__latest_reading",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01QmviQPHQXr4L8FvzzcDeM5",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-19T00:00:00.000000\",\"values\":{\"hydrogen\":2850,\"oxygen\":5850,\"nitrogen\":27850,\"methane\":7400,\"co\":32,\"co2\":1340,\"ethylene\":16650,\"ethane\":5470,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},\"age_seconds\":85185209.178425,\"message\":\"latest reading for asset_id Transformer 1 at 2024-01-19T00:00:00.000000.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 9,
+        "duration_ms": 613.6314159957692
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 4707.311709003989
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 1.9702079589478672
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "acetylene": 7,
+              "ethylene": 16650,
+              "ethane": 5470
+            },
+            "id": "toolu_01W4Np2Qtb6qPXwU8RzD7BmP",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 383.93450004514307
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 6,
+        "duration_ms": 14284.391707973555
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 6,
+        "duration_ms": 2.684958977624774
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "acetylene": 7,
+              "ethylene": 16650,
+              "ethane": 5470
+            },
+            "id": "toolu_01PJENYmF7v1x1LpAe5KuxsK",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 6,
+        "duration_ms": 329.9713750020601
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__approve_workorder",
+            "input": {
+              "wonum": "1000051",
+              "site_id": "MAIN"
+            },
+            "id": "toolu_01PxEXhiLYLwUrHPjQCiuN5s",
+            "output": "{\"result\":{\"wonum\":\"1000051\",\"siteid\":\"MAIN\",\"status\":\"APPR\",\"work_order\":{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T22:33:49+00:00\",\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"},\"message\":\"Work order 1000051 approved (APPR).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 6,
+        "duration_ms": 495.06012501660734
+      },
+      {
+        "index": 11,
+        "text": "## Pending-approval work orders on Transformer 1 (MAIN)\n\nOnly one work order existed on this asset in any status, and it was pending approval:\n\n| WO # | Description | Priority | Reported | Failure code |\n|---|---|---|---|---|\n| 1000051 | OLTC inspection \u2013 Transformer 1 on-load tap changer (suspected contact wear/coking) | 1 | 2026-09-30 19:04 UTC | none (no tap-changer code in FCC catalog) |\n\n## Latest oil sample (2024-01-19) \u2013 DGA classification\n\nAll five fault gases were present, so classification is reliable. The `interpret_dga` tool's LLM backend was unavailable on two attempts, so I applied the IEC 60599 Rogers Ratio method directly:\n\n| Gas | ppm |\n|---|---|\n| H2 | 2850 |\n| CH4 | 7400 |\n| C2H6 | 5470 |\n| C2H4 | 16650 |\n| C2H2 | 7 |\n| CO | 32 (CO2 1340) |\n\n- C2H2/C2H4 = 0.0004 \u2192 code 0; CH4/H2 = 2.60 \u2192 code 2; C2H4/C2H6 = 3.04 \u2192 code 1\n- **Result: T2 thermal fault, 300\u2013700 \u00b0C** (ethylene-dominant, code 0-2-1). Acetylene is 7 ppm \u2014 above the 1 ppm threshold, though far too low relative to ethylene to indicate arcing.\n- **Paper involvement:** CO is only 32 ppm (CO2/CO \u2248 42), so cellulose is not significantly involved. The heating is in oil/metal, which is consistent with OLTC contact heating/coking.\n\n## Outcomes\n\n| WO # | Outcome | Priority | Evidence |\n|---|---|---|---|\n| 1000051 | **Approved** (WAPPR \u2192 APPR) | 1 (unchanged \u2014 already 1) | Description (OLTC contact wear/coking) matches the T2 thermal fault indicated by the gases; low CO rules out paper, pointing to metal/oil heating such as tap-changer contacts. Tap-changer work with C2H2 = 7 ppm > 1 ppm mandates priority 1, which it already carried, so no change was made. No other open/pending WO on Transformer 1 exists, so nothing was a duplicate and nothing was cancelled or left pending. |\n\nNote: the \"latest\" sample is dated 2024-01-19 (~2.7 years old); a fresh oil sample would be worthwhile before the OLTC inspection is executed.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 867,
+        "duration_ms": 9899.857665994205
+      }
+    ],
+    "started_at": "2026-09-30T22:33:23.440821+00:00"
+  }
+}

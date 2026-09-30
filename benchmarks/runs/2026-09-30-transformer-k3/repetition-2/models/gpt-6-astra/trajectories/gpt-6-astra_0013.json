@@ -1,0 +1,127 @@
+{
+  "run_id": "gpt-6-astra_0013",
+  "scenario_id": "transformer_scenario_13",
+  "runner": "codex-agent",
+  "model": "gpt-6-astra",
+  "question": "Transformer 1 at MAIN is showing thermal gases, and I need to know if it's the oil overheating or something hotter at the core or winding with paper involved. Using the samples between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, classify the thermal fault as T1, T2 or T3 from methane, ethane and ethylene, and say whether acetylene rules out a pure thermal fault. Check co alongside it for paper involvement. Then line the gas picture up against top-oil temperature (oti), ambient (ati) and the alarm and trip readings (oti_a, oti_t) to judge whether the heating looks like load or ambient driven, or like a localized hot spot. Give a final verdict between 'Thermal Fault \u2014 Oil Overheating' and 'Thermal Fault \u2014 Core/Winding' with a confidence of high, medium or low. Ignore samples where ethylene is null. If oti_a or oti_t showed an alarm or trip at any point, put that first in the answer and recommend immediate action. If the gas class and the temperature evidence disagree, for example a T3 gas signature with normal oti, say so and lean toward a localized core or winding hot spot.",
+  "answer": "**Trip indicated throughout:** `oti_t = 1` on all four samples; `oti_a = 1\u20132` is also nonzero, although code 2 needs verification. **Recommend immediate operator review and action under site alarm/trip procedures; verify protection status before continued operation or re-energization.**\n\nFor Transformer 1 at MAIN, January 15\u201318, 2024, all four samples have valid ethylene:\n\n- **Thermal class: T2 (approximately 300\u2013700\u00b0C fault temperature).** Ethylene/ethane is **3.04\u20133.06**, within the T2 ratio range of 1\u20134, rather than T3 (>4). Methane is 7,200\u20137,406, ethane 5,400\u20135,500, and ethylene 16,500\u201316,700.\n- **Acetylene does not rule out a purely thermal fault:** readings of 6\u20138 give acetylene/ethylene below 0.0005, providing little support for arcing.\n- **Paper involvement is not supported:** CO is low and stable at **30\u201335**. This does not conclusively exclude paper damage; CO\u2082 and furan testing would help.\n- **Temperature context:** `oti` is **84\u201387**, while `ati` is **77\u201379**; oil remains only **7\u20138 degrees above ambient** and closely follows it. This favors ambient-driven bulk-oil heating. Load-driven heating cannot be established without loading data. T2 describes the gas-generating fault temperature\u2014not bulk-oil temperature\u2014so a local hot region remains possible, but there is no T3 signature or CO evidence favoring a paper-involving core/winding hot spot.\n\n**Final verdict: Thermal Fault \u2014 Oil Overheating**  \n**Confidence: medium.**",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "asset_id": "Transformer 1",
+              "site_name": "MAIN",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "methane",
+                "ethane",
+                "ethylene",
+                "acetylene",
+                "co",
+                "oti",
+                "ati",
+                "oti_a",
+                "oti_t"
+              ],
+              "limit": 1000
+            },
+            "id": "item_3",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"site_name\": \"MAIN\",\n  \"asset_id\": \"Transformer 1\",\n  \"observations\": [\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-15T00:00:00.000000\",\n      \"methane\": 7406,\n      \"ethane\": 5467,\n      \"ethylene\": 16684,\n      \"acetylene\": 7,\n      \"co\": 32,\n      \"oti\": 85,\n      \"ati\": 78,\n      \"oti_a\": 2,\n      \"oti_t\": 1\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-16T00:00:00.000000\",\n      \"methane\": 7200,\n      \"ethane\": 5400,\n      \"ethylene\": 16500,\n      \"acetylene\": 6,\n      \"co\": 30,\n      \"oti\": 87,\n      \"ati\": 79,\n      \"oti_a\": 2,\n      \"oti_t\": 1\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-17T00:00:00.000000\",\n      \"methane\": 7300,\n      \"ethane\": 5500,\n      \"ethylene\": 16700,\n      \"acetylene\": 8,\n      \"co\": 35,\n      \"oti\": 84,\n      \"ati\": 77,\n      \"oti_a\": 1,\n      \"oti_t\": 1\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-18T00:00:00.000000\",\n      \"methane\": 7350,\n      \"ethane\": 5450,\n      \"ethylene\": 16600,\n      \"acetylene\": 7,\n      \"co\": 33,\n      \"oti\": 86,\n      \"ati\": 78,\n      \"oti_a\": 2,\n      \"oti_t\": 1\n    }\n  ],\n  \"returned\": 4,\n  \"next_cursor\": null,\n  \"has_more\": false,\n  \"start\": \"2024-01-15T00:00:00.000000\",\n  \"end\": \"2024-01-19T00:00:00.000000\",\n  \"message\": \"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "site_name": "MAIN",
+                  "asset_id": "Transformer 1",
+                  "observations": [
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-15T00:00:00.000000",
+                      "methane": 7406,
+                      "ethane": 5467,
+                      "ethylene": 16684,
+                      "acetylene": 7,
+                      "co": 32,
+                      "oti": 85,
+                      "ati": 78,
+                      "oti_a": 2,
+                      "oti_t": 1
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-16T00:00:00.000000",
+                      "methane": 7200,
+                      "ethane": 5400,
+                      "ethylene": 16500,
+                      "acetylene": 6,
+                      "co": 30,
+                      "oti": 87,
+                      "ati": 79,
+                      "oti_a": 2,
+                      "oti_t": 1
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-17T00:00:00.000000",
+                      "methane": 7300,
+                      "ethane": 5500,
+                      "ethylene": 16700,
+                      "acetylene": 8,
+                      "co": 35,
+                      "oti": 84,
+                      "ati": 77,
+                      "oti_a": 1,
+                      "oti_t": 1
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-18T00:00:00.000000",
+                      "methane": 7350,
+                      "ethane": 5450,
+                      "ethylene": 16600,
+                      "acetylene": 7,
+                      "co": 33,
+                      "oti": 86,
+                      "ati": 78,
+                      "oti_a": 2,
+                      "oti_t": 1
+                    }
+                  ],
+                  "returned": 4,
+                  "next_cursor": null,
+                  "has_more": false,
+                  "start": "2024-01-15T00:00:00.000000",
+                  "end": "2024-01-19T00:00:00.000000",
+                  "message": "returned 4 observation(s) for asset_id Transformer 1; has_more=False."
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 1,
+        "text": "**Trip indicated throughout:** `oti_t = 1` on all four samples; `oti_a = 1\u20132` is also nonzero, although code 2 needs verification. **Recommend immediate operator review and action under site alarm/trip procedures; verify protection status before continued operation or re-energization.**\n\nFor Transformer 1 at MAIN, January 15\u201318, 2024, all four samples have valid ethylene:\n\n- **Thermal class: T2 (approximately 300\u2013700\u00b0C fault temperature).** Ethylene/ethane is **3.04\u20133.06**, within the T2 ratio range of 1\u20134, rather than T3 (>4). Methane is 7,200\u20137,406, ethane 5,400\u20135,500, and ethylene 16,500\u201316,700.\n- **Acetylene does not rule out a purely thermal fault:** readings of 6\u20138 give acetylene/ethylene below 0.0005, providing little support for arcing.\n- **Paper involvement is not supported:** CO is low and stable at **30\u201335**. This does not conclusively exclude paper damage; CO\u2082 and furan testing would help.\n- **Temperature context:** `oti` is **84\u201387**, while `ati` is **77\u201379**; oil remains only **7\u20138 degrees above ambient** and closely follows it. This favors ambient-driven bulk-oil heating. Load-driven heating cannot be established without loading data. T2 describes the gas-generating fault temperature\u2014not bulk-oil temperature\u2014so a local hot region remains possible, but there is no T3 signature or CO evidence favoring a paper-involving core/winding hot spot.\n\n**Final verdict: Thermal Fault \u2014 Oil Overheating**  \n**Confidence: medium.**",
+        "tool_calls": [],
+        "input_tokens": 45310,
+        "output_tokens": 592,
+        "duration_ms": null
+      }
+    ],
+    "started_at": "2026-09-30T22:11:27.901387+00:00"
+  }
+}

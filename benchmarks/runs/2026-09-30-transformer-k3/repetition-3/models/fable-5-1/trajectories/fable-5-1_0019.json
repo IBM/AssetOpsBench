@@ -1,0 +1,171 @@
+{
+  "run_id": "fable-5-1_0019",
+  "scenario_id": "transformer_scenario_19",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "If hydrogen starts climbing on Transformer 1 at site MAIN, I want my operators to know what to suspect and what to check next. Using our known transformer failure modes, list every mode where rising hydrogen is a meaningful signal. For each one, say which one or two companion channels would confirm it, choosing from methane, ethane, ethylene, acetylene, co, co2, oxygen, dbds, dielectric_rigidity, interfacial_v and oti. Then look at the actual data between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000 and tell me which of those modes the companion channels currently support. Run a DGA fault classification on the latest complete sample as a tie-breaker. Keep the list to the modes where hydrogen genuinely helps tell them apart, not every mode. If hydrogen didn't rise across the window, say so, but still give the watch-list, and label every mode as 'not currently indicated' rather than ranking them.",
+  "answer": "Nothing further to fetch \u2014 I have the failure-mode list, the 4-sample window, and the DGA tool returned \"LLM unavailable\" on two attempts, so I computed the IEC 60599 ratios manually for the tie-breaker.\n\n## Hydrogen trend, Transformer 1 (MAIN), 2024-01-15 \u2192 2024-01-18\n\n| Date | H2 | CH4 | C2H6 | C2H4 | C2H2 | CO | CO2 | O2 | DBDS | Diel. | IFT | OTI |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|\n| 01-15 | 2845 | 7406 | 5467 | 16684 | 7 | 32 | 1344 | 5860 | 19 | 55 | 45 | 85 |\n| 01-16 | 2950 | 7200 | 5400 | 16500 | 6 | 30 | 1300 | 5700 | 18 | 53 | 44 | 87 |\n| 01-17 | 2800 | 7300 | 5500 | 16700 | 8 | 35 | 1350 | 5900 | 20 | 56 | 46 | 84 |\n| 01-18 | 2900 | 7350 | 5450 | 16600 | 7 | 33 | 1325 | 5800 | 19 | 54 | 45 | 86 |\n\n**Hydrogen did not rise across the window.** It oscillated 2800\u20132950 ppm (net +55 ppm, +1.9%, non-monotonic, within sample-to-sample noise). Absolute level is very high (~2,900 ppm) but it is a stable plateau, not a climb. Every companion channel is likewise flat. Per your instruction, all watch-list modes below are labelled **not currently indicated** and are not ranked.\n\n## Hydrogen watch-list (modes where a rising H2 actually discriminates)\n\n| Failure mode | Why H2 matters | Confirming companion(s) | Status (this window) |\n|---|---|---|---|\n| Partial Discharge in Oil | H2 is the dominant/near-only gas | **methane** (CH4/H2 < 0.1) + **acetylene** (\u22480) | Not currently indicated \u2014 CH4/H2 = 2.5, far from PD signature |\n| Low-Energy Arcing (Sparking) | H2 rises together with a small acetylene step | **acetylene** (0.1 < C2H2/C2H4 < 1) + **ethylene** | Not currently indicated \u2014 C2H2 flat at 6\u20138 ppm, C2H2/C2H4 \u2248 0.0004 |\n| High-Energy Arcing | H2 and acetylene surge together | **acetylene** (C2H2/C2H4 > 1) + **ethylene** | Not currently indicated \u2014 no acetylene rise |\n| Thermal Fault \u2014 Oil Overheating (300\u2013700 \u00b0C) | H2 rises as a secondary gas under a CH4/C2H6/C2H4 hydrocarbon lead | **ethylene** + **ethane** (1 < C2H4/C2H6 < 4), **oti** as corroboration | Not currently indicated as a *change* \u2014 but companion levels already sit in this band (see tie-breaker) |\n| Thermal Fault \u2014 Core/Winding (>700 \u00b0C) | H2 rises alongside dominant ethylene | **ethylene** (C2H4/C2H6 > 4) + **methane** (CH4/H2 > 1), **oti** | Not currently indicated \u2014 C2H4/C2H6 = 3.05, just under the >4 threshold |\n\nExcluded from the H2 watch-list because hydrogen doesn't help separate them: Cellulose Insulation Ageing (co/co2), Oil Dielectric Degradation (dbds, interfacial_v, dielectric_rigidity), Oil Contamination / Moisture Ingress (oxygen, dielectric_rigidity), Tap Changer Mechanical Wear (no main-tank gas signature).\n\n## DGA tie-breaker \u2014 latest complete sample (2024-01-18)\n\nThe `interpret_dga` service was unavailable (two attempts), so IEC 60599 ratios were computed manually:\n\n- C2H2/C2H4 = 7 / 16600 = **0.0004** \u2192 code 0\n- CH4/H2 = 7350 / 2900 = **2.53** \u2192 code 2\n- C2H4/C2H6 = 16600 / 5450 = **3.05** \u2192 code 2 (borderline with T3 at >4)\n\nClassification: **T2 thermal fault, 300\u2013700 \u00b0C** (hydrocarbon-dominated, no acetylene, ethylene leading), i.e. the standing gas mix is consistent with **Thermal Fault \u2014 Oil Overheating**, bordering on Core/Winding hot-spot. OTI at 84\u201387 \u00b0C is consistent with a thermally-stressed unit. This is a baseline condition of the oil, not a new development in the window; it explains *why* H2 is at 2,900 ppm, but does not constitute the rising-H2 trigger you asked about.\n\n## What operators should check if H2 does start climbing\n\n1. Re-sample and confirm the rise is > ~10% over consecutive samples (current noise band is \u00b13%).\n2. Check **acetylene** first \u2014 any rise above the 6\u20138 ppm floor moves the suspicion from thermal to arcing (High-Energy if C2H2/C2H4 > 1).\n3. If acetylene stays flat, check **methane** \u2014 CH4/H2 dropping below 0.1 points to Partial Discharge; staying >1 keeps it thermal.\n4. If thermal, watch **ethylene vs ethane** \u2014 C2H4/C2H6 crossing 4 shifts the call from oil overheating to core/winding hot-spot; corroborate with **oti** rising above the current 84\u201387 \u00b0C.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 4351.724166015629
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__get_failure_modes",
+            "input": {
+              "asset_class": "transformer"
+            },
+            "id": "toolu_01Q3jUtyjBkNFdZ3MzPRxBmP",
+            "output": "{\"result\":{\"asset_class\":\"transformer\",\"failure_modes\":[\"Partial Discharge in Oil\",\"Thermal Fault \u2014 Oil Overheating\",\"Thermal Fault \u2014 Core/Winding\",\"Low-Energy Arcing (Sparking)\",\"High-Energy Arcing\",\"Tap Changer Mechanical Wear\",\"Oil Contamination / Moisture Ingress\",\"Cellulose Insulation Ageing\",\"Oil Dielectric Degradation\"],\"exhaustive\":false,\"source\":\"curated transformer failure modes\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 397.8872919688001
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__measured_sensors",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01URWXWBVQRhDAtVYoLsXFxz",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"total_sensors\":30,\"sensors\":[\"acetylene\",\"ati\",\"co\",\"co2\",\"dbds\",\"dielectric_rigidity\",\"ethane\",\"ethylene\",\"hydrogen\",\"il1\",\"il2\",\"il3\",\"interfacial_v\",\"inut\",\"methane\",\"nitrogen\",\"oti\",\"oti_a\",\"oti_t\",\"oxygen\",\"power_factor\",\"rated_mva\",\"vl1\",\"vl12\",\"vl2\",\"vl23\",\"vl3\",\"vl31\",\"water_content\",\"wti\"],\"message\":\"found 30 sensors for asset_id Transformer 1 and site_name MAIN: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen, power_factor, rated_mva, vl1, vl12, vl2, vl23, vl3, vl31, water_content, wti.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 760.2373749832623
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "hydrogen",
+                "methane",
+                "ethane",
+                "ethylene",
+                "acetylene",
+                "co",
+                "co2",
+                "oxygen",
+                "dbds",
+                "dielectric_rigidity",
+                "interfacial_v",
+                "oti"
+              ]
+            },
+            "id": "toolu_018zgJG3oxsNf4VwzHh99dpG",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"methane\":7406,\"ethane\":5467,\"ethylene\":16684,\"acetylene\":7,\"co\":32,\"co2\":1344,\"oxygen\":5860,\"dbds\":19,\"dielectric_rigidity\":55,\"interfacial_v\":45,\"oti\":85},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"methane\":7200,\"ethane\":5400,\"ethylene\":16500,\"acetylene\":6,\"co\":30,\"co2\":1300,\"oxygen\":5700,\"dbds\":18,\"dielectric_rigidity\":53,\"interfacial_v\":44,\"oti\":87},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"methane\":7300,\"ethane\":5500,\"ethylene\":16700,\"acetylene\":8,\"co\":35,\"co2\":1350,\"oxygen\":5900,\"dbds\":20,\"dielectric_rigidity\":56,\"interfacial_v\":46,\"oti\":84},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"methane\":7350,\"ethane\":5450,\"ethylene\":16600,\"acetylene\":7,\"co\":33,\"co2\":1325,\"oxygen\":5800,\"dbds\":19,\"dielectric_rigidity\":54,\"interfacial_v\":45,\"oti\":86}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 1766.3184580160305
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 4012.33812503051
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_019bUzsYbEkMbHffF3Ew5fmF",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1243.6842499882914
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1982.7874589827843
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01UNvWJHBQDP9YMkUHmDG6dW",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1204.507791029755
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 31752.51462496817
+      },
+      {
+        "index": 9,
+        "text": "Nothing further to fetch \u2014 I have the failure-mode list, the 4-sample window, and the DGA tool returned \"LLM unavailable\" on two attempts, so I computed the IEC 60599 ratios manually for the tie-breaker.\n\n## Hydrogen trend, Transformer 1 (MAIN), 2024-01-15 \u2192 2024-01-18\n\n| Date | H2 | CH4 | C2H6 | C2H4 | C2H2 | CO | CO2 | O2 | DBDS | Diel. | IFT | OTI |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|\n| 01-15 | 2845 | 7406 | 5467 | 16684 | 7 | 32 | 1344 | 5860 | 19 | 55 | 45 | 85 |\n| 01-16 | 2950 | 7200 | 5400 | 16500 | 6 | 30 | 1300 | 5700 | 18 | 53 | 44 | 87 |\n| 01-17 | 2800 | 7300 | 5500 | 16700 | 8 | 35 | 1350 | 5900 | 20 | 56 | 46 | 84 |\n| 01-18 | 2900 | 7350 | 5450 | 16600 | 7 | 33 | 1325 | 5800 | 19 | 54 | 45 | 86 |\n\n**Hydrogen did not rise across the window.** It oscillated 2800\u20132950 ppm (net +55 ppm, +1.9%, non-monotonic, within sample-to-sample noise). Absolute level is very high (~2,900 ppm) but it is a stable plateau, not a climb. Every companion channel is likewise flat. Per your instruction, all watch-list modes below are labelled **not currently indicated** and are not ranked.\n\n## Hydrogen watch-list (modes where a rising H2 actually discriminates)\n\n| Failure mode | Why H2 matters | Confirming companion(s) | Status (this window) |\n|---|---|---|---|\n| Partial Discharge in Oil | H2 is the dominant/near-only gas | **methane** (CH4/H2 < 0.1) + **acetylene** (\u22480) | Not currently indicated \u2014 CH4/H2 = 2.5, far from PD signature |\n| Low-Energy Arcing (Sparking) | H2 rises together with a small acetylene step | **acetylene** (0.1 < C2H2/C2H4 < 1) + **ethylene** | Not currently indicated \u2014 C2H2 flat at 6\u20138 ppm, C2H2/C2H4 \u2248 0.0004 |\n| High-Energy Arcing | H2 and acetylene surge together | **acetylene** (C2H2/C2H4 > 1) + **ethylene** | Not currently indicated \u2014 no acetylene rise |\n| Thermal Fault \u2014 Oil Overheating (300\u2013700 \u00b0C) | H2 rises as a secondary gas under a CH4/C2H6/C2H4 hydrocarbon lead | **ethylene** + **ethane** (1 < C2H4/C2H6 < 4), **oti** as corroboration | Not currently indicated as a *change* \u2014 but companion levels already sit in this band (see tie-breaker) |\n| Thermal Fault \u2014 Core/Winding (>700 \u00b0C) | H2 rises alongside dominant ethylene | **ethylene** (C2H4/C2H6 > 4) + **methane** (CH4/H2 > 1), **oti** | Not currently indicated \u2014 C2H4/C2H6 = 3.05, just under the >4 threshold |\n\nExcluded from the H2 watch-list because hydrogen doesn't help separate them: Cellulose Insulation Ageing (co/co2), Oil Dielectric Degradation (dbds, interfacial_v, dielectric_rigidity), Oil Contamination / Moisture Ingress (oxygen, dielectric_rigidity), Tap Changer Mechanical Wear (no main-tank gas signature).\n\n## DGA tie-breaker \u2014 latest complete sample (2024-01-18)\n\nThe `interpret_dga` service was unavailable (two attempts), so IEC 60599 ratios were computed manually:\n\n- C2H2/C2H4 = 7 / 16600 = **0.0004** \u2192 code 0\n- CH4/H2 = 7350 / 2900 = **2.53** \u2192 code 2\n- C2H4/C2H6 = 16600 / 5450 = **3.05** \u2192 code 2 (borderline with T3 at >4)\n\nClassification: **T2 thermal fault, 300\u2013700 \u00b0C** (hydrocarbon-dominated, no acetylene, ethylene leading), i.e. the standing gas mix is consistent with **Thermal Fault \u2014 Oil Overheating**, bordering on Core/Winding hot-spot. OTI at 84\u201387 \u00b0C is consistent with a thermally-stressed unit. This is a baseline condition of the oil, not a new development in the window; it explains *why* H2 is at 2,900 ppm, but does not constitute the rising-H2 trigger you asked about.\n\n## What operators should check if H2 does start climbing\n\n1. Re-sample and confirm the rise is > ~10% over consecutive samples (current noise band is \u00b13%).\n2. Check **acetylene** first \u2014 any rise above the 6\u20138 ppm floor moves the suspicion from thermal to arcing (High-Energy if C2H2/C2H4 > 1).\n3. If acetylene stays flat, check **methane** \u2014 CH4/H2 dropping below 0.1 points to Partial Discharge; staying >1 keeps it thermal.\n4. If thermal, watch **ethylene vs ethane** \u2014 C2H4/C2H6 crossing 4 shifts the call from oil overheating to core/winding hot-spot; corroborate with **oti** rising above the current 84\u201387 \u00b0C.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 11174.203417031094
+      }
+    ],
+    "started_at": "2026-09-30T23:14:17.741043+00:00"
+  }
+}

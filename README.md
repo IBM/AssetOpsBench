@@ -125,6 +125,16 @@ Some tasks focus on a single domain, others are multi-step end-to-end workflows.
 
 ## Leaderboards
 
+### Generated transformer comparison · k = 3 · September 30, 2026
+
+Five models each ran the same 52 open-form scenarios three times from the same initial database snapshot: **780 assigned trials, 779 independent Fable 5.1 judgments, one terminal GLM execution failure**. The [repeated-run report](benchmarks/runs/2026-09-30-transformer-k3/README.md) includes every repetition, median pass rates, means and sample standard deviations, scenario repeatability, full traces and [offline HTML](benchmarks/runs/2026-09-30-transformer-k3/comparison.html).
+
+![Transformer mean pass rates and variation](benchmarks/runs/2026-09-30-transformer-k3/graphs/pass-rate.png)
+
+![Transformer execution time across three repetitions](benchmarks/runs/2026-09-30-transformer-k3/graphs/execution-time.png)
+
+HTML cards show the median of the three repetition pass rates; tables and graphs retain means ± sample SD. Execution timing covers the entire agent invocation, grading is separate, and all failed/retried attempts are retained. FMSR's unconfigured Watsonx backend remains an environment limitation; see the report for the method and evidence.
+
 ### Generated transformer comparison · September 30, 2026
 
 Five models completed 52 open-form scenarios, each graded in an independent Fable 5.1 session. The [run report](benchmarks/runs/2026-09-30-transformer/README.md) includes per-scenario results, full observed traces, runtime settings, token/tool metrics and the [offline HTML comparison](benchmarks/runs/2026-09-30-transformer/comparison.html).

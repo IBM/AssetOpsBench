@@ -1,0 +1,125 @@
+{
+  "run_id": "fable-5-1_0013",
+  "scenario_id": "transformer_scenario_13",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "Transformer 1 at MAIN is showing thermal gases, and I need to know if it's the oil overheating or something hotter at the core or winding with paper involved. Using the samples between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, classify the thermal fault as T1, T2 or T3 from methane, ethane and ethylene, and say whether acetylene rules out a pure thermal fault. Check co alongside it for paper involvement. Then line the gas picture up against top-oil temperature (oti), ambient (ati) and the alarm and trip readings (oti_a, oti_t) to judge whether the heating looks like load or ambient driven, or like a localized hot spot. Give a final verdict between 'Thermal Fault \u2014 Oil Overheating' and 'Thermal Fault \u2014 Core/Winding' with a confidence of high, medium or low. Ignore samples where ethylene is null. If oti_a or oti_t showed an alarm or trip at any point, put that first in the answer and recommend immediate action. If the gas class and the temperature evidence disagree, for example a T3 gas signature with normal oti, say so and lean toward a localized core or winding hot spot.",
+  "answer": "**\u26a0\ufe0f ALARM/TRIP ACTIVE \u2014 IMMEDIATE ACTION REQUIRED.** Across all four samples (2024\u201101\u201115 \u2192 01\u201118) `oti_t` = 1 (oil\u2011temperature trip asserted) and `oti_a` = 2 (alarm; 1 on 01\u201117). The trip flag was set at every point in the window. Recommend immediate action: confirm the trip/protection state, take Transformer 1 off load (or verify it has tripped), do not re\u2011energize until an internal inspection is done, and pull an urgent confirmatory oil sample.\n\n**Data used** \u2014 4 samples, none with null ethylene (all retained). Note: the FMSR DGA and winding\u2011thermal tools returned \"LLM unavailable\", so the classification below is done directly from IEC 60599 / Rogers / Duval rules on the raw readings.\n\n**Gas picture (means over window)**\n- CH\u2084 \u2248 7,314 ppm, C\u2082H\u2086 \u2248 5,454 ppm, C\u2082H\u2084 \u2248 16,621 ppm, C\u2082H\u2082 \u2248 7 ppm, H\u2082 \u2248 2,874 ppm, CO \u2248 32 ppm \u2014 all stable, no trend across the 4 days.\n- Ratios: C\u2082H\u2082/C\u2082H\u2084 \u2248 0.0004 (<0.1), CH\u2084/H\u2082 \u2248 2.5 (>1), C\u2082H\u2084/C\u2082H\u2086 \u2248 3.0.\n- **Thermal class: T3 (>700 \u00b0C)**. Ethylene dominates (Duval: ~69% C\u2082H\u2084, ~30% CH\u2084, ~0% C\u2082H\u2082 \u2192 T3 region; Rogers C\u2082H\u2084/C\u2082H\u2086 \u22653 \u2192 \"thermal >700 \u00b0C\"). Strict IEC 60599 ratio table puts C\u2082H\u2084/C\u2082H\u2086 = 3.0 at the top of T2 (1\u20134), so treat it as **T3 / upper\u2011T2 boundary \u2014 high\u2011temperature thermal, not a mild T1 oil\u2011overheating signature.**\n- **Acetylene**: 7 ppm, C\u2082H\u2082/C\u2082H\u2084 \u2248 0 \u2192 does **not** rule out a pure thermal fault. No arcing/discharge component; this is purely thermal.\n- **CO**: ~30\u201335 ppm \u2014 very low. **No evidence of paper/cellulose involvement**; the hot spot is on bare metal/oil (core, leads, contacts, or an uninsulated winding conductor path), not degrading winding insulation.\n\n**Temperature picture**\n- OTI 84\u201387 \u00b0C, ATI 77\u201379 \u00b0C, WTI 79\u201382 \u00b0C; OTI\u2011minus\u2011ATI rise only ~7 \u00b0C and WTI \u2264 OTI. This is not a load\u2011driven bulk\u2011oil heating profile (load heating would show a large top\u2011oil rise over ambient and WTI above OTI). The elevated OTI is mostly ambient\u2011driven, and the bulk oil is nowhere near the >700 \u00b0C needed to generate this ethylene.\n- **Disagreement flagged**: T3 gas signature vs. near\u2011ambient top\u2011oil rise \u2192 the heating is a **localized hot spot**, not general oil overheating. (The OTI alarm/trip flags are asserted despite modest OTI values \u2014 check the device/setting, but the flags themselves must be treated as real until proven otherwise.)\n\n**Final verdict: Thermal Fault \u2014 Core/Winding** (localized high\u2011temperature hot spot, >700 \u00b0C, metal\u2011only \u2014 no paper involvement, no arcing) \u2014 **Confidence: high**.\n\nRecommended action: de\u2011energize/keep off load; verify OTI protection state; urgent full DGA + CO\u2082/CO and furan check to confirm no cellulose involvement; inspect core ground/circulating\u2011current paths, tap\u2011changer/lead connections and bushing\u2011lead joints for overheated metal before return to service.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 5,
+        "duration_ms": 3985.832540958654
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00",
+              "end": "2024-01-19T00:00:00",
+              "sensors": [
+                "methane",
+                "ethane",
+                "ethylene",
+                "acetylene",
+                "hydrogen",
+                "co",
+                "oti",
+                "ati",
+                "wti",
+                "oti_a",
+                "oti_t"
+              ]
+            },
+            "id": "toolu_01KWxcCywmKPoEi5T59UqY4U",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"methane\":7406,\"ethane\":5467,\"ethylene\":16684,\"acetylene\":7,\"hydrogen\":2845,\"co\":32,\"oti\":85,\"ati\":78,\"wti\":80,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"methane\":7200,\"ethane\":5400,\"ethylene\":16500,\"acetylene\":6,\"hydrogen\":2950,\"co\":30,\"oti\":87,\"ati\":79,\"wti\":82,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"methane\":7300,\"ethane\":5500,\"ethylene\":16700,\"acetylene\":8,\"hydrogen\":2800,\"co\":35,\"oti\":84,\"ati\":77,\"wti\":79,\"oti_a\":1,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"methane\":7350,\"ethane\":5450,\"ethylene\":16600,\"acetylene\":7,\"hydrogen\":2900,\"co\":33,\"oti\":86,\"ati\":78,\"wti\":81,\"oti_a\":2,\"oti_t\":1}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00\",\"end\":\"2024-01-19T00:00:00\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 5,
+        "duration_ms": 1776.0145840002224
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 4074.1282500093803
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2874,
+              "methane": 7314,
+              "acetylene": 7,
+              "ethylene": 16621,
+              "ethane": 5454
+            },
+            "id": "toolu_01Vmm1Yj785DAP96gT9dDZJf",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 1399.2073750123382
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__assess_winding_temperature",
+            "input": {
+              "asset_name": "Transformer 1",
+              "wti": 80.5,
+              "oti": 85.5,
+              "ati": 78,
+              "oti_a": 1,
+              "oti_t": 1
+            },
+            "id": "toolu_01V1fMhdFKjhEfEF8ggXNSi3",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 1237.4807909945957
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 25983.14287501853
+      },
+      {
+        "index": 6,
+        "text": "**\u26a0\ufe0f ALARM/TRIP ACTIVE \u2014 IMMEDIATE ACTION REQUIRED.** Across all four samples (2024\u201101\u201115 \u2192 01\u201118) `oti_t` = 1 (oil\u2011temperature trip asserted) and `oti_a` = 2 (alarm; 1 on 01\u201117). The trip flag was set at every point in the window. Recommend immediate action: confirm the trip/protection state, take Transformer 1 off load (or verify it has tripped), do not re\u2011energize until an internal inspection is done, and pull an urgent confirmatory oil sample.\n\n**Data used** \u2014 4 samples, none with null ethylene (all retained). Note: the FMSR DGA and winding\u2011thermal tools returned \"LLM unavailable\", so the classification below is done directly from IEC 60599 / Rogers / Duval rules on the raw readings.\n\n**Gas picture (means over window)**\n- CH\u2084 \u2248 7,314 ppm, C\u2082H\u2086 \u2248 5,454 ppm, C\u2082H\u2084 \u2248 16,621 ppm, C\u2082H\u2082 \u2248 7 ppm, H\u2082 \u2248 2,874 ppm, CO \u2248 32 ppm \u2014 all stable, no trend across the 4 days.\n- Ratios: C\u2082H\u2082/C\u2082H\u2084 \u2248 0.0004 (<0.1), CH\u2084/H\u2082 \u2248 2.5 (>1), C\u2082H\u2084/C\u2082H\u2086 \u2248 3.0.\n- **Thermal class: T3 (>700 \u00b0C)**. Ethylene dominates (Duval: ~69% C\u2082H\u2084, ~30% CH\u2084, ~0% C\u2082H\u2082 \u2192 T3 region; Rogers C\u2082H\u2084/C\u2082H\u2086 \u22653 \u2192 \"thermal >700 \u00b0C\"). Strict IEC 60599 ratio table puts C\u2082H\u2084/C\u2082H\u2086 = 3.0 at the top of T2 (1\u20134), so treat it as **T3 / upper\u2011T2 boundary \u2014 high\u2011temperature thermal, not a mild T1 oil\u2011overheating signature.**\n- **Acetylene**: 7 ppm, C\u2082H\u2082/C\u2082H\u2084 \u2248 0 \u2192 does **not** rule out a pure thermal fault. No arcing/discharge component; this is purely thermal.\n- **CO**: ~30\u201335 ppm \u2014 very low. **No evidence of paper/cellulose involvement**; the hot spot is on bare metal/oil (core, leads, contacts, or an uninsulated winding conductor path), not degrading winding insulation.\n\n**Temperature picture**\n- OTI 84\u201387 \u00b0C, ATI 77\u201379 \u00b0C, WTI 79\u201382 \u00b0C; OTI\u2011minus\u2011ATI rise only ~7 \u00b0C and WTI \u2264 OTI. This is not a load\u2011driven bulk\u2011oil heating profile (load heating would show a large top\u2011oil rise over ambient and WTI above OTI). The elevated OTI is mostly ambient\u2011driven, and the bulk oil is nowhere near the >700 \u00b0C needed to generate this ethylene.\n- **Disagreement flagged**: T3 gas signature vs. near\u2011ambient top\u2011oil rise \u2192 the heating is a **localized hot spot**, not general oil overheating. (The OTI alarm/trip flags are asserted despite modest OTI values \u2014 check the device/setting, but the flags themselves must be treated as real until proven otherwise.)\n\n**Final verdict: Thermal Fault \u2014 Core/Winding** (localized high\u2011temperature hot spot, >700 \u00b0C, metal\u2011only \u2014 no paper involvement, no arcing) \u2014 **Confidence: high**.\n\nRecommended action: de\u2011energize/keep off load; verify OTI protection state; urgent full DGA + CO\u2082/CO and furan check to confirm no cellulose involvement; inspect core ground/circulating\u2011current paths, tap\u2011changer/lead connections and bushing\u2011lead joints for overheated metal before return to service.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 5132.787874958012
+      }
+    ],
+    "started_at": "2026-09-30T22:11:43.880359+00:00"
+  }
+}

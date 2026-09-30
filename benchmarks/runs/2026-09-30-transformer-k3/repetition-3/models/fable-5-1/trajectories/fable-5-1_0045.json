@@ -1,0 +1,230 @@
+{
+  "run_id": "fable-5-1_0045",
+  "scenario_id": "transformer_scenario_45",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "I have a feeling we keep fixing the same fault on Transformer 1 at site MAIN without ever getting to the root cause. Check that for me.\n\nPull all closed work orders on Transformer 1 with their number, description, completion date and failure code. Use our failure code catalog to map each one to a transformer fault type: partial discharge, low-energy arcing, high-energy arcing, oil overheating, core or winding thermal fault, tap changer wear, moisture ingress, cellulose ageing or oil dielectric degradation.\n\nThen work out what the transformer is doing now. Run a dissolved gas fault classification on the latest complete sample between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000 using hydrogen, methane, ethane, ethylene and acetylene, and use co from the same sample to check whether the paper is involved. Map that result to the same list of fault types.\n\nCall it a recurring fault only if at least two closed work orders map to the same fault type the gases show today.\n\nIf it's recurring:\n- Check open work orders on Transformer 1 for an existing root cause investigation or manufacturer referral. If there is one, give me its number and don't duplicate it.\n- Otherwise, create a priority 2 root cause investigation work order. List the earlier work order numbers in the notes, add a note to notify the manufacturer, and code it with the matching failure code.\n\nIf only one earlier job matches, don't create anything. Recommend a confirmatory oil resample and say that one repeat isn't enough to call a pattern. If none match, say today's fault looks new.\n\nIf a closed work order has no failure code, map it from its description and mark it as inferred. Inferred matches can support a recurrence but can't be the only basis for one. If the latest sample is missing any of the five gases, use the most recent complete sample and give its timestamp.",
+  "answer": "**Verdict: Not a recurring fault \u2014 there is no closed work-order history on Transformer 1 to recur against. Today's fault looks new.**\n\n## 1. Closed work orders on Transformer 1 (site MAIN)\n\nNone. I queried all statuses, then `COMP` and `CLOSE` explicitly \u2014 all returned zero closed work orders. The only work order on the asset is:\n\n| WO | Description | Status | Completion date | Failure code | Mapped fault type |\n|---|---|---|---|---|---|\n| 1000051 | OLTC inspection \u2013 on-load tap changer (suspected contact wear/coking) | APPR (open, PdM, priority 1) | \u2014 (not completed) | none | tap changer wear *(inferred from description)* |\n\nBecause it is open, it cannot count toward a recurrence. Note also that the catalog (FC001\u2013FC010) is generic \u2014 the closest transformer-relevant code is FC006 \"overheating or high temperature reading\"; none map cleanly to discharge, moisture, or ageing faults.\n\n## 2. What the transformer is doing now\n\nLatest complete sample: **2024-01-18T00:00:00** (all five gases + CO present; every sample in the window was complete).\nH2 2900 \u00b7 CH4 7350 \u00b7 C2H6 5450 \u00b7 C2H4 16600 \u00b7 C2H2 7 \u00b7 CO 33 ppm\n\nThe `interpret_dga` tool returned \"LLM unavailable\" on two attempts, so I computed the IEC 60599 Rogers Ratios directly:\n\n| Ratio | Value | IEC code |\n|---|---|---|\n| C2H2 / C2H4 | 7 / 16600 = 0.0004 | 0 |\n| CH4 / H2 | 7350 / 2900 = 2.53 | 2 |\n| C2H4 / C2H6 | 16600 / 5450 = 3.05 | 2 |\n\nCode **0-2-2 \u2192 T3, thermal fault > 700 \u00b0C** (high confidence: ethylene-dominant, negligible acetylene rules out arcing; CH4/H2 > 1 rules out partial discharge). TDCG \u2248 32,340 ppm \u2014 IEEE C57.104 Condition 4, severe.\n\n**Paper involvement:** CO is only 33 ppm against ~32,000 ppm of hydrocarbons. CO that low means cellulose is essentially not participating \u2014 this is a bare-metal / oil hot spot, not insulation degradation.\n\n**Mapped fault type: core or winding thermal fault** (T3, metal overheating \u2014 e.g. circulating currents, bad core-ground or lead connection, or a hot OLTC contact in the main tank).\n\n## 3. Recurrence test\n\nClosed work orders mapping to \"core or winding thermal fault\": **0** (there are no closed work orders at all). Threshold is \u2265 2, so this is **not recurring**, and I have **not created any work order**.\n\n## Recommendations\n\n- **Today's fault looks new** from a records standpoint \u2014 but the gas levels are severe, not a wait-and-see condition. The existing open **WO 1000051** (OLTC inspection, priority 1, approved) is already on the asset and already carries a note to take a confirmatory DGA sample. That is the right vehicle; I'd suggest widening its scope to include core-ground and bushing/lead connection checks, since CO says the paper is clean and the T3 signature could be main-tank metal rather than the OLTC.\n- Your \"fixing the same fault\" feeling may be right, but the evidence isn't in this system \u2014 prior repairs may have been recorded under a different asset number, site, or before the current database. If you can point me to where older records live, I'll re-run the recurrence check against them.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 4235.868333023973
+      },
+      {
+        "index": 1,
+        "text": "I'll start by pulling the work orders, failure code catalog, and the gas telemetry in parallel.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 629.5348749845289
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "page_size": 0
+            },
+            "id": "toolu_01LkapEWsun5y4cyGfrpLHLr",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":null,\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"ADDED 2026-09-30 (DGA forecast): Take confirmatory oil sample for lab DGA at the OLTC inspection visit. One-day-ahead drift forecast from 2024-01-15..18 samples gives worst-case TDCG upper bound 32,969 ppm (H2 3068, CH4 7537, C2H6 5544, C2H4 16772, C2H2 9, CO 38) -> IEEE C57.104 Condition 4 (>4630). Methane is the largest contributor to the forecast increase (+187 ppm vs latest); ethylene is the largest share of TDCG.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T23:27:57+00:00\",\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 883.3687080186792
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__get_failure_codes",
+            "input": {},
+            "id": "toolu_01NLYumzWhVnsFADgbXD7UEr",
+            "output": "{\"result\":{\"code\":null,\"total\":10,\"failure_codes\":[{\"code\":\"FC001\",\"description\":\"equipment does not start\"},{\"code\":\"FC002\",\"description\":\"equipment stops unexpectedly during operation\"},{\"code\":\"FC003\",\"description\":\"abnormal noise during operation\"},{\"code\":\"FC004\",\"description\":\"fluid leak observed\"},{\"code\":\"FC005\",\"description\":\"excessive vibration, shaking, or instability\"},{\"code\":\"FC006\",\"description\":\"overheating or high temperature reading\"},{\"code\":\"FC007\",\"description\":\"indicator light does not illuminate\"},{\"code\":\"FC008\",\"description\":\"gauge does not operate or is inaccurate\"},{\"code\":\"FC009\",\"description\":\"structural damage or cracking\"},{\"code\":\"FC010\",\"description\":\"part missing or loose\"}],\"message\":\"Found 10 failure code(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 251.36925000697374
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "hydrogen",
+                "methane",
+                "ethane",
+                "ethylene",
+                "acetylene",
+                "co"
+              ]
+            },
+            "id": "toolu_01Maa7PRN44PRSDqHNSUFs77",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"methane\":7406,\"ethane\":5467,\"ethylene\":16684,\"acetylene\":7,\"co\":32},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"methane\":7200,\"ethane\":5400,\"ethylene\":16500,\"acetylene\":6,\"co\":30},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"methane\":7300,\"ethane\":5500,\"ethylene\":16700,\"acetylene\":8,\"co\":35},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"methane\":7350,\"ethane\":5450,\"ethylene\":16600,\"acetylene\":7,\"co\":33}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 1505.5217089829966
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 5820.334082993213
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 2.001292014028877
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "COMP",
+              "page_size": 0
+            },
+            "id": "toolu_01CWineFeR1U2BZqBr2JVcRj",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"COMP\",\"labor_code\":null,\"total\":0,\"work_orders\":[],\"message\":\"Found 0 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.3903749748133123
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "CLOSE",
+              "page_size": 0
+            },
+            "id": "toolu_01VkUFD2TnE74wFMG16NtmhB",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"CLOSE\",\"labor_code\":null,\"total\":0,\"work_orders\":[],\"message\":\"Found 0 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1056.1456250143237
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01K1a5bHeZC2TLW7wugu4Lqw",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1261.301624996122
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 4258.58112500282
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 2.385250001680106
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_017uMnywxDmfZHYjpnAMWNyL",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 114.94433303596452
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 16243.767874955665
+      },
+      {
+        "index": 14,
+        "text": "**Verdict: Not a recurring fault \u2014 there is no closed work-order history on Transformer 1 to recur against. Today's fault looks new.**\n\n## 1. Closed work orders on Transformer 1 (site MAIN)\n\nNone. I queried all statuses, then `COMP` and `CLOSE` explicitly \u2014 all returned zero closed work orders. The only work order on the asset is:\n\n| WO | Description | Status | Completion date | Failure code | Mapped fault type |\n|---|---|---|---|---|---|\n| 1000051 | OLTC inspection \u2013 on-load tap changer (suspected contact wear/coking) | APPR (open, PdM, priority 1) | \u2014 (not completed) | none | tap changer wear *(inferred from description)* |\n\nBecause it is open, it cannot count toward a recurrence. Note also that the catalog (FC001\u2013FC010) is generic \u2014 the closest transformer-relevant code is FC006 \"overheating or high temperature reading\"; none map cleanly to discharge, moisture, or ageing faults.\n\n## 2. What the transformer is doing now\n\nLatest complete sample: **2024-01-18T00:00:00** (all five gases + CO present; every sample in the window was complete).\nH2 2900 \u00b7 CH4 7350 \u00b7 C2H6 5450 \u00b7 C2H4 16600 \u00b7 C2H2 7 \u00b7 CO 33 ppm\n\nThe `interpret_dga` tool returned \"LLM unavailable\" on two attempts, so I computed the IEC 60599 Rogers Ratios directly:\n\n| Ratio | Value | IEC code |\n|---|---|---|\n| C2H2 / C2H4 | 7 / 16600 = 0.0004 | 0 |\n| CH4 / H2 | 7350 / 2900 = 2.53 | 2 |\n| C2H4 / C2H6 | 16600 / 5450 = 3.05 | 2 |\n\nCode **0-2-2 \u2192 T3, thermal fault > 700 \u00b0C** (high confidence: ethylene-dominant, negligible acetylene rules out arcing; CH4/H2 > 1 rules out partial discharge). TDCG \u2248 32,340 ppm \u2014 IEEE C57.104 Condition 4, severe.\n\n**Paper involvement:** CO is only 33 ppm against ~32,000 ppm of hydrocarbons. CO that low means cellulose is essentially not participating \u2014 this is a bare-metal / oil hot spot, not insulation degradation.\n\n**Mapped fault type: core or winding thermal fault** (T3, metal overheating \u2014 e.g. circulating currents, bad core-ground or lead connection, or a hot OLTC contact in the main tank).\n\n## 3. Recurrence test\n\nClosed work orders mapping to \"core or winding thermal fault\": **0** (there are no closed work orders at all). Threshold is \u2265 2, so this is **not recurring**, and I have **not created any work order**.\n\n## Recommendations\n\n- **Today's fault looks new** from a records standpoint \u2014 but the gas levels are severe, not a wait-and-see condition. The existing open **WO 1000051** (OLTC inspection, priority 1, approved) is already on the asset and already carries a note to take a confirmatory DGA sample. That is the right vehicle; I'd suggest widening its scope to include core-ground and bushing/lead connection checks, since CO says the paper is clean and the T3 signature could be main-tank metal rather than the OLTC.\n- Your \"fixing the same fault\" feeling may be right, but the evidence isn't in this system \u2014 prior repairs may have been recorded under a different asset number, site, or before the current database. If you can point me to where older records live, I'll re-run the recurrence check against them.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 5111.426957999356
+      }
+    ],
+    "started_at": "2026-09-30T23:44:17.544885+00:00"
+  }
+}

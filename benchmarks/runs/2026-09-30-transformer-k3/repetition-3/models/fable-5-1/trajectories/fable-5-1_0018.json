@@ -1,0 +1,252 @@
+{
+  "run_id": "fable-5-1_0018",
+  "scenario_id": "transformer_scenario_18",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "Transformer 1 at MAIN has some dbds in its oil, and I need to know if corrosive sulfur could be causing discharges in the paper. Look at dbds over the available window alongside the latest hydrogen, methane, ethane, ethylene and acetylene. Classify the fault from those five gases, and check co and co2 for paper involvement. Then tell me whether the picture fits copper sulfide deposition driving 'Partial Discharge in Oil' or 'Low-Energy Arcing (Sparking)', or whether it looks more like plain 'Oil Dielectric Degradation', using dielectric_rigidity and interfacial_v as supporting evidence. Give me a verdict with a confidence level and the two strongest pieces of evidence behind it, and recommend whether we should consider a passivator treatment or an oil change. Base the sulfur judgement on dbds only, not on the gases. If dbds has no data in the window, say that corrosive sulfur can't be assessed, and give the discharge versus degradation verdict from the gases and oil quality alone.",
+  "answer": "The DGA classifier is down on both attempts, so I computed the IEC 60599 / Rogers ratios directly from the gas values (the method is deterministic, so nothing is lost). No further data is needed \u2014 here is the assessment.\n\n## Transformer 1 (MAIN) \u2014 Corrosive sulfur vs. discharge assessment\n\n**Data window:** 15\u201319 Jan 2024 (5 daily samples; note the latest reading is ~2.7 years old).\n\n### 1. DBDS (corrosive sulfur) \u2014 assessed on dbds only\n- 19, 18, 20, 19, 19 mg/kg \u2014 flat, no trend.\n- This is well above the ~5\u201310 mg/kg level at which oil is classed as potentially corrosive (IEC 62697 / CIGRE). **Corrosive sulfur is present in the oil.**\n\n### 2. Fault classification from the five gases (latest, 2024\u201101\u201119)\nH\u2082 2,850 \u00b7 CH\u2084 7,400 \u00b7 C\u2082H\u2086 5,470 \u00b7 C\u2082H\u2084 16,650 \u00b7 C\u2082H\u2082 7 ppm\n\n| Ratio | Value | IEC code |\n|---|---|---|\n| C\u2082H\u2082/C\u2082H\u2084 | 0.0004 | 0 |\n| CH\u2084/H\u2082 | 2.60 | 2 |\n| C\u2082H\u2084/C\u2082H\u2086 | 3.04 | 2 |\n\nCode **0\u20112\u20112 \u2192 T3, thermal fault > 700 \u00b0C** (ethylene-dominant, acetylene essentially absent).\n- Not \"Partial Discharge in Oil\": PD requires CH\u2084/H\u2082 < 0.1 with H\u2082 dominant \u2014 here CH\u2084/H\u2082 is 2.6.\n- Not \"Low\u2011Energy Arcing (Sparking)\": D1 requires C\u2082H\u2082/C\u2082H\u2084 > 1 \u2014 here acetylene is 7 ppm against 16,650 ppm ethylene.\n\n### 3. Paper involvement (CO / CO\u2082)\nCO 32 ppm, CO\u2082 1,340 ppm (CO\u2082/CO \u2248 42). Absolute CO is very low \u2014 **no evidence of active cellulose decomposition**; the thermal fault is in oil/metal, not in the paper.\n\n### 4. Oil quality (supporting evidence)\n- Dielectric rigidity 53\u201356 kV, interfacial tension 44\u201346 mN/m \u2014 both healthy and stable across the window. Water content 0.\n- Health index 72 (\"Good\").\n- This **rules out \"Oil Dielectric Degradation\"** as well.\n\n## Verdict\n**None of the three candidate modes fits.** The picture is a **high\u2011temperature thermal fault (T3) in oil with no paper involvement**, in an oil that contains corrosive sulfur but is otherwise in good dielectric condition. Copper sulfide deposition is a **latent risk, not the active mechanism** \u2014 there is no discharge signature for it to be driving.\n\n**Confidence: High** (gas ratios are unambiguous at thousands of ppm; caveat that the automated DGA tool was unavailable and ratios were computed manually per IEC 60599).\n\n**Two strongest pieces of evidence**\n1. **Rogers/IEC code 0\u20112\u20112** \u2014 C\u2082H\u2082/C\u2082H\u2084 = 0.0004, CH\u2084/H\u2082 = 2.6, C\u2082H\u2084/C\u2082H\u2086 = 3.0. Ethylene at 16,650 ppm with acetylene at 7 ppm is a textbook hot\u2011metal signature and excludes both PD and sparking.\n2. **Oil quality is intact and CO is negligible** \u2014 BDV 53\u201356 kV and IFT 44\u201346 mN/m stable over all five samples exclude dielectric degradation; CO 32 ppm excludes paper involvement.\n\n## Recommendation\n- **Passivator, not oil change**, for the sulfur issue: DBDS at 19 mg/kg in an oil with good BDV/IFT is the classic case for a metal passivator (e.g. Irgamet 39) to protect the copper \u2014 an oil change wouldn't remove DBDS already absorbed in paper/copper and isn't justified by oil quality. Monitor passivator concentration afterwards, since it depletes faster in hot, gassing units.\n- **But the T3 thermal fault is the urgent item, not the sulfur.** A >700 \u00b0C hot spot is a serious active fault: take a lab resample to confirm, investigate hot connections / circulating currents / core issues, and consider load reduction pending findings. I can raise a work order for this if you'd like.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 4557.711041998118
+      },
+      {
+        "index": 1,
+        "text": "I'll start by checking what sensors Transformer 1 has and the dbds coverage.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 692.6822499954142
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__measured_sensors",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_017b7H5k11tQx58F3U725Lec",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"total_sensors\":30,\"sensors\":[\"acetylene\",\"ati\",\"co\",\"co2\",\"dbds\",\"dielectric_rigidity\",\"ethane\",\"ethylene\",\"hydrogen\",\"il1\",\"il2\",\"il3\",\"interfacial_v\",\"inut\",\"methane\",\"nitrogen\",\"oti\",\"oti_a\",\"oti_t\",\"oxygen\",\"power_factor\",\"rated_mva\",\"vl1\",\"vl12\",\"vl2\",\"vl23\",\"vl3\",\"vl31\",\"water_content\",\"wti\"],\"message\":\"found 30 sensors for asset_id Transformer 1 and site_name MAIN: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen, power_factor, rated_mva, vl1, vl12, vl2, vl23, vl3, vl31, water_content, wti.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 713.8121660100296
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__sensor_coverage",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01AKgeC88YYQX2mY8E7nXyzQ",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"docs_scanned\":5,\"sensors\":[{\"sensor\":\"acetylene\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ati\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"co\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"co2\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"dbds\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"dielectric_rigidity\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ethane\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ethylene\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"hydrogen\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il1\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il2\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il3\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"interfacial_v\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"inut\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"methane\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"nitrogen\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti_a\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti_t\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oxygen\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"power_factor\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"rated_mva\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl1\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl12\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl2\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl23\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl3\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl31\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"water_content\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"wti\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"}],\"message\":\"coverage for 30 sensor(s) on asset_id Transformer 1 across 5 timestamped record(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 546.3602499803528
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 5410.699959029444
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 4.174624977167696
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "sensors": [
+                "dbds",
+                "dielectric_rigidity",
+                "interfacial_v"
+              ]
+            },
+            "id": "toolu_01CGqvTq3apJW3noJUNcK21N",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"dbds\":19,\"dielectric_rigidity\":55,\"interfacial_v\":45},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"dbds\":18,\"dielectric_rigidity\":53,\"interfacial_v\":44},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"dbds\":20,\"dielectric_rigidity\":56,\"interfacial_v\":46},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"dbds\":19,\"dielectric_rigidity\":54,\"interfacial_v\":45},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-19T00:00:00.000000\",\"dbds\":19,\"dielectric_rigidity\":55,\"interfacial_v\":45}],\"returned\":5,\"next_cursor\":null,\"has_more\":false,\"start\":null,\"end\":null,\"message\":\"returned 5 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.8282079943455756
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__latest_reading",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01B8RVufnFbsHjdiis22ZoRt",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-19T00:00:00.000000\",\"values\":{\"hydrogen\":2850,\"oxygen\":5850,\"nitrogen\":27850,\"methane\":7400,\"co\":32,\"co2\":1340,\"ethylene\":16650,\"ethane\":5470,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},\"age_seconds\":85187594.174072,\"message\":\"latest reading for asset_id Transformer 1 at 2024-01-19T00:00:00.000000.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 67.9955420200713
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 7332.269457983784
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 0.9715420310385525
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "acetylene": 7,
+              "ethylene": 16650,
+              "ethane": 5470
+            },
+            "id": "toolu_01VmW86pFFoCYTwj65g5KUhA",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 394.68312496319413
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__predict_health_index",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "oxygen": 5850,
+              "nitrogen": 27850,
+              "methane": 7400,
+              "co": 32,
+              "co2": 1340,
+              "ethylene": 16650,
+              "ethane": 5470,
+              "acetylene": 7,
+              "dbds": 19,
+              "power_factor": 1,
+              "interfacial_v": 45,
+              "dielectric_rigidity": 55,
+              "water_content": 0
+            },
+            "id": "toolu_01AvZtUm4hF8fGBspfaGchVD",
+            "output": "{\"result\":{\"asset_name\":\"Transformer 1\",\"health_index\":72.38500000000008,\"condition\":\"Good\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2946.688375028316
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 9221.825166023336
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.293624984100461
+      },
+      {
+        "index": 14,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "acetylene": 7,
+              "ethylene": 16650,
+              "ethane": 5470
+            },
+            "id": "toolu_018nWPS4ZUahVmVkGPLk2JrH",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 276.7772499937564
+      },
+      {
+        "index": 15,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 35083.90204200987
+      },
+      {
+        "index": 16,
+        "text": "The DGA classifier is down on both attempts, so I computed the IEC 60599 / Rogers ratios directly from the gas values (the method is deterministic, so nothing is lost). No further data is needed \u2014 here is the assessment.\n\n## Transformer 1 (MAIN) \u2014 Corrosive sulfur vs. discharge assessment\n\n**Data window:** 15\u201319 Jan 2024 (5 daily samples; note the latest reading is ~2.7 years old).\n\n### 1. DBDS (corrosive sulfur) \u2014 assessed on dbds only\n- 19, 18, 20, 19, 19 mg/kg \u2014 flat, no trend.\n- This is well above the ~5\u201310 mg/kg level at which oil is classed as potentially corrosive (IEC 62697 / CIGRE). **Corrosive sulfur is present in the oil.**\n\n### 2. Fault classification from the five gases (latest, 2024\u201101\u201119)\nH\u2082 2,850 \u00b7 CH\u2084 7,400 \u00b7 C\u2082H\u2086 5,470 \u00b7 C\u2082H\u2084 16,650 \u00b7 C\u2082H\u2082 7 ppm\n\n| Ratio | Value | IEC code |\n|---|---|---|\n| C\u2082H\u2082/C\u2082H\u2084 | 0.0004 | 0 |\n| CH\u2084/H\u2082 | 2.60 | 2 |\n| C\u2082H\u2084/C\u2082H\u2086 | 3.04 | 2 |\n\nCode **0\u20112\u20112 \u2192 T3, thermal fault > 700 \u00b0C** (ethylene-dominant, acetylene essentially absent).\n- Not \"Partial Discharge in Oil\": PD requires CH\u2084/H\u2082 < 0.1 with H\u2082 dominant \u2014 here CH\u2084/H\u2082 is 2.6.\n- Not \"Low\u2011Energy Arcing (Sparking)\": D1 requires C\u2082H\u2082/C\u2082H\u2084 > 1 \u2014 here acetylene is 7 ppm against 16,650 ppm ethylene.\n\n### 3. Paper involvement (CO / CO\u2082)\nCO 32 ppm, CO\u2082 1,340 ppm (CO\u2082/CO \u2248 42). Absolute CO is very low \u2014 **no evidence of active cellulose decomposition**; the thermal fault is in oil/metal, not in the paper.\n\n### 4. Oil quality (supporting evidence)\n- Dielectric rigidity 53\u201356 kV, interfacial tension 44\u201346 mN/m \u2014 both healthy and stable across the window. Water content 0.\n- Health index 72 (\"Good\").\n- This **rules out \"Oil Dielectric Degradation\"** as well.\n\n## Verdict\n**None of the three candidate modes fits.** The picture is a **high\u2011temperature thermal fault (T3) in oil with no paper involvement**, in an oil that contains corrosive sulfur but is otherwise in good dielectric condition. Copper sulfide deposition is a **latent risk, not the active mechanism** \u2014 there is no discharge signature for it to be driving.\n\n**Confidence: High** (gas ratios are unambiguous at thousands of ppm; caveat that the automated DGA tool was unavailable and ratios were computed manually per IEC 60599).\n\n**Two strongest pieces of evidence**\n1. **Rogers/IEC code 0\u20112\u20112** \u2014 C\u2082H\u2082/C\u2082H\u2084 = 0.0004, CH\u2084/H\u2082 = 2.6, C\u2082H\u2084/C\u2082H\u2086 = 3.0. Ethylene at 16,650 ppm with acetylene at 7 ppm is a textbook hot\u2011metal signature and excludes both PD and sparking.\n2. **Oil quality is intact and CO is negligible** \u2014 BDV 53\u201356 kV and IFT 44\u201346 mN/m stable over all five samples exclude dielectric degradation; CO 32 ppm excludes paper involvement.\n\n## Recommendation\n- **Passivator, not oil change**, for the sulfur issue: DBDS at 19 mg/kg in an oil with good BDV/IFT is the classic case for a metal passivator (e.g. Irgamet 39) to protect the copper \u2014 an oil change wouldn't remove DBDS already absorbed in paper/copper and isn't justified by oil quality. Monitor passivator concentration afterwards, since it depletes faster in hot, gassing units.\n- **But the T3 thermal fault is the urgent item, not the sulfur.** A >700 \u00b0C hot spot is a serious active fault: take a lab resample to confirm, investigate hot connections / circulating currents / core issues, and consider load reduction pending findings. I can raise a work order for this if you'd like.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 6283.325541997328
+      }
+    ],
+    "started_at": "2026-09-30T23:13:02.163016+00:00"
+  }
+}

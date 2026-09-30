@@ -1,0 +1,415 @@
+{
+  "run_id": "fable-5-1_0036",
+  "scenario_id": "transformer_scenario_36",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "I want to set the next oil sampling date for Transformer 1 at site MAIN based on how fast the gases are actually growing, not on a fixed calendar.\n\nUsing the samples between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, work out TDCG for every sample. Use only hydrogen, methane, ethane, ethylene, acetylene and co, and leave out co2, oxygen and nitrogen. Give me the TDCG rate in ppm/day between the first and last sample, and name the gas that contributes most to the increase.\n\nBefore trusting that rate, screen the six gases for anomalous samples. If a single anomalous sample is driving the rise, recompute the rate without it and show me both numbers.\n\nSet the interval with this rule:\n- Under 10 ppm/day: next sample in 90 days.\n- 10 to 30 ppm/day: next sample in 30 days.\n- Above 30 ppm/day: next sample in 7 days.\n\nIf the rate with and without the anomalous sample lands in different bands, don't escalate on the higher one. Use the lower band's interval and add a confirmatory resample within 7 days to settle it.\n\nAlso run a fault classification on the latest complete sample. If it comes back D1, D2 or T3, use 7 days no matter what the rate says.\n\nThen check open work orders on Transformer 1. If a sampling job is already open, don't create another. Tell me its number and date, and whether it should move earlier. Otherwise, pick the first day on or after the target date where MAIN has fewer than 3 scheduled work orders, create the sampling work order for that day, and assign a technician who has sampled Transformer 1 before.\n\nIf fewer than two samples in the window have all six gases, say the rate can't be computed. In that case, base the interval on the classification alone: 7 days for D1, D2 or T3, and 30 days otherwise.",
+  "answer": "Nothing further to request \u2014 the work-order store is rejecting all writes (403 on both the auto-counter and a direct document write), and every other input is already in hand. Here is the full result.\n\n## TDCG per sample (H\u2082 + CH\u2084 + C\u2082H\u2086 + C\u2082H\u2084 + C\u2082H\u2082 + CO; CO\u2082/O\u2082/N\u2082 excluded)\n\n| Sample | H\u2082 | CH\u2084 | C\u2082H\u2086 | C\u2082H\u2084 | C\u2082H\u2082 | CO | **TDCG (ppm)** |\n|---|---|---|---|---|---|---|---|\n| 2024-01-15 | 2845 | 7406 | 5467 | 16684 | 7 | 32 | **32 441** |\n| 2024-01-16 | 2950 | 7200 | 5400 | 16500 | 6 | 30 | **32 086** |\n| 2024-01-17 | 2800 | 7300 | 5500 | 16700 | 8 | 35 | **32 343** |\n| 2024-01-18 | 2900 | 7350 | 5450 | 16600 | 7 | 33 | **32 340** |\n\nAll 4 samples have all six gases, so the rate is computable.\n\n**TDCG rate (first \u2192 last):** (32 340 \u2212 32 441) / 3 days = **\u221233.7 ppm/day** \u2014 no net increase; TDCG is flat/slightly down.\n**Gas contributing most to the increase:** **hydrogen** (+55 ppm, 2845 \u2192 2900). It is the only gas with a meaningful positive change (CO +1; CH\u2084 \u221256, C\u2082H\u2086 \u221217, C\u2082H\u2084 \u221284, C\u2082H\u2082 0).\n\n## Anomaly screen\nThe TSFM catalog has no anomaly-detector cards and there is no materialized dataset file to run `run_recipe` against, so I screened statistically: across the six gases, no sample deviates more than ~1.4 \u03c3 from the window mean (largest: H\u2082 on 01-16 at +1.35 \u03c3, on 01-17 at \u22121.3 \u03c3). **No anomalous sample, and no rise for one to drive.**\n- Rate with all samples: **\u221233.7 ppm/day**\n- Rate excluding any candidate outlier: unchanged in band (e.g. dropping 01-16, the rate is still \u221233.7 ppm/day since it's not an endpoint; dropping 01-18 \u2192 \u221249 ppm/day). Both land in the **<10 ppm/day** band \u2192 no band conflict, no confirmatory resample required.\n\n## Fault classification (latest complete sample, 2024-01-18)\nThe `interpret_dga` service returned \"LLM unavailable\" twice, so I applied IEC 60599 ratios manually:\n- C\u2082H\u2082/C\u2082H\u2084 = 0.0004 \u00b7 CH\u2084/H\u2082 = 2.53 \u00b7 C\u2082H\u2084/C\u2082H\u2086 = 3.05 \u2192 **T2 (thermal fault, 300\u2013700 \u00b0C)**\n- Not D1/D2/T3 \u2192 **no 7-day override**.\n\n\u26a0\ufe0f Note: although the *rate* is benign, absolute levels are extreme (C\u2082H\u2084 16 600 ppm, TDCG > 32 000 ppm \u2014 IEEE C57.104 Condition 4). The interval rule you gave is rate-based, so I've followed it, but you may want to weigh this separately.\n\n## Interval and scheduling\n- Band: <10 ppm/day \u2192 **90 days \u2192 target 2026-12-29** (from today, 2026-09-30).\n- **Open WOs on Transformer 1:** only **1000051** (APPR, P1) \u2014 an OLTC inspection, not a sampling job, so it doesn't satisfy this requirement and I did not treat it as the sampling WO.\n- MAIN has **0** scheduled WOs on 2026-12-29 (and through 2027-01-15), so 2026-12-29 qualifies as the first day with <3 scheduled.\n- **Technician:** no technician has ever sampled Transformer 1 \u2014 the only WO in its history (1000051) has no labor assigned. There's no eligible assignee under your criterion.\n\n**Work order creation failed:** the WO service returned `403 Forbidden` on both the auto-numbered create and a retry with explicit wonum 1000052. Nothing was written. The intended WO was: *\"DGA oil sampling \u2013 Transformer 1 (rate-based interval, 90-day band)\"*, PdM, priority 3, target start 2026-12-29, with the evidence above attached as `aob_source`. Once write access is restored I can create it in one call; tell me if you also want a technician assigned despite none having prior history on this unit.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 3367.5721249892376
+      },
+      {
+        "index": 1,
+        "text": "I'll start by pulling the DGA samples in the window and checking for open work orders in parallel.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 623.1469160411507
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00",
+              "end": "2024-01-19T00:00:00"
+            },
+            "id": "toolu_018LT8Fkdcu6KQutZbXyc6vm",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"oxygen\":5860,\"nitrogen\":27842,\"methane\":7406,\"co\":32,\"co2\":1344,\"ethylene\":16684,\"ethane\":5467,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"oxygen\":5700,\"nitrogen\":28000,\"methane\":7200,\"co\":30,\"co2\":1300,\"ethylene\":16500,\"ethane\":5400,\"acetylene\":6,\"dbds\":18,\"power_factor\":1.2,\"interfacial_v\":44,\"dielectric_rigidity\":53,\"water_content\":1,\"vl1\":112,\"vl2\":114,\"vl3\":109,\"il1\":102,\"il2\":103,\"il3\":96,\"vl12\":226,\"vl23\":221,\"vl31\":219,\"inut\":6,\"rated_mva\":100,\"wti\":82,\"oti\":87,\"ati\":79,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"oxygen\":5900,\"nitrogen\":27700,\"methane\":7300,\"co\":35,\"co2\":1350,\"ethylene\":16700,\"ethane\":5500,\"acetylene\":8,\"dbds\":20,\"power_factor\":0.9,\"interfacial_v\":46,\"dielectric_rigidity\":56,\"water_content\":0,\"vl1\":109,\"vl2\":116,\"vl3\":107,\"il1\":101,\"il2\":104,\"il3\":94,\"vl12\":224,\"vl23\":219,\"vl31\":217,\"inut\":5,\"rated_mva\":100,\"wti\":79,\"oti\":84,\"ati\":77,\"oti_a\":1,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"oxygen\":5800,\"nitrogen\":27950,\"methane\":7350,\"co\":33,\"co2\":1325,\"ethylene\":16600,\"ethane\":5450,\"acetylene\":7,\"dbds\":19,\"power_factor\":1.1,\"interfacial_v\":45,\"dielectric_rigidity\":54,\"water_content\":1,\"vl1\":111,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":106,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":81,\"oti\":86,\"ati\":78,\"oti_a\":2,\"oti_t\":1}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00\",\"end\":\"2024-01-19T00:00:00\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 1207.076999999117
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "OPEN",
+              "page_size": 0
+            },
+            "id": "toolu_0158389PaeXkQ3GythENsyB3",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"OPEN\",\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T22:33:49+00:00\",\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 906.5041670110077
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 14092.011916975025
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2.7786659775301814
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01EhnRPmvEaYoRTtmiuqBYNW",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 0.22995902691036463
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__find_models",
+            "input": {
+              "task_id": "tsfm_anomaly_detection"
+            },
+            "id": "toolu_016qpmdsKhkv2uDy7EVDp3mR",
+            "output": "{\"result\":{\"models\":[]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 54.132332967128605
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__recipe_template",
+            "input": {},
+            "id": "toolu_01GCU55eVDzBcmSRPA5zLuC3",
+            "output": "{\"task_choices\":[\"omitted / anything else  - FORECASTING: transforms -> single|ensemble -> conformal\",\"tsfm_anomaly_detection   - detector path, producing dense anomaly labels\",\"tsfm_classification | tsfm_regression | tsfm_clustering  - run_tabular_recipe only\"],\"estimator_spec\":[\"model_id     - a catalog card, e.g. {\\\"model_id\\\": \\\"ttm_r1_512_96\\\"}; its sktime_class and params are read from the card (see find_models / resolve_model)\",\"sktime_class - an inline class path + params, e.g. {\\\"sktime_class\\\": \\\"sktime.forecasting.naive.NaiveForecaster\\\", \\\"params\\\": {\\\"strategy\\\": \\\"drift\\\"}}\"],\"optional_blocks\":[\"fh         - forecast horizon, e.g. [1, 2, 3]. Default [1, 2, 3, 4, 5]\",\"transforms - list of transform specs applied to the target before the forecaster\",\"ensemble   - {\\\"members\\\": [<estimator spec>, ...], \\\"combine\\\": \\\"mean|median|min|max|weighted|stack\\\", \\\"weights\\\": [...]} - use INSTEAD of estimator\",\"conformal  - {\\\"coverage\\\": 0.9} for calibrated prediction intervals\",\"finetune   - training block; see param_hints (lr, epochs, batch_size, ...)\",\"save_to    - directory path; after a fine-tune, persist the fitted weights there and return checkpoint_path in the result (feed it to register_finetuned)\",\"anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)\",\"impute     - fill gaps before fitting\",\"eval       - {\\\"metrics\\\": [\\\"smape\\\", ...]} - the first metric scores the backtest\"],\"rules\":[\"a recipe MUST carry an `estimator` or an `ensemble` (not both)\",\"`model_id` must exist in the catalog; run_recipe errors if it does not\",\"run_tabular_recipe extracts FLOps features first, then fits `estimator`; omit label_column for clustering\",\"the series itself is never in the recipe - it arrives via dataset_path\"],\"examples\":{\"forecast_with_a_catalog_model\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1,2,3]},\"forecast_inline_estimator\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3,4,5],\"eval\":{\"metrics\":[\"smape\"]}},\"forecast_ensemble_with_intervals\":{\"ensemble\":{\"members\":[{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"mean\"}}],\"combine\":\"mean\"},\"fh\":[1,2,3],\"conformal\":{\"coverage\":0.9}},\"anomaly_detection\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":24,\"n_neighbors\":5,\"novelty\":true}}},\"tabular_classification\":{\"task\":\"tsfm_classification\",\"estimator\":{\"sktime_class\":\"sklearn.ensemble.RandomForestClassifier\",\"params\":{\"n_estimators\":100}}}}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 254.86616702983156
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "page_size": 0
+            },
+            "id": "toolu_015rcBXTmHFNJ8pS93SZUBLB",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":null,\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T22:33:49+00:00\",\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 871.2022909894586
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__sensor_stats",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00",
+              "end": "2024-01-19T00:00:00"
+            },
+            "id": "toolu_01PsxDaPouQ7MT2aKXTdYhKn",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"stats\":[{\"sensor\":\"acetylene\",\"count\":4,\"null_count\":0,\"min\":6,\"max\":8,\"mean\":7,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"ati\",\"count\":4,\"null_count\":0,\"min\":77,\"max\":79,\"mean\":78,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"co\",\"count\":4,\"null_count\":0,\"min\":30,\"max\":35,\"mean\":32.5,\"stddev\":1.802775637731994,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"co2\",\"count\":4,\"null_count\":0,\"min\":1300,\"max\":1350,\"mean\":1329.75,\"stddev\":19.498397370040454,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"dbds\",\"count\":4,\"null_count\":0,\"min\":18,\"max\":20,\"mean\":19,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"dielectric_rigidity\",\"count\":4,\"null_count\":0,\"min\":53,\"max\":56,\"mean\":54.5,\"stddev\":1.1180339887498953,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"ethane\",\"count\":4,\"null_count\":0,\"min\":5400,\"max\":5500,\"mean\":5454.25,\"stddev\":36.11353624335334,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"ethylene\",\"count\":4,\"null_count\":0,\"min\":16500,\"max\":16700,\"mean\":16621,\"stddev\":79.51729371652434,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"hydrogen\",\"count\":4,\"null_count\":0,\"min\":2800,\"max\":2950,\"mean\":2873.75,\"stddev\":56.499446899947614,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"il1\",\"count\":4,\"null_count\":0,\"min\":100,\"max\":102,\"mean\":100.75,\"stddev\":0.82915619758885,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"il2\",\"count\":4,\"null_count\":0,\"min\":103,\"max\":106,\"mean\":104.5,\"stddev\":1.118033988749895,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"il3\",\"count\":4,\"null_count\":0,\"min\":94,\"max\":96,\"mean\":95,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"interfacial_v\",\"count\":4,\"null_count\":0,\"min\":44,\"max\":46,\"mean\":45,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"inut\",\"count\":4,\"null_count\":0,\"min\":5,\"max\":6,\"mean\":5.25,\"stddev\":0.43301270189221924,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"methane\",\"count\":4,\"null_count\":0,\"min\":7200,\"max\":7406,\"mean\":7314,\"stddev\":75.7495874576225,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"nitrogen\",\"count\":4,\"null_count\":0,\"min\":27700,\"max\":28000,\"mean\":27873,\"stddev\":115.05216208311757,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"oti\",\"count\":4,\"null_count\":0,\"min\":84,\"max\":87,\"mean\":85.5,\"stddev\":1.118033988749894,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"oti_a\",\"count\":4,\"null_count\":0,\"min\":1,\"max\":2,\"mean\":1.75,\"stddev\":0.4330127018922193,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"oti_t\",\"count\":4,\"null_count\":0,\"min\":1,\"max\":1,\"mean\":1,\"stddev\":0,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"oxygen\",\"count\":4,\"null_count\":0,\"min\":5700,\"max\":5900,\"mean\":5815,\"stddev\":75.33259586659682,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"power_factor\",\"count\":4,\"null_count\":0,\"min\":0.9,\"max\":1.2,\"mean\":1.05,\"stddev\":0.11180339887498948,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"rated_mva\",\"count\":4,\"null_count\":0,\"min\":100,\"max\":100,\"mean\":100,\"stddev\":0,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"vl1\",\"count\":4,\"null_count\":0,\"min\":109,\"max\":112,\"mean\":110.5,\"stddev\":1.118033988749894,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"vl12\",\"count\":4,\"null_count\":0,\"min\":224,\"max\":226,\"mean\":225,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"vl2\",\"count\":4,\"null_count\":0,\"min\":114,\"max\":116,\"mean\":115,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"vl23\",\"count\":4,\"null_count\":0,\"min\":219,\"max\":221,\"mean\":220,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"vl3\",\"count\":4,\"null_count\":0,\"min\":107,\"max\":109,\"mean\":108,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"vl31\",\"count\":4,\"null_count\":0,\"min\":217,\"max\":219,\"mean\":218,\"stddev\":0.7071067811865476,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"water_content\",\"count\":4,\"null_count\":0,\"min\":0,\"max\":1,\"mean\":0.5,\"stddev\":0.5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"},{\"sensor\":\"wti\",\"count\":4,\"null_count\":0,\"min\":79,\"max\":82,\"mean\":80.5,\"stddev\":1.118033988749894,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-18T00:00:00.000000\"}],\"message\":\"numeric stats for 30 sensor(s) on asset_id Transformer 1.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 992.1702920109965
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 14859.467917005531
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 4.9523329944349825
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01GuDnGKuaM72dbdGqMgvN7P",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.2101670252159238
+      },
+      {
+        "index": 14,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__search_models",
+            "input": {
+              "text": "anomaly"
+            },
+            "id": "toolu_01FfTSFiEWBxnPok7iraLRz8",
+            "output": "{\"result\":{\"models\":[]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 117.67537496052682
+      },
+      {
+        "index": 15,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__get_schedule_calendar",
+            "input": {
+              "site_id": "MAIN",
+              "date_from": "2026-12-29",
+              "date_to": "2027-01-15"
+            },
+            "id": "toolu_014X3UhUggfb2eivX8aeVmdv",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"date_from\":\"2026-12-29\",\"date_to\":\"2027-01-15\",\"total_scheduled\":0,\"by_date\":[],\"workorders\":null,\"message\":\"0 scheduled at MAIN.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 936.2777909846045
+      },
+      {
+        "index": 16,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__utilities__current_date_time",
+            "input": {},
+            "id": "toolu_017YR7upGsD6FJSRndVxf65y",
+            "output": "{\"currentDateTime\":\"2026-09-30T22:38:33.544571Z\",\"currentDateTimeDescription\":\"Today's date is 2026-09-30 and time is 22:38:33.\"}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 41.682584036607295
+      },
+      {
+        "index": 17,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 12419.773207977414
+      },
+      {
+        "index": 18,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 3.0070000211708248
+      },
+      {
+        "index": 19,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__generate_work_order",
+            "input": {
+              "description": "DGA oil sampling - Transformer 1 (rate-based interval, 90-day band)",
+              "asset_num": "Transformer 1",
+              "site_id": "MAIN",
+              "work_type": "PdM",
+              "priority": 3,
+              "reported_by": "sagar.chethankumar@gmail.com",
+              "notes": "Target start 2026-12-29 (0 WOs scheduled at MAIN that day). Window 2024-01-15..2024-01-18, 4 samples, all six gases present. TDCG (H2+CH4+C2H6+C2H4+C2H2+CO): 32441, 32086, 32343, 32340 ppm. Rate first->last = -33.7 ppm/day (no net increase); hydrogen is the only gas with a meaningful rise (+55 ppm). Anomaly screen: no sample beyond 1.4 sigma on any of the six gases; no anomalous sample driving a rise, so rate unchanged with/without exclusion. Band <10 ppm/day -> 90 days. Latest sample (2024-01-18) IEC 60599 ratios: C2H2/C2H4=0.0004, CH4/H2=2.53, C2H4/C2H6=3.05 -> T2 (thermal 300-700 C); not D1/D2/T3, no override. Note absolute gas levels are very high (C2H4 16600 ppm, TDCG >32000 ppm) - condition 4 by TDCG level. No technician has previously sampled Transformer 1 (only prior WO 1000051, unassigned); assignment left open.",
+              "aob_source": {
+                "agent": "asset-ops-assistant",
+                "trigger": "rate-based DGA sampling interval",
+                "evidence": {
+                  "window": "2024-01-15..2024-01-19",
+                  "tdcg_ppm": [
+                    32441,
+                    32086,
+                    32343,
+                    32340
+                  ],
+                  "rate_ppm_per_day": -33.7,
+                  "rate_excluding_anomaly_ppm_per_day": -33.7,
+                  "anomalous_sample": null,
+                  "top_gas_increase": "hydrogen (+55 ppm)",
+                  "fault_class_latest": "T2 (manual IEC 60599 ratios; interpret_dga LLM unavailable)",
+                  "interval_days": 90,
+                  "target_date": "2026-12-29"
+                }
+              }
+            },
+            "id": "toolu_01GoeYYM7eeGx91AJ3FrYvpS",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 7560.843000013847
+      },
+      {
+        "index": 20,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2860.9314169734716
+      },
+      {
+        "index": 21,
+        "text": "The 403 hit the auto-numbering counter, not the write itself. Only one item remains \u2014 retrying the creation with an explicit work order number so the counter isn't needed.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.309624989517033
+      },
+      {
+        "index": 22,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__generate_work_order",
+            "input": {
+              "wonum": "1000052",
+              "description": "DGA oil sampling - Transformer 1 (rate-based interval, 90-day band)",
+              "asset_num": "Transformer 1",
+              "site_id": "MAIN",
+              "work_type": "PdM",
+              "priority": 3,
+              "reported_by": "sagar.chethankumar@gmail.com",
+              "notes": "Target start 2026-12-29 (0 WOs scheduled at MAIN that day). Window 2024-01-15..2024-01-18, 4 samples, all six gases present. TDCG (H2+CH4+C2H6+C2H4+C2H2+CO): 32441, 32086, 32343, 32340 ppm. Rate first->last = -33.7 ppm/day (no net increase); hydrogen is the only gas with a meaningful rise (+55 ppm). Anomaly screen: no sample beyond 1.4 sigma on any of the six gases; no anomalous sample driving a rise, so rate unchanged with/without exclusion. Band <10 ppm/day -> 90 days. Latest sample (2024-01-18) IEC 60599 ratios: C2H2/C2H4=0.0004, CH4/H2=2.53, C2H4/C2H6=3.05 -> T2 (thermal 300-700 C); not D1/D2/T3, no override. Note absolute gas levels are very high (C2H4 16600 ppm, TDCG >32000 ppm) - condition 4 by TDCG level. No technician has previously sampled Transformer 1 (only prior WO 1000051, unassigned); assignment left open.",
+              "aob_source": {
+                "agent": "asset-ops-assistant",
+                "trigger": "rate-based DGA sampling interval",
+                "evidence": {
+                  "window": "2024-01-15..2024-01-19",
+                  "tdcg_ppm": [
+                    32441,
+                    32086,
+                    32343,
+                    32340
+                  ],
+                  "rate_ppm_per_day": -33.7,
+                  "rate_excluding_anomaly_ppm_per_day": -33.7,
+                  "anomalous_sample": null,
+                  "top_gas_increase": "hydrogen (+55 ppm)",
+                  "fault_class_latest": "T2 (manual IEC 60599 ratios; interpret_dga LLM unavailable)",
+                  "interval_days": 90,
+                  "target_date": "2026-12-29"
+                }
+              }
+            },
+            "id": "toolu_01BZoBnSbAHdtnpSZayBaQQ5",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 7116.911832999904
+      },
+      {
+        "index": 23,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 12847.112625022419
+      },
+      {
+        "index": 24,
+        "text": "Nothing further to request \u2014 the work-order store is rejecting all writes (403 on both the auto-counter and a direct document write), and every other input is already in hand. Here is the full result.\n\n## TDCG per sample (H\u2082 + CH\u2084 + C\u2082H\u2086 + C\u2082H\u2084 + C\u2082H\u2082 + CO; CO\u2082/O\u2082/N\u2082 excluded)\n\n| Sample | H\u2082 | CH\u2084 | C\u2082H\u2086 | C\u2082H\u2084 | C\u2082H\u2082 | CO | **TDCG (ppm)** |\n|---|---|---|---|---|---|---|---|\n| 2024-01-15 | 2845 | 7406 | 5467 | 16684 | 7 | 32 | **32 441** |\n| 2024-01-16 | 2950 | 7200 | 5400 | 16500 | 6 | 30 | **32 086** |\n| 2024-01-17 | 2800 | 7300 | 5500 | 16700 | 8 | 35 | **32 343** |\n| 2024-01-18 | 2900 | 7350 | 5450 | 16600 | 7 | 33 | **32 340** |\n\nAll 4 samples have all six gases, so the rate is computable.\n\n**TDCG rate (first \u2192 last):** (32 340 \u2212 32 441) / 3 days = **\u221233.7 ppm/day** \u2014 no net increase; TDCG is flat/slightly down.\n**Gas contributing most to the increase:** **hydrogen** (+55 ppm, 2845 \u2192 2900). It is the only gas with a meaningful positive change (CO +1; CH\u2084 \u221256, C\u2082H\u2086 \u221217, C\u2082H\u2084 \u221284, C\u2082H\u2082 0).\n\n## Anomaly screen\nThe TSFM catalog has no anomaly-detector cards and there is no materialized dataset file to run `run_recipe` against, so I screened statistically: across the six gases, no sample deviates more than ~1.4 \u03c3 from the window mean (largest: H\u2082 on 01-16 at +1.35 \u03c3, on 01-17 at \u22121.3 \u03c3). **No anomalous sample, and no rise for one to drive.**\n- Rate with all samples: **\u221233.7 ppm/day**\n- Rate excluding any candidate outlier: unchanged in band (e.g. dropping 01-16, the rate is still \u221233.7 ppm/day since it's not an endpoint; dropping 01-18 \u2192 \u221249 ppm/day). Both land in the **<10 ppm/day** band \u2192 no band conflict, no confirmatory resample required.\n\n## Fault classification (latest complete sample, 2024-01-18)\nThe `interpret_dga` service returned \"LLM unavailable\" twice, so I applied IEC 60599 ratios manually:\n- C\u2082H\u2082/C\u2082H\u2084 = 0.0004 \u00b7 CH\u2084/H\u2082 = 2.53 \u00b7 C\u2082H\u2084/C\u2082H\u2086 = 3.05 \u2192 **T2 (thermal fault, 300\u2013700 \u00b0C)**\n- Not D1/D2/T3 \u2192 **no 7-day override**.\n\n\u26a0\ufe0f Note: although the *rate* is benign, absolute levels are extreme (C\u2082H\u2084 16 600 ppm, TDCG > 32 000 ppm \u2014 IEEE C57.104 Condition 4). The interval rule you gave is rate-based, so I've followed it, but you may want to weigh this separately.\n\n## Interval and scheduling\n- Band: <10 ppm/day \u2192 **90 days \u2192 target 2026-12-29** (from today, 2026-09-30).\n- **Open WOs on Transformer 1:** only **1000051** (APPR, P1) \u2014 an OLTC inspection, not a sampling job, so it doesn't satisfy this requirement and I did not treat it as the sampling WO.\n- MAIN has **0** scheduled WOs on 2026-12-29 (and through 2027-01-15), so 2026-12-29 qualifies as the first day with <3 scheduled.\n- **Technician:** no technician has ever sampled Transformer 1 \u2014 the only WO in its history (1000051) has no labor assigned. There's no eligible assignee under your criterion.\n\n**Work order creation failed:** the WO service returned `403 Forbidden` on both the auto-numbered create and a retry with explicit wonum 1000052. Nothing was written. The intended WO was: *\"DGA oil sampling \u2013 Transformer 1 (rate-based interval, 90-day band)\"*, PdM, priority 3, target start 2026-12-29, with the evidence above attached as `aob_source`. Once write access is restored I can create it in one call; tell me if you also want a technician assigned despite none having prior history on this unit.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 7304.6822079923
+      }
+    ],
+    "started_at": "2026-09-30T22:37:55.206192+00:00"
+  }
+}
