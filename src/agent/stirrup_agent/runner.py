@@ -250,8 +250,8 @@ class StirrupAgentRunner(AgentRunner):
                 # mcphub already passes the parent environment through for the
                 # other runners; this keeps Stirrup consistent with it.
                 # mcp_server_env also pins FMSR_MODEL_ID so the FMSR server's
-                # generate_failure_modes uses this run's model rather than its
-                # standalone watsonx default.
+                # generate_failure_modes uses this run's model; the server has
+                # no default of its own.
                 "env": env,
             }
         return MCPConfig.model_validate({"mcpServers": servers})
