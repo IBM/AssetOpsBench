@@ -3,13 +3,20 @@
 #
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh
 #   bash benchmarks/harbor/scripts/build-runtime-image.sh --no-cache
-#   bash benchmarks/harbor/scripts/build-runtime-image.sh -t assetopsbench/runtime:abc1234
+#   bash benchmarks/harbor/scripts/build-runtime-image.sh -t myorg/runtime:test
 #
 # Arguments go to `docker buildx build` unchanged. Unless they name a tag (-t)
-# the image is tagged assetopsbench/runtime:dev, the tag the task template
-# builds FROM, and unless they name an output (--push, --output, --load) it is
-# loaded into the local image store. publish-images.sh passes --platform, its
-# own tags and --push.
+# the image is tagged twice: assetopsbench/runtime:dev, the tag the task
+# template builds FROM by default, and assetopsbench/runtime:<commit>, the
+# short hash of the HEAD it was built from. :dev moves with every build; the
+# commit tag moves only when that same commit is rebuilt into a different image
+# (e.g. --no-cache, or after the build cache is pruned), so
+# `run.sh -r assetopsbench/runtime:<commit>` names the code a run used. Each
+# commit tag keeps its multi-GB image alive; list them with
+# `docker images assetopsbench/runtime` and `docker rmi` the ones you no longer
+# need. Unless they name an output (--push, --output, --load) it is loaded into
+# the local image store. publish-images.sh passes --platform, its own tags and
+# --push.
 #
 # Why an archive: base-image/Dockerfile does `COPY . .`, so a build from the
 # working tree takes whatever sits there, untracked and git-ignored files
@@ -49,12 +56,12 @@ has_tag=false
 has_output=false
 for arg in "$@"; do
   case "$arg" in
-    -t | --tag | --tag=*) has_tag=true ;;
+    -t* | --tag | --tag=*) has_tag=true ;;
     --push | --load | --output | --output=* | -o) has_output=true ;;
   esac
 done
 defaults=()
-$has_tag || defaults+=(-t assetopsbench/runtime:dev)
+$has_tag || defaults+=(-t assetopsbench/runtime:dev -t "assetopsbench/runtime:${commit:0:7}")
 $has_output || defaults+=(--load)
 
 printf 'Building the runtime image from %s (git archive)\n' "${commit:0:7}" >&2

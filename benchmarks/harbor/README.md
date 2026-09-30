@@ -41,8 +41,12 @@ command from the repo root.
 ```bash
 # 1. Build the runtime base (once per AssetOpsBench commit). The script builds
 #    from `git archive HEAD`, so untracked files and uncommitted changes stay
-#    out of the image. The tag is local and is the default AOB_RUNTIME_IMAGE in
-#    template/environment/Dockerfile; nothing is pulled or pushed.
+#    out of the image. The tag is local and is the default AOB_RUNTIME_IMAGE
+#    that each task's docker-compose.yaml passes to its Dockerfile; nothing is
+#    pulled or pushed. It also tags assetopsbench/runtime:<commit>, which
+#    later commits' builds do not move. To use a published image or a commit
+#    tag, `export AOB_RUNTIME_IMAGE=<image>` before `harbor run`; tasks
+#    generated before that build arg existed ignore it, so regenerate them.
 bash benchmarks/harbor/scripts/build-runtime-image.sh
 
 # 2. Generate one task per scenario in the open profile. The defaults point at
@@ -83,18 +87,29 @@ bash benchmarks/harbor/run.sh \
 ```
 
 `-m` may repeat; without it the script runs `benchmarks/run.sh`'s model list.
-`-p` picks the profile (default `benchmarks/scenario_suite/all.yaml`), and `-n`
-the number of concurrent trials. The script:
+`-p` picks the profile (default `benchmarks/scenario_suite/all.yaml`), `-n`
+the number of concurrent trials, and `-r` the runtime image (otherwise
+`AOB_RUNTIME_IMAGE` from the shell, then from `.env`, then
+`assetopsbench/runtime:dev`). The script:
 
-1. exports `AOB_PRIVATE_DIR` as the `-s` directory, so
+1. resolves the runtime image, which every task image builds FROM. A published
+   image, one whose local copy came from that registry or that is not local at
+   all, is pulled first, so the run uses the current publish rather than a
+   stale copy; a local build such as the default is used as is. It then pins
+   that exact image for the whole run, so a rebuild or pull of the same tag
+   during the run does not switch later trials' base, and records it beside
+   each job: a job started on another image is not resumed. The image changes
+   only the base: each task still adds its own `manifest.json`, and `shared/`
+   still comes from the mount below;
+2. exports `AOB_PRIVATE_DIR` as the `-s` directory, so
    `overlays/private-data.yaml` mounts its `shared/` at
    `/opt/suite/scenarios_data/shared`. Only `init_data.py` reads it, as in
    `scenario_suite_runner`;
-2. builds the code sandbox image and saves it to `~/assetops-code.tar` for the
+3. builds the code sandbox image and saves it to `~/assetops-code.tar` for the
    per-trial Docker-in-Docker daemon (`overlays/code-sandbox.yaml`);
-3. generates one task per scenario with `--scenario-root` and
+4. generates one task per scenario with `--scenario-root` and
    `--skip-missing`, skipping profile entries the suite lacks;
-4. runs one Harbor job per model at
+5. runs one Harbor job per model at
    `<leaderboard>/harbor-jobs/stirrup_agent__<model>`, with both overlays and
    with credentials loaded from `.env` by `uv run --env-file` into the Harbor
    process only.
@@ -103,7 +118,8 @@ Re-running resumes an existing job and finishes only its incomplete trials,
 the equivalent of `--skip-existing`. Harbor refuses to resume a job whose tasks
 or overlays have changed since it started, such as one from before `run.sh`
 mounted only `shared/`; the script says so, and moving that job aside reruns
-the model from scratch. Each trial with the code sandbox runs a
+the model from scratch. The script exits non-zero when any model's job could
+not start or resume, so a wrapper sees it. Each trial with the code sandbox runs a
 privileged `dind` sidecar, so keep `-n` around 4 on a laptop-sized Docker VM.
 
 ## Generating other profiles by hand

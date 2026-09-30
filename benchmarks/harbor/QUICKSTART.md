@@ -23,11 +23,12 @@ uv sync --dev --extra harbor
 
 ## 2. Get the runtime image
 
-Every task image layers its scenario onto one shared runtime image. Pull it:
+Every task image layers its scenario onto one shared runtime image. Pull the
+published one (currently linux/arm64 only) and point the tasks at it:
 
 ```bash
-docker pull assetopsbench/runtime:latest
-docker tag assetopsbench/runtime:latest assetopsbench/runtime:dev
+docker pull quay.io/assetopsbench/runtime:dev
+export AOB_RUNTIME_IMAGE=quay.io/assetopsbench/runtime:dev
 ```
 
 Or build it yourself, which takes a few minutes and needs no registry:
@@ -36,14 +37,19 @@ Or build it yourself, which takes a few minutes and needs no registry:
 bash benchmarks/harbor/scripts/build-runtime-image.sh
 ```
 
-The script builds `assetopsbench/runtime:dev` from `git archive HEAD`, not
-from your working tree, so untracked files such as local results never reach
+The script builds `assetopsbench/runtime:dev`, also tagged
+`assetopsbench/runtime:<commit>`, from `git archive HEAD`, not from your
+working tree, so untracked files such as local results never reach
 the container the agent runs in. Commit a change first to include it.
 
-Either way the local tag `assetopsbench/runtime:dev` is what the task
-Dockerfiles reference, through the `AOB_RUNTIME_IMAGE` build arg in
-`benchmarks/harbor/template/environment/Dockerfile`. Change that default if you
-publish under a different namespace.
+Each task's `environment/docker-compose.yaml` passes `AOB_RUNTIME_IMAGE` to
+its Dockerfile as a build arg, so `harbor run` builds FROM whatever that
+variable names when it runs, and from the local `assetopsbench/runtime:dev`
+when it is unset. The variable lives in the shell, so set it again in a new
+one, or put it in `.env` and run Harbor as `uv run --env-file .env harbor run`.
+Changing the image needs no task regeneration, but tasks generated before the
+build arg existed ignore the variable; regenerate those once (step 3).
+`run.sh` takes the image as `-r`.
 
 ## 3. Generate the tasks
 
@@ -167,9 +173,11 @@ reach CouchDB. Confirm your checkout includes the `env` entry in
 `StirrupAgentRunner._build_mcp_config`, without which the MCP SDK hands each
 server a six-variable environment that omits `COUCHDB_URL`.
 
-**Trials fail instantly with a pull error** — the runtime image is missing, or
-it is tagged under a name the task Dockerfile does not reference. Redo step 2
-and check `docker images assetopsbench/runtime`.
+**Trials fail instantly with a pull error** — the build could not find its
+base. Either `AOB_RUNTIME_IMAGE` is unset in this shell, so the build fell back
+to the local `assetopsbench/runtime:dev`, which does not exist; or it names an
+image that is not local (check `echo $AOB_RUNTIME_IMAGE` and
+`docker images`). Redo step 2 in this shell.
 
 **`No module named 'google.protobuf'` during a run** — the image was built
 without the `otel` dependency group, which the file trace exporter needs.

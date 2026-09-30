@@ -42,10 +42,16 @@ if ! docker buildx inspect >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "==> ${NAMESPACE}/runtime:${TAG} for ${PLATFORMS}"
+# The commit tag never moves, unlike TAG and latest, so a published run can
+# name the exact build it used. build-runtime-image.sh builds HEAD, so this is
+# the commit in the image whatever the working tree holds.
+COMMIT="$(git rev-parse HEAD | cut -c1-7)"
+
+echo "==> ${NAMESPACE}/runtime:${TAG} (${COMMIT}) for ${PLATFORMS}"
 bash benchmarks/harbor/scripts/build-runtime-image.sh \
     --platform "${PLATFORMS}" \
     -t "${NAMESPACE}/runtime:${TAG}" \
+    -t "${NAMESPACE}/runtime:${COMMIT}" \
     -t "${NAMESPACE}/runtime:latest" \
     --push
 
@@ -59,16 +65,16 @@ docker buildx build \
 
 cat <<NOTE
 
-Published. Users now pull instead of building:
+Published. Users now pull instead of building. To run on exactly this build:
 
-  docker pull ${NAMESPACE}/runtime:latest
-  docker tag  ${NAMESPACE}/runtime:latest assetopsbench/runtime:dev
+  docker pull ${NAMESPACE}/runtime:${COMMIT}
+  export AOB_RUNTIME_IMAGE=${NAMESPACE}/runtime:${COMMIT}
 
-The second line matters. benchmarks/harbor/template/environment/Dockerfile
-references the local tag assetopsbench/runtime:dev through its
-AOB_RUNTIME_IMAGE build arg, so the pulled image has to carry that tag. If you
-publish under a different namespace, change that default instead of asking
-every user to retag.
+or use ${NAMESPACE}/runtime:latest to follow the newest publish. Each task's
+docker-compose.yaml passes AOB_RUNTIME_IMAGE to its Dockerfile as a build arg,
+so harbor run builds FROM that image; unset, it falls back to the local tag
+assetopsbench/runtime:dev. benchmarks/harbor/run.sh takes it as -r, and pulls
+it first.
 
 For the code track, point the overlay at the published image rather than a tar:
 
