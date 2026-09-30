@@ -22,9 +22,14 @@
 # the Harbor process only; StirrupAgent forwards them to the agent phase. They
 # never enter an image.
 #
-# One Harbor job per model, at LEADERBOARD_DIR/harbor-jobs/stirrup_agent__<model>.
+# One Harbor job per profile, model and reasoning effort, at
+# LEADERBOARD_DIR/harbor-jobs/stirrup_agent__<profile>__<model>[__<effort>].
 # Re-running resumes that job, finishing only the trials it has not completed,
-# which is the equivalent of run.sh's --skip-existing.
+# which is the equivalent of run.sh's --skip-existing. A resume keeps the
+# settings the job started with, so a changed -n applies to new jobs only.
+#
+# Exits non-zero when a model's job could not start or resume, including a
+# model skipped because its router is unreachable.
 
 set -euo pipefail
 
@@ -86,7 +91,15 @@ fi
 
 code_image=assetops-code:dev
 code_tar="${AOB_CODE_TAR:-$HOME/assetops-code.tar}"
-dataset_dir=benchmarks/harbor/datasets/assetopsbench-suite
+
+# Each job builds from its own copy of the tasks, generated when the job starts
+# and never regenerated. Harbor refuses to resume a job whose tasks differ from
+# its lock, so regenerating on every run left a job unresumable after any change
+# to the template, the suite's scenario files or the generator; and one shared
+# folder let a second run.sh delete tasks a running job was still reading. The
+# copies hold every scenario's answers (tests/, solution/), so they stay in the
+# repo's gitignored datasets/ rather than beside the results.
+tasks_root="$repo_root/benchmarks/harbor/datasets/jobs"
 
 # The suite's shared/ data reaches each trial through
 # overlays/private-data.yaml, a read-only bind mount of this directory's shared/.
@@ -167,16 +180,16 @@ if [[ ! -s "$code_tar" ]]; then
 fi
 export AOB_CODE_TAR="$code_tar" AOB_CODE_IMAGE="$code_image"
 
-# Regenerate from scratch: the generator overwrites tasks but never removes
-# them, so a folder left over from a larger profile would join this run.
-rm -rf "$dataset_dir"
-uv run python benchmarks/harbor/adapter/generate_tasks.py \
-  --scenario-root "$scenario_dir" \
-  --profile "$profile" \
-  --output-dir "$dataset_dir" \
-  --dataset-name assetopsbench/suite \
-  --skip-missing \
-  --overwrite >/dev/null
+# A name safe for a directory: anything but letters, digits and ._- becomes a
+# single dash, and a trailing dash is dropped.
+slug() {
+  local name
+  name="$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-' | tr -s '-')"
+  printf '%s' "${name%-}"
+}
+
+profile_name="$(basename "$profile")"
+profile_slug="$(slug "${profile_name%.*}")"
 
 # Fail fast when a model's router is unreachable. Otherwise every trial builds
 # its containers, loads its data, retries the model for minutes and exits 1,
@@ -203,17 +216,26 @@ except Exception as exc:
 PY
 }
 
-# Non-zero when a model's job could not run or resume. A trial that fails
-# inside a job does not count: Harbor records it and the loop moves on.
+# Non-zero when a model's job could not start or resume, or was skipped. A
+# trial that fails inside a job does not count: Harbor records it and the loop
+# moves on.
 status=0
 
 for model_config in "${model_configs[@]}"; do
   read -r model_id reasoning_effort <<< "$model_config"
   [[ -z "${model_id:-}" ]] && continue
 
-  model_slug="$(printf '%s' "$model_id" | tr -c 'A-Za-z0-9._-' '-' | tr -s '-')"
-  job_name="stirrup_agent__${model_slug%-}"
+  # The profile and effort are in the name because a resume runs the job's own
+  # saved settings. Named after the model alone, a second effort or another
+  # profile resumed the first job instead of starting its own.
+  job_name="stirrup_agent__${profile_slug}__$(slug "$model_id")"
+  if [[ -n "${reasoning_effort:-}" ]]; then
+    job_name+="__$(slug "$reasoning_effort")"
+  fi
   job_path="$jobs_dir/$job_name"
+  # Keyed by the job's full path, so the same job name under another
+  # LEADERBOARD_DIR gets its own copy.
+  tasks_dir="$tasks_root/$job_name-$(printf '%s' "$job_path" | cksum | cut -d' ' -f1)"
   # The runtime image a job started on, beside the job rather than in it.
   # Harbor's resume lock covers the task files but not the base they build
   # FROM, so without this a resume with another -r would mix two images in
@@ -222,6 +244,7 @@ for model_config in "${model_configs[@]}"; do
 
   if ! router_reachable "$model_id"; then
     echo "Skipping $model_id: its router is unreachable" >&2
+    status=1
     continue
   fi
 
@@ -236,20 +259,38 @@ for model_config in "${model_configs[@]}"; do
       status=1
       continue
     fi
+    if [[ ! -d "$tasks_dir" ]]; then
+      printf 'The tasks %s started with are gone (%s).\n' "$job_path" "$tasks_dir" >&2
+      printf 'Move the job aside to rerun %s from scratch.\n' "$model_id" >&2
+      status=1
+      continue
+    fi
     # Drop trials whose agent crashed (e.g. the model was unreachable) so
     # they run again; scored trials are kept, as run.sh's --skip-existing
     # kept scenarios that already had a trajectory.
-    # Harbor refuses to resume once the tasks or overlays differ from the
-    # job's lock, e.g. a job started before run.sh switched to the shared/
-    # mount. Say so rather than skip the model silently.
+    # Harbor refuses to resume once the overlays differ from the job's lock.
+    # The tasks cannot differ: the job builds from its own copy. Say so rather
+    # than skip the model silently.
     if ! uv run --env-file "$env_file" harbor jobs resume -p "$job_path" \
       --filter-error-type NonZeroAgentExitCodeError; then
-      printf 'Could not resume %s. If its tasks or overlays changed since it\n' "$job_path" >&2
-      printf 'started, move it aside to rerun %s from scratch.\n' "$model_id" >&2
+      printf 'Could not resume %s. If its overlays changed since it started,\n' "$job_path" >&2
+      printf 'move it aside to rerun %s from scratch.\n' "$model_id" >&2
       status=1
     fi
     continue
   fi
+
+  # A new job, so its own tasks from scratch: the generator overwrites tasks
+  # but never removes them, so a folder left from an attempt that never
+  # started would join this one.
+  rm -rf "$tasks_dir"
+  uv run python benchmarks/harbor/adapter/generate_tasks.py \
+    --scenario-root "$scenario_dir" \
+    --profile "$profile" \
+    --output-dir "$tasks_dir" \
+    --dataset-name assetopsbench/suite \
+    --skip-missing \
+    --overwrite >/dev/null
 
   mkdir -p "$jobs_dir"
   printf '%s\t%s\n' "$runtime_id" "$runtime_image" >"$image_record"
@@ -259,10 +300,12 @@ for model_config in "${model_configs[@]}"; do
     effort_args=(--ak "reasoning_effort=$reasoning_effort")
   fi
 
-  # --continue-on-error equivalent: a failed trial is recorded in the job and
-  # the loop moves on to the next model.
-  uv run --env-file "$env_file" harbor run -y \
-    -p "$dataset_dir" \
+  # harbor run exits 0 when trials fail, recording them in the job, so the loop
+  # moves on to the next model as run.sh's --continue-on-error did. Non-zero
+  # means the job itself could not run, e.g. a rejected config or StirrupAgent
+  # refusing its credentials, which aborts the job as the first trial starts.
+  if ! uv run --env-file "$env_file" harbor run -y \
+    -p "$tasks_dir" \
     --agent assetops_harbor.stirrup:StirrupAgent \
     --model "$model_id" \
     --ak code_enabled=true \
@@ -274,7 +317,10 @@ for model_config in "${model_configs[@]}"; do
     --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
     --n-concurrent "$n_concurrent" \
     --job-name "$job_name" \
-    -o "$jobs_dir" || true
+    -o "$jobs_dir"; then
+    printf 'Harbor could not run %s; see the error above.\n' "$job_path" >&2
+    status=1
+  fi
 done
 
 exit "$status"
