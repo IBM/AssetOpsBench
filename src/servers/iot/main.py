@@ -194,6 +194,34 @@ def _installed_sensors(asset_id: str, site_name: Optional[str] = None) -> List[s
         return []
 
 
+def get_asset_coverage() -> List[Dict[str, Any]]:
+    """Discover registered assets and their telemetry using the registry and paged APIs."""
+    coverage = []
+    for site_name in known_sites():
+        registry = assets(site_name)
+        if isinstance(registry, ErrorResult):
+            logger.warning("Cannot inspect assets at %s: %s", site_name, registry.error)
+            continue
+        for asset in registry.assets:
+            asset_id = asset.asset_id
+            extent = stream_extent(site_name, asset_id)
+            if isinstance(extent, ErrorResult):
+                logger.warning("Cannot inspect %s at %s: %s", asset_id, site_name, extent.error)
+                continue
+            coverage.append({
+                "site_name": site_name,
+                "asset_id": asset_id,
+                "asset_class": asset.assettype,
+                "sensors": get_sensor_list(asset_id),
+                "time_range": {
+                    "start": extent.start_time,
+                    "end": extent.end_time,
+                    "total_observations": extent.total_records,
+                },
+            })
+    return coverage
+
+
 @mcp.tool(title="List Sites")
 def sites() -> SitesResult:
     """List sorted site identifiers available in the asset registry.
