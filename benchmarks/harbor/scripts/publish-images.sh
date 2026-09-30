@@ -15,11 +15,12 @@
 #   <namespace>/code     the sandbox for the code track (numpy, pandas, scipy).
 #                        Only needed by the code-sandbox overlay.
 #
-# The runtime build context is the whole repository, so .dockerignore decides
-# what lands in the published image. It keeps .env out and keeps .git in, the
-# latter because StirrupAgent.get_version_command runs `git rev-parse` inside
-# the container to record the commit each trial ran against. Check it before
-# publishing if you have added anything sensitive to the tree.
+# The runtime image is built by build-runtime-image.sh from a clean one-commit
+# clone of HEAD, so only committed files can land in the published image, and
+# .dockerignore then drops env files and scenario answers from those. The clone
+# keeps a one-commit .git, because StirrupAgent.get_version_command runs
+# `git rev-parse` inside the container to record the commit each trial ran
+# against. Uncommitted changes are not published; commit them first.
 set -euo pipefail
 
 NAMESPACE="${1:?usage: publish-images.sh <dockerhub-namespace> [tag]}"
@@ -41,17 +42,12 @@ if ! docker buildx inspect >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ -f .env ]; then
-    echo "note: .env exists and is excluded by .dockerignore, so it stays out" >&2
-fi
-
 echo "==> ${NAMESPACE}/runtime:${TAG} for ${PLATFORMS}"
-docker buildx build \
+bash benchmarks/harbor/scripts/build-runtime-image.sh \
     --platform "${PLATFORMS}" \
     -t "${NAMESPACE}/runtime:${TAG}" \
     -t "${NAMESPACE}/runtime:latest" \
-    -f benchmarks/harbor/base-image/Dockerfile \
-    --push .
+    --push
 
 echo "==> ${NAMESPACE}/code:${TAG} for ${PLATFORMS}"
 docker buildx build \

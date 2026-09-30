@@ -6,8 +6,12 @@
 # the whole environment/ directory, so a fat per-task context defeats the cache
 # and rebuilds the world for every scenario.
 #
-#   docker build -t assetopsbench/runtime:$(git rev-parse --short HEAD) \
-#     -f base-image/Dockerfile <path-to-AssetOpsBench>
+#   bash benchmarks/harbor/scripts/build-runtime-image.sh \
+#     -t assetopsbench/runtime:$(git rev-parse --short HEAD) --load
+#
+# The script builds from a clean one-commit clone of HEAD, so `COPY . .` below
+# sees committed files only. A plain `docker build` of the working tree would
+# also copy untracked files, which .dockerignore alone cannot anticipate.
 FROM python:3.12-slim
 
 # HF_HOME fixes the Hugging Face cache at one path. The default follows $HOME,

@@ -1,12 +1,17 @@
 # Docker reads THIS file, not .gitignore. Anything not listed here is pulled
 # into the build context by `COPY . .` in benchmarks/harbor/base-image/Dockerfile
 # and baked into the runtime image, including files git ignores.
+#
+# benchmarks/harbor/scripts/build-runtime-image.sh builds from a clean clone of
+# HEAD, so untracked files never reach it. This file still applies inside that
+# clone, and it is the only guard for a plain `docker build .` of the tree.
 
 # Credentials. AssetOpsBench's run_sdk_cli calls load_dotenv(), so a local .env
 # would otherwise end up inside every task image and every trial container.
-.env
-.env.*
-!.env.public
+# Unlike .gitignore, a bare name matches only at the context root, hence **/.
+**/.env
+**/.env.*
+!**/.env.public
 
 # Host virtualenv: the image builds its own with `uv sync --frozen`.
 .venv/
@@ -27,6 +32,23 @@ benchmarks/harbor/datasets/
 .mypy_cache/
 traces/
 .DS_Store
+
+# Answers. `main` is the agent's container, and the verifier reads the copies
+# Harbor uploads to /tests after the agent phase, never these. Every other file
+# of a scenario folder stays: manifest.json is what init_data.py loads.
+src/couchdb/scenarios_data/**/groundtruth*
+src/couchdb/scenarios_data/**/rubric.json
+src/couchdb/scenarios_data/**/reference_answer.json
+src/couchdb/scenarios_data/**/scenario_meta.json
+
+# Local work that is not part of the benchmark. reports/ once carried a results
+# table with a ground_truth column for private scenarios into the image.
+reports/
+logs/
+src/tmp/
+.claude/
+notebook/kdd_tutorial/
+artifacts/kdd_tutorial/
 
 # NOTE: .git is deliberately NOT ignored. StirrupAgent.get_version_command runs
 # `git rev-parse --short HEAD` inside the container so every trial records the

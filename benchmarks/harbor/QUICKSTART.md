@@ -33,9 +33,12 @@ docker tag assetopsbench/runtime:latest assetopsbench/runtime:dev
 Or build it yourself, which takes a few minutes and needs no registry:
 
 ```bash
-docker build -t assetopsbench/runtime:dev \
-  -f benchmarks/harbor/base-image/Dockerfile .
+bash benchmarks/harbor/scripts/build-runtime-image.sh
 ```
+
+The script builds `assetopsbench/runtime:dev` from a clean clone of HEAD, not
+from your working tree, so untracked files such as local results never reach
+the container the agent runs in. Commit a change first to include it.
 
 Either way the local tag `assetopsbench/runtime:dev` is what the task
 Dockerfiles reference, through the `AOB_RUNTIME_IMAGE` build arg in
@@ -170,7 +173,8 @@ and check `docker images assetopsbench/runtime`.
 
 **`No module named 'google.protobuf'` during a run** — the image was built
 without the `otel` dependency group, which the file trace exporter needs.
-Rebuild from `benchmarks/harbor/base-image/Dockerfile`, which passes it.
+Rebuild with `benchmarks/harbor/scripts/build-runtime-image.sh`, whose
+Dockerfile passes it.
 
 **The verifier scores 0 but the agent clearly answered** — check
 `verifier/test-stderr.txt`. The evaluator joins records to scenarios on

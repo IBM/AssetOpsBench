@@ -57,7 +57,7 @@ Treat anything other than local Docker as untested for this overlay.
 The runtime image:
 
 ```bash
-docker build -t assetopsbench/runtime:dev -f benchmarks/harbor/base-image/Dockerfile .
+bash benchmarks/harbor/scripts/build-runtime-image.sh
 ```
 
 A `.env` with your model credentials. `harbor run` is invoked through
