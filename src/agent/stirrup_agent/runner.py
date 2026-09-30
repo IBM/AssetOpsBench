@@ -40,7 +40,7 @@ from observability import agent_run_span, persist_trajectory
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
-from ..runner import AgentRunner
+from ..runner import AgentRunner, mcp_server_env
 from .finish_tool import ASSETOPS_FINISH_TOOL
 from .trajectory import build_trajectory, classify_tool, final_answer
 from .handoff_tools import build_handoff_tools
@@ -234,6 +234,7 @@ class StirrupAgentRunner(AgentRunner):
         from stirrup.tools.mcp import MCPConfig
 
         servers: dict[str, dict] = {}
+        env = mcp_server_env(self._model_id)
         for name, spec in self._server_paths.items():
             cmd_arg = str(spec)
             servers[name] = {
@@ -248,7 +249,10 @@ class StirrupAgentRunner(AgentRunner):
                 # correct only when CouchDB happens to be published there.
                 # mcphub already passes the parent environment through for the
                 # other runners; this keeps Stirrup consistent with it.
-                "env": dict(os.environ),
+                # mcp_server_env also pins FMSR_MODEL_ID so the FMSR server's
+                # generate_failure_modes uses this run's model rather than its
+                # standalone watsonx default.
+                "env": env,
             }
         return MCPConfig.model_validate({"mcpServers": servers})
 

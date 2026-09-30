@@ -71,6 +71,17 @@ ROUTER_CREDENTIALS: dict[str, tuple[str, str]] = {
     "tokenrouter/": ("TOKENROUTER_BASE_URL", "TOKENROUTER_API_KEY"),
 }
 
+# Mirrors FMSR_MODEL_ENV in src/agent/runner.py. Defined literally for the same
+# reason as ROUTER_CREDENTIALS above: importing agent.runner would pull the agent
+# SDKs into the host-side Harbor process. The test suite asserts they stay in step.
+FMSR_MODEL_ENV = "FMSR_MODEL_ID"
+
+# Not credentials, but settings the agent phase needs from the host. Without
+# FMSR_MODEL_ID here an operator's explicit choice never reaches the container and
+# the in-container runner silently falls back to the agent's own --model-id, so
+# "explicit value wins" would hold for the CLI and not for Harbor.
+SETTING_ENV_VARS: tuple[str, ...] = (FMSR_MODEL_ENV,)
+
 # Forwarded from the Harbor process into the agent container when present.
 # Harbor scopes them to the agent phase, so the verifier and build steps never
 # see them. `--ae KEY=VALUE` still takes precedence over the host environment.
@@ -147,18 +158,31 @@ class StirrupAgent(BaseInstalledAgent):
         llm.routers.resolve_router_creds raises inside the container otherwise,
         which costs an image build and a container per trial to learn that a
         variable is unset.
+
+        FMSR_MODEL_ID is checked alongside --model-id because the FMSR server may
+        be pinned to a different router than the agent. Its credentials would
+        otherwise be missing only at the first generate_failure_modes call, well
+        into the trial.
         """
-        for prefix, (base_env, key_env) in ROUTER_CREDENTIALS.items():
-            if not (self.model_name or "").startswith(prefix):
-                continue
-            missing = [name for name in (base_env, key_env) if not self._get_env(name)]
-            if missing:
-                raise ValueError(
-                    f"{' and '.join(missing)} must be set for the {prefix!r} model "
-                    f"prefix. Export them, add them to .env in the directory "
-                    f"you run harbor from, or pass them per run with "
-                    f"--ae {missing[0]}=... ."
-                )
+        models = {"--model-id": (self.model_name or "").strip()}
+        fmsr_model = (self._get_env(FMSR_MODEL_ENV) or "").strip()
+        if fmsr_model:
+            models[FMSR_MODEL_ENV] = fmsr_model
+
+        for label, model_id in models.items():
+            for prefix, (base_env, key_env) in ROUTER_CREDENTIALS.items():
+                if not model_id.startswith(prefix):
+                    continue
+                missing = [
+                    name for name in (base_env, key_env) if not self._get_env(name)
+                ]
+                if missing:
+                    raise ValueError(
+                        f"{' and '.join(missing)} must be set for the {prefix!r} "
+                        f"model prefix used by {label}. Export them, add them to "
+                        f".env in the directory you run harbor from, or pass them "
+                        f"per run with --ae {missing[0]}=... ."
+                    )
 
     def _require_shared_workspace(self) -> None:
         """Guard the Docker-in-Docker bind-mount trap.
@@ -191,14 +215,14 @@ class StirrupAgent(BaseInstalledAgent):
         )
 
     def _credential_env(self) -> dict[str, str]:
-        """Credentials to forward into the agent container.
+        """Credentials and agent-phase settings to forward into the container.
 
         _get_env reads resolved env vars, then --ae overrides, then the Harbor
         process environment, so an exported shell variable reaches the agent
         without being named on the command line.
         """
         found = {}
-        for name in CREDENTIAL_ENV_VARS:
+        for name in (*CREDENTIAL_ENV_VARS, *SETTING_ENV_VARS):
             value = self._get_env(name)
             if value:
                 found[name] = value
