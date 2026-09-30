@@ -4,7 +4,7 @@ import pytest
 
 from servers.fmsr.main import mcp
 
-from .conftest import call_tool, requires_watsonx
+from .conftest import call_tool, requires_fmsr_llm
 
 
 class TestGetFailureModes:
@@ -153,7 +153,7 @@ class TestGenerateFailureModes:
 
         assert data["error"].startswith("LLM unavailable")
 
-    @requires_watsonx
+    @requires_fmsr_llm
     @pytest.mark.anyio
     async def test_integration(self):
         data = await call_tool(

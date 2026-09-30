@@ -1,12 +1,24 @@
 import json
-import os
 
 import pytest
 from unittest.mock import MagicMock, patch
 
-requires_watsonx = pytest.mark.skipif(
-    os.environ.get("WATSONX_APIKEY") is None,
-    reason="WatsonX not available (set WATSONX_APIKEY)",
+
+def _fmsr_llm_available() -> bool:
+    """True when FMSR_MODEL_ID names a router whose credentials are present."""
+    try:
+        from servers.fmsr.main import _llm_available
+    except Exception:  # noqa: BLE001 - collection must not fail on import
+        return False
+    return bool(_llm_available)
+
+
+requires_fmsr_llm = pytest.mark.skipif(
+    not _fmsr_llm_available(),
+    reason=(
+        "FMSR LLM not configured: set FMSR_MODEL_ID to a tokenrouter/ or "
+        "litellm_proxy/ model and that router's credentials"
+    ),
 )
 
 
@@ -65,7 +77,7 @@ class BrokenDatabase(FakeDatabase):
 
 @pytest.fixture
 def no_llm():
-    """Simulate missing WatsonX credentials."""
+    """Simulate an unconfigured or unreachable FMSR LLM."""
     with patch("servers.fmsr.main._llm_available", False):
         yield
 

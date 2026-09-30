@@ -142,39 +142,38 @@ def _parse_failure_mode_list(text: str) -> List[str]:
 # the servers they spawn (the user's explicit value if given, otherwise the
 # agent's own --model-id), so an unset value means the server was started
 # standalone without being told which model to use.  Empty values count as unset.
+# The accepted prefixes are llm.routers.PROXY_ROUTERS (tokenrouter/ and
+# litellm_proxy/); anything else is rejected rather than guessed at.
 
 _MAX_RETRIES = 3
 _MODEL_ID = (os.environ.get("FMSR_MODEL_ID") or "").strip() or None
 
 
 def _build_llm(model_id: str | None = _MODEL_ID):
-    from llm import make_backend
+    """Build the generate_* backend for *model_id*.
 
+    llm.routers owns the prefix -> credential mapping for every supported
+    router, so the accepted set and the variables each one needs come from
+    PROXY_ROUTERS rather than being restated here. A model id with no known
+    prefix is rejected instead of being pushed at a provider on a guess.
+    """
+    from llm import make_backend
+    from llm.routers import PROXY_ROUTERS, router_prefix
+
+    supported = ", ".join(f"{prefix}<model>" for prefix in PROXY_ROUTERS)
     if not model_id:
         raise RuntimeError(
-            "FMSR_MODEL_ID is not set; the generate_* tools need a model id, "
-            "e.g. tokenrouter/<model> or litellm_proxy/<provider>/<model>"
+            f"FMSR_MODEL_ID is not set; the generate_* tools need a model id ({supported})"
         )
-    if model_id.startswith("watsonx/"):
-        missing = [
-            v for v in ("WATSONX_APIKEY", "WATSONX_PROJECT_ID") if not os.environ.get(v)
-        ]
-        if missing:
-            raise RuntimeError(f"Missing env vars for WatsonX: {missing}")
-    elif model_id.startswith("tokenrouter/"):
-        missing = [
-            v
-            for v in ("TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL")
-            if not os.environ.get(v)
-        ]
-        if missing:
-            raise RuntimeError(f"Missing env vars for TokenRouter: {missing}")
-    else:
-        missing = [
-            v for v in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(v)
-        ]
-        if missing:
-            raise RuntimeError(f"Missing env vars for LiteLLM: {missing}")
+    prefix = router_prefix(model_id)
+    if prefix is None:
+        raise RuntimeError(
+            f"FMSR_MODEL_ID={model_id!r} has no supported router prefix ({supported})"
+        )
+    base_env, key_env = PROXY_ROUTERS[prefix]
+    missing = [name for name in (key_env, base_env) if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError(f"Missing env vars for {prefix.rstrip('/')}: {missing}")
     return make_backend(model_id)
 
 
