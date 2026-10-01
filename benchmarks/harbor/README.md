@@ -37,54 +37,49 @@ benchmarks/harbor/
 src/assetops_harbor/stirrup.py        Stirrup as a Harbor BaseInstalledAgent
 ```
 
-## Running it
+## Running a private profile end to end
 
-Prerequisites: Docker running, and `uv sync --dev --extra harbor`. Run every
-command from the repo root.
-
-```bash
-# 1. Build the runtime base from `git archive HEAD` (uncommitted changes stay
-#    out). Tags assetopsbench/runtime:dev and assetopsbench/runtime:<commit>.
-#    To use another image, export AOB_RUNTIME_IMAGE=<image> before harbor run.
-bash benchmarks/harbor/scripts/build-runtime-image.sh
-
-# 2. Generate one task per scenario in the open profile. Override the defaults
-#    with --scenario-root, --profile and --template.
-uv run python benchmarks/harbor/adapter/generate_tasks.py --overwrite
-
-# 3. Prove the tasks are scorable before spending tokens on an agent.
-uv run harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
-  --agent oracle --n-concurrent 2
-
-# 4. Run Stirrup, scenarios in parallel.
-uv run harbor run \
-  -p benchmarks/harbor/datasets/assetopsbench-open \
-  --agent assetops_harbor.stirrup:StirrupAgent \
-  --model litellm_proxy/azure/gpt-5.6-sol \
-  --ak code_enabled=false \
-  --n-concurrent 4
-```
-
-Use a `litellm_proxy/` or `tokenrouter/` model, or set `FMSR_MODEL_ID` to one:
-the FMSR server's `generate_failure_modes` accepts only those two routers.
-
-## Running a full scenario suite
-
-`benchmarks/harbor/run.sh` runs what `benchmarks/run.sh` runs (the same
+The mini, lite and all profiles use the private scenario suite, which is
+distributed separately. `run.sh` runs what `benchmarks/run.sh` runs (the same
 profile, `stirrup-agent` and Docker code sandbox) with the scenarios in
-parallel:
+parallel. You need Docker running and model credentials in the repo's `.env`
+(`LITELLM_*` and/or `TOKENROUTER_*`). Run every command from the repo root.
 
 ```bash
+# 0. Once: install the Harbor extra.
+uv sync --dev --extra harbor
+
+# 1. Build the runtime image from HEAD, and pin the run to this build's commit tag.
+bash benchmarks/harbor/scripts/build-runtime-image.sh
+RUNTIME=assetopsbench/runtime:$(git rev-parse HEAD | cut -c1-7)
+
+# 2. Stirrup on the mini profile, with the Docker code sandbox.
+#    Rerun the same command to resume.
 bash benchmarks/harbor/run.sh \
   -s <path-to>/AssetOpsBenchScenarioGeneration/scenarios_data \
   -l ~/AssetOpsBenchRuns/leaderboard \
-  -n 4 \
-  -m "litellm_proxy/aws/claude-opus-5 high"
+  -p benchmarks/scenario_suite/mini.yaml \
+  -r "$RUNTIME" -n 4 \
+  -m "litellm_proxy/azure/gpt-5.6-sol max"
+
+# 3. Results: Harbor's viewer, and per-category means for one job.
+uv run harbor view ~/AssetOpsBenchRuns/leaderboard/harbor-jobs
+uv run python benchmarks/harbor/metric.py --job-dir \
+  ~/AssetOpsBenchRuns/leaderboard/harbor-jobs/stirrup_agent__mini__litellm_proxy-azure-gpt-5.6-sol__max
 ```
+
+- **The `-s` folder** is the suite's `scenarios_data`. `run.sh` mounts its
+  `shared/` read-only into each trial and generates each job's tasks from it.
+- **The suite's model catalog** must name the in-repo checkpoint paths. Update an
+  older one with `uv run python benchmarks/harbor/scripts/apply_catalog_fixes.py
+  --catalog <path-to>/scenarios_data/shared/catalog/model_catalog.json
+  --move-energy --write`.
+- **Disk:** the first run saves the code sandbox image (about 450 MB) to
+  `AOB_CODE_TAR_DIR`.
 
 | Option | Default |
 | --- | --- |
-| `-m "MODEL EFFORT"` (repeatable) | `benchmarks/run.sh`'s model list |
+| `-m "MODEL EFFORT"` (repeatable) | `benchmarks/run.sh`'s 8 models |
 | `-p` profile | `benchmarks/scenario_suite/all.yaml` |
 | `-n` concurrent trials | 4 |
 | `-r` runtime image | `AOB_RUNTIME_IMAGE` from the shell, then from `ENV_FILE`, then `assetopsbench/runtime:dev` |
@@ -126,13 +121,69 @@ exits non-zero when any model's job could not start or resume, including a
 skipped model; failed trials inside a job do not count. Each trial runs a
 privileged `dind` sidecar, so keep `-n` around 4 on a laptop-sized Docker VM.
 
-## Running a private profile by hand
+## Running a public profile by hand
 
-Point `--scenario-root` at the suite and add the private-data overlay:
+The open profile's three scenarios ship in the repo (`src/couchdb/scenarios_data`),
+so plain Harbor commands run it with no private suite. You need Docker running,
+`uv sync --dev --extra harbor`, and model credentials in the repo's `.env`,
+which `StirrupAgent` loads itself. Use a `litellm_proxy/` or `tokenrouter/`
+model, or set `FMSR_MODEL_ID` to one: the FMSR server's
+`generate_failure_modes` accepts only those two routers.
 
 ```bash
-# Absolute: Compose resolves a relative path against each task's environment/.
-export AOB_PRIVATE_DIR=/path/to/scenarios_data
+# 1. Build the runtime image from HEAD (uncommitted changes stay out). The tasks
+#    build FROM AOB_RUNTIME_IMAGE, or assetopsbench/runtime:dev when it is unset.
+bash benchmarks/harbor/scripts/build-runtime-image.sh
+export AOB_RUNTIME_IMAGE=assetopsbench/runtime:$(git rev-parse HEAD | cut -c1-7)
+
+# 2. Save the code sandbox image once; each trial's Docker daemon loads it.
+#    (run.sh keeps its own copy in AOB_CODE_TAR_DIR.)
+docker build -t assetops-code:dev \
+  -f src/agent/stirrup_agent/Dockerfile.code src/agent/stirrup_agent
+docker save assetops-code:dev -o ~/assetops-code.tar
+export AOB_CODE_TAR=~/assetops-code.tar
+
+# 3. Generate one task per scenario in the open profile, into
+#    benchmarks/harbor/datasets/assetopsbench-open (gitignored).
+uv run python benchmarks/harbor/adapter/generate_tasks.py --overwrite
+
+# 4. Prove the tasks are scorable before spending tokens on an agent:
+#    expect 3 trials, 0 exceptions, reward 1.000.
+uv run harbor run -y -p benchmarks/harbor/datasets/assetopsbench-open \
+  --agent oracle --n-concurrent 3
+
+# 5. Run Stirrup with the Docker code sandbox, scenarios in parallel.
+uv run harbor run -y \
+  -p benchmarks/harbor/datasets/assetopsbench-open \
+  --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
+  --agent assetops_harbor.stirrup:StirrupAgent \
+  --model litellm_proxy/azure/gpt-5.6-sol \
+  --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+  --ak workspace_dir=/workspace-share \
+  --n-concurrent 4
+```
+
+- **Tools-only track:** drop the code sandbox overlay and the `--ak` flags, and
+  pass `--ak code_enabled=false`.
+- **Results** land in `jobs/<timestamp>/`; `uv run harbor view jobs` opens them.
+  See [Run output and resources](#run-output-and-resources).
+- **Resume:** with the same exports, run
+  `uv run harbor jobs resume -p jobs/<timestamp>`. Harbor refuses if the tasks
+  changed since the job started, for example after regenerating them from an
+  edited template.
+
+## Running a private profile by hand
+
+The same steps as the public profile, with three changes: generate from the
+private suite with `--scenario-root`, write the tasks to their own
+`--output-dir`, and add `overlays/private-data.yaml`, which mounts the suite's
+`shared/` from `AOB_PRIVATE_DIR`. Keep `AOB_RUNTIME_IMAGE` and `AOB_CODE_TAR`
+exported as in steps 1 and 2 above.
+
+```bash
+# Absolute: Compose resolves a relative path against each task's environment/,
+# and the trial fails at start.
+export AOB_PRIVATE_DIR=<path-to>/AssetOpsBenchScenarioGeneration/scenarios_data
 
 uv run python benchmarks/harbor/adapter/generate_tasks.py \
   --scenario-root "$AOB_PRIVATE_DIR" \
@@ -144,9 +195,12 @@ uv run python benchmarks/harbor/adapter/generate_tasks.py \
 uv run harbor run -y \
   -p benchmarks/harbor/datasets/assetopsbench-mini \
   --extra-docker-compose benchmarks/harbor/overlays/private-data.yaml \
+  --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
   --agent assetops_harbor.stirrup:StirrupAgent \
   --model litellm_proxy/azure/gpt-5.6-sol \
-  --n-concurrent 3
+  --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+  --ak workspace_dir=/workspace-share \
+  --n-concurrent 4
 ```
 
 | Flag | Default | Notes |
@@ -157,9 +211,9 @@ uv run harbor run -y \
 | `--dataset-name` | `assetopsbench/open` | Written into `dataset.toml`. |
 | `--skip-missing` | off | Skip profile ids the suite lacks, such as `wosr-62` in `all.yaml`. |
 
-Add `-i 'fmsr-*'` to `harbor run` to limit a run to one category. The generated
-tasks carry the private suite's ground truth in `tests/` and `solution/`, which
-is why `datasets/` is gitignored.
+Mini is 35 tasks; add `-i 'fmsr-*'` (or another category) to `harbor run` for a
+quick subset. The generated tasks carry the private suite's ground truth in
+`tests/` and `solution/`, which is why `datasets/` is gitignored.
 
 ### How the private data gets in
 
