@@ -107,123 +107,6 @@ def _is_not_found_error(exc: Exception) -> bool:
     return status_code == 404
 
 
-# ── Prompt templates ──────────────────────────────────────────────────────────
-
-_FAILURE_MODE_PROMPT = (
-    "List up to {max_modes} common failure modes for asset class {asset_class}.\n"
-    "Return only failure mode names, one per line."
-)
-
-_FAILURE_MODE_EXTEND_PROMPT = (
-    "Asset class {asset_class} already has these stored failure modes:\n{stored_modes}\n\n"
-    "List up to {max_modes} additional failure modes for asset class {asset_class} "
-    "that are not already in the stored list.\n"
-    "Return only failure mode names, one per line."
-)
-
-
-def _strip_emphasis(item: str) -> str:
-    """Drop one wrapping run of markdown emphasis, e.g. **Cavitation** -> Cavitation.
-
-    Models that format their answer as a list leave the markers in place, and
-    they would otherwise be stored as part of the failure-mode name.
-    """
-    return re.sub(r"^(\*{1,3}|_{1,3})(.+?)\1$", r"\2", item.strip()).strip()
-
-
-def _parse_failure_mode_list(text: str) -> List[str]:
-    items: List[str] = []
-    for line in text.splitlines():
-        item = line.strip()
-        if not item:
-            continue
-        # Emphasis first: "*Cavitation*" is italic, not a bullet plus a stray
-        # asterisk, and stripping bullets first would leave "Cavitation*".
-        item = _strip_emphasis(item)
-        item = re.sub(r"^\s*(?:[-*•]|\d+[\.\)])\s*", "", item).strip()
-        # Again, for "- **Bearing wear**" where the bullet hid the emphasis.
-        item = _strip_emphasis(item)
-        if item:
-            items.append(item)
-    return items
-
-
-# ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
-# FMSR_MODEL_ID is the only source for the model generate_failure_modes uses.
-# There is deliberately no built-in default: a hardcoded one silently sent every
-# run at a single provider and demanded that provider's credentials whatever
-# model the agent was being benchmarked on.  Agent runners always set this for
-# the servers they spawn (the user's explicit value if given, otherwise the
-# agent's own --model-id), so an unset value means the server was started
-# standalone without being told which model to use.  Empty values count as unset.
-# The accepted prefixes are llm.routers.PROXY_ROUTERS (tokenrouter/ and
-# litellm_proxy/); anything else is rejected rather than guessed at.
-
-_MAX_RETRIES = 3
-_MODEL_ID = (os.environ.get("FMSR_MODEL_ID") or "").strip() or None
-
-
-def _build_llm(model_id: str | None = _MODEL_ID):
-    """Build the generate_* backend for *model_id*.
-
-    llm.routers owns the prefix -> credential mapping for every supported
-    router, so the accepted set and the variables each one needs come from
-    PROXY_ROUTERS rather than being restated here. A model id with no known
-    prefix is rejected instead of being pushed at a provider on a guess.
-    """
-    from llm import make_backend
-    from llm.routers import PROXY_ROUTERS, router_prefix
-
-    supported = ", ".join(f"{prefix}<model>" for prefix in PROXY_ROUTERS)
-    if not model_id:
-        raise RuntimeError(
-            f"FMSR_MODEL_ID is not set; the generate_* tools need a model id ({supported})"
-        )
-    prefix = router_prefix(model_id)
-    if prefix is None:
-        raise RuntimeError(
-            f"FMSR_MODEL_ID={model_id!r} has no supported router prefix ({supported})"
-        )
-    base_env, key_env = PROXY_ROUTERS[prefix]
-    missing = [name for name in (key_env, base_env) if not os.environ.get(name)]
-    if missing:
-        raise RuntimeError(f"Missing env vars for {prefix.rstrip('/')}: {missing}")
-    return make_backend(model_id)
-
-
-try:
-    _llm = _build_llm(_MODEL_ID)
-    _llm_available = True
-    _llm_error: str | None = None
-    logger.info("FMSR LLM: %s", _MODEL_ID)
-except Exception as _e:  # noqa: BLE001
-    logger.warning("LLM %r unavailable (generate_* tools disabled): %s", _MODEL_ID, _e)
-    _llm = None
-    _llm_available = False
-    _llm_error = f"{_MODEL_ID}: {_e}" if _MODEL_ID else str(_e)
-
-
-def _call_failure_mode_generation(
-    asset_class: str, known: List[str], max_modes: int
-) -> List[str]:
-    prompt = (
-        _FAILURE_MODE_EXTEND_PROMPT.format(
-            asset_class=asset_class,
-            stored_modes="\n".join(f"- {mode}" for mode in known),
-            max_modes=max_modes,
-        )
-        if known
-        else _FAILURE_MODE_PROMPT.format(asset_class=asset_class, max_modes=max_modes)
-    )
-    last_exc: Exception | None = None
-    for _ in range(_MAX_RETRIES):
-        try:
-            return _parse_failure_mode_list(_llm.generate(prompt))
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-    raise last_exc
-
-
 # ── Result models ─────────────────────────────────────────────────────────────
 
 
@@ -236,15 +119,6 @@ class FailureModesResult(BaseModel):
     failure_modes: List[str]
     exhaustive: bool = False  # the stored list is not claimed to be complete
     source: Optional[str] = None  # provenance: ISO / curated / LLM:<model>
-
-
-class GenerateFailureModesResult(BaseModel):
-    asset_class: str
-    known: List[str]
-    generated: List[str]
-    failure_modes: List[str]
-    source: str
-    message: str
 
 
 class AddFailureModesResult(BaseModel):
@@ -263,10 +137,10 @@ mcp = FastMCP(
     "fmsr",
     instructions=(
         "Failure-mode catalog tools for industrial asset classes. Exposes stored "
-        "failure-mode lookup, LLM failure-mode generation, and failure-mode "
-        "persistence. Failure-mode/sensor mapping is intentionally disabled and "
-        "is not available as an FMSR tool. Agent should use LLM domain knowledge "
-        "to get mapping by themselves."
+        "failure-mode lookup and failure-mode persistence. Failure-mode "
+        "generation and failure-mode/sensor mapping are intentionally disabled and "
+        "are not available as FMSR tools. Agent should use LLM domain knowledge "
+        "to produce them by themselves."
     ),
 )
 
@@ -329,126 +203,6 @@ def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
         ) from exc
 
 
-def _known_failure_modes(asset_class: str) -> List[str]:
-    """Return stored failure modes for an asset class, or [] if none are available."""
-    d = _find_failure_mode_doc(asset_class)
-    if d is None:
-        return []
-    return [
-        mode.strip()
-        for mode in d.get("failure_modes", [])
-        if isinstance(mode, str) and mode.strip()
-    ]
-
-
-# The exact messages _find_failure_mode_doc raises when there is no catalog to
-# read, as opposed to a catalog that failed to read. Compared by value because
-# this module raises them itself a few lines above.
-_CATALOG_ABSENT = ("database not connected", _MISSING_DATABASE_ERROR)
-
-
-def _optional_known_failure_modes(asset_class: str) -> tuple[List[str], str]:
-    """Stored modes as optional context for the generate path, plus a note.
-
-    generate_failure_modes documents "a new or extended list": extended when
-    modes are stored, new when they are not. An absent or uninitialised catalog
-    is that from-scratch case, so it yields ([], note) rather than failing.
-
-    A read that fails for any other reason propagates. Stored modes may exist
-    and be temporarily unreadable, and generating a list that quietly ignores
-    them would hide a real fault behind plausible output.
-    """
-    try:
-        modes = [
-            mode.strip() for mode in _known_failure_modes(asset_class) if mode and mode.strip()
-        ]
-    except RuntimeError as exc:
-        # Raised by _find_failure_mode_doc: either there is no catalog to read,
-        # or a read against an existing one failed. Only the former is the
-        # from-scratch case; the latter means stored modes may exist.
-        if str(exc) not in _CATALOG_ABSENT:
-            raise
-        return [], _no_context(asset_class, exc, "not initialised")
-    except Exception as exc:  # noqa: BLE001
-        # couchdb3's truthiness check performs a request, so an unreachable
-        # server surfaces here as a transport error before any RuntimeError
-        # wrapping. We cannot establish that a catalog exists, which is the
-        # from-scratch case. A transport error raised mid-read still arrives as
-        # the RuntimeError above and stays an error.
-        return [], _no_context(asset_class, exc, "unreachable")
-    return modes, f"{len(modes)} stored mode(s) as context"
-
-
-def _no_context(asset_class: str, exc: Exception, why: str) -> str:
-    logger.info(
-        "generate_failure_modes: no stored context for '%s', catalog %s (%s)",
-        asset_class,
-        why,
-        exc,
-    )
-    return f"no stored context (failure_mode catalog {why})"
-
-
-@mcp.tool(title="Generate Failure Modes")
-def generate_failure_modes(
-    asset_class: str,
-    max_modes: int = 10,
-) -> Union[GenerateFailureModesResult, ErrorResult]:
-    """GENERATE a new or extended failure-mode list for an asset class.
-
-    This tool does not write to the database. If the normalized `asset_class`
-    exists in the database, the current stored failure modes are used as context
-    and the LLM generates additional modes. If no stored modes exist, the LLM
-    generates a new list from scratch.
-
-    Args:
-        asset_class: Asset class to reason about, such as "pump". Case,
-            whitespace, digits, underscores, and hyphens are normalized before
-            prompting the LLM.
-        max_modes: Maximum number of new failure modes to request from the LLM.
-    """
-    key = _asset_class_key(asset_class)
-    if not key or key == "none":
-        return ErrorResult(error="asset_class is required")
-    if max_modes <= 0:
-        return ErrorResult(error="max_modes must be greater than 0")
-    if not _llm_available:
-        return ErrorResult(error=f"LLM unavailable ({_llm_error})")
-
-    try:
-        base, context_note = _optional_known_failure_modes(key)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("generate_failure_modes failed: %s", exc)
-        return ErrorResult(error=str(exc))
-
-    try:
-        raw = _call_failure_mode_generation(key, base, max_modes)
-        seen = {mode.lower() for mode in base}
-        generated: List[str] = []
-        for mode in raw:
-            candidate = mode.strip()
-            normalized = candidate.lower()
-            if candidate and normalized not in seen:
-                seen.add(normalized)
-                generated.append(candidate)
-        if len(generated) > max_modes:
-            generated = generated[:max_modes]
-        return GenerateFailureModesResult(
-            asset_class=key,
-            known=base,
-            generated=generated,
-            failure_modes=base + generated,
-            source=f"LLM:{_MODEL_ID}",
-            message=(
-                f"generated {len(generated)} new failure mode(s) for asset_class "
-                f"'{key}' using {context_note}; nothing was persisted."
-            ),
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.error("generate_failure_modes failed: %s", exc)
-        return ErrorResult(error=str(exc))
-
-
 @mcp.tool(title="Add Failure Modes")
 def add_failure_modes(
     asset_class: str,
@@ -459,8 +213,8 @@ def add_failure_modes(
     """WRITE failure modes for an asset class to the database.
 
     Existing modes are preserved, incoming modes are merged case-insensitively,
-    and only newly added modes are reported. Use this after curated or generated
-    modes should become available to future `get_failure_modes` calls.
+    and only newly added modes are reported. Use this when new modes should
+    become available to future `get_failure_modes` calls.
 
     Args:
         asset_class: Asset class to update, such as "pump". Case, whitespace,
@@ -539,6 +293,10 @@ def add_failure_modes(
 # generate_failure_mode_sensor_mapping is intentionally not registered. The
 # mapping workflow is disabled because large failure-mode/sensor matrices make
 # benchmark tool calls too expensive and timeout-prone.
+#
+# generate_failure_modes was removed as well: it called an LLM from inside the
+# server, so every runner had to pass an LLM model id and that router's
+# credentials into the server's environment.
 
 
 def main():

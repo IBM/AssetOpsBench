@@ -1,52 +1,7 @@
 import json
 
 import pytest
-from unittest.mock import MagicMock, patch
-
-
-def _fmsr_llm_available() -> bool:
-    """True when FMSR_MODEL_ID names a router whose credentials are present."""
-    try:
-        from servers.fmsr.main import _llm_available
-    except Exception:  # noqa: BLE001 - collection must not fail on import
-        return False
-    return bool(_llm_available)
-
-
-def _failure_mode_db_reachable() -> bool:
-    """True when the failure_mode database answers a query.
-
-    Mirrors _couchdb_reachable in the iot server's conftest: probe for real
-    rather than trusting COUCHDB_URL to be set, so a configured-but-down
-    CouchDB skips instead of failing.
-    """
-    try:
-        from servers.fmsr.main import fm_db
-
-        if not fm_db:
-            return False
-        fm_db.find({}, fields=["asset_class"], limit=1)
-        return True
-    except Exception:  # noqa: BLE001 - collection must not fail on import
-        return False
-
-
-requires_fmsr_llm = pytest.mark.skipif(
-    not _fmsr_llm_available(),
-    reason=(
-        "FMSR LLM not configured: set FMSR_MODEL_ID to a tokenrouter/ or "
-        "litellm_proxy/ model and that router's credentials"
-    ),
-)
-
-
-requires_failure_mode_db = pytest.mark.skipif(
-    not _failure_mode_db_reachable(),
-    reason=(
-        "failure_mode database not available "
-        "(set COUCHDB_URL and load the failure-mode catalog)"
-    ),
-)
+from unittest.mock import patch
 
 
 async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:
@@ -103,13 +58,6 @@ class BrokenDatabase(FakeDatabase):
 
 
 @pytest.fixture
-def no_llm():
-    """Simulate an unconfigured or unreachable FMSR LLM."""
-    with patch("servers.fmsr.main._llm_available", False):
-        yield
-
-
-@pytest.fixture
 def fake_fm_db():
     db = FakeDatabase(
         [
@@ -138,18 +86,3 @@ def broken_fm_db():
     db = BrokenDatabase()
     with patch("servers.fmsr.main.fm_db", db):
         yield db
-
-
-@pytest.fixture
-def mock_failure_mode_generation():
-    """Patch failure-mode generation so tests do not call the LLM."""
-    mock = MagicMock(
-        return_value=[
-            "bearing wear",
-            "seal leakage",
-            "motor overheating",
-        ]
-    )
-    with patch("servers.fmsr.main._call_failure_mode_generation", mock):
-        with patch("servers.fmsr.main._llm_available", True):
-            yield mock
