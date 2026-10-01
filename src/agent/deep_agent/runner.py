@@ -193,7 +193,7 @@ class DeepAgentRunner(AgentRunner):
             from langchain_mcp_adapters.client import MultiServerMCPClient
 
             connections = _build_mcp_connections(
-                self._server_paths, env=mcp_server_env(self._model_id)
+                self._server_paths, env=mcp_server_env()
             )
             client = MultiServerMCPClient(connections) if connections else None
             tools = await client.get_tools() if client is not None else []

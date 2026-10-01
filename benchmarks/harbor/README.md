@@ -90,9 +90,8 @@ Relative paths are relative to the directory you run the script from.
 
 For each model the script:
 
-1. checks the model can be served: its router, and `FMSR_MODEL_ID`'s, must
-   answer and accept their key. A model without a router prefix needs
-   `FMSR_MODEL_ID` set. A model that fails is skipped;
+1. checks the model can be served: its router must answer and accept its
+   key. A model that fails is skipped;
 2. pins the runtime image by id for the whole run, pulling it first if it is a
    published image, so a rebuild or pull mid-run cannot switch the base;
 3. mounts the suite's `shared/` through `overlays/private-data.yaml`;
@@ -126,9 +125,7 @@ privileged `dind` sidecar, so keep `-n` around 4 on a laptop-sized Docker VM.
 The open profile's three scenarios ship in the repo (`src/couchdb/scenarios_data`),
 so plain Harbor commands run it with no private suite. You need Docker running,
 `uv sync --dev --extra harbor`, and model credentials in the repo's `.env`,
-which `StirrupAgent` loads itself. Use a `litellm_proxy/` or `tokenrouter/`
-model, or set `FMSR_MODEL_ID` to one: the FMSR server's
-`generate_failure_modes` accepts only those two routers.
+which `StirrupAgent` loads itself.
 
 ```bash
 # 1. Build the runtime image from HEAD (uncommitted changes stay out). The tasks
@@ -244,9 +241,8 @@ checks credentials, or the file named by `AOB_ENV_FILE` (which `run.sh` sets to
 its `ENV_FILE`). Precedence is `--ae KEY=VALUE`, then exported variables, then
 the file.
 
-Only the names in `CREDENTIAL_ENV_VARS` (`src/assetops_harbor/stirrup.py`), plus
-`FMSR_MODEL_ID`, are forwarded into the container, and only for the agent
-phase. `.dockerignore` keeps `.env` out of every image. A model with a
+Only the names in `CREDENTIAL_ENV_VARS` (`src/assetops_harbor/stirrup.py`) are
+forwarded into the container, and only for the agent phase. `.dockerignore` keeps `.env` out of every image. A model with a
 `litellm_proxy/` or `tokenrouter/` prefix fails at construction when its router
 pair is unset, before Harbor builds anything.
 

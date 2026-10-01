@@ -26,9 +26,7 @@ from harbor.models.trajectories import Trajectory
 
 from assetops_harbor.stirrup import (
     ENV_FILE_ENV,
-    FMSR_MODEL_ENV,
     ROUTER_CREDENTIALS,
-    SETTING_ENV_VARS,
     SHARED_WORKSPACE,
     StirrupAgent,
 )
@@ -388,57 +386,3 @@ def test_local_backend_needs_no_workspace(tmp_path: Path) -> None:
     agent = StirrupAgent(logs_dir=tmp_path / "agent", model_name="m", code_enabled=True)
     assert agent.code_backend == "local"
     assert agent.workspace_dir is None
-
-
-def test_fmsr_model_env_matches_the_agent_package():
-    """The literal here must track agent.runner.FMSR_MODEL_ENV.
-
-    stirrup.py cannot import agent.runner: that pulls the agent SDKs into the
-    host-side Harbor process. Same reason ROUTER_CREDENTIALS is copied.
-    """
-    from agent.runner import FMSR_MODEL_ENV as canonical
-
-    assert FMSR_MODEL_ENV == canonical
-    assert FMSR_MODEL_ENV in SETTING_ENV_VARS
-
-
-def test_explicit_fmsr_model_reaches_the_container(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """An operator's FMSR_MODEL_ID must be forwarded, not dropped.
-
-    Without it the in-container runner falls back to the agent's --model-id, so
-    the documented "explicit value wins" would hold for the CLI only.
-    """
-    for name in ("LITELLM_BASE_URL", "LITELLM_API_KEY"):
-        monkeypatch.setenv(name, "x")
-    for name in ("TOKENROUTER_BASE_URL", "TOKENROUTER_API_KEY"):
-        monkeypatch.setenv(name, "y")
-    monkeypatch.setenv(FMSR_MODEL_ENV, "litellm_proxy/aws/claude-opus-5")
-
-    agent = StirrupAgent(
-        model_name="tokenrouter/MiniMax-M3",
-        logs_dir=tmp_path,
-        code_enabled=False,
-    )
-    env = agent._credential_env()
-    assert env[FMSR_MODEL_ENV] == "litellm_proxy/aws/claude-opus-5"
-
-
-def test_fmsr_router_credentials_are_required_up_front(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """A differently-routed FMSR model must fail before the image build."""
-    for name in ("TOKENROUTER_BASE_URL", "TOKENROUTER_API_KEY"):
-        monkeypatch.setenv(name, "y")
-    for name in ("LITELLM_BASE_URL", "LITELLM_API_KEY"):
-        monkeypatch.setenv(name, "")
-        monkeypatch.delenv(name)
-    monkeypatch.setenv(FMSR_MODEL_ENV, "litellm_proxy/aws/claude-opus-5")
-
-    with pytest.raises(ValueError, match=f"used by {FMSR_MODEL_ENV}"):
-        StirrupAgent(
-            model_name="tokenrouter/MiniMax-M3",
-            logs_dir=tmp_path,
-            code_enabled=False,
-        )

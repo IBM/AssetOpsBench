@@ -166,33 +166,10 @@ matrix in `run.sh` uses both.
 | `STIRRUP_CODE_IMAGE` | `assetops-code` | Code sandbox image |
 | `DOCKER_HOST` | SDK default | Set only for a non-standard socket — find yours with `docker context inspect --format '{{.Endpoints.docker.Host}}'` |
 | `ASSETOPS_SHARED_DIR` | `/tmp/assetops_shared` | Directory shared between `code_exec` and the host-side MCP servers |
-| `FMSR_MODEL_ID` | the agent's `--model-id` | Model for the fmsr `generate_*` tools. Runners pin it automatically; set it to fix one model across agents |
 
 Per-database names (`IOT_DBNAME`, `WO_DBNAME`, `CATALOG_DBNAME`, …) default to
 values matching the bundled compose file; see
 [INSTRUCTIONS.md](../INSTRUCTIONS.md) for the full list.
-
-### The fmsr `generate_*` tools and their model
-
-The `fmsr` server calls an LLM of its own for `generate_failure_modes`. The
-model comes from `FMSR_MODEL_ID` and there is no built-in default, so nothing is
-sent at a provider you have not named.
-
-Every agent runner pins it for the servers it spawns: an explicit
-`FMSR_MODEL_ID` from the shell or `.env` wins, otherwise the agent's own
-`--model-id`. So a normal run needs no extra setup, and the fmsr tools use the
-same model and credentials as the agent under test.
-
-Set it explicitly to hold one model fixed while the agent model varies:
-
-```bash
-FMSR_MODEL_ID=litellm_proxy/aws/claude-opus-5
-```
-
-A server started standalone with `FMSR_MODEL_ID` unset logs
-`LLM unavailable (generate_* tools disabled)` and every later call returns an
-error naming the cause. The `lite` profile includes fmsr scenarios (902, 904,
-905, 906, …), so watch for that line if those score badly.
 
 ### Genuinely not needed
 
@@ -375,6 +352,5 @@ authentication, the Docker daemon and sandbox image, `uv`, and that
 | `IoT records database not connected` | CouchDB unreachable or credentials wrong |
 | TSFM: file not found for a path `code_exec` just wrote | `code_exec` runs in a container; MCP servers run on the host. They share no filesystem — use `ASSETOPS_SHARED_DIR` |
 | `... is not shared with the code sandbox` at startup | `ASSETOPS_SHARED_DIR` is outside the set of paths your Docker VM shares; move it under `/Users/$USER` |
-| fmsr scenarios score badly; tools return `LLM unavailable` | Read the model named in the error: no `FMSR_MODEL_ID` (standalone server), or that model's gateway credentials are missing |
 | Workspace directory empty after a run | `--preserve-workspaces` not set |
 | Re-run does nothing | `--skip-existing` plus existing trajectory files |

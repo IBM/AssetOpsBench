@@ -218,7 +218,7 @@ class OpenAIAgentRunner(AgentRunner):
             run_started = time.perf_counter()
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
             mcp_servers = _build_mcp_servers(
-                self._server_paths, env=mcp_server_env(self._model_id)
+                self._server_paths, env=mcp_server_env()
             )
 
             # AsyncExitStack enters every server and closes them in LIFO order
