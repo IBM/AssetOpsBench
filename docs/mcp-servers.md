@@ -47,16 +47,13 @@ Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based
 ## utilities — Utilities
 
 **Path:** `src/servers/utilities/main.py`
-**Requires:** CouchDB for the catalog lookup tools (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `CATALOG_DBNAME`); `json_reader` and the time tools do not need external services.
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `CATALOG_DBNAME`)
 
 | Tool                   | Category | Arguments   | Description                                            |
 | ---------------------- | -------- | ----------- | ------------------------------------------------------ |
-| `json_reader`          | read     | `file_name` | Read and parse a JSON file from disk                   |
 | `get_sensor_catalog`   | read     | `sensor?`   | List sensor catalog entries, or fetch an exact sensor  |
 | `get_asset_catalog`    | read     | `asset?`, `category?` | List asset catalog entries, optionally filtered by asset or category |
 | `get_failure_mode_catalog` | read | `failure_mode?`, `category?` | List failure-mode catalog entries, optionally filtered by failure mode or category |
-| `current_date_time`    | read     | —           | Return the current UTC date and time as JSON           |
-| `current_time_english` | read     | —           | Return the current UTC time as a human-readable string |
 
 ## fmsr — Failure Mode and Sensor Relations
 

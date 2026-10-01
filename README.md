@@ -86,7 +86,7 @@ AssetOpsBench is a **unified framework for developing, orchestrating, and evalua
 | **WO** | Read: `list_workorders`, `get_workorder`, `get_workorder_tasks`, `get_workorder_costs`, `get_workorder_actuals_vs_planned`, `get_workorder_kpis`, `get_schedule_calendar`, `get_my_assigned_workorders`, `get_failure_codes`; write: `generate_work_order`, `update_workorder`, `approve_workorder`, `assign_technician`, `close_workorder`, `cancel_workorder` |
 | **Vibration** | `get_vibration_data`, `list_vibration_sensors`, `compute_fft_spectrum`, `compute_envelope_spectrum`, `assess_vibration_severity`, `calculate_bearing_frequencies`, `diagnose_vibration` |
 | *Shared utility server* | |
-| **Utilities** | `json_reader`, `get_sensor_catalog`, `get_asset_catalog`, `get_failure_mode_catalog`, `current_date_time`, `current_time_english` |
+| **Utilities** | `get_sensor_catalog`, `get_asset_catalog`, `get_failure_mode_catalog` |
 
 Five domain servers (IoT, FMSR, TSFM, WO, Vibration) plus one shared utility server, documented in full — arguments, categories, and backing services — in **[docs/mcp-servers.md](./docs/mcp-servers.md)**.
 
