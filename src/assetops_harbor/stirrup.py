@@ -55,6 +55,8 @@ ROUTER_CREDENTIALS: dict[str, tuple[str, str]] = {
 ENV_FILE_ENV = "AOB_ENV_FILE"
 
 # Forwarded into the agent container, for the agent phase only, when set.
+# Mirrors LLM_CREDENTIAL_ENV_VARS in src/agent/runner.py, which withholds them
+# from the MCP servers; a test keeps the two in step.
 CREDENTIAL_ENV_VARS: tuple[str, ...] = (
     "LITELLM_BASE_URL",
     "LITELLM_API_KEY",

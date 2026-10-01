@@ -289,7 +289,9 @@ The MCP servers need an explicit `env`. `mcp.client.stdio` otherwise passes
 only HOME, LOGNAME, PATH, SHELL, TERM and USER, so no server sees
 `COUCHDB_URL` and each falls back to `localhost:5984`, which under Harbor points
 at nothing. The runners build it with `agent.runner.mcp_server_env`, and
-`src/agent/tests/test_stirrup_mcp_env.py` guards it.
+`src/agent/tests/test_stirrup_mcp_env.py` guards it. It forwards the parent
+environment with the LLM credentials in `LLM_CREDENTIAL_ENV_VARS` blanked, since
+no server calls a model.
 
 ## Run output and resources
 

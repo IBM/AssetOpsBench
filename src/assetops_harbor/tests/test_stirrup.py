@@ -25,6 +25,7 @@ pytest.importorskip(
 from harbor.models.trajectories import Trajectory
 
 from assetops_harbor.stirrup import (
+    CREDENTIAL_ENV_VARS,
     ENV_FILE_ENV,
     ROUTER_CREDENTIALS,
     SHARED_WORKSPACE,
@@ -358,6 +359,15 @@ def test_router_map_matches_llm_routers() -> None:
     """
     routers = pytest.importorskip("llm.routers")
     assert ROUTER_CREDENTIALS == routers.PROXY_ROUTERS
+
+
+def test_credentials_match_those_withheld_from_mcp_servers() -> None:
+    """Every credential forwarded to the agent is one its MCP servers never see.
+
+    Skips when the agent dependency tree is absent, as above.
+    """
+    runner = pytest.importorskip("agent.runner")
+    assert set(CREDENTIAL_ENV_VARS) == set(runner.LLM_CREDENTIAL_ENV_VARS)
 
 
 def test_docker_backend_requires_a_shared_workspace(tmp_path: Path) -> None:

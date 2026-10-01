@@ -20,6 +20,7 @@ from agent.stirrup_agent.runner import StirrupAgentRunner
 def _config(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("COUCHDB_URL", "http://couchdb:5984")
     monkeypatch.setenv("WO_DBNAME", "workorder")
+    monkeypatch.setenv("LITELLM_API_KEY", "secret")
     runner = StirrupAgentRunner(model="watsonx/test", code_enabled=False)
     return runner._build_mcp_config()
 
@@ -37,6 +38,7 @@ def test_every_server_receives_couchdb_settings(
         assert server.env is not None, f"{name} would get the SDK default env"
         assert server.env.get("COUCHDB_URL") == "http://couchdb:5984", name
         assert server.env.get("WO_DBNAME") == "workorder", name
+        assert server.env.get("LITELLM_API_KEY") == "", name
 
 
 def test_the_sdk_default_would_drop_couchdb_url(
