@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ pytest.importorskip(
 
 from harbor.agents.installed import base as installed_base
 from harbor.environments import base as environments_base
+from harbor.models.job.result import JobStats
 from harbor.trial import errors as trial_errors
 from harbor.verifier import verifier
 
@@ -87,3 +89,25 @@ def test_the_router_probe_matches_the_agent() -> None:
         )
     }
     assert routers == ROUTER_CREDENTIALS
+
+
+def test_the_job_tasks_folder_has_no_double_underscore() -> None:
+    """Harbor names a local dataset after its folder, puts that name in
+    agent__model__dataset keys, and splits them on "__" when it prints the
+    results and picks the dataset's metrics. A "__" in the name fails the run
+    after every trial has finished."""
+    text = RUN_SH.read_text(encoding="utf-8")
+    line = re.search(r'^\s*(tasks_dir="\$tasks_root/.*)$', text, re.MULTILINE)
+    assert line, 'tasks_dir="$tasks_root/..." not found in run.sh'
+    job_name = "stirrup_agent__mini__litellm_proxy-azure-gpt-5.6-sol__max"
+    script = (
+        'job_name="$1"; job_path="$2"; tasks_root=/tasks\n'
+        f"{line.group(1)}\n"
+        'printf "%s" "${tasks_dir##*/}"'
+    )
+    folder = subprocess.run(
+        ["bash", "-c", script, "bash", job_name, f"/leaderboard/harbor-jobs/{job_name}"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    key = JobStats.format_agent_evals_key("stirrup", "azure/gpt-5.6-sol", folder)
+    assert key.split("__") == ["stirrup", "azure/gpt-5.6-sol", folder]

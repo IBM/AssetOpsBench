@@ -331,7 +331,9 @@ for model_config in "${model_configs[@]}"; do
   fi
   job_path="$jobs_dir/$job_name"
   # Keyed by the job's full path, so another LEADERBOARD_DIR gets its own copy.
-  tasks_dir="$tasks_root/$job_name-$(printf '%s' "$job_path" | cksum | cut -d' ' -f1)"
+  # No "__": Harbor names the dataset after this folder and splits its
+  # agent__model__dataset keys on "__", failing the run once trials finish.
+  tasks_dir="$tasks_root/${job_name//__/--}-$(printf '%s' "$job_path" | cksum | cut -d' ' -f1)"
   # What the job started on, which Harbor's own resume check does not cover: the
   # runtime image, the code tar, and the suite whose shared/ the mount supplies.
   image_record="$jobs_dir/$job_name.runtime-image"
