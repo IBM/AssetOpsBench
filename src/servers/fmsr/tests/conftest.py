@@ -20,6 +20,9 @@ class FakeDatabase:
     def __init__(self, docs=None):
         self.docs = {doc["_id"]: dict(doc) for doc in docs or []}
 
+    def check(self):
+        return True
+
     def find(self, selector, fields=None, limit=None):
         docs = [doc for doc in self.docs.values() if self._matches(doc, selector)]
         if limit is not None:

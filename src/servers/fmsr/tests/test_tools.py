@@ -2,7 +2,7 @@
 
 import pytest
 
-from servers.fmsr.main import mcp
+from servers.fmsr.main import _MISSING_DATABASE_ERROR, mcp
 
 from .conftest import call_tool, requires_watsonx
 
@@ -52,7 +52,7 @@ class TestGetFailureModes:
 
         data = await call_tool(mcp, "get_failure_modes", {"asset_class": "pump"})
 
-        assert data == {"error": "database not connected"}
+        assert data == {"error": _MISSING_DATABASE_ERROR}
 
     @pytest.mark.anyio
     async def test_database_read_error_returns_error(self, broken_fm_db):
@@ -270,7 +270,7 @@ class TestAddFailureModes:
             {"asset_class": "pump", "failure_modes": ["bearing wear"]},
         )
 
-        assert data == {"error": "database not connected"}
+        assert data == {"error": _MISSING_DATABASE_ERROR}
 
     @pytest.mark.anyio
     async def test_database_read_error_returns_error(self, broken_fm_db):
@@ -301,6 +301,14 @@ class TestMissingDatabaseMessage:
         from couchdb3.exceptions import NotFoundError
 
         class MissingDatabase:
+            # couchdb3.Database is falsy and check() is False when the
+            # database does not exist.
+            def __bool__(self):
+                return False
+
+            def check(self):
+                return False
+
             def get(self, *args, **kwargs):
                 raise NotFoundError(
                     '{"error":"not_found","reason":"Database does not exist."}'
@@ -312,6 +320,6 @@ class TestMissingDatabaseMessage:
 
         data = await call_tool(mcp, "get_failure_modes", {"asset_class": "pump"})
 
-        assert "does not exist in this environment" in data["error"]
+        assert "does not exist or is unreachable" in data["error"]
         assert "failure_mode" not in data["error"]
         assert "no failure_mode record" not in data["error"]

@@ -100,7 +100,7 @@ def get_sensor_list(asset_id: str) -> List[str]:
     """Return sorted telemetry field names observed across all records for an asset."""
     if asset_id in _sensor_list_cache:
         return _sensor_list_cache[asset_id]
-    if not iot_db:
+    if iot_db is None:
         return []
     try:
         found = set()
@@ -123,7 +123,7 @@ def get_registry_sites() -> List[str]:
     global _registry_sites_cache
     if _registry_sites_cache is not None:
         return _registry_sites_cache
-    if not asset_db:
+    if asset_db is None:
         return []
     try:
         res = asset_db.find(
@@ -164,7 +164,7 @@ def _is_known_site(site_name: str) -> bool:
 
 def _site_asset_ids(site_name: str) -> List[str]:
     """Return asset ids registered at a site."""
-    if not asset_db:
+    if asset_db is None:
         return []
     try:
         res = asset_db.find(
@@ -180,7 +180,7 @@ def _site_asset_ids(site_name: str) -> List[str]:
 
 def _installed_sensors(asset_id: str, site_name: Optional[str] = None) -> List[str]:
     """Return registry sensor names installed on an asset."""
-    if not asset_db:
+    if asset_db is None:
         return []
     try:
         selector: Dict[str, Any] = {"assetnum": asset_id}
@@ -219,9 +219,12 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
         AssetsResult: Sorted asset identifiers and their count.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    if not asset_db:
-        return ErrorResult(error="asset registry database not connected")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
+    missing = _missing_db_error(asset_db)
+    if missing:
+        return missing
     try:
         res = asset_db.find(
             {"siteid": site_name},
@@ -257,9 +260,12 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
         when absent.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    if not asset_db:
-        return ErrorResult(error="asset registry database not connected")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
+    missing = _missing_db_error(asset_db)
+    if missing:
+        return missing
 
     try:
         res = asset_db.find(
@@ -331,9 +337,12 @@ def measured_sensors(
         SensorsResult: Observed measurement field names and their count.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    if not iot_db:
-        return ErrorResult(error="IoT records database not connected")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
+    missing = _missing_db_error(iot_db)
+    if missing:
+        return missing
 
     sensor_list = get_sensor_list(asset_id)
     if not sensor_list:
@@ -371,9 +380,12 @@ def installed_sensors(
         SensorsResult: Sensor names in registry order and their count.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    if not asset_db:
-        return ErrorResult(error="asset registry database not connected")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
+    missing = _missing_db_error(asset_db)
+    if missing:
+        return missing
 
     try:
         res = asset_db.find(
@@ -419,9 +431,12 @@ def assets(
         type, vintage, and installed-sensor count.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    if not asset_db:
-        return ErrorResult(error="asset registry database not connected")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
+    missing = _missing_db_error(asset_db)
+    if missing:
+        return missing
     try:
         selector: Dict[str, Any] = {"siteid": site_name}
         if assettype:
@@ -485,17 +500,22 @@ def find_assets_by_sensors(
         sensor names found.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
     if match not in ("all", "any"):
         return ErrorResult(error="match must be 'all' or 'any'")
     if source not in ("measured", "installed"):
         return ErrorResult(error="source must be 'measured' or 'installed'")
     if not sensors:
         return ErrorResult(error="provide at least one sensor name")
-    if not asset_db:
-        return ErrorResult(error="asset registry database not connected")
-    if source == "measured" and not iot_db:
-        return ErrorResult(error="IoT records database not connected")
+    missing = _missing_db_error(asset_db)
+    if missing:
+        return missing
+    if source == "measured":
+        missing = _missing_db_error(iot_db)
+        if missing:
+            return missing
 
     site_asset_ids = _site_asset_ids(site_name)
     if not site_asset_ids:
@@ -596,12 +616,15 @@ def stream_extent(
         interval implied by the span and count.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
     validation_error = _validate_dates(start, end)
     if validation_error:
         return ErrorResult(error=validation_error)
-    if not iot_db:
-        return ErrorResult(error="IoT records database not connected")
+    missing = _missing_db_error(iot_db)
+    if missing:
+        return missing
     if sensor is not None and not sensor.strip():
         return ErrorResult(error="sensor must not be empty")
     if sensor in RESERVED_FIELDS:
@@ -710,12 +733,15 @@ def history(
         and cursor fields for the next page.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
     validation_error = _validate_dates(start, end)
     if validation_error:
         return ErrorResult(error=validation_error)
-    if not iot_db:
-        return ErrorResult(error="IoT records database not connected")
+    missing = _missing_db_error(iot_db)
+    if missing:
+        return missing
     if isinstance(limit, bool) or not 1 <= limit <= PAGE_SIZE:
         return ErrorResult(error=f"limit must be between 1 and {PAGE_SIZE}")
 
@@ -849,9 +875,12 @@ def latest_reading(
         LatestReadingResult: Selected timestamp, values, and age in seconds.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    if not iot_db:
-        return ErrorResult(error="IoT records database not connected")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
+    missing = _missing_db_error(iot_db)
+    if missing:
+        return missing
     if sensor is not None and not sensor.strip():
         return ErrorResult(error="sensor must not be empty")
     if sensor in RESERVED_FIELDS:
@@ -943,9 +972,12 @@ def sensor_coverage(
         and chronological bounds, sorted by field name.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
-    if not iot_db:
-        return ErrorResult(error="IoT records database not connected")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
+    missing = _missing_db_error(iot_db)
+    if missing:
+        return missing
 
     selector: Dict[str, Any] = {
         "asset_id": asset_id,
@@ -1025,12 +1057,15 @@ def sensor_stats(
         population standard deviation, and earliest/latest numeric timestamps.
     """
     if not _is_known_site(site_name):
-        return ErrorResult(error=f"unknown site {site_name}")
+        return _missing_db_error(asset_db) or ErrorResult(
+            error=f"unknown site {site_name}"
+        )
     validation_error = _validate_dates(start, end)
     if validation_error:
         return ErrorResult(error=validation_error)
-    if not iot_db:
-        return ErrorResult(error="IoT records database not connected")
+    missing = _missing_db_error(iot_db)
+    if missing:
+        return missing
     if sensor is not None and not sensor.strip():
         return ErrorResult(error="sensor must not be empty")
     if sensor in RESERVED_FIELDS:

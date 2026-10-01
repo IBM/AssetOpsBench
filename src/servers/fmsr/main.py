@@ -60,7 +60,7 @@ def _asset_class_key(asset_class: str) -> str:
 
 def _known_asset_classes(limit: int = 10) -> List[str]:
     """Return known asset classes from the failure_mode collection for error guidance."""
-    if not fm_db:
+    if fm_db is None:
         return []
     try:
         res = fm_db.find({}, fields=["asset_class"], limit=limit)
@@ -90,8 +90,8 @@ def _is_missing_database(exc: Exception) -> bool:
 
 
 _MISSING_DATABASE_ERROR = (
-    "the data source does not exist in this environment; the "
-    "data is unavailable, do not retry with other arguments"
+    "the data source does not exist or is unreachable in this "
+    "environment; the data is unavailable, do not retry with other arguments"
 )
 
 
@@ -273,8 +273,8 @@ def get_failure_modes(asset_class: str) -> Union[FailureModesResult, ErrorResult
 
 def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
     """Return the stored failure-mode doc for an asset class, or None."""
-    if not fm_db:
-        raise RuntimeError("database not connected")
+    if fm_db is None or not fm_db.check():
+        raise RuntimeError(_MISSING_DATABASE_ERROR)
     key = _asset_class_key(asset_class)
     try:
         d = fm_db.get(f"fm:{key}", check=True)
@@ -401,9 +401,6 @@ def add_failure_modes(
     ]
     if not incoming:
         return ErrorResult(error="failure_modes list is required")
-    if not fm_db:
-        return ErrorResult(error="database not connected")
-
     try:
         doc_id = f"fm:{key}"
         doc = _find_failure_mode_doc(key)
