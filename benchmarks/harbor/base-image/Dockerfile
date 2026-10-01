@@ -39,12 +39,20 @@ WORKDIR /opt/aob
 # Lockfile first so dependency layers survive source edits.
 COPY pyproject.toml uv.lock ./
 # --group otel: the task sets OTEL_TRACES_FILE, whose exporter needs it.
-RUN uv sync --frozen --group otel --extra tsfm --no-install-project
+# --no-dev: the dev group is pytest and the Jupyter stack, which nothing in a
+# trial imports.
+RUN uv sync --frozen --no-dev --group otel --extra tsfm --no-install-project
 
 # Repo, including src/couchdb/scenarios_data/shared, pulled once rather than
 # copied into every task context.
 COPY . .
-RUN uv sync --frozen --group otel --extra tsfm
+RUN uv sync --frozen --no-dev --group otel --extra tsfm
+
+# The environment is final. Every process in a trial starts through `uv run`
+# (healthcheck, agent, MCP servers, verifier), and `uv run` otherwise syncs the
+# default groups first, which would put the dev group back, downloading it in
+# every trial.
+ENV UV_NO_SYNC=1
 
 # Model weights, from base-image/models.txt: public Hub repo ids exported from
 # the model catalog, so the build needs no access to a private catalog. Nothing
