@@ -85,7 +85,19 @@ def _missing_asset_class_error(original: str, normalized: str) -> ErrorResult:
     return ErrorResult(error=message)
 
 
+def _is_missing_database(exc: Exception) -> bool:
+    return "Database does not exist" in str(exc)
+
+
+_MISSING_DATABASE_ERROR = (
+    "the data source does not exist in this environment; the "
+    "data is unavailable, do not retry with other arguments"
+)
+
+
 def _is_not_found_error(exc: Exception) -> bool:
+    if _is_missing_database(exc):
+        return False
     if isinstance(exc, (KeyError, NotFoundError)):
         return True
     response = getattr(exc, "response", None)
@@ -110,58 +122,85 @@ _FAILURE_MODE_EXTEND_PROMPT = (
 )
 
 
+def _strip_emphasis(item: str) -> str:
+    """Drop one wrapping run of markdown emphasis, e.g. **Cavitation** -> Cavitation.
+
+    Models that format their answer as a list leave the markers in place, and
+    they would otherwise be stored as part of the failure-mode name.
+    """
+    return re.sub(r"^(\*{1,3}|_{1,3})(.+?)\1$", r"\2", item.strip()).strip()
+
+
 def _parse_failure_mode_list(text: str) -> List[str]:
     items: List[str] = []
     for line in text.splitlines():
         item = line.strip()
         if not item:
             continue
+        # Emphasis first: "*Cavitation*" is italic, not a bullet plus a stray
+        # asterisk, and stripping bullets first would leave "Cavitation*".
+        item = _strip_emphasis(item)
         item = re.sub(r"^\s*(?:[-*•]|\d+[\.\)])\s*", "", item).strip()
+        # Again, for "- **Bearing wear**" where the bullet hid the emphasis.
+        item = _strip_emphasis(item)
         if item:
             items.append(item)
     return items
 
 
 # ── LLM backend (lazy init; graceful degradation if creds are absent) ─────────
+# FMSR_MODEL_ID is the only source for the model generate_failure_modes uses.
+# There is deliberately no built-in default: a hardcoded one silently sent every
+# run at a single provider and demanded that provider's credentials whatever
+# model the agent was being benchmarked on.  Agent runners always set this for
+# the servers they spawn (the user's explicit value if given, otherwise the
+# agent's own --model-id), so an unset value means the server was started
+# standalone without being told which model to use.  Empty values count as unset.
+# The accepted prefixes are llm.routers.PROXY_ROUTERS (tokenrouter/ and
+# litellm_proxy/); anything else is rejected rather than guessed at.
 
-_DEFAULT_MODEL_ID = "watsonx/meta-llama/llama-3-3-70b-instruct"
 _MAX_RETRIES = 3
-_MODEL_ID = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
+_MODEL_ID = (os.environ.get("FMSR_MODEL_ID") or "").strip() or None
 
 
-def _build_llm():
+def _build_llm(model_id: str | None = _MODEL_ID):
+    """Build the generate_* backend for *model_id*.
+
+    llm.routers owns the prefix -> credential mapping for every supported
+    router, so the accepted set and the variables each one needs come from
+    PROXY_ROUTERS rather than being restated here. A model id with no known
+    prefix is rejected instead of being pushed at a provider on a guess.
+    """
     from llm import make_backend
+    from llm.routers import PROXY_ROUTERS, router_prefix
 
-    if _MODEL_ID.startswith("watsonx/"):
-        missing = [
-            v for v in ("WATSONX_APIKEY", "WATSONX_PROJECT_ID") if not os.environ.get(v)
-        ]
-        if missing:
-            raise RuntimeError(f"Missing env vars for WatsonX: {missing}")
-    elif _MODEL_ID.startswith("tokenrouter/"):
-        missing = [
-            v
-            for v in ("TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL")
-            if not os.environ.get(v)
-        ]
-        if missing:
-            raise RuntimeError(f"Missing env vars for TokenRouter: {missing}")
-    else:
-        missing = [
-            v for v in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(v)
-        ]
-        if missing:
-            raise RuntimeError(f"Missing env vars for LiteLLM: {missing}")
-    return make_backend(_MODEL_ID)
+    supported = ", ".join(f"{prefix}<model>" for prefix in PROXY_ROUTERS)
+    if not model_id:
+        raise RuntimeError(
+            f"FMSR_MODEL_ID is not set; the generate_* tools need a model id ({supported})"
+        )
+    prefix = router_prefix(model_id)
+    if prefix is None:
+        raise RuntimeError(
+            f"FMSR_MODEL_ID={model_id!r} has no supported router prefix ({supported})"
+        )
+    base_env, key_env = PROXY_ROUTERS[prefix]
+    missing = [name for name in (key_env, base_env) if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError(f"Missing env vars for {prefix.rstrip('/')}: {missing}")
+    return make_backend(model_id)
 
 
 try:
-    _llm = _build_llm()
+    _llm = _build_llm(_MODEL_ID)
     _llm_available = True
+    _llm_error: str | None = None
+    logger.info("FMSR LLM: %s", _MODEL_ID)
 except Exception as _e:  # noqa: BLE001
-    logger.warning("LLM unavailable (generate_* tools disabled): %s", _e)
+    logger.warning("LLM %r unavailable (generate_* tools disabled): %s", _MODEL_ID, _e)
     _llm = None
     _llm_available = False
+    _llm_error = f"{_MODEL_ID}: {_e}" if _MODEL_ID else str(_e)
 
 
 def _call_failure_mode_generation(
@@ -267,6 +306,8 @@ def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
     try:
         d = fm_db.get(f"fm:{key}", check=True)
     except Exception as exc:  # noqa: BLE001
+        if _is_missing_database(exc):
+            raise RuntimeError(_MISSING_DATABASE_ERROR) from exc
         if _is_not_found_error(exc):
             d = None
         else:
@@ -281,6 +322,8 @@ def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
                 d = docs[0]
         return d
     except Exception as exc:  # noqa: BLE001
+        if _is_missing_database(exc):
+            raise RuntimeError(_MISSING_DATABASE_ERROR) from exc
         raise RuntimeError(
             f"database lookup failed for asset_class '{key}': {exc}"
         ) from exc
@@ -296,6 +339,54 @@ def _known_failure_modes(asset_class: str) -> List[str]:
         for mode in d.get("failure_modes", [])
         if isinstance(mode, str) and mode.strip()
     ]
+
+
+# The exact messages _find_failure_mode_doc raises when there is no catalog to
+# read, as opposed to a catalog that failed to read. Compared by value because
+# this module raises them itself a few lines above.
+_CATALOG_ABSENT = ("database not connected", _MISSING_DATABASE_ERROR)
+
+
+def _optional_known_failure_modes(asset_class: str) -> tuple[List[str], str]:
+    """Stored modes as optional context for the generate path, plus a note.
+
+    generate_failure_modes documents "a new or extended list": extended when
+    modes are stored, new when they are not. An absent or uninitialised catalog
+    is that from-scratch case, so it yields ([], note) rather than failing.
+
+    A read that fails for any other reason propagates. Stored modes may exist
+    and be temporarily unreadable, and generating a list that quietly ignores
+    them would hide a real fault behind plausible output.
+    """
+    try:
+        modes = [
+            mode.strip() for mode in _known_failure_modes(asset_class) if mode and mode.strip()
+        ]
+    except RuntimeError as exc:
+        # Raised by _find_failure_mode_doc: either there is no catalog to read,
+        # or a read against an existing one failed. Only the former is the
+        # from-scratch case; the latter means stored modes may exist.
+        if str(exc) not in _CATALOG_ABSENT:
+            raise
+        return [], _no_context(asset_class, exc, "not initialised")
+    except Exception as exc:  # noqa: BLE001
+        # couchdb3's truthiness check performs a request, so an unreachable
+        # server surfaces here as a transport error before any RuntimeError
+        # wrapping. We cannot establish that a catalog exists, which is the
+        # from-scratch case. A transport error raised mid-read still arrives as
+        # the RuntimeError above and stays an error.
+        return [], _no_context(asset_class, exc, "unreachable")
+    return modes, f"{len(modes)} stored mode(s) as context"
+
+
+def _no_context(asset_class: str, exc: Exception, why: str) -> str:
+    logger.info(
+        "generate_failure_modes: no stored context for '%s', catalog %s (%s)",
+        asset_class,
+        why,
+        exc,
+    )
+    return f"no stored context (failure_mode catalog {why})"
 
 
 @mcp.tool(title="Generate Failure Modes")
@@ -322,11 +413,15 @@ def generate_failure_modes(
     if max_modes <= 0:
         return ErrorResult(error="max_modes must be greater than 0")
     if not _llm_available:
-        return ErrorResult(error="LLM unavailable")
+        return ErrorResult(error=f"LLM unavailable ({_llm_error})")
 
     try:
-        base = _known_failure_modes(key)
-        base = [mode.strip() for mode in base if mode and mode.strip()]
+        base, context_note = _optional_known_failure_modes(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("generate_failure_modes failed: %s", exc)
+        return ErrorResult(error=str(exc))
+
+    try:
         raw = _call_failure_mode_generation(key, base, max_modes)
         seen = {mode.lower() for mode in base}
         generated: List[str] = []
@@ -345,8 +440,8 @@ def generate_failure_modes(
             failure_modes=base + generated,
             source=f"LLM:{_MODEL_ID}",
             message=(
-                f"generated {len(generated)} new failure mode(s) for asset_class '{key}' "
-                f"using {len(base)} stored mode(s) as context; nothing was persisted."
+                f"generated {len(generated)} new failure mode(s) for asset_class "
+                f"'{key}' using {context_note}; nothing was persisted."
             ),
         )
     except Exception as exc:  # noqa: BLE001

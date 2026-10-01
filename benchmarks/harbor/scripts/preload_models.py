@@ -1,0 +1,584 @@
+#!/usr/bin/env python
+"""Report, warm and verify the HuggingFace cache an AssetOpsBench catalog needs.
+
+Three modes over one source of truth, the model catalog:
+
+    preload_models.py --report     # ask the Hub how big each repo is
+    preload_models.py --download   # fill the cache (resumable)
+    preload_models.py --check      # offline: does the cache satisfy every card?
+
+Only `huggingface_hub` is required. The cache is whatever it resolves
+(`HF_HUB_CACHE`, else `$HF_HOME/hub`); every mode prints the path it uses.
+`--check` resolves with `HF_HUB_OFFLINE=1`, as a trial without network would.
+
+`params.model_path` is authoritative, since the estimator is built with
+`Est(**card["params"])`; `hf_repo` is a fallback, and a disagreement between
+the two is reported. Cards an agent writes at run time are skipped.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import sys
+import time
+from pathlib import Path
+
+# Catalog resolution: --catalog, $AOB_MODEL_CATALOG,
+# $SCENARIOS_DATA_DIR/shared/tsfm/model_catalog.json (the file CouchDB is
+# seeded from), then the in-repo copy.
+CATALOG_REL = Path("shared/tsfm/model_catalog.json")
+EXAMPLE_CATALOG = Path("src/couchdb/scenarios_data") / CATALOG_REL
+
+
+def resolve_catalog(explicit: Path | None) -> tuple[Path, str]:
+    """Return (path, where_it_came_from)."""
+    if explicit is not None:
+        return explicit, "--catalog"
+    env = os.environ.get("AOB_MODEL_CATALOG")
+    if env:
+        return Path(env), "$AOB_MODEL_CATALOG"
+    root = os.environ.get("SCENARIOS_DATA_DIR")
+    if root:
+        return Path(root) / CATALOG_REL, "$SCENARIOS_DATA_DIR"
+    return EXAMPLE_CATALOG, "in-repo EXAMPLE"
+
+# "owner/name", the shape of a Hub repo id.
+_REPO_RE = re.compile(r"^[A-Za-z0-9][\w.-]*/[\w.-]+$")
+_ZERO_SHOT = {"zero-shot", "zero_shot", "zeroshot"}
+
+
+# --------------------------------------------------------------------------- #
+# catalog
+# --------------------------------------------------------------------------- #
+def load_cards(path: Path) -> list[dict]:
+    """Accept a bare list, a {"docs": [...]} wrapper, or a single card."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(raw, dict):
+        raw = raw.get("docs", raw.get("rows", [raw]))
+    if isinstance(raw, dict):
+        raw = [raw]
+    return [c for c in raw if isinstance(c, dict)]
+
+
+def status_of(card: dict) -> str:
+    """A card with no status is treated as active, matching model_store.list_models."""
+    return str(card.get("status") or "active")
+
+
+# Params that name a second Hub repo a card needs at load time, e.g. Kronos's
+# tokenizer_path or MOMENT's transformer_backbone.
+_AUX_PARAM_KEYS = (
+    "tokenizer_path",
+    "transformer_backbone",
+    "pretrained_model_name_or_path",
+    "checkpoint_path",
+    "base_model_path",
+    "backbone",
+)
+
+
+def aux_targets(card: dict, primary: str | None) -> list[str]:
+    """Hub repos this card needs beyond its primary target.
+
+    Sources, in order: an explicit `aux_repos` list on the card, then any
+    param in _AUX_PARAM_KEYS whose value is shaped like a Hub repo id. A value
+    that is a local directory does not match _REPO_RE and is left alone.
+    """
+    params = card.get("params") or {}
+    base = (primary or "").split("@")[0]
+    out: list[str] = []
+
+    def add(value) -> None:
+        v = str(value or "")
+        if not v or not _REPO_RE.match(v) or v == base or v in out:
+            return
+        out.append(v)
+
+    for extra in card.get("aux_repos") or []:
+        add(extra)
+    for key in _AUX_PARAM_KEYS:
+        add(params.get(key))
+    return out
+
+
+def classify(card: dict) -> tuple[str, str | None, str]:
+    """Return (kind, target, why). kind is 'hub', 'local', 'runtime' or 'none'.
+
+    Branch on what the card declares; path shape alone cannot tell a
+    two-segment local checkpoint from a Hub repo id.
+
+      runtime  created_by starts with "agent." - the checkpoint does not exist
+               until a trial writes it, so it must not be verified at build time.
+               provenance alone is NOT the test: a seeded card can legitimately
+               be provenance="finetuned" when you ship a fine-tuned checkpoint.
+      hub      hf_repo is set - weights come from the Hub.
+      local    source == "local_artifact" with no hf_repo - a directory on disk.
+      none     no model_path at all, e.g. a classical forecaster that fits from
+               scratch.
+    """
+    model_id = card.get("model_id") or "<unnamed>"
+    # Wrappers name the checkpoint differently: model_path (TTM, Chronos),
+    # checkpoint_path (MOIRAI), pretrained_model_name_or_path (MOMENT),
+    # repo_id (TimesFM v1).
+    params = card.get("params") or {}
+    path = None
+    path_key = "model_path"
+    for key in ("model_path", "checkpoint_path",
+                "pretrained_model_name_or_path", "repo_id"):
+        if params.get(key):
+            path, path_key = params[key], key
+            break
+    created_by = str(card.get("created_by") or "")
+    hf_repo = card.get("hf_repo")
+    source = card.get("source")
+
+    if created_by.startswith("agent."):
+        return "runtime", None, f"{model_id}: written at run time by {created_by}"
+    if not path:
+        if hf_repo:
+            rev0 = (card.get("params") or {}).get("revision")
+            tgt = f"{hf_repo}@{rev0}" if rev0 else str(hf_repo)
+            return "hub", tgt, f"{model_id}: {tgt} (via hf_repo; card names no checkpoint)"
+        return "none", None, f"{model_id}: names no checkpoint (classical model?)"
+
+    path = str(path)
+    rev = params.get("revision")
+    suffix = f"@{rev}" if rev else ""
+    if hf_repo:
+        if str(hf_repo) != path:
+            return "hub", path + suffix, (
+                f"{model_id}: WARNING params.{path_key}={path} disagrees with "
+                f"hf_repo={hf_repo}; loading follows params.{path_key}"
+            )
+        note = f"{model_id}: {path}{suffix}"
+        if path_key != "model_path":
+            note += f" (via params.{path_key})"
+        return "hub", path + suffix, note
+
+    if source == "local_artifact":
+        return "local", path, f"{model_id}: local checkpoint {path}"
+
+    # Nothing declared. Fall back to shape, and say so, because this is the
+    # case that silently sends a local path to the Hub.
+    if _REPO_RE.match(path):
+        return "hub", path + suffix, (
+            f"{model_id}: {path}{suffix} (GUESSED from path shape; set hf_repo or "
+            f'source="local_artifact" to make this explicit)'
+        )
+    return "local", path, (
+        f"{model_id}: local checkpoint {path} (guessed; no source declared)"
+    )
+
+
+def check_local(target: str, root: Path) -> tuple[bool, str]:
+    """A local card is satisfied when its directory exists and holds a config."""
+    p = Path(target)
+    if not p.is_absolute():
+        p = root / p
+    if not p.is_dir():
+        return False, f"missing directory {p}"
+    if not (p / "config.json").exists():
+        return False, f"{p} has no config.json (not a save_pretrained checkpoint)"
+    return True, str(p)
+
+
+# --------------------------------------------------------------------------- #
+# helpers
+# --------------------------------------------------------------------------- #
+def human(n: float) -> str:
+    x = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if x < 1024 or unit == "TB":
+            return f"{int(x)} B" if unit == "B" else f"{x:.1f} {unit}"
+        x /= 1024
+    return f"{x:.1f} TB"
+
+
+def cache_dir() -> Path:
+    from huggingface_hub import constants
+
+    return Path(constants.HF_HUB_CACHE)
+
+
+def tree_size(path: Path) -> int:
+    """Bytes actually on disk. Follows the blob symlinks a snapshot uses, and
+    counts each blob once so a repo is not double counted."""
+    seen: set[int] = set()
+    total = 0
+    for p in path.rglob("*"):
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        if not p.is_file() or st.st_ino in seen:
+            continue
+        seen.add(st.st_ino)
+        total += st.st_size
+    return total
+
+
+# --------------------------------------------------------------------------- #
+# modes
+# --------------------------------------------------------------------------- #
+def split_ref(ref: str, override: str | None) -> tuple[str, str | None]:
+    """"org/name@branch" -> ("org/name", "branch"). --revision overrides the card."""
+    if override:
+        return ref.split("@", 1)[0], override
+    if "@" in ref:
+        repo, rev = ref.split("@", 1)
+        return repo, rev
+    return ref, None
+
+
+def report(repos: list[str], revision: str | None) -> int:
+    from huggingface_hub import HfApi
+
+    api = HfApi()
+    total = 0
+    unknown = 0
+    print(f"{'repo':52} {'files':>6} {'size':>10}")
+    print("-" * 74)
+    for ref in repos:
+        repo, rev = split_ref(ref, revision)
+        try:
+            info = api.model_info(repo, revision=rev, files_metadata=True)
+        except Exception as exc:  # noqa: BLE001 - a report must not die on one repo
+            print(f"{ref:52} {'-':>6} {'ERROR':>10}  {exc}")
+            continue
+        sizes = [s.size for s in (info.siblings or [])]
+        unknown += sum(1 for s in sizes if s is None)
+        known = sum(s for s in sizes if s)
+        total += known
+        print(f"{ref:52} {len(sizes):>6} {human(known):>10}  sha={(info.sha or '')[:8]}")
+    print("-" * 74)
+    print(f"{'TOTAL':52} {'':>6} {human(total):>10}")
+    if unknown:
+        print(
+            f"\n{unknown} file(s) reported no size, so the total is a floor, not a ceiling."
+        )
+    free = shutil.disk_usage(cache_dir().parent if cache_dir().exists() else Path.home()).free
+    print(f"\ncache dir : {cache_dir()}")
+    print(f"free disk : {human(free)}")
+    if free < total * 1.1:
+        print("WARNING: less free space than the download needs.")
+    return 0
+
+
+def download(repos: list[str], revision: str | None, workers: int) -> int:
+    from huggingface_hub import snapshot_download
+
+    dest = cache_dir()
+    print(f"cache dir : {dest}")
+    print(f"workers   : {workers} (per repo)\n")
+
+    failed: list[tuple[str, str]] = []
+    grand = 0
+    for n, ref in enumerate(repos, 1):
+        repo, rev = split_ref(ref, revision)
+        print(f"[{n}/{len(repos)}] {ref}")
+        started = time.monotonic()
+        try:
+            where = Path(snapshot_download(repo, revision=rev, max_workers=workers))
+        except Exception as exc:  # noqa: BLE001
+            print(f"          FAILED: {exc}", file=sys.stderr)
+            failed.append((ref, str(exc)))
+            continue
+        # The repo root is two levels up from snapshots/<sha>.
+        size = tree_size(where.parent.parent)
+        grand += size
+        print(f"          {human(size)} in {time.monotonic() - started:.0f}s")
+
+    print(f"\n{len(repos) - len(failed)}/{len(repos)} repos cached, {human(grand)} on disk")
+    if failed:
+        print(f"\n{len(failed)} failed:", file=sys.stderr)
+        for repo, err in failed:
+            print(f"  {repo}: {err}", file=sys.stderr)
+        print("\nRe-run to retry; completed repos are skipped and partial files resume.",
+              file=sys.stderr)
+        return 1
+    print("\nNext: verify it offline before you depend on it:\n"
+          f"  HF_HUB_CACHE={dest} HF_HUB_OFFLINE=1 {sys.argv[0]} --check")
+    return 0
+
+
+def _serving_switch(card: dict) -> str | None:
+    """The constructor parameter that makes this estimator serve, if any.
+
+    TTM and PatchTST take fit_strategy, PatchTSMixer train_model; most others
+    take neither, so read the signature rather than assume.
+    """
+    import importlib
+    import inspect
+
+    dotted = card.get("sktime_class")
+    if not dotted or "." not in dotted:
+        return None
+    mod, _, name = dotted.rpartition(".")
+    try:
+        cls = getattr(importlib.import_module(mod), name)
+        sig = inspect.signature(cls.__init__).parameters
+    except Exception:  # noqa: BLE001 - an uninstalled wrapper is not a card defect
+        return None
+    for key in ("fit_strategy", "train_model"):
+        if key in sig:
+            return key
+    return None
+
+
+def validate_cards(cards: list[dict]) -> int:
+    """Check the cards themselves, not just where their weights live.
+
+      schema      the repo's own validator, so a bad card fails here rather
+                  than at seed time.
+      serve pins  params.fit_strategy/train_model and training_regime, for an
+                  estimator that has such a switch. Unpinned, TTM and PatchTST
+                  silently re-tune on every fit.
+    """
+    problems: list[str] = []
+
+    try:
+        sys.path.insert(0, "src")
+        from servers.tsfm.core import schemas
+    except ImportError:
+        schemas = None
+        print("  schema validator unavailable (run from the repo root to enable)")
+
+    for c in cards:
+        mid = c.get("model_id", "<unnamed>")
+        if schemas is not None:
+            try:
+                schemas.validate_model(dict(c))
+            except Exception as exc:  # noqa: BLE001 - report every card, not the first
+                problems.append(f"{mid}: schema: {str(exc).splitlines()[0][:120]}")
+
+        params = c.get("params") or {}
+
+        # A card that declares how it trains has made a decision; respect it.
+        # MOMENT builds its forecasting head fresh and must train it, and a
+        # detector that fits on the series it is given is not misconfigured.
+        if str(c.get("training_regime") or "") in ("fine_tune", "fit_on_series"):
+            continue
+
+        switch = _serving_switch(c)
+        if switch is None:
+            continue                  # nothing to pin on this estimator
+        if switch not in params:
+            problems.append(
+                f"{mid}: params.{switch} is unset; {c.get('sktime_class', '?').rsplit('.', 1)[-1]}"
+                f" defaults to training, so the card re-tunes on every fit")
+        elif switch == "fit_strategy" and str(params[switch]).lower() not in _ZERO_SHOT:
+            problems.append(
+                f"{mid}: params.fit_strategy is {params[switch]!r}; "
+                'pin "zero-shot" to serve the checkpoint as shipped')
+        elif switch == "train_model" and params[switch] is not False:
+            problems.append(
+                f"{mid}: params.train_model is {params[switch]!r}; set false to serve")
+        elif c.get("training_regime") != "zero_shot":
+            problems.append(
+                f"{mid}: params.{switch} serves but training_regime is "
+                f"{c.get('training_regime')!r}; pin \"zero_shot\" or run_recipe "
+                "takes the refit path")
+
+    if problems:
+        print(f"\n{len(problems)} card problem(s):", file=sys.stderr)
+        for p_ in problems:
+            print(f"  {p_}", file=sys.stderr)
+        return 1
+    print(f"  {len(cards)} card(s) validate, and every one pins zero-shot serving")
+    return 0
+
+
+def check(repos: list[str], revision: str | None) -> int:
+    """Resolve every repo with the network disabled, exactly as a trial will."""
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    from huggingface_hub import snapshot_download
+
+    print(f"cache dir : {cache_dir()}")
+    print("offline   : HF_HUB_OFFLINE=1\n")
+
+    missing: list[str] = []
+    for ref in repos:
+        repo, rev = split_ref(ref, revision)
+        try:
+            where = Path(snapshot_download(repo, revision=rev))
+            print(f"  OK      {ref:52} {human(tree_size(where.parent.parent)):>10}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  MISSING {ref:52} {type(exc).__name__}")
+            missing.append(ref)
+
+    if missing:
+        print(f"\n{len(missing)} repo(s) would hit the network at run time:", file=sys.stderr)
+        for repo in missing:
+            print(f"  {repo}", file=sys.stderr)
+        print("\nRun --download to fill them.", file=sys.stderr)
+        return 1
+    print(f"\nAll {len(repos)} repos resolve offline. Safe to mount read-only.")
+    return 0
+
+
+def check_locals(targets: list[str], root: Path) -> int:
+    """Local checkpoints are shipped, not fetched: check they are there."""
+    missing = []
+    for target in targets:
+        ok, detail = check_local(target, root)
+        print(f"  {'OK     ' if ok else 'MISSING'} {target:52} {detail if not ok else ''}")
+        if not ok:
+            missing.append(target)
+    if missing:
+        print(f"\n{len(missing)} local checkpoint(s) absent; those cards cannot load.",
+              file=sys.stderr)
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+def main() -> int:
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument("--catalog", type=Path, default=None,
+                   help="model catalog JSON. Defaults to $AOB_MODEL_CATALOG, then "
+                        "$SCENARIOS_DATA_DIR/shared/tsfm/model_catalog.json (the same file "
+                        "CouchDB is seeded from), then the in-repo example.")
+    p.add_argument("--revision", default=None,
+                   help="pin every repo to this revision; omit to track each repo's default branch")
+    p.add_argument("--workers", type=int, default=8,
+                   help="parallel file downloads per repo (default: 8)")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--report", action="store_true", help="print per-repo size and exit (default)")
+    mode.add_argument("--download", action="store_true", help="fill the cache; resumable")
+    mode.add_argument("--check", action="store_true", help="offline: verify the cache is complete")
+    p.add_argument("--status", default="active", metavar="STATUS",
+                   help="only cards with this status, or 'any' for all. Default 'active', which "
+                        "matches model_store.list_models, so the cache holds exactly what "
+                        "find_models and search can discover. Deprecate a card to drop its "
+                        "weights from the image without losing its lineage.")
+    p.add_argument("--include", default=None, metavar="REGEX",
+                   help="only act on repos matching this regex")
+    p.add_argument("--print-repos", action="store_true", help="print just the repo ids, one per line")
+    p.add_argument("--from-list", type=Path, default=None, metavar="FILE",
+                   help="read repo ids from FILE instead of a catalog, one per "
+                        "line, '#' comments allowed (the image build uses this)")
+    args = p.parse_args()
+
+    # --from-list: just the repo ids a previous --print-repos wrote down.
+    if args.from_list:
+        if not args.from_list.is_file():
+            print(f"no list at {args.from_list}", file=sys.stderr)
+            return 1
+        repos = []
+        for raw in args.from_list.read_text(encoding="utf-8").splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if line and line not in repos:
+                repos.append(line)
+        if args.include:
+            keep = re.compile(args.include)
+            repos = [r for r in repos if keep.search(r)]
+        if args.print_repos:
+            print("\n".join(repos))
+            return 0
+        print(f"{len(repos)} repo(s) from {args.from_list}\n")
+        if args.download:
+            return download(repos, args.revision, args.workers)
+        if args.check:
+            return check(repos, args.revision)
+        return report(repos, args.revision)
+
+    catalog, origin = resolve_catalog(args.catalog)
+    if not catalog.is_file():
+        print(f"no catalog at {catalog} (from {origin})", file=sys.stderr)
+        if origin == "in-repo EXAMPLE":
+            print("Set AOB_MODEL_CATALOG or SCENARIOS_DATA_DIR to your real catalog.",
+                  file=sys.stderr)
+        return 1
+    if origin == "in-repo EXAMPLE":
+        # stderr: --print-repos is piped into a file, and a NOTE on stdout ends
+        # up inside the model list.
+        print(f"NOTE: using the in-repo EXAMPLE catalog at {catalog}.\n"
+              f"      Set AOB_MODEL_CATALOG or SCENARIOS_DATA_DIR for the real one.\n",
+              file=sys.stderr)
+
+    cards = load_cards(catalog)
+    total_cards = len(cards)
+    skipped_status: dict[str, int] = {}
+    if args.status != "any":
+        kept = []
+        for c in cards:
+            s = status_of(c)
+            if s == args.status:
+                kept.append(c)
+            else:
+                skipped_status[s] = skipped_status.get(s, 0) + 1
+        cards = kept
+
+    repos: list[str] = []
+    locals_: list[str] = []
+    notes: list[str] = []
+    for card in cards:
+        kind, target, why = classify(card)
+        notes.append(why)
+        if kind == "hub" and target and target not in repos:
+            repos.append(target)
+        elif kind == "local" and target and target not in locals_:
+            locals_.append(target)
+        # Auxiliary repos are needed whatever the primary kind: a local
+        # checkpoint can still name a Hub tokenizer or backbone.
+        if kind in ("hub", "local"):
+            for extra in aux_targets(card, target):
+                if extra not in repos:
+                    repos.append(extra)
+                    notes.append(f"{card.get('model_id', '?')}: + {extra} "
+                                 "(auxiliary checkpoint named in params)")
+
+    if args.include:
+        keep = re.compile(args.include)
+        before = len(repos)
+        repos = [r for r in repos if keep.search(r)]
+        locals_ = [x for x in locals_ if keep.search(x)]
+        notes.append(f"--include {args.include!r} kept {len(repos)} of {before} repos")
+
+    if args.print_repos:
+        print("\n".join(repos))
+        return 0
+
+    head = f"{total_cards} card(s) in {catalog} (from {origin})"
+    if skipped_status:
+        detail = ", ".join(f"{n} {s}" for s, n in sorted(skipped_status.items()))
+        head += f"; {len(cards)} with status={args.status} ({detail} skipped)"
+    print(f"{head}, {len(repos)} Hub repo(s), {len(locals_)} local checkpoint(s)\n")
+    for n in notes:
+        print(f"  {n}")
+    print()
+
+    # A catalog of only local checkpoints still has to be verified.
+    if not repos and not locals_:
+        print("nothing to fetch and nothing to verify")
+        return 0
+    if args.revision and len(repos) > 1:
+        print("note: --revision applies to every repo, which is rarely what you want with "
+              "more than one; prefer pinning per card in the catalog.\n")
+
+    root = Path(os.environ.get("AOB_HOME") or Path.cwd())
+
+    if args.download:
+        rc = download(repos, args.revision, args.workers) if repos else 0
+        return max(rc, check_locals(locals_, root)) if locals_ else rc
+    if args.check:
+        print("cards:")
+        rc = validate_cards(cards)
+        if repos:
+            rc = max(rc, check(repos, args.revision))
+        return max(rc, check_locals(locals_, root))
+    if locals_:
+        print(f"{len(locals_)} local checkpoint(s), verified against {root}:")
+        check_locals(locals_, root)
+        print()
+    return report(repos, args.revision) if repos else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

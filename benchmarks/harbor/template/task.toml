@@ -1,0 +1,42 @@
+schema_version = "1.4"
+
+[task]
+name = "assetopsbench/wosr-1"
+description = "Count work orders logged at the main site. AssetOpsBench scenario 1, wosr category."
+authors = [{ name = "AssetOpsBench Team" }]
+keywords = ["assetopsbench", "wosr", "industrial", "tool-use", "mcp"]
+
+[metadata]
+scenario_id = "1"
+category = "wosr"
+# Set by the adapter from scenario_meta.json (static_json when absent).
+scoring_method = "static_json"
+
+[agent]
+timeout_sec = 3600.0
+
+[verifier]
+timeout_sec = 900.0
+# Egress and judge keys, needed only by llm_judge scenarios.
+network_mode = "public"
+env = { AOB_JUDGE_MODEL = "${AOB_JUDGE_MODEL:-}", LITELLM_API_KEY = "${LITELLM_API_KEY:-}", LITELLM_BASE_URL = "${LITELLM_BASE_URL:-}", WATSONX_APIKEY = "${WATSONX_APIKEY:-}", ANTHROPIC_API_KEY = "${ANTHROPIC_API_KEY:-}", OPENAI_API_KEY = "${OPENAI_API_KEY:-}" }
+
+[environment]
+build_timeout_sec = 900.0
+# No `cpus` pin: Harbor makes it both a limit and a reservation, which fails on
+# a small Docker VM. Pass --override-cpus at run time instead.
+memory_mb = 4096
+workdir = "/opt/aob"
+# Injected into `main` only; the runners pass it on to every MCP server.
+# AOB_SCENARIO_ID becomes stirrup-agent's --scenario-id. The CouchDB credentials
+# are src/couchdb/docker-compose.yaml's placeholders, for a per-trial container.
+env = { COUCHDB_URL = "http://couchdb:5984", COUCHDB_USERNAME = "admin", COUCHDB_PASSWORD = "password", SCENARIOS_DATA_DIR = "/opt/aob/src/couchdb/scenarios_data", AGENT_TRAJECTORY_DIR = "/logs/agent", OTEL_TRACES_FILE = "/logs/agent/traces.jsonl", AOB_SCENARIO_ID = "1" }  # pragma: allowlist secret
+
+# Harbor gates agent setup on this, so the scenario's data loads here.
+# init_data.py recreates each database, so a retry is safe.
+[environment.healthcheck]
+command = "uv run python src/couchdb/init_data.py 1"
+interval_sec = 5.0
+timeout_sec = 300.0
+start_period_sec = 5.0
+retries = 3

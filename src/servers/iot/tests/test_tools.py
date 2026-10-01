@@ -1795,3 +1795,49 @@ class TestAssets:
         assert "assets" in data
         assert any(asset["asset_id"] == "Chiller 6" for asset in data["assets"])
         assert data["total_assets"] > 0
+
+
+class TestMissingDatabaseMessage:
+    @pytest.mark.anyio
+    async def test_wrong_asset_id_reports_unknown_key(self, mock_asset_db, mock_iot_db):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.return_value = {"docs": []}
+        mock_iot_db.check.return_value = True
+
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "MAIN", "asset_id": "Pump-X"}
+        )
+
+        assert data["error"] == "unknown asset_id Pump-X or no sensors found"
+
+    @pytest.mark.anyio
+    async def test_missing_database_reports_unavailable(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.side_effect = RuntimeError("Database does not exist.")
+        mock_iot_db.check.return_value = False
+
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "MAIN", "asset_id": "Chiller 6"}
+        )
+
+        assert "does not exist or is unreachable" in data["error"]
+        assert "do not retry" in data["error"]
+        assert "iot" not in data["error"]
+
+    @pytest.mark.anyio
+    async def test_find_assets_with_missing_database_reports_unavailable(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.find.side_effect = RuntimeError("Database does not exist.")
+        mock_iot_db.check.return_value = False
+
+        data = await call_tool(
+            mcp,
+            "find_assets_by_sensors",
+            {"site_name": "MAIN", "sensors": ["Temp"]},
+        )
+
+        assert "does not exist or is unreachable" in data["error"]
