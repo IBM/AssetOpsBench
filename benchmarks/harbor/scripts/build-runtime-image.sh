@@ -8,7 +8,9 @@
 # Arguments go to `docker buildx build` unchanged. Without a -t the image is
 # tagged assetopsbench/runtime:dev (the task template's default) and
 # assetopsbench/runtime:<commit>; without --push/--output/--load it is loaded
-# locally. Each commit tag keeps a multi-GB image alive, so `docker rmi` old ones.
+# locally. Commit tags share every layer but the repo's own (about 60 MB) until
+# uv.lock or models.txt changes, so a source edit rebuilds in seconds. Rebuilds
+# also reuse the uv download cache, which `docker builder prune` clears.
 #
 # Why an archive: `COPY . .` in base-image/Dockerfile would otherwise take
 # untracked and git-ignored files too, which is how a local results table with

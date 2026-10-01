@@ -17,6 +17,21 @@ RUN test -n "$AOB_COMMIT" || { \
         exit 1; } \
     && echo "$AOB_COMMIT" > /aob-commit
 
+# Model weights, from base-image/models.txt: public Hub repo ids exported from
+# the model catalog, so the build needs no access to a private catalog. Nothing
+# keeps the two in step; rerun this whenever the catalog's Hub entries change:
+#
+#   preload_models.py --print-repos > benchmarks/harbor/base-image/models.txt
+#
+# A stage of its own that depends only on these two files, so neither a source
+# edit nor a dependency change downloads the weights again. --from-list needs
+# nothing but huggingface_hub, pinned to uv.lock's version.
+FROM python:3.12-slim AS models
+ENV HF_HOME=/opt/hf HF_HUB_DISABLE_PROGRESS_BARS=1
+RUN pip install --no-cache-dir huggingface_hub==1.33.0
+COPY benchmarks/harbor/scripts/preload_models.py benchmarks/harbor/base-image/models.txt /tmp/preload/
+RUN python /tmp/preload/preload_models.py --from-list /tmp/preload/models.txt --download
+
 FROM python:3.12-slim
 
 # HF_HOME pins the Hugging Face cache, so a non-root user finds the preloaded
@@ -36,31 +51,30 @@ RUN pip install --no-cache-dir uv
 
 WORKDIR /opt/aob
 
+# Below the dependencies, since uv.lock changes more often than models.txt.
+COPY --from=models /opt/hf /opt/hf
+
 # Lockfile first so dependency layers survive source edits.
 COPY pyproject.toml uv.lock ./
 # --group otel: the task sets OTEL_TRACES_FILE, whose exporter needs it.
 # --no-dev: the dev group is pytest and the Jupyter stack, which nothing in a
 # trial imports.
-RUN uv sync --frozen --no-dev --group otel --extra tsfm --no-install-project
+# The uv cache is a cache mount, kept out of the image (it duplicated the venv)
+# and reused when uv.lock changes, so only new wheels download.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --group otel --extra tsfm --no-install-project
 
 # Repo, including src/couchdb/scenarios_data/shared, pulled once rather than
-# copied into every task context.
+# copied into every task context. Everything above survives a source edit.
 COPY . .
-RUN uv sync --frozen --no-dev --group otel --extra tsfm
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --group otel --extra tsfm
 
 # The environment is final. Every process in a trial starts through `uv run`
 # (healthcheck, agent, MCP servers, verifier), and `uv run` otherwise syncs the
 # default groups first, which would put the dev group back, downloading it in
 # every trial.
 ENV UV_NO_SYNC=1
-
-# Model weights, from base-image/models.txt: public Hub repo ids exported from
-# the model catalog, so the build needs no access to a private catalog. Nothing
-# keeps the two in step; rerun this whenever the catalog's Hub entries change:
-#
-#   preload_models.py --print-repos > benchmarks/harbor/base-image/models.txt
-RUN uv run python benchmarks/harbor/scripts/preload_models.py \
-        --from-list benchmarks/harbor/base-image/models.txt --download
 
 # No .git in the image; StirrupAgent.get_version_command reads the commit here.
 COPY --from=commit /aob-commit /opt/aob/.aob-commit

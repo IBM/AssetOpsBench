@@ -28,7 +28,9 @@ docker pull quay.io/assetopsbench/runtime:dev
 export AOB_RUNTIME_IMAGE=quay.io/assetopsbench/runtime:dev
 ```
 
-Or build it yourself, which takes a few minutes:
+Or build it yourself. The first build downloads the Python dependencies and
+about 4 GB of model weights, which takes several minutes; after a source change
+it takes seconds:
 
 ```bash
 bash benchmarks/harbor/scripts/build-runtime-image.sh
