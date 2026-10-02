@@ -95,6 +95,78 @@ def card_regime(card: dict) -> str | None:
     return card.get("training_regime") or (card.get("params") or {}).get("fit_strategy")
 
 
+def boot(model_catalog: Path):
+    """Import the server against an in-memory store seeded with the model catalog."""
+    os.environ["TSFM_STORE"] = "memory"
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+    sys.path.insert(0, "src")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import logging
+
+    logging.disable(logging.CRITICAL)
+    warnings.showwarning = lambda *a, **k: None
+    from smoke_agent_features import Agent
+
+    from servers.tsfm import main as server
+    from servers.tsfm.stores import model_store
+
+    raw = json.loads(model_catalog.read_text(encoding="utf-8"))
+    cards = [c for c in (raw if isinstance(raw, list) else raw.get("docs", [raw]))
+             if (c.get("status") or "active") == "active"]
+    for c in cards:
+        doc = dict(c)
+        doc.setdefault("_id", f"model:{doc['model_id']}")
+        server._STORE.put(model_store.collection_name(), doc)
+    return server, Agent(server), cards
+
+
+def worker(args) -> int:
+    """One model, in its own process, so the parent can stop it when it hangs."""
+    _, agent, cards = boot(args.model_catalog)
+    by_id = {c["model_id"]: c for c in cards}
+    mid, h = args.worker, args.fh
+    recipe = {"estimator": {"model_id": mid}, "fh": list(range(1, h + 1)),
+              "eval": {"metrics": ["mae"]}}
+
+    def run(ref, rec):
+        return agent.call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
+                                         "target_columns": ["value"], "recipe": rec})
+
+    if args.stage == "clean":
+        out = {"pre": agent.call("resolve_model", {"model_id": mid}),
+               "run": run(args.clean_ref, recipe)}
+    else:
+        out = {"gap": run(args.gapped_ref, recipe), "promised": None}
+        promised = by_id.get(mid, {}).get("prediction_length")
+        if promised and int(promised) != h and int(promised) <= 2896 // 4:
+            rec = dict(recipe, fh=list(range(1, int(promised) + 1)))
+            out["promised"], out["promised_h"] = run(args.clean_ref, rec), int(promised)
+    print("WORKER_RESULT:" + json.dumps(out, default=str), flush=True)
+    return 0
+
+
+def worker_call(args, mid, stage, clean, gapped, factor=1):
+    """(result dict | None on timeout, seconds)."""
+    import subprocess
+
+    cmd = [sys.executable, str(Path(__file__).resolve()),
+           "--model-catalog", str(args.model_catalog), "--fh", str(args.fh),
+           "--worker", mid, "--stage", stage, "--clean-ref", clean, "--gapped-ref", gapped]
+    t0 = time.perf_counter()
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, check=False,
+                           timeout=args.timeout * factor)
+    except subprocess.TimeoutExpired:
+        return None, time.perf_counter() - t0
+    secs = time.perf_counter() - t0
+    for line in reversed(p.stdout.splitlines()):
+        if line.startswith("WORKER_RESULT:"):
+            return json.loads(line[len("WORKER_RESULT:"):]), secs
+    tail = " ".join((p.stderr or p.stdout or "").split())[-300:]
+    return {"crash": f"exit {p.returncode}: {tail}"}, secs
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -104,6 +176,12 @@ def main() -> int:
     p.add_argument("--column", default=None, help="sensor column (default: the most variable)")
     p.add_argument("--fh", type=int, default=24, help="forecast horizon in steps (default 24)")
     p.add_argument("--models", nargs="*", default=None, help="only these model ids")
+    p.add_argument("--timeout", type=float, default=180.0,
+                   help="seconds each model may take before it is reported as hanging")
+    p.add_argument("--worker", help=argparse.SUPPRESS)
+    p.add_argument("--stage", help=argparse.SUPPRESS)
+    p.add_argument("--clean-ref", help=argparse.SUPPRESS)
+    p.add_argument("--gapped-ref", help=argparse.SUPPRESS)
     p.add_argument("--show-errors", action="store_true",
                    help="print the full error text the agent receives")
     args = p.parse_args()
@@ -115,31 +193,16 @@ def main() -> int:
         print(f"no series at {args.series}", file=sys.stderr)
         return 1
 
-    os.environ["TSFM_STORE"] = "memory"   # before the server module builds its stores
-    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
-    sys.path.insert(0, "src")
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import logging
+    if args.worker:
+        return worker(args)
 
-    logging.disable(logging.CRITICAL)
-    warnings.showwarning = lambda *a, **k: None
-    from smoke_agent_features import Agent, error_of, names_cause
+    _, agent, cards = boot(args.model_catalog)
+    from smoke_agent_features import error_of, names_cause
     from smoke_features import code_identity
 
-    from servers.tsfm import main as server
     from servers.tsfm.io import refs
-    from servers.tsfm.stores import model_store
 
-    raw = json.loads(args.model_catalog.read_text(encoding="utf-8"))
-    cards = [c for c in (raw if isinstance(raw, list) else raw.get("docs", [raw]))
-             if (c.get("status") or "active") == "active"]
-    for c in cards:
-        doc = dict(c)
-        doc.setdefault("_id", f"model:{doc['model_id']}")
-        server._STORE.put(model_store.collection_name(), doc)
     by_id = {c["model_id"]: c for c in cards}
-    agent = Agent(server)
 
     column, raw_y, y, season, freq = load_series(args.series, args.column)
     clean = refs.materialize_iot(y, asset_id="agent_fc_clean", freq=freq)
@@ -157,16 +220,22 @@ def main() -> int:
 
     failures = 0
 
-    def show(section, rows):
+    def section(title):
+        print(title)
+        print("  " + "-" * 78, flush=True)
+
+    def emit(name, status, note, err):
         nonlocal failures
-        print(section)
-        print("  " + "-" * 78)
-        for name, status, note, err in rows:
-            print(f"  {name[:34]:34} {status:5}  {note}")
-            if args.show_errors and err:
-                print(f"  {'':34}        agent sees: {' '.join(str(err).split())[:220]}")
-            if status == "FAIL":
-                failures += 1
+        print(f"  {name[:34]:34} {status:5}  {note}", flush=True)
+        if args.show_errors and err:
+            print(f"  {'':34}        agent sees: {' '.join(str(err).split())[:220]}", flush=True)
+        if status == "FAIL":
+            failures += 1
+
+    def show(title, rows):
+        section(title)
+        for row in rows:
+            emit(*row)
         print()
 
     # ------------------------------------------------------------------ discovery
@@ -209,37 +278,45 @@ def main() -> int:
     show("Discovery (what the agent reads before choosing)", rows)
 
     # ------------------------------------------------------------- every model
+    # Each model runs in its own process with a time limit. In-process, one model that
+    # trains for an hour (a card without a zero-shot pin backtests over ~60 refits) would
+    # hold the whole sweep, and nothing would print until it ended. Zero-shot cards first,
+    # so the cheap results arrive early.
     ids = [m for m in listed if not args.models or m in args.models]
-    rows = []
+    ids.sort(key=lambda m: (card_regime(by_id.get(m, {})) not in ("zero_shot", "zero-shot"), m))
     ran = []
-    for mid in ids:
+    section(f"run_recipe with every forecasting card (fh=1..{h}, eval=mae, "
+            f"limit {args.timeout:.0f}s each)")
+    for i, mid in enumerate(ids, 1):
         card = by_id.get(mid, {})
-        pre = agent.call("resolve_model", {"model_id": mid})
+        print(f"  ({i}/{len(ids)}) running {mid} ...", flush=True)
+        out, secs = worker_call(args, mid, "clean", clean, gapped)
+        if out is None:
+            emit(mid, "FAIL", f"no answer in {args.timeout:.0f}s; an agent's run_recipe call "
+                 "blocks the same way (no tool timeout)", None)
+            continue
+        if "crash" in out:
+            emit(mid, "FAIL", "the server process died", out["crash"])
+            continue
+        pre, r = out["pre"], out["run"]
         resolvable = bool(pre.get("resolvable"))
-        t0 = time.perf_counter()
-        r = agent.call("run_recipe", {"dataset_path": clean, "timestamp_column": "timestamp",
-                                      "target_columns": ["value"],
-                                      "recipe": {"estimator": {"model_id": mid}, "fh": fh,
-                                                 "eval": {"metrics": ["mae"]}}})
-        secs = time.perf_counter() - t0
         err = error_of(r)
         if err:
             if resolvable:
-                rows.append((mid, "FAIL", f"resolve_model said resolvable; run failed ({secs:.0f}s)",
-                             err))
+                emit(mid, "FAIL", f"resolve_model said resolvable; run failed ({secs:.0f}s)", err)
             else:
-                rows.append((mid, "SKIP", f"not runnable here: {pre.get('reason') or 'unresolvable'}",
-                             err))
+                emit(mid, "SKIP", f"not runnable here: {pre.get('reason') or 'unresolvable'}",
+                     err)
             continue
         score = r.get("backtest_score")
         regime = r.get("training_regime")
         folds = r.get("folds") or (r.get("results") or {}).get("folds")
         declared = card_regime(card)
+        if score is None or not math.isfinite(float(score)):
+            emit(mid, "FAIL", f"backtest_score={score}", None)
+            continue
         notes = [f"{regime}, {folds} fold(s), {secs:.0f}s"]
         status = "PASS"
-        if score is None or not math.isfinite(float(score)):
-            rows.append((mid, "FAIL", f"backtest_score={score}", None))
-            continue
         if declared in ("zero_shot", "zero-shot") and regime != "zero_shot":
             status = "FAIL"
             notes.append(f"card declares zero-shot, run reports {regime}")
@@ -253,46 +330,44 @@ def main() -> int:
         else:
             notes.insert(0, f"MAE {float(score):.4g} over {folds} folds (not comparable to "
                             "a one-holdout score)")
-        rows.append((mid, status, "; ".join(notes), None))
+        emit(mid, status, "; ".join(notes), None)
         ran.append(mid)
-    show(f"run_recipe with every forecasting card (fh=1..{h}, eval=mae)", rows
-         or [("-", "SKIP", "no forecasting cards", None)])
+    print()
 
     # --------------------------------------------------- gaps and promised horizon
-    rows = []
+    section("Gaps and the card's own horizon (models that ran)")
+    if not ran:
+        emit("-", "SKIP", "no model ran", None)
     for mid in ran:
-        r = agent.call("run_recipe", {"dataset_path": gapped, "timestamp_column": "timestamp",
-                                      "target_columns": ["value"],
-                                      "recipe": {"estimator": {"model_id": mid}, "fh": fh,
-                                                 "eval": {"metrics": ["mae"]}}})
+        print(f"  running {mid} ...", flush=True)
+        out, secs = worker_call(args, mid, "extra", clean, gapped, factor=2)
+        if out is None or "crash" in out:
+            emit(f"{mid}, gaps/horizon", "FAIL",
+                 f"no answer in {2 * args.timeout:.0f}s" if out is None
+                 else "the server process died", (out or {}).get("crash"))
+            continue
+        r = out["gap"]
         err = error_of(r)
         score = r.get("backtest_score")
         if err:
-            ok = names_cause(err, "missing") or names_cause(err, "impute") or names_cause(err, "nan")
-            rows.append((f"{mid}, real gaps", "PASS" if ok else "FAIL",
-                         "refused, names the gaps" if ok else "error does not name the gaps", err))
+            ok = any(names_cause(err, w) for w in ("missing", "impute", "nan"))
+            emit(f"{mid}, real gaps", "PASS" if ok else "FAIL",
+                 "refused, names the gaps" if ok else "error does not name the gaps", err)
         elif score is not None and math.isfinite(float(score)):
-            rows.append((f"{mid}, real gaps", "PASS", "forecast through the gaps", None))
+            emit(f"{mid}, real gaps", "PASS", "forecast through the gaps", None)
         else:
-            rows.append((f"{mid}, real gaps", "FAIL",
-                         f"reported success with backtest_score={score}", None))
-
-        promised = by_id.get(mid, {}).get("prediction_length")
-        if promised and int(promised) != h and int(promised) <= len(y) // 4:
-            r = agent.call("run_recipe", {"dataset_path": clean, "timestamp_column": "timestamp",
-                                          "target_columns": ["value"],
-                                          "recipe": {"estimator": {"model_id": mid},
-                                                     "fh": list(range(1, int(promised) + 1)),
-                                                     "eval": {"metrics": ["mae"]}}})
+            emit(f"{mid}, real gaps", "FAIL", f"reported success with backtest_score={score}",
+                 None)
+        if out.get("promised") is not None:
+            promised, r = out["promised_h"], out["promised"]
             err = error_of(r)
             score = r.get("backtest_score")
             if not err and score is not None and math.isfinite(float(score)):
-                rows.append((f"{mid}, fh={promised} (card)", "PASS", "ran the card's horizon", None))
+                emit(f"{mid}, fh={promised} (card)", "PASS", "ran the card's horizon", None)
             else:
-                rows.append((f"{mid}, fh={promised} (card)", "FAIL",
-                             "the card's own prediction_length does not run", err))
-    show("Gaps and the card's own horizon (models that ran)", rows
-         or [("-", "SKIP", "no model ran", None)])
+                emit(f"{mid}, fh={promised} (card)", "FAIL",
+                     "the card's own prediction_length does not run", err)
+    print()
 
     if failures:
         print(f"{failures} case(s) failed. --show-errors prints what the agent sees.",
