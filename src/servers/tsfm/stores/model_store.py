@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from ..core import schemas
+from ..core.store import StoreUnavailable
 
 COLLECTION = "model_catalog"
 COLLECTION_ENV_VAR = "MODEL_CATALOG_DBNAME"
@@ -22,6 +23,15 @@ COLLECTION_ENV_VAR = "MODEL_CATALOG_DBNAME"
 def collection_name() -> str:
     """Runtime model catalog database name, defaulting to model_catalog."""
     return os.environ.get(COLLECTION_ENV_VAR, COLLECTION)
+
+
+def _catalog(store) -> str:
+    """The catalog collection. A catalog that was never loaded is unavailable, not
+    empty, so lookups do not report every id as unknown."""
+    collection = collection_name()
+    if not store.exists(collection):
+        raise StoreUnavailable()
+    return collection
 
 
 def _now():
@@ -43,7 +53,7 @@ def _next_version(v) -> str:
 # read
 # --------------------------------------------------------------------------- #
 def get_model(store, model_id: str) -> Optional[dict]:
-    return store.get(collection_name(), _id(model_id))
+    return store.get(_catalog(store), _id(model_id))
 
 
 def list_models(
@@ -69,7 +79,7 @@ def list_models(
         sel["task_ids"] = {"$elemMatch": {"$eq": task_id}}
     if usage_mode:
         sel["usage_modes"] = {"$elemMatch": {"$eq": usage_mode}}
-    return store.find(collection_name(), sel)
+    return store.find(_catalog(store), sel)
 
 
 def find_models(
@@ -170,7 +180,7 @@ def get_lineage(store, model_id: str) -> dict:
         cur = parent
     descendants = [
         m["model_id"]
-        for m in store.find(collection_name(), {"base_model_id": model_id})
+        for m in store.find(_catalog(store), {"base_model_id": model_id})
     ]
     return {
         "model_id": model_id,
@@ -221,7 +231,7 @@ def _leaderboard_stats(url: str) -> dict:
 # --------------------------------------------------------------------------- #
 def register_model(store, model: dict, *, overwrite: bool = False) -> dict:
     doc = schemas.validate_model(model)  # raises on invalid
-    collection = collection_name()
+    collection = _catalog(store)
     if store.get(collection, doc["_id"]) and not overwrite:
         raise ValueError(
             f"model '{doc['model_id']}' already exists; use new_model_version to supersede it, "

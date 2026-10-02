@@ -1,7 +1,11 @@
 """Tests for IoT MCP server tools."""
 
+from unittest.mock import patch
+
+import couchdb3
 import pytest
 
+from servers.db_errors import DATA_UNAVAILABLE
 from servers.iot.main import mcp
 from .conftest import call_tool, requires_couchdb, requires_iot_db
 
@@ -58,14 +62,20 @@ class TestSites:
         assert data["sites"] == ["MAIN", "NORTH"]
 
     @pytest.mark.anyio
-    async def test_falls_back_to_default_site(self, no_asset_db):
+    async def test_falls_back_to_default_site(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": []}
         data = await call_tool(mcp, "sites", {})
         assert data["sites"] == ["MAIN"]
+
+    @pytest.mark.anyio
+    async def test_missing_registry_reports_unavailable(self, no_asset_db):
+        data = await call_tool(mcp, "sites", {})
+        assert data["error"] == DATA_UNAVAILABLE
 
 
 class TestAssetIds:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(mcp, "asset_ids", {"site_name": "INVALID"})
         assert "error" in data
         assert "unknown site" in data["error"]
@@ -90,7 +100,7 @@ class TestAssetIds:
     async def test_db_disconnected(self, no_asset_db):
         data = await call_tool(mcp, "asset_ids", {"site_name": "MAIN"})
         assert "error" in data
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @requires_couchdb
     @pytest.mark.anyio
@@ -103,7 +113,7 @@ class TestAssetIds:
 
 class TestAssetDetail:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp, "asset_detail", {"site_name": "INVALID", "asset_id": "Pump-1"}
         )
@@ -190,7 +200,7 @@ class TestAssetDetail:
             mcp, "asset_detail", {"site_name": "MAIN", "asset_id": "Pump-1"}
         )
         assert "error" in data
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @requires_couchdb
     @pytest.mark.anyio
@@ -206,7 +216,7 @@ class TestAssetDetail:
 
 class TestMeasuredSensors:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp, "measured_sensors", {"site_name": "INVALID", "asset_id": "Pump-1"}
         )
@@ -286,7 +296,7 @@ class TestMeasuredSensors:
             mcp, "measured_sensors", {"site_name": "MAIN", "asset_id": "Pump-1"}
         )
         assert "error" in data
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @requires_iot_db
     @pytest.mark.anyio
@@ -301,7 +311,7 @@ class TestMeasuredSensors:
 
 class TestInstalledSensors:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp, "installed_sensors", {"site_name": "INVALID", "asset_id": "Pump-1"}
         )
@@ -372,7 +382,7 @@ class TestInstalledSensors:
             mcp, "installed_sensors", {"site_name": "MAIN", "asset_id": "Pump-1"}
         )
         assert "error" in data
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @requires_couchdb
     @pytest.mark.anyio
@@ -387,7 +397,7 @@ class TestInstalledSensors:
 
 class TestFindAssetsBySensors:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp,
             "find_assets_by_sensors",
@@ -501,7 +511,7 @@ class TestFindAssetsBySensors:
 
 class TestStreamExtent:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp,
             "stream_extent",
@@ -556,7 +566,7 @@ class TestStreamExtent:
         )
 
         assert "error" in data
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @pytest.mark.anyio
     async def test_rejects_reserved_sensor_field(self, mock_asset_db, mock_iot_db):
@@ -847,7 +857,7 @@ class TestStreamExtent:
 
 class TestHistory:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp,
             "history",
@@ -882,7 +892,7 @@ class TestHistory:
             {"site_name": "MAIN", "asset_id": "Pump-1"},
         )
 
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @pytest.mark.anyio
     async def test_rejects_limits_outside_page_range(
@@ -1160,7 +1170,7 @@ class TestHistory:
 
 class TestLatestReading:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp,
             "latest_reading",
@@ -1179,7 +1189,7 @@ class TestLatestReading:
             {"site_name": "MAIN", "asset_id": "Pump-1"},
         )
 
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @pytest.mark.anyio
     async def test_rejects_reserved_sensor(self, mock_asset_db, mock_iot_db):
@@ -1334,7 +1344,7 @@ class TestLatestReading:
 
 class TestSensorCoverage:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp,
             "sensor_coverage",
@@ -1353,7 +1363,7 @@ class TestSensorCoverage:
             {"site_name": "MAIN", "asset_id": "Pump-1"},
         )
 
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @pytest.mark.anyio
     async def test_counts_non_null_values_and_chronological_bounds(
@@ -1458,7 +1468,7 @@ class TestSensorCoverage:
 
 class TestSensorStats:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(
             mcp,
             "sensor_stats",
@@ -1493,7 +1503,7 @@ class TestSensorStats:
             {"site_name": "MAIN", "asset_id": "Pump-1"},
         )
 
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @pytest.mark.anyio
     async def test_rejects_reserved_sensor_field(self, mock_asset_db, mock_iot_db):
@@ -1717,7 +1727,7 @@ class TestSensorStats:
 
 class TestAssets:
     @pytest.mark.anyio
-    async def test_invalid_site(self):
+    async def test_invalid_site(self, mock_asset_db):
         data = await call_tool(mcp, "assets", {"site_name": "INVALID"})
         assert "error" in data
         assert "unknown site" in data["error"]
@@ -1786,7 +1796,7 @@ class TestAssets:
     async def test_db_disconnected(self, no_asset_db):
         data = await call_tool(mcp, "assets", {"site_name": "MAIN"})
         assert "error" in data
-        assert "not connected" in data["error"].lower()
+        assert "does not exist or is unreachable" in data["error"]
 
     @requires_couchdb
     @pytest.mark.anyio
@@ -1841,3 +1851,52 @@ class TestMissingDatabaseMessage:
         )
 
         assert "does not exist or is unreachable" in data["error"]
+
+    @pytest.mark.anyio
+    async def test_falsy_missing_database_reports_unavailable(
+        self, mock_asset_db, mock_iot_db
+    ):
+        # couchdb3.Database is falsy (HEAD 404) when the database does not exist.
+        mock_asset_db.find.return_value = {"docs": [{"siteid": "MAIN"}]}
+        mock_iot_db.__bool__.return_value = False
+        mock_iot_db.check.return_value = False
+
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "MAIN", "asset_id": "Chiller 6"}
+        )
+
+        assert "does not exist or is unreachable" in data["error"]
+        assert "not connected" not in data["error"]
+
+    @pytest.mark.anyio
+    async def test_missing_registry_not_reported_as_unknown_site(
+        self, mock_asset_db, mock_iot_db
+    ):
+        mock_asset_db.find.side_effect = RuntimeError("Database does not exist.")
+        mock_asset_db.check.return_value = False
+
+        data = await call_tool(
+            mcp, "measured_sensors", {"site_name": "SITE_A", "asset_id": "Chiller 6"}
+        )
+
+        assert "does not exist or is unreachable" in data["error"]
+        assert "unknown site" not in data["error"]
+
+    @pytest.mark.anyio
+    async def test_unreachable_couchdb_hides_database_name_and_host(self):
+        # A real client against a closed port: CouchDB is unreachable.
+        def unreachable(name):
+            return couchdb3.Database(name, url="http://127.0.0.1:9")
+
+        with (
+            patch("servers.iot.main.asset_db", unreachable("secret_asset")),
+            patch("servers.iot.main.iot_db", unreachable("secret_iot")),
+        ):
+            for tool, args in [
+                ("sites", {}),
+                ("asset_ids", {"site_name": "MAIN"}),
+                ("measured_sensors", {"site_name": "MAIN", "asset_id": "Chiller 6"}),
+                ("history", {"site_name": "MAIN", "asset_id": "Chiller 6"}),
+            ]:
+                data = await call_tool(mcp, tool, args)
+                assert data["error"] == DATA_UNAVAILABLE, tool

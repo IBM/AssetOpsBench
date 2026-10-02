@@ -1,6 +1,7 @@
 """Tests for Utilities MCP server tools."""
 
 import pytest
+from servers.db_errors import DATA_UNAVAILABLE
 from servers.utilities import main as utilities
 from servers.utilities.main import mcp
 from .conftest import call_tool
@@ -10,6 +11,9 @@ class FakeCatalogDB:
     def __init__(self, docs):
         self.docs = docs
         self.calls = []
+
+    def check(self):
+        return True
 
     def find(self, selector, fields=None, limit=200):
         self.calls.append({"selector": selector, "fields": fields, "limit": limit})
@@ -62,6 +66,34 @@ def fake_catalog_db(monkeypatch):
 
 
 class TestCatalogTools:
+    @pytest.mark.anyio
+    async def test_missing_catalog_reports_unavailable(self, monkeypatch):
+        monkeypatch.setattr(utilities, "catalog_db", None)
+
+        data = await call_tool(mcp, "get_sensor_catalog", {})
+
+        assert data == {"error": DATA_UNAVAILABLE}
+
+    @pytest.mark.anyio
+    async def test_unreachable_couchdb_hides_database_name_and_host(
+        self, monkeypatch
+    ):
+        import couchdb3
+
+        monkeypatch.setattr(
+            utilities,
+            "catalog_db",
+            couchdb3.Database("secret_catalog", url="http://127.0.0.1:9"),
+        )
+
+        for tool in (
+            "get_sensor_catalog",
+            "get_asset_catalog",
+            "get_failure_mode_catalog",
+        ):
+            data = await call_tool(mcp, tool, {})
+            assert data == {"error": DATA_UNAVAILABLE}, tool
+
     @pytest.mark.anyio
     async def test_get_sensor_catalog_lists_sensor_entries(self, fake_catalog_db):
         data = await call_tool(mcp, "get_sensor_catalog", {})
