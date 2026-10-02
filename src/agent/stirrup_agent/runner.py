@@ -53,6 +53,15 @@ _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "assetops-code")
 _WORKING_CONTEXT_BUDGET = 100_000
 _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
+# Stirrup is the only runner using ASSETOPS_FINISH_TOOL, so the finish contract
+# stays out of the shared AGENT_SYSTEM_PROMPT: placeholders there would leak
+# literal braces into the four runners that import it without formatting.
+_FINISH_SYSTEM_PROMPT = """\
+Complete the task within {max_turns} steps. When you are done you must call the
+`{finish_tool_name}` tool as your final step, putting your complete response in
+its `answer` argument. Record any assumptions you had to make in `reason`.
+Anything not submitted through `answer` is not graded.
+"""
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
 - MCP tools and their definitions are authoritative for domain data and semantics.
@@ -63,8 +72,11 @@ Code execution:
   Never use it for planning, comments, placeholders, or empty scripts.
 - Prefer one complete script that inspects, analyzes, and verifies. Do not repeat
   equivalent experiments; correct failures directly.
-- Stay inside the execution workspace and use relative paths. Workspace state
-  persists across code_exec calls.
+- Stay inside the execution workspace and use relative paths. Files you write
+  persist across code_exec calls, but shell state does not: every command runs
+  independently, with no working directory or environment variable carrying over
+  from one call to the next. When a step needs another directory, chain it into
+  the same command (e.g. `cd data && python run.py`).
 - For artifacts, inspect only the schema, counts, a small sample, or the specific
   rows or fields needed, then process in place. If an artifact exceeds 200 KiB,
   never print it in full; extract and process the relevant subset in bounded
@@ -72,7 +84,8 @@ Code execution:
   unless domain state has changed.
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
-The Docker execution workspace is /workspace. Host filesystem paths are not
+The Docker execution workspace is /workspace, and every command starts there.
+Host filesystem paths are not
 available inside the container. NumPy, pandas, and SciPy are installed; check
 availability before using other packages.
 """
@@ -300,16 +313,26 @@ class StirrupAgentRunner(AgentRunner):
         ]
 
     def _build_system_prompt(self) -> str:
-        """Append code-execution guidance when the code track is enabled."""
+        """Shared prompt, the Stirrup finish contract, then code guidance.
+
+        The finish section is formatted here because max_turns and the finish
+        tool's own name are both in scope; neither is knowable in the shared
+        prompt module.
+        """
+        finish = _FINISH_SYSTEM_PROMPT.format(
+            max_turns=self._max_turns,
+            finish_tool_name=ASSETOPS_FINISH_TOOL.name,
+        )
+        base = f"{AGENT_SYSTEM_PROMPT}\n{finish}"
         if not self._code_enabled:
-            return AGENT_SYSTEM_PROMPT
+            return base
 
         backend_prompt = (
             _DOCKER_CODE_EXEC_SYSTEM_PROMPT
             if self._code_backend == "docker"
             else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
         )
-        return f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+        return f"{base}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
 
     # -- run ---------------------------------------------------------------
 
