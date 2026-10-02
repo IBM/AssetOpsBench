@@ -1,14 +1,8 @@
-import json
 import logging
 import os
-import tempfile
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional, Union
-from uuid import uuid4
 
 import couchdb3
-import pendulum
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -46,21 +40,8 @@ except Exception as e:
 
 mcp = FastMCP(
     "utilities",
-    instructions=(
-        "General utilities: read JSON files, get current date/time, and query "
-        "asset, sensor, and failure-mode catalog data."
-    ),
+    instructions="Query asset, sensor, and failure-mode catalog data.",
 )
-
-
-class DateTimeResult(BaseModel):
-    currentDateTime: str
-    currentDateTimeDescription: str
-
-
-class TimeEnglishResult(BaseModel):
-    english: str
-    iso: str
 
 
 class ErrorResult(BaseModel):
@@ -97,7 +78,6 @@ def _missing_db_error() -> Optional[ErrorResult]:
     if catalog_db is not None and catalog_db.check():
         return None
     return ErrorResult(error=DATA_UNAVAILABLE)
-
 
 def _clean_filter(value: Optional[str]) -> Optional[str]:
     if value is None:
@@ -149,21 +129,6 @@ def _find_catalog(
         entries=docs,
         message=f"found {len(docs)} {catalog_type} catalog entries",
     )
-
-
-# --- JSON Tools ---
-
-
-@mcp.tool(title="Read JSON File")
-def json_reader(file_name: str) -> str:
-    """Reads a JSON file, parses its content, and returns the parsed data."""
-    try:
-        with open(file_name, "r") as fp:
-            contents = json.load(fp)
-        return json.dumps(contents)
-    except Exception as e:
-        logger.error(f"Error reading JSON file {file_name}: {e}")
-        return json.dumps({"error": str(e)})
 
 
 # --- Catalog Tools ---
@@ -224,37 +189,6 @@ def get_failure_mode_catalog(
         category=category,
         fields=["category", "failure_mode", "description"],
     )
-
-
-# --- Time Tools ---
-
-
-@mcp.tool(title="Get Current Date and Time")
-def current_date_time() -> DateTimeResult:
-    """Provides the current date time as a JSON object."""
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat().replace("+00:00", "Z")
-
-    date_part = now_iso.split("T")[0]
-    time_part = now_iso.split("T")[1].split(".")[0]
-
-    description = f"Today's date is {date_part} and time is {time_part}."
-
-    return DateTimeResult(
-        currentDateTime=now_iso, currentDateTimeDescription=description
-    )
-
-
-@mcp.tool(title="Get Current Time in English")
-def current_time_english() -> TimeEnglishResult:
-    """Returns the current time in English text."""
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat().replace("+00:00", "Z")
-
-    dt = pendulum.parse(now_iso)
-    eng = dt.to_datetime_string()
-
-    return TimeEnglishResult(english=eng, iso=now_iso)
 
 
 def main():

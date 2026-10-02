@@ -1,0 +1,30 @@
+# Merged over Harbor's own `main` service. No `ports:` block: Harbor namespaces
+# containers, networks and volumes per trial, but not host ports, so a
+# published port would collide between concurrent trials.
+services:
+  main:
+    # The runtime image to build FROM, read from the shell at run time; unset,
+    # the local tag build-runtime-image.sh produces.
+    build:
+      args:
+        AOB_RUNTIME_IMAGE: ${AOB_RUNTIME_IMAGE:-assetopsbench/runtime:dev}
+    depends_on:
+      couchdb:
+        condition: service_healthy
+
+  couchdb:
+    image: couchdb:3.5
+    environment:
+      # The image reads COUCHDB_USER; the clients read COUCHDB_USERNAME.
+      COUCHDB_USER: admin  # pragma: allowlist secret
+      COUCHDB_PASSWORD: password  # pragma: allowlist secret
+    expose:
+      - "5984"
+    # Harbor's resource overrides apply to `main` only.
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5984/_up"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
