@@ -24,6 +24,10 @@ class CouchError(Exception):
     pass
 
 
+class CouchConflict(CouchError):
+    """A write lost a revision race (HTTP 409)."""
+
+
 class DatabaseUnavailable(CouchError):
     """The database does not exist or CouchDB is unreachable."""
 
@@ -94,7 +98,7 @@ class CouchClient:
             raise CouchError("document must have _id")
         r = await self._request("PUT", f"/{self.db}/{doc['_id']}", json=doc)
         if r.status_code == 409:
-            raise CouchError(f"conflict updating {doc['_id']} (stale _rev)")
+            raise CouchConflict(f"conflict updating {doc['_id']} (stale _rev)")
         self._raise_for_status(r)
         return r.json()
 
@@ -151,6 +155,6 @@ class CouchClient:
             try:
                 await self.put(doc)
                 return str(doc["value"])
-            except CouchError:
+            except CouchConflict:
                 continue
         raise CouchError("could not allocate wonum (counter contention)")

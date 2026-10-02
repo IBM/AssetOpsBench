@@ -79,3 +79,30 @@ async def test_failure_codes_report_unavailable_database() -> None:
     result = await workorders.get_failure_codes(_client("Database does not exist."))
 
     assert result["error"] == DATA_UNAVAILABLE
+
+
+@pytest.mark.anyio
+async def test_wonum_allocation_does_not_retry_http_errors() -> None:
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(404, json={"error": "not_found", "reason": "missing"})
+        return httpx.Response(500, json={})
+
+    with pytest.raises(CouchError, match="HTTP 500"):
+        await _transport_client(handler).next_wonum("MAIN")
+
+
+@pytest.mark.anyio
+async def test_wonum_allocation_retries_conflicts() -> None:
+    puts = []
+
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(404, json={"error": "not_found", "reason": "missing"})
+        puts.append(request)
+        if len(puts) == 1:
+            return httpx.Response(409, json={"error": "conflict"})
+        return httpx.Response(201, json={"ok": True})
+
+    assert await _transport_client(handler).next_wonum("MAIN") == "1001"
+    assert len(puts) == 2
