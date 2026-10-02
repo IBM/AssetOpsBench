@@ -2,7 +2,7 @@
 
 import pytest
 
-from servers.fmsr.main import mcp
+from servers.fmsr.main import _MISSING_DATABASE_ERROR, mcp
 
 from .conftest import call_tool, requires_failure_mode_db, requires_fmsr_llm
 
@@ -52,7 +52,7 @@ class TestGetFailureModes:
 
         data = await call_tool(mcp, "get_failure_modes", {"asset_class": "pump"})
 
-        assert data == {"error": "database not connected"}
+        assert data == {"error": _MISSING_DATABASE_ERROR}
 
     @pytest.mark.anyio
     async def test_database_read_error_returns_error(self, broken_fm_db):
@@ -314,7 +314,7 @@ class TestAddFailureModes:
             {"asset_class": "pump", "failure_modes": ["bearing wear"]},
         )
 
-        assert data == {"error": "database not connected"}
+        assert data == {"error": _MISSING_DATABASE_ERROR}
 
     @pytest.mark.anyio
     async def test_database_read_error_returns_error(self, broken_fm_db):
@@ -345,6 +345,14 @@ class TestMissingDatabaseMessage:
         from couchdb3.exceptions import NotFoundError
 
         class MissingDatabase:
+            # couchdb3.Database is falsy and check() is False when the
+            # database does not exist.
+            def __bool__(self):
+                return False
+
+            def check(self):
+                return False
+
             def get(self, *args, **kwargs):
                 raise NotFoundError(
                     '{"error":"not_found","reason":"Database does not exist."}'
@@ -356,6 +364,22 @@ class TestMissingDatabaseMessage:
 
         data = await call_tool(mcp, "get_failure_modes", {"asset_class": "pump"})
 
-        assert "does not exist in this environment" in data["error"]
+        assert "does not exist or is unreachable" in data["error"]
         assert "failure_mode" not in data["error"]
         assert "no failure_mode record" not in data["error"]
+
+    @pytest.mark.anyio
+    async def test_unreachable_couchdb_hides_database_name_and_host(self, monkeypatch):
+        import couchdb3
+
+        monkeypatch.setattr(
+            "servers.fmsr.main.fm_db",
+            couchdb3.Database("secret_fm", url="http://127.0.0.1:9"),
+        )
+
+        for tool, args in [
+            ("get_failure_modes", {"asset_class": "pump"}),
+            ("add_failure_modes", {"asset_class": "pump", "failure_modes": ["x"]}),
+        ]:
+            data = await call_tool(mcp, tool, args)
+            assert data == {"error": _MISSING_DATABASE_ERROR}, tool

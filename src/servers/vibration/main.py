@@ -19,6 +19,8 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
+from servers.db_errors import DATA_UNAVAILABLE
+
 from .couchdb_client import (
     database_available,
     fetch_vibration_timeseries,
@@ -67,12 +69,7 @@ def _missing_db_error() -> Optional[ErrorResult]:
     missing database is not reported as missing asset/sensor data."""
     if database_available():
         return None
-    return ErrorResult(
-        error=(
-            "the data source does not exist or is unreachable in this "
-            "environment; the data is unavailable, do not retry with other arguments"
-        )
-    )
+    return ErrorResult(error=DATA_UNAVAILABLE)
 
 
 # ---------------------------------------------------------------------------
