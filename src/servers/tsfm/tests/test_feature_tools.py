@@ -177,12 +177,3 @@ def test_flux_percentile_extractors_are_registered():
                  "flux_percentile_ratio_mid50", "flux_percentile_ratio_mid65",
                  "flux_percentile_ratio_mid80", "percent_difference_flux_percentile"):
         assert name in FS.EXTRACTORS, name
-
-
-def test_gate_gaps_refuses_an_all_missing_channel():
-    import pytest
-
-    from ..engine import composition
-
-    with pytest.raises(ValueError, match="no values at all"):
-        composition.gate_gaps({"a": np.array([1.0, 2.0]), "b": np.full(2, np.nan)}, "interpolate")

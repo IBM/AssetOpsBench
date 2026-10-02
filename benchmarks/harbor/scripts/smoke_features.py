@@ -269,9 +269,14 @@ def check_gap_boundary(registry, channels, args):
         return [("extract_features, gapped", "FAIL",
                  (f"accepted a series with {int(np.isnan(gapped).sum())} gaps and returned "
                   f"mean={got:g}; gapped input must be refused unless impute is set"))], False
+    except TypeError:
+        pass  # an older signature; the refusal check below still runs
     except ValueError as exc:
         rows.append(("extract_features, gapped", "PASS",
                      f"refused: {' '.join(str(exc).split())[:70]}..."))
+
+    if not rows:
+        return [("extract_features, gapped", "FAIL", "no refusal and no impute argument")], False
 
     names = sorted(registry)
     filled = C._impute(pd.Series(gapped), "interpolate").to_numpy(dtype=float)
