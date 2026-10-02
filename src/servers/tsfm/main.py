@@ -103,13 +103,54 @@ def _load_target(
     return obj.iloc[:, 0] if isinstance(obj, pd.DataFrame) else obj
 
 
-def _check_recipe(recipe) -> Optional[str]:
+# Transform specs each recipe path can apply. Anything else would be ignored or fail
+# deep inside the engine, so it is refused up front with a message naming it.
+_FORECAST_TRANSFORMS = ("sktime_class",)
+_TABULAR_TRANSFORMS = ("extractors", "flops_select", "sktime_class")
+
+
+def _check_transforms(recipe: dict, tabular: bool) -> Optional[str]:
+    transforms = recipe.get("transforms")
+    if transforms is None:
+        return None
+    if not isinstance(transforms, list):
+        return "recipe['transforms'] must be a list of transform specs"
+    accepted = _TABULAR_TRANSFORMS if tabular else _FORECAST_TRANSFORMS
+    shapes = ", ".join("{%s: ...}" % k for k in accepted)
+    for i, t in enumerate(transforms):
+        if not isinstance(t, dict):
+            return f"recipe['transforms'][{i}] must be an object; accepted shapes: {shapes}"
+        if "feature_id" in t:
+            return (
+                f"recipe['transforms'][{i}] names feature card {t['feature_id']!r}; stored "
+                "transform cards cannot be applied in recipes. Accepted shapes: " + shapes
+            )
+        kind = [k for k in accepted if k in t]
+        if not kind:
+            return (
+                f"recipe['transforms'][{i}] has keys {sorted(t)}; accepted shapes: {shapes}"
+            )
+        if kind[0] == "extractors":
+            from .reasoning import feature_selection as FS
+
+            names = t["extractors"]
+            if not isinstance(names, list) or not names:
+                return f"recipe['transforms'][{i}]['extractors'] must be a non-empty list"
+            unknown = [n for n in names if n not in FS.EXTRACTORS]
+            if unknown:
+                return (
+                    f"unknown extractor(s): {unknown}. See list_features(kind='extractor')."
+                )
+    return None
+
+
+def _check_recipe(recipe, tabular: bool = False) -> Optional[str]:
     """Validate the shape of a recipe before the engine touches it."""
     if not isinstance(recipe, dict) or not recipe:
         return "recipe must be a non-empty object"
     if "estimator" not in recipe and "ensemble" not in recipe:
         return "recipe must include an 'estimator' or an 'ensemble'"
-    return None
+    return _check_transforms(recipe, tabular)
 
 
 def _check_task(task_id: str) -> Optional[str]:
@@ -1500,7 +1541,10 @@ def recipe_template() -> RecipeTemplateResult:
         ],
         optional_blocks=[
             'fh         - forecast horizon, e.g. [1, 2, 3]. Default [1, 2, 3, 4, 5]',
-            'transforms - list of transform specs applied to the target before the forecaster',
+            'transforms - list of transform specs. run_recipe: {"sktime_class": ..., "params": {...}} '
+            '(applied to the target before the forecaster). run_tabular_recipe: '
+            '{"extractors": [names from list_features]}, {"flops_select": true}, or '
+            '{"sktime_class": ...}. Stored transform cards ({"feature_id": ...}) are refused',
             'ensemble   - {"members": [<estimator spec>, ...], "combine": '
             '"mean|median|min|max|weighted|stack", "weights": [...]} - use INSTEAD of estimator',
             'conformal  - {"coverage": 0.9} for calibrated prediction intervals',
@@ -1508,7 +1552,7 @@ def recipe_template() -> RecipeTemplateResult:
             'save_to    - directory path; after a fine-tune, persist the fitted weights there and '
             'return checkpoint_path in the result (feed it to register_finetuned)',
             'anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)',
-            'impute     - fill gaps before fitting',
+            'impute     - "interpolate", "drop" or "zero"; required when the data has gaps',
             'eval       - {"metrics": ["smape", ...]} - the first metric scores the backtest',
         ],
         rules=[
@@ -1717,7 +1761,7 @@ def run_tabular_recipe(
     """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
-    bad = _check_recipe(recipe)
+    bad = _check_recipe(recipe, tabular=True)
     if bad:
         return ErrorResult(error=bad)
     try:
@@ -1730,7 +1774,8 @@ def run_tabular_recipe(
                 )
             y = df[label_column].to_numpy()
             df = df.drop(columns=[label_column])
-        X = df.apply(pd.to_numeric, errors="coerce").fillna(0.0).to_numpy()
+        X = df.apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+        X, y = composition.gate_gap_rows(X, y, recipe.get("impute"))
         res = composition.run_tabular_recipe(_STORE, X, recipe, y=y, asset_id=asset_id)
         results_file = refs.write_json(res, name="tabular_run")
         _index_result(

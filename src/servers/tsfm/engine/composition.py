@@ -439,6 +439,35 @@ def gate_gaps(channels: Dict[str, Any], impute: Optional[str]) -> Dict[str, np.n
     return out
 
 
+def gate_gap_rows(X, y, impute: Optional[str]):
+    """The tabular counterpart of `gate_gaps`: X is instances x time points.
+
+    Refuses missing values unless `impute` is set. 'drop' removes the instances (and their
+    labels) that have any; 'interpolate' and 'zero' fill each instance on its own row.
+    """
+    X = np.asarray(X, dtype=float)
+    X = np.where(np.isfinite(X), X, np.nan)
+    bad = np.isnan(X).any(axis=1)
+    if not bad.any():
+        return X, y
+    if impute is None:
+        raise ValueError(
+            f"{int(bad.sum())} of {len(X)} instance(s) have missing values; features are not "
+            "computed on gapped data. Set recipe['impute'] to 'interpolate', 'drop' (removes "
+            "those instances), or 'zero'."
+        )
+    if impute == "drop":
+        keep = ~bad
+        if not keep.any():
+            raise ValueError("no instances left after impute='drop'")
+        return X[keep], (None if y is None else np.asarray(y)[keep])
+    empty = int(np.isnan(X).all(axis=1).sum())
+    if empty:
+        raise ValueError(f"{empty} instance(s) have no values at all; use impute='drop'")
+    rows = [gate_gaps({"row": r}, impute)["row"] for r in X]
+    return np.vstack(rows), y
+
+
 def extract_features(
     channels: Dict[str, Any],
     extractor_names,

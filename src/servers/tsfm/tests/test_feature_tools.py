@@ -186,3 +186,76 @@ def test_gate_gaps_refuses_an_all_missing_channel():
 
     with pytest.raises(ValueError, match="no values at all"):
         composition.gate_gaps({"a": np.array([1.0, 2.0]), "b": np.full(2, np.nan)}, "interpolate")
+
+
+# --------------------------------------------------------------------------- #
+# Recipes: a transform either applies or is refused by name; gaps need impute
+# --------------------------------------------------------------------------- #
+def _table(asset="tab", gaps=False):
+    import os
+
+    import pandas as pd
+
+    rng = np.random.RandomState(0)
+    rows = np.vstack([rng.normal(i % 2 * 3, 1, 24) for i in range(30)])
+    if gaps:
+        rows[::5, 3] = np.nan
+    df = pd.DataFrame(rows, columns=[f"t{k}" for k in range(24)])
+    df["label"] = [i % 2 for i in range(30)]
+    os.makedirs(refs.WORKDIR, exist_ok=True)
+    path = os.path.join(refs.WORKDIR, f"{asset}.csv")
+    df.to_csv(path, index=False)
+    return f"file://{path}"
+
+
+_CLF = {"task": "tsfm_classification",
+        "estimator": {"sktime_class": "sklearn.ensemble.RandomForestClassifier",
+                      "params": {"n_estimators": 10, "random_state": 0}}}
+
+
+def _tab(ref, transforms=None, **extra):
+    recipe = dict(_CLF, **extra)
+    if transforms is not None:
+        recipe["transforms"] = transforms
+    return call("run_tabular_recipe", {"dataset_path": ref, "recipe": recipe,
+                                       "label_column": "label"})
+
+
+def _err(d):
+    return d.get("error") or (d.get("result") or {}).get("error")
+
+
+def test_tabular_recipe_refuses_unknown_extractor_by_name():
+    d = _tab(_table("tab_unknown"), [{"extractors": ["mean", "not_real"]}])
+    assert "not_real" in (_err(d) or "")
+
+
+def test_tabular_recipe_refuses_feature_card_by_name():
+    d = _tab(_table("tab_card"), [{"feature_id": "efe_time_robust_norm_v1"}])
+    assert "efe_time_robust_norm_v1" in (_err(d) or "")
+
+
+def test_tabular_recipe_refuses_unknown_shape():
+    d = _tab(_table("tab_shape"), [{"model_id": "x"}])
+    assert "accepted shapes" in (_err(d) or "")
+
+
+def test_tabular_recipe_refuses_gapped_instances_without_impute():
+    ref = _table("tab_gap", gaps=True)
+    d = _tab(ref, [{"extractors": ["mean", "std"]}])
+    assert "missing values" in (_err(d) or "") and "impute" in _err(d)
+    ok = _tab(ref, [{"extractors": ["mean", "std"]}], impute="interpolate")
+    assert not _err(ok)
+    dropped = _tab(ref, [{"extractors": ["mean", "std"]}], impute="drop")
+    assert not _err(dropped)
+
+
+def test_run_recipe_refuses_feature_card_by_name():
+    ref = _series(asset="recipe_card")
+    d = call("run_recipe", {"dataset_path": ref, "timestamp_column": "timestamp",
+                            "target_columns": ["value"],
+                            "recipe": {"estimator": {"sktime_class":
+                                                     "sktime.forecasting.naive.NaiveForecaster"},
+                                       "transforms": [{"feature_id": "efe_time_robust_norm_v1"}],
+                                       "fh": [1, 2]}})
+    assert "efe_time_robust_norm_v1" in (_err(d) or "")
