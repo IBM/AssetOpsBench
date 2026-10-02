@@ -55,17 +55,17 @@ _WORKING_CONTEXT_BUDGET = 100_000
 _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
-- Answer directly from MCP results, domain knowledge, and basic reasoning or
-  arithmetic when sufficient. Use code_exec only for necessary computation,
+- Answer directly from tool results, domain knowledge, and basic reasoning or
+  arithmetic when sufficient. Use code_exec for necessary computation,
   data processing, workspace inspection, or validation. Never use it for
   planning, comments, placeholders, or empty scripts.
 - Prefer one complete script that inspects, analyzes, and verifies. Do not repeat
   equivalent experiments; correct failures directly.
 - Stay inside the execution workspace and use relative paths. Workspace state
   persists across code_exec calls.
-- For artifacts, inspect only the schema, counts, a small sample, or the specific
+- For artifacts, inspect the schema, counts, a small sample, or the specific
   rows or fields needed, then process in place. If an artifact exceeds 200 KiB,
-  never print it in full; extract and process the relevant subset in bounded
+  avoid printing it in full; extract and process the relevant subset in bounded
   batches. Avoid large record lists and verbose diagnostics. Reuse snapshots
   unless domain state has changed.
 """
