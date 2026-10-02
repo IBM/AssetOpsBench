@@ -57,9 +57,11 @@ _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
 # stays out of the shared AGENT_SYSTEM_PROMPT: placeholders there would leak
 # literal braces into the four runners that import it without formatting.
 _FINISH_SYSTEM_PROMPT = """\
-Use the tools provided to complete the task within {max_turns} steps, then submit your answer. When you are done you must call the `{finish_tool_name}` tool as your final
-step, passing your final answer. Record any assumptions you had to make in `reason`.
-Anything not submitted through `answer` is not graded.
+Use the tools provided to complete the task within {max_turns} steps, then
+submit your answer. When you are done you must call the `{finish_tool_name}`
+tool as your final step, with your final answer in `answer`.
+
+You cannot interact with the user during the task.
 """
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
@@ -69,9 +71,6 @@ Code execution:
   workspace root, so no working directory or environment variable carries over.
   Use paths relative to the workspace root, and when a step needs another
   directory, chain it into the same command (e.g. `cd data && python run.py`).
-- The workspace is for computation over data you have already retrieved through
-  the tools. It does not hold the task's data, and nothing fetched from outside
-  it counts as evidence for the task.
 - Python and common data libraries are already installed. Check with
   `python -c "import <pkg>"` before assuming a package is missing. Do not
   install packages: what the task needs is present, and an install spends a
