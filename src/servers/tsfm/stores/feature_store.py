@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from ..core import schemas
+from ..core.store import StoreUnavailable
 
 COLLECTION = "feature_catalog"
 COLLECTION_ENV_VAR = "FEATURE_CATALOG_DBNAME"
@@ -27,6 +28,15 @@ COLLECTION_ENV_VAR = "FEATURE_CATALOG_DBNAME"
 def collection_name() -> str:
     """Runtime feature catalog database name, defaulting to feature_catalog."""
     return os.environ.get(COLLECTION_ENV_VAR, COLLECTION)
+
+
+def _catalog(store) -> str:
+    """The catalog collection. A catalog that was never loaded is unavailable, not
+    empty, so lookups do not report every id as unknown."""
+    collection = collection_name()
+    if not store.exists(collection):
+        raise StoreUnavailable()
+    return collection
 
 
 def _now():
@@ -48,7 +58,7 @@ def _next_version(v) -> str:
 # read
 # --------------------------------------------------------------------------- #
 def get_feature(store, feature_id: str) -> Optional[dict]:
-    return store.get(collection_name(), _id(feature_id))
+    return store.get(_catalog(store), _id(feature_id))
 
 
 def find_features(
@@ -65,7 +75,7 @@ def find_features(
         sel["target_task"] = target_task
     if target_model:
         sel["target_model"] = target_model
-    docs = store.find(collection_name(), sel)
+    docs = store.find(_catalog(store), sel)
     if kind:
         docs = [d for d in docs if d.get("kind", "transform") == kind]
     return docs
@@ -80,7 +90,7 @@ def search(
 ):
     text = (text or "").lower()
     out = []
-    for f in store.find(collection_name(), {"status": status} if status else {}):
+    for f in store.find(_catalog(store), {"status": status} if status else {}):
         hay = " ".join(
             [
                 f.get("feature_id") or "",
@@ -110,7 +120,7 @@ def get_lineage(store, feature_id: str) -> dict:
         cur = p
     descendants = [
         f["feature_id"]
-        for f in store.find(collection_name(), {"parent_feature_id": feature_id})
+        for f in store.find(_catalog(store), {"parent_feature_id": feature_id})
     ]
     return {
         "feature_id": feature_id,
@@ -136,7 +146,7 @@ def register_feature(store, feature: dict, *, overwrite: bool = False) -> dict:
     )
     doc.setdefault("validity", {}).update(chk["checks"])
     doc["kind"] = "transform"
-    collection = collection_name()
+    collection = _catalog(store)
     if store.get(collection, doc["_id"]) and not overwrite:
         raise ValueError(
             f"feature '{doc['feature_id']}' exists (overwrite=True or new_version)"

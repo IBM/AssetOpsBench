@@ -2,6 +2,19 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Iterable, List, Optional
 
+from servers.db_errors import DATA_UNAVAILABLE
+
+
+class StoreError(RuntimeError):
+    """A failed store request; the message never carries the URL or database name."""
+
+
+class StoreUnavailable(StoreError):
+    """The database is missing or unreachable."""
+
+    def __init__(self, message: str = DATA_UNAVAILABLE):
+        super().__init__(message)
+
 
 # --------------------------------------------------------------------------- #
 # selector matching (Mango subset, used by MemoryStore and as a fallback)
@@ -60,6 +73,11 @@ class Store:
     ) -> List[dict]: ...
     def delete(self, collection: str, doc_id: str) -> bool: ...
     def list_collections(self) -> List[str]: ...
+    def exists(self, collection: str) -> bool:
+        """Whether the collection exists. Collections are created on first write, so
+        only preloaded ones (the catalogs) need to exist before a read."""
+        return True
+
     def export_state(
         self, collections: Optional[Iterable[str]] = None
     ) -> Dict[str, List[dict]]:
@@ -123,59 +141,78 @@ class CouchStore(Store):
     def _u(self, *p):
         return "/".join([self.url, *p])
 
+    def _req(self, method, *parts, **kwargs):
+        """Send one request; an unreachable server raises StoreUnavailable rather than
+        a client error whose text carries the URL and database name."""
+        try:
+            return self._requests.request(
+                method, self._u(*parts), auth=self.auth, **kwargs
+            )
+        except self._requests.exceptions.RequestException as exc:
+            raise StoreUnavailable() from exc
+
+    @staticmethod
+    def _check(r):
+        if r.status_code < 400:
+            return
+        try:
+            reason = r.json().get("reason")
+        except ValueError:
+            reason = None
+        if r.status_code == 404 and reason == "Database does not exist.":
+            raise StoreUnavailable()
+        raise StoreError(f"database request failed (HTTP {r.status_code})")
+
+    def exists(self, collection):
+        return self._req("HEAD", collection, timeout=10).status_code == 200
+
     def _ensure(self, collection):
-        r = self._requests.head(self._u(collection), auth=self.auth, timeout=10)
+        r = self._req("HEAD", collection, timeout=10)
         if r.status_code == 404:
-            self._requests.put(self._u(collection), auth=self.auth, timeout=10)
+            self._req("PUT", collection, timeout=10)
 
     def get(self, collection, doc_id):
-        r = self._requests.get(self._u(collection, doc_id), auth=self.auth, timeout=10)
+        r = self._req("GET", collection, doc_id, timeout=10)
         if r.status_code == 404:
             return None
-        r.raise_for_status()
+        self._check(r)
         return _strip(r.json())
 
     def put(self, collection, doc):
         self._ensure(collection)
-        ex = self._requests.get(
-            self._u(collection, doc["_id"]), auth=self.auth, timeout=10
-        )
+        ex = self._req("GET", collection, doc["_id"], timeout=10)
         body = dict(doc)
         if ex.status_code == 200:
             body["_rev"] = ex.json()["_rev"]
-        r = self._requests.put(
-            self._u(collection, doc["_id"]), json=body, auth=self.auth, timeout=15
-        )
-        r.raise_for_status()
+        r = self._req("PUT", collection, doc["_id"], json=body, timeout=15)
+        self._check(r)
         return _strip(doc)
 
     def find(self, collection, selector=None, limit=1000):
-        r = self._requests.post(
-            self._u(collection, "_find"),
+        r = self._req(
+            "POST",
+            collection,
+            "_find",
             json={"selector": selector or {"_id": {"$gt": None}}, "limit": limit},
-            auth=self.auth,
             timeout=20,
         )
         if r.status_code == 404:
             return []
-        r.raise_for_status()
+        self._check(r)
         return [_strip(d) for d in r.json().get("docs", [])]
 
     def delete(self, collection, doc_id):
-        ex = self._requests.get(self._u(collection, doc_id), auth=self.auth, timeout=10)
+        ex = self._req("GET", collection, doc_id, timeout=10)
         if ex.status_code != 200:
             return False
-        self._requests.delete(
-            self._u(collection, doc_id),
-            params={"rev": ex.json()["_rev"]},
-            auth=self.auth,
-            timeout=10,
+        self._req(
+            "DELETE", collection, doc_id, params={"rev": ex.json()["_rev"]}, timeout=10
         )
         return True
 
     def list_collections(self):
-        r = self._requests.get(self._u("_all_dbs"), auth=self.auth, timeout=10)
-        r.raise_for_status()
+        r = self._req("GET", "_all_dbs", timeout=10)
+        self._check(r)
         return [d for d in r.json() if not d.startswith("_")]
 
 
