@@ -243,7 +243,65 @@ def check_transform(card, channels):
         notes or [f"fit on {split} rows, applied to {len(X)} x {X.shape[1]}"])
 
 
-def check_extractors(registry, channels, panel, args):
+def check_gap_boundary(registry, channels, args):
+    """Does gapped input reach the extractors through the tool path?
+
+    Extractors are not required to cope with NaN themselves. The tool path is required to
+    stop it: `composition.extract_features` must refuse a gapped series unless `impute` is
+    given, and with `impute` must return what the extractor computes on the filled series,
+    never a substituted 0.0. Returns (rows, guarded); when not guarded, every extractor
+    that cannot handle NaN is a FAIL, because its NaN reaches the agent.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from servers.tsfm.engine import composition as C
+    from servers.tsfm.reasoning import feature_selection as FS
+
+    real = channels[0][2][-args.length:]
+    gapped = real.copy()
+    gapped[np.random.RandomState(1).rand(len(gapped)) < args.gap_fraction] = np.nan
+    rows = []
+
+    try:
+        _, F = C.extract_features({"x": gapped}, ["mean"])
+        got = float(F[0, 0])
+        return [("extract_features, gapped", "FAIL",
+                 (f"accepted a series with {int(np.isnan(gapped).sum())} gaps and returned "
+                  f"mean={got:g}; gapped input must be refused unless impute is set"))], False
+    except ValueError as exc:
+        rows.append(("extract_features, gapped", "PASS",
+                     f"refused: {' '.join(str(exc).split())[:70]}..."))
+
+    names = sorted(registry)
+    filled = C._impute(pd.Series(gapped), "interpolate").to_numpy(dtype=float)
+    try:
+        _, F = C.extract_features({"x": gapped}, names, impute="interpolate")
+    except Exception as exc:  # noqa: BLE001
+        rows.append(("impute='interpolate'", "FAIL", f"{type(exc).__name__}: {exc}"[:110]))
+        return rows, True
+    wrong = []
+    for j, n in enumerate(names):
+        want, problem, _ = call(registry[n], filled)
+        got = F[0, j]
+        if problem:
+            if np.isfinite(got):
+                wrong.append(f"{n} gave {got:g} where the extractor gives {problem}")
+        elif not np.isclose(got, want, rtol=1e-9, atol=1e-12, equal_nan=True):
+            wrong.append(f"{n} gave {got:g}, extractor gives {want:g}")
+    rows.append(("impute='interpolate'", "FAIL" if wrong else "PASS",
+                 "; ".join(wrong[:3]) if wrong
+                 else f"all {len(names)} extractors match a direct call on the filled series"))
+
+    try:
+        FS.select_features(gapped, extractors={"mean": registry["mean"]}, lookback=16)
+        rows.append(("select_features, gapped", "FAIL", "ranked a gapped series"))
+    except ValueError:
+        rows.append(("select_features, gapped", "PASS", "refused"))
+    return rows, True
+
+
+def check_extractors(registry, channels, panel, args, guarded=False):
     """One row per extractor: (name, status, notes, seconds_on_real)."""
     import numpy as np
 
@@ -260,7 +318,7 @@ def check_extractors(registry, channels, panel, args):
         "all negative": -np.abs(real[:args.window]) - 1.0,
     }
 
-    rows, vectors, constant = [], {}, set()
+    rows, vectors, constant, raw_gap_failures = [], {}, set(), []
     for name in sorted(registry):
         fn = registry[name]
         status, notes = "PASS", []
@@ -275,9 +333,11 @@ def check_extractors(registry, channels, panel, args):
 
         _, gproblem, _ = call(fn, gapped)
         if gproblem:
+            raw_gap_failures.append(name)
+        if gproblem and not guarded:
+            # Without the boundary guard, a NaN or inf reaches the agent as 0.0
+            # (nan_to_num) and an exception fails the whole tool call.
             status = "FAIL"
-            # Verified on composition.extract_features: a NaN or inf is
-            # replaced by nan_to_num, an exception fails the whole tool call.
             fate = ("extract_features errors" if gproblem.startswith("raises")
                     else "reaches the agent as 0.0")
             notes.append(f"{gproblem} with {args.gap_fraction:.0%} gaps ({fate})")
@@ -341,7 +401,8 @@ def check_extractors(registry, channels, panel, args):
                        [*nt, f"identical to {first_of[key]} on every window"], sc)
         else:
             first_of[key] = n
-    return rows, (name0, len(real), int(np.isnan(gapped).sum()), int(np.isnan(raw0).sum()))
+    return rows, (name0, len(real), int(np.isnan(gapped).sum()), int(np.isnan(raw0).sum()),
+                  raw_gap_failures)
 
 
 def check_selection(registry, seeds=(0, 1), noise_seeds=5):
@@ -400,6 +461,25 @@ def check_full_selection(series, budget: float):
     status = "WARN" if secs > budget else "PASS"
     return [("full library", status, (f"{secs:.0f}s on {len(series)} points "
              f"(budget {budget:.0f}s)"))]
+
+
+def code_identity() -> str:
+    """Which code this run tested. In the runtime image, the commit it was built from
+    (/opt/aob/.aob-commit, written by build-runtime-image.sh); on a checkout, git HEAD
+    plus whether the tree is dirty. A smoke result is only evidence about the code it ran."""
+    baked = Path(".aob-commit")
+    if baked.is_file():
+        return f"image built from {baked.read_text(encoding='utf-8').strip()[:12]}"
+    import subprocess
+
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                               capture_output=True, text=True, check=True).stdout.strip()
+        return f"checkout at {head}" + (" with uncommitted changes" if dirty else "")
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown (no .aob-commit, not a git checkout)"
 
 
 def main() -> int:
@@ -477,6 +557,7 @@ def main() -> int:
           f"{len(extractor_cards - {None})} extractor, {len(transforms)} transform)")
     print(f"registry : {len(registry)} extractors in feature_selection.EXTRACTORS")
     print(f"series   : {args.series.name}  channels={[c[0] for c in channels]}")
+    print(f"code     : {code_identity()}")
     print()
 
     failures = 0
@@ -508,10 +589,15 @@ def main() -> int:
          [(c.get("feature_id", "?"), *check_transform(c, channels)) for c in transforms]
          or [("-", "SKIP", "no transform cards")])
 
-    # 3. extractors
+    # 3. gaps: the tool path must stop them before any extractor sees one
+    gap_rows, guarded = check_gap_boundary(registry, channels, args)
+    show("Gapped input through the tool path", gap_rows)
+
+    # 4. extractors
     panel, _ = build_panel(channels, args.window, per_channel=8)
     t0 = time.perf_counter()
-    rows, (col, n, ngaps, nreal) = check_extractors(registry, channels, panel, args)
+    rows, (col, n, ngaps, nreal, raw_gaps) = check_extractors(
+        registry, channels, panel, args, guarded=guarded)
     elapsed = time.perf_counter() - t0
     counts = {}
     for _, s, _, _ in rows:
@@ -519,6 +605,9 @@ def main() -> int:
     print(f"Extractors  ({col!r}, {n} points, {ngaps} gaps injected; the raw column "
           f"has {nreal} of its own)")
     print(f"  panel of {len(panel)} windows of {args.window}; {elapsed:.0f}s")
+    if guarded and raw_gaps:
+        print(f"  {len(raw_gaps)} extractors return NaN or raise on raw gapped input. Not a "
+              "failure: the tool\n  path refuses gaps before they reach an extractor.")
     print("  " + "  ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     print("  " + "-" * 78)
     for name, status, notes, _ in rows:
@@ -528,7 +617,7 @@ def main() -> int:
                 failures += 1
     print()
 
-    # 4. selection
+    # 5. selection
     sel_rows = check_selection(registry)
     if args.full_selection:
         sel_rows += check_full_selection(channels[0][2][-args.length:], args.selection_budget)
