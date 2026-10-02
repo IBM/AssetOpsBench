@@ -50,7 +50,7 @@ def _get_db() -> Optional[couchdb3.Database]:
 def database_available() -> bool:
     """True when the vibration database exists and CouchDB is reachable."""
     db = _get_db()
-    return bool(db and db.check())
+    return db is not None and db.check()
 
 
 def fetch_vibration_timeseries(
@@ -78,7 +78,7 @@ def fetch_vibration_timeseries(
         (signal_array, estimated_sample_rate) or None on error.
     """
     db = _get_db()
-    if not db:
+    if db is None:
         return None
 
     try:
@@ -137,7 +137,7 @@ def fetch_vibration_timeseries(
 def list_sensor_fields(asset_id: str) -> list[str]:
     """Return the sensor field names available for an asset in CouchDB."""
     db = _get_db()
-    if not db:
+    if db is None:
         return []
     try:
         res = db.find({"asset_id": asset_id}, limit=1)
