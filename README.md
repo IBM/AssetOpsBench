@@ -129,6 +129,20 @@ Some tasks focus on a single domain, others are multi-step end-to-end workflows.
 
 Five models each ran the same 52 open-form scenarios three times from the same initial database snapshot: **780 assigned trials, 779 independent Fable 5.1 judgments, one terminal GLM execution failure**. The [repeated-run report](benchmarks/runs/2026-09-30-transformer-k3/README.md) includes every repetition, median pass rates, means and sample standard deviations, scenario repeatability, full traces and [offline HTML](benchmarks/runs/2026-09-30-transformer-k3/comparison.html).
 
+The [latest paper](https://arxiv.org/html/2506.03828v4#S5) reports task completion, data retrieval accuracy and result verification separately. Below are the corresponding averages from our saved judgments, giving each execution repetition equal weight. Values are **mean ± sample SD in percentage points**; each criterion is averaged independently of the strict overall pass gate.
+
+| Model | Task completion (%) | Data retrieval accuracy (%) | Result verification (%) | Judged / assigned |
+|---|---:|---:|---:|---:|
+| Opus 5.5 | 57.7 ± 5.1 | 96.2 ± 1.9 | 68.6 ± 6.8 | 156/156 |
+| GPT-6 Astra | 54.5 ± 2.9 | 90.4 ± 0.0 | 62.8 ± 4.4 | 156/156 |
+| GLM 5.3 (low) | 58.1 ± 5.8 | 93.6 ± 4.4 | 55.5 ± 9.6 | 155/156 |
+| GPT-6.1 Sol | 51.9 ± 1.9 | 96.2 ± 1.9 | 59.6 ± 1.9 | 156/156 |
+| Fable 5.1 | 64.7 ± 7.8 | 99.4 ± 1.1 | 76.3 ± 2.9 | 156/156 |
+
+![Transformer average criterion scores](benchmarks/runs/2026-09-30-transformer-k3/graphs/criterion-averages.png)
+
+[Download criterion averages](benchmarks/runs/2026-09-30-transformer-k3/criterion-averages.csv). These runs use one successful Fable 5.1 judgment per execution across three execution repetitions; the paper averages five Llama-4-Maverick judgments per trajectory. The criterion names match, while the judge protocol, scenarios and environment differ. GLM's missing judgment is excluded from criterion averages and remains a nonpassing assigned trial in the overall pass rate.
+
 ![Transformer mean pass rates and variation](benchmarks/runs/2026-09-30-transformer-k3/graphs/pass-rate.png)
 
 ![Transformer execution time across three repetitions](benchmarks/runs/2026-09-30-transformer-k3/graphs/execution-time.png)

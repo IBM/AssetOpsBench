@@ -1,8 +1,26 @@
 # Transformer · k = 3
 
-[Offline HTML](comparison.html) · [Individual results](cases.csv) · [Scenario averages](scenario-averages.csv) · [Summary JSON](summary.json) · [Experiment](experiment.json) · [Original repetition](../2026-09-30-transformer/README.md)
+[Offline HTML](comparison.html) · [Individual results](cases.csv) · [Criterion averages](criterion-averages.csv) · [Scenario averages](scenario-averages.csv) · [Summary JSON](summary.json) · [Experiment](experiment.json) · [Original repetition](../2026-09-30-transformer/README.md)
 
 The original k = 1 comparison was repeated twice on the **same 52 open-form scenarios** and the **same initial database snapshot**. Each repetition executes all five models; completed answers are graded in a fresh independent Fable 5.1 session, including Fable's own execution. This produces **156 assigned trials per model, 780 overall**, with **779 independent judgments**, **1 terminal execution failure**, and 792 retained invocation attempts.
+
+## Average criterion scores
+
+The [latest AssetOpsBench paper, Sections 5.1–5.3](https://arxiv.org/html/2506.03828v4#S5) reports task completion, data retrieval accuracy and result verification separately. These averages expose the same three criterion names from our existing six-criterion Fable 5.1 judgments. Each criterion is averaged over observed True/False judgments (True = 1, False = 0) within a repetition, then the three repetition averages receive equal weight. Values show **mean ± sample SD in percentage points**; the strict overall pass gate does not affect these averages.
+
+| Model | Task completion (%) | Data retrieval accuracy (%) | Result verification (%) | Judged / assigned |
+|---|---:|---:|---:|---:|
+| Opus 5.5 | 57.7 ± 5.1 | 96.2 ± 1.9 | 68.6 ± 6.8 | 156/156 |
+| GPT-6 Astra | 54.5 ± 2.9 | 90.4 ± 0.0 | 62.8 ± 4.4 | 156/156 |
+| GLM 5.3 (low) | 58.1 ± 5.8 | 93.6 ± 4.4 | 55.5 ± 9.6 | 155/156 |
+| GPT-6.1 Sol | 51.9 ± 1.9 | 96.2 ± 1.9 | 59.6 ± 1.9 | 156/156 |
+| Fable 5.1 | 64.7 ± 7.8 | 99.4 ± 1.1 | 76.3 ± 2.9 | 156/156 |
+
+![Average criterion scores](graphs/criterion-averages.png)
+
+These runs use **one successful Fable judgment per execution and three execution repetitions**. The paper uses Llama-4-Maverick and averages five judgments of each trajectory, so this is a reporting comparison rather than a reproduction of its judge protocol. GLM has 52/51/52 observed judgments; its terminal execution failure has no criterion judgments and is excluded from these criterion averages. Metric-specific counts and unrounded means/SDs on the 0–1 scale are in [criterion-averages.csv](criterion-averages.csv); per-repetition rates and pooled rates remain in `summary.json`. The overall pass rates below retain the existing six-criterion gate and all assigned trials.
+
+## Overall pass rates
 
 ![Average pass rates](graphs/pass-rate.png)
 

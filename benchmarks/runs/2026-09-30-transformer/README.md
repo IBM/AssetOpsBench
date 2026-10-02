@@ -1,8 +1,26 @@
 # Transformer comparison · 2026-09-30
 
-[Offline HTML](comparison.html) · [Per-scenario CSV](cases.csv) · [Summary JSON](summary.json) · [Run manifest](manifest.json)
+[Offline HTML](comparison.html) · [Per-scenario CSV](cases.csv) · [Criterion averages](criterion-averages.csv) · [Summary JSON](summary.json) · [Run manifest](manifest.json)
 
 Five models completed the same **52 scenarios** (50 positive, 2 negative), with **260 independent Fable 5.1 judgments**. Opus 5.5 generated the suite in open form using Semantic Scholar research; the model chose the positive distribution: 9 IoT, 11 FMSR, 6 TSFM, 7 work-order and 17 multiagent scenarios.
+
+## Average criterion scores
+
+The [latest AssetOpsBench paper, Sections 5.1–5.3](https://arxiv.org/html/2506.03828v4#S5) reports task completion, data retrieval accuracy and result verification separately. Below, each is the average of its 52 observed True/False judgments (True = 1, False = 0), expressed as a percentage. The strict overall pass gate does not affect these averages.
+
+| Model | Task completion (%) | Data retrieval accuracy (%) | Result verification (%) | Judged / assigned |
+|---|---:|---:|---:|---:|
+| Opus 5.5 | 55.8 | 96.2 | 69.2 | 52/52 |
+| GPT-6 Astra | 53.8 | 90.4 | 57.7 | 52/52 |
+| GLM 5.3 (low) | 51.9 | 88.5 | 46.2 | 52/52 |
+| GPT-6.1 Sol | 50.0 | 96.2 | 57.7 | 52/52 |
+| Fable 5.1 | 69.2 | 98.1 | 73.1 | 52/52 |
+
+![Average criterion scores](graphs/criterion-averages.png)
+
+These values come from the existing six-criterion **Fable 5.1** judgments, with one successful judgment per execution. The paper uses Llama-4-Maverick and averages five judgments per trajectory, so this is a reporting comparison rather than a reproduction of its judge protocol. [criterion-averages.csv](criterion-averages.csv) preserves unrounded averages on the 0–1 scale and metric-specific observed counts. The overall pass rates below retain the existing six-criterion gate.
+
+## Overall pass rates
 
 ![Pass rates](graphs/pass-rate.png)
 

@@ -21,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 sys.path.insert(0, str(REPO / "src"))
 from benchmark.measurement import summarize, suite_hash
+from benchmark.criterion_report import criterion_rows, publish_criterion_averages
 
 MODELS = {
     "opus-5-5": "Opus 5.5",
@@ -201,6 +202,15 @@ def report(scenarios, groups, digest):
         svg.write_text("\n".join(line.rstrip() for line in svg.read_text().splitlines()) + "\n")
         plt.close(fig)
 
+    criterion_table = publish_criterion_averages(HERE, criterion_rows(summaries, MODELS), COLORS)
+    # Reuse the portable saved snapshot; rebuilding presentation makes no model calls.
+    existing_html = (HERE / 'comparison.html').read_text()
+    payload = re.search(r'<script type="application/json" id="snapshot-data">(.*?)</script>', existing_html, re.S).group(1)
+    template = (REPO / 'tools/live_evaluation/index.html').read_text()
+    document = template.replace('<body>', '<body><script type="application/json" id="snapshot-data">' + payload + '</script>')
+    document = document.replace('let data=null;', "let data=JSON.parse(document.getElementById('snapshot-data').textContent);")
+    (HERE / 'comparison.html').write_text(document.replace('));refresh();', '));render();'))
+
     fig, ax = plt.subplots(figsize=(10, 3.2), layout="constrained")
     rates = [summaries[k]["cases"]["pass_rate"] * 100 for k in keys]
     ax.barh(labels, rates, color=COLORS, height=.55)
@@ -286,9 +296,21 @@ def report(scenarios, groups, digest):
     last = max(r["grading"]["end"] for g in groups.values() for r in g["latest"])
     document = f"""# Transformer comparison · 2026-09-30
 
-[Offline HTML](comparison.html) · [Per-scenario CSV](cases.csv) · [Summary JSON](summary.json) · [Run manifest](manifest.json)
+[Offline HTML](comparison.html) · [Per-scenario CSV](cases.csv) · [Criterion averages](criterion-averages.csv) · [Summary JSON](summary.json) · [Run manifest](manifest.json)
 
 Five models completed the same **52 scenarios** (50 positive, 2 negative), with **260 independent Fable 5.1 judgments**. Opus 5.5 generated the suite in open form using Semantic Scholar research; the model chose the positive distribution: 9 IoT, 11 FMSR, 6 TSFM, 7 work-order and 17 multiagent scenarios.
+
+## Average criterion scores
+
+The [latest AssetOpsBench paper, Sections 5.1–5.3](https://arxiv.org/html/2506.03828v4#S5) reports task completion, data retrieval accuracy and result verification separately. Below, each is the average of its 52 observed True/False judgments (True = 1, False = 0), expressed as a percentage. The strict overall pass gate does not affect these averages.
+
+{criterion_table}
+
+![Average criterion scores](graphs/criterion-averages.png)
+
+These values come from the existing six-criterion **Fable 5.1** judgments, with one successful judgment per execution. The paper uses Llama-4-Maverick and averages five judgments per trajectory, so this is a reporting comparison rather than a reproduction of its judge protocol. [criterion-averages.csv](criterion-averages.csv) preserves unrounded averages on the 0–1 scale and metric-specific observed counts. The overall pass rates below retain the existing six-criterion gate.
+
+## Overall pass rates
 
 ![Pass rates](graphs/pass-rate.png)
 
@@ -373,7 +395,7 @@ See [runner setup](../../generated-scenarios.md) for authentication, isolation a
     (HERE / "README.md").write_text(document)
     files = sorted(p for p in HERE.rglob("*") if p.is_file() and p.name != "checksums.sha256" and "__pycache__" not in p.parts)
     (HERE / "checksums.sha256").write_text("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(HERE)}\n" for p in files))
-    print(f"Validated {len(scenarios)} scenarios, 263 attempts, 260 unique judge sessions; wrote five graphs and report.")
+    print(f"Validated {len(scenarios)} scenarios, 263 attempts, 260 unique judge sessions; wrote six graphs and report.")
 
 
 def main():

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from benchmark.measurement import suite_hash, write_json
 from benchmark.repeated_comparison import aggregate, load_experiment, mean_sd, snapshot
+from benchmark.criterion_report import criterion_rows, publish_criterion_averages
 
 COLORS = ['#42684f', '#60816a', '#90a98c', '#b2bc9c', '#d4b477']
 RUBRICS = {'task_completion': 'Completion', 'data_retrieval_accuracy': 'Accuracy',
@@ -191,6 +192,8 @@ def make_report(dest, experiment, config, groups, payload):
         fig.savefig(svg, bbox_inches='tight', metadata={'Date': None})
         svg.write_text('\n'.join(line.rstrip() for line in svg.read_text().splitlines()) + '\n')
         plt.close(fig)
+    criterion_table = publish_criterion_averages(
+        dest, criterion_rows(groups, dict(zip(keys, labels)), repeated=True), COLORS, repeated=True)
     fig, ax = plt.subplots(figsize=(10, 3.6), layout='constrained')
     for i, (key, color) in enumerate(zip(keys, COLORS)):
         avg = groups[key]['means']['pass_rate']
@@ -292,9 +295,21 @@ def make_report(dest, experiment, config, groups, payload):
     failed=sum(g['pooled_cases']['execution_failed_cases'] for g in groups.values())
     (dest / 'README.md').write_text(f"""# Transformer · k = 3
 
-[Offline HTML](comparison.html) · [Individual results](cases.csv) · [Scenario averages](scenario-averages.csv) · [Summary JSON](summary.json) · [Experiment](experiment.json) · [Original repetition](../2026-09-30-transformer/README.md)
+[Offline HTML](comparison.html) · [Individual results](cases.csv) · [Criterion averages](criterion-averages.csv) · [Scenario averages](scenario-averages.csv) · [Summary JSON](summary.json) · [Experiment](experiment.json) · [Original repetition](../2026-09-30-transformer/README.md)
 
 The original k = 1 comparison was repeated twice on the **same 52 open-form scenarios** and the **same initial database snapshot**. Each repetition executes all five models; completed answers are graded in a fresh independent Fable 5.1 session, including Fable's own execution. This produces **156 assigned trials per model, 780 overall**, with **{judged} independent judgments**, **{failed} terminal execution failure{'s' if failed!=1 else ''}**, and {attempts} retained invocation attempts.
+
+## Average criterion scores
+
+The [latest AssetOpsBench paper, Sections 5.1–5.3](https://arxiv.org/html/2506.03828v4#S5) reports task completion, data retrieval accuracy and result verification separately. These averages expose the same three criterion names from our existing six-criterion Fable 5.1 judgments. Each criterion is averaged over observed True/False judgments (True = 1, False = 0) within a repetition, then the three repetition averages receive equal weight. Values show **mean ± sample SD in percentage points**; the strict overall pass gate does not affect these averages.
+
+{criterion_table}
+
+![Average criterion scores](graphs/criterion-averages.png)
+
+These runs use **one successful Fable judgment per execution and three execution repetitions**. The paper uses Llama-4-Maverick and averages five judgments of each trajectory, so this is a reporting comparison rather than a reproduction of its judge protocol. GLM has 52/51/52 observed judgments; its terminal execution failure has no criterion judgments and is excluded from these criterion averages. Metric-specific counts and unrounded means/SDs on the 0–1 scale are in [criterion-averages.csv](criterion-averages.csv); per-repetition rates and pooled rates remain in `summary.json`. The overall pass rates below retain the existing six-criterion gate and all assigned trials.
+
+## Overall pass rates
 
 ![Average pass rates](graphs/pass-rate.png)
 
