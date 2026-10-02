@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
+import shutil
 import time
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from claude_agent_sdk import (
 from claude_agent_sdk import TextBlock, ToolUseBlock
 
 from observability import agent_run_span, persist_trajectory
+from observability.benchmark_trace import emit, tool_result_error, plain
 
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
@@ -121,13 +123,18 @@ class ClaudeAgentRunner(AgentRunner):
         with agent_run_span(
             "claude-agent", model=self._model, question=question
         ) as span:
+            emit('capabilities', tool_events=True, request_timings=False, compaction_events=True)
             options = ClaudeAgentOptions(
                 model=self._model,
+                cli_path=shutil.which("claude"),
+                stderr=lambda line: _log.warning("Claude CLI: %s", line),
                 system_prompt=AGENT_SYSTEM_PROMPT,
                 mcp_servers=self._mcp_servers,
                 max_turns=self._max_turns,
                 permission_mode=self._permission_mode,
-                env=self._sdk_env,
+                env={**(self._sdk_env or {}), "ENABLE_TOOL_SEARCH":"false"},
+                tools=[], setting_sources=[],
+                extra_args={"strict-mcp-config":None},
             )
 
             _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)
@@ -137,6 +144,14 @@ class ClaudeAgentRunner(AgentRunner):
             turn_index = 0
             last_turn_start = run_started
             tool_outputs: dict[str, object] = {}
+            tool_starts = {}
+
+            async def _capture_tool_start(input_data, tool_use_id, context):
+                tool_starts[tool_use_id] = (time.perf_counter(), input_data)
+                emit('tool_start', id=tool_use_id, name=input_data.get('tool_name'),
+                     arguments=input_data.get('tool_input'))
+                return {}
+
 
             async def _capture_tool_output(
                 input_data, tool_use_id: str, context
@@ -150,13 +165,21 @@ class ClaudeAgentRunner(AgentRunner):
                     tool_outputs[tool_use_id] = resp.get("content", resp)
                 else:
                     tool_outputs[tool_use_id] = resp
+                start, original = tool_starts.pop(tool_use_id, (None, {}))
+                name = original.get('tool_name') or input_data.get('tool_name')
+                parts = name.split('__') if isinstance(name,str) else []
+                emit('tool_end', id=tool_use_id, name=name,
+                     server=parts[1] if len(parts)>2 and parts[0]=='mcp' else None,
+                     arguments=original.get('tool_input'), output=resp,
+                     duration_ms=(time.perf_counter()-start)*1000 if start is not None else None,
+                     error=input_data.get('error') or
+                     tool_result_error(resp))
                 return {}
 
-            # Only PostToolUse is registered.  Adding PreToolUse made older
-            # ``@anthropic-ai/claude-code`` CLI binaries exit on config parse;
-            # per-tool duration for claude-agent is therefore not captured
-            # (matches openai-agent / deep-agent).
+            # Use the installed CLI for hook support and subscription auth.
             options.hooks = {
+                "PreToolUse": [HookMatcher(matcher=".*", hooks=[_capture_tool_start])],
+                "PostToolUseFailure": [HookMatcher(matcher=".*", hooks=[_capture_tool_output])],
                 "PostToolUse": [
                     HookMatcher(matcher=".*", hooks=[_capture_tool_output])
                 ],
@@ -171,7 +194,10 @@ class ClaudeAgentRunner(AgentRunner):
                         tc.output = tool_outputs.pop(tc.id)
 
             async for message in query(prompt=question, options=options):
+                emit("sdk_message", payload=message)
+                if getattr(message,"subtype",None)=="compact_boundary": emit("compaction", payload=message)
                 if isinstance(message, AssistantMessage):
+                    emit("message", payload=message)
                     _flush_tool_outputs()
                     now = time.perf_counter()
                     turn_duration_ms = (now - last_turn_start) * 1000
@@ -200,8 +226,12 @@ class ClaudeAgentRunner(AgentRunner):
                     )
                     turn_index += 1
                 elif isinstance(message, ResultMessage):
+                    emit("provider_summary", payload=message)
+                    if getattr(message,'is_error',False) is True:
+                        raise RuntimeError(f"Claude run failed: {message.subtype}; {message.errors or message.result}")
                     _flush_tool_outputs()
                     answer = message.result or ""
+                    emit("final_answer", answer=answer)
                     _log.info(
                         "ClaudeAgentRunner: done (stop_reason=%s, turns=%d, "
                         "input_tokens=%d, output_tokens=%d)",

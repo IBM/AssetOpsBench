@@ -1,0 +1,172 @@
+{
+  "run_id": "fable-5-1_0036",
+  "scenario_id": "transformer_scenario_36",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "I want to set the next oil sampling date for Transformer 1 at site MAIN based on how fast the gases are actually growing, not on a fixed calendar.\n\nUsing the samples between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, work out TDCG for every sample. Use only hydrogen, methane, ethane, ethylene, acetylene and co, and leave out co2, oxygen and nitrogen. Give me the TDCG rate in ppm/day between the first and last sample, and name the gas that contributes most to the increase.\n\nBefore trusting that rate, screen the six gases for anomalous samples. If a single anomalous sample is driving the rise, recompute the rate without it and show me both numbers.\n\nSet the interval with this rule:\n- Under 10 ppm/day: next sample in 90 days.\n- 10 to 30 ppm/day: next sample in 30 days.\n- Above 30 ppm/day: next sample in 7 days.\n\nIf the rate with and without the anomalous sample lands in different bands, don't escalate on the higher one. Use the lower band's interval and add a confirmatory resample within 7 days to settle it.\n\nAlso run a fault classification on the latest complete sample. If it comes back D1, D2 or T3, use 7 days no matter what the rate says.\n\nThen check open work orders on Transformer 1. If a sampling job is already open, don't create another. Tell me its number and date, and whether it should move earlier. Otherwise, pick the first day on or after the target date where MAIN has fewer than 3 scheduled work orders, create the sampling work order for that day, and assign a technician who has sampled Transformer 1 before.\n\nIf fewer than two samples in the window have all six gases, say the rate can't be computed. In that case, base the interval on the classification alone: 7 days for D1, D2 or T3, and 30 days otherwise.",
+  "answer": "The DGA classifier is down (two attempts), so I computed the Rogers Ratios by hand from the 2024\u201101\u201118 sample. Nothing else is pending \u2014 no new work order is warranted (see below), so the calendar/technician lookups aren't needed.\n\n## TDCG per sample (H2 + CH4 + C2H6 + C2H4 + C2H2 + CO)\n\n| Sample | H2 | CH4 | C2H6 | C2H4 | C2H2 | CO | TDCG (ppm) |\n|---|---|---|---|---|---|---|---|\n| 2024\u201101\u201115 | 2845 | 7406 | 5467 | 16684 | 7 | 32 | **32,441** |\n| 2024\u201101\u201116 | 2950 | 7200 | 5400 | 16500 | 6 | 30 | **32,086** |\n| 2024\u201101\u201117 | 2800 | 7300 | 5500 | 16700 | 8 | 35 | **32,343** |\n| 2024\u201101\u201118 | 2900 | 7350 | 5450 | 16600 | 7 | 33 | **32,340** |\n\nAll 4 samples have all six gases, so the rate is computable.\n\n**TDCG rate (first \u2192 last):** (32,340 \u2212 32,441) / 3 days = **\u221233.7 ppm/day** (TDCG is flat-to-slightly-falling; the 01\u201115 \u2192 01\u201118 change is \u2212101 ppm, ~0.3%).\n**Gas contributing most to the increase:** **Hydrogen** (+55 ppm, 2845 \u2192 2900). CO +1; methane \u221256, ethane \u221217, ethylene \u221284, acetylene 0.\n\n## Anomaly screen\nNote: the TSFM anomaly detector needs a file-pointer dataset, and there's no tool here to materialize these IoT rows into one; with only 4 samples a model-based detector would be meaningless anyway, so I applied a robust (median/MAD) screen per gas. Every gas stays within ~\u00b12% of its median across all four samples (largest deviations: H2 on 01\u201116 at +2.6% and 01\u201117 at \u22122.6%; CO within \u00b13 ppm). **No sample is anomalous, and none is driving a rise** \u2014 there is no rise to drive. No recomputation needed; the rate stands at \u221233.7 ppm/day (single band: *under 10 ppm/day \u2192 90 days*).\n\n## Fault classification (latest complete sample, 2024\u201101\u201118, manual Rogers Ratio)\n- C2H2/C2H4 = 7/16600 = 0.0004 \u2192 code 0\n- CH4/H2 = 7350/2900 = 2.53 \u2192 code 2\n- C2H4/C2H6 = 16600/5450 = 3.05 \u2192 code 2 (just over the 3.0 threshold)\n- Code **0\u20112\u20112 \u2192 T3, thermal fault > 700 \u00b0C** (Rogers). Caveat: IEC 60599 uses > 4 for the ethylene/ethane ratio, which would call this T2 (300\u2013700 \u00b0C); either way it's a high\u2011temperature thermal fault, and absolute levels (TDCG \u2248 32,300 ppm, ethylene 16,600 ppm) are far into IEEE C57.104 Condition 4.\n\n## Interval decision\n- Rate-based band: < 10 ppm/day \u2192 90 days.\n- **Classification override: T3 \u2192 7 days.** Target next sample: **2026\u201110\u201107** (7 days from today, 2026\u201109\u201130).\n\n## Work order check\nAn open sampling job already exists, so I did **not** create a new one:\n- **WO 1000051** \u2014 \"OLTC inspection \u2013 Transformer 1 (suspected contact wear/coking)\", type PdM, priority 1, status **APPR**. Its long description explicitly adds a confirmatory oil sample for lab DGA at the visit (added 2026\u201109\u201130).\n- **Scheduled date: none** \u2014 schedstart/targstart are blank.\n- **Should it move earlier?** It needs a date, not a move: it must be **scheduled no later than 2026\u201110\u201107** to satisfy the 7\u2011day T3 requirement. If the OLTC inspection itself can't be fitted in by then, the oil sample should be pulled as a separate visit on/before 10\u201107 and the inspection kept on its own timeline. Say the word and I'll set the schedule date / assign a technician on 1000051.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 6182.944042026065
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000"
+            },
+            "id": "toolu_01Xps6GEaVbWaUGH5NdMwQpq",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"oxygen\":5860,\"nitrogen\":27842,\"methane\":7406,\"co\":32,\"co2\":1344,\"ethylene\":16684,\"ethane\":5467,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"oxygen\":5700,\"nitrogen\":28000,\"methane\":7200,\"co\":30,\"co2\":1300,\"ethylene\":16500,\"ethane\":5400,\"acetylene\":6,\"dbds\":18,\"power_factor\":1.2,\"interfacial_v\":44,\"dielectric_rigidity\":53,\"water_content\":1,\"vl1\":112,\"vl2\":114,\"vl3\":109,\"il1\":102,\"il2\":103,\"il3\":96,\"vl12\":226,\"vl23\":221,\"vl31\":219,\"inut\":6,\"rated_mva\":100,\"wti\":82,\"oti\":87,\"ati\":79,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"oxygen\":5900,\"nitrogen\":27700,\"methane\":7300,\"co\":35,\"co2\":1350,\"ethylene\":16700,\"ethane\":5500,\"acetylene\":8,\"dbds\":20,\"power_factor\":0.9,\"interfacial_v\":46,\"dielectric_rigidity\":56,\"water_content\":0,\"vl1\":109,\"vl2\":116,\"vl3\":107,\"il1\":101,\"il2\":104,\"il3\":94,\"vl12\":224,\"vl23\":219,\"vl31\":217,\"inut\":5,\"rated_mva\":100,\"wti\":79,\"oti\":84,\"ati\":77,\"oti_a\":1,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"oxygen\":5800,\"nitrogen\":27950,\"methane\":7350,\"co\":33,\"co2\":1325,\"ethylene\":16600,\"ethane\":5450,\"acetylene\":7,\"dbds\":19,\"power_factor\":1.1,\"interfacial_v\":45,\"dielectric_rigidity\":54,\"water_content\":1,\"vl1\":111,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":106,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":81,\"oti\":86,\"ati\":78,\"oti_a\":2,\"oti_t\":1}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 1131.3048750162125
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "page_size": 0
+            },
+            "id": "toolu_01GeZ9P8AVqNhGrod6mWT7mm",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":null,\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"ADDED 2026-09-30 (DGA forecast): Take confirmatory oil sample for lab DGA at the OLTC inspection visit. One-day-ahead drift forecast from 2024-01-15..18 samples gives worst-case TDCG upper bound 32,969 ppm (H2 3068, CH4 7537, C2H6 5544, C2H4 16772, C2H2 9, CO 38) -> IEEE C57.104 Condition 4 (>4630). Methane is the largest contributor to the forecast increase (+187 ppm vs latest); ethylene is the largest share of TDCG.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T23:27:57+00:00\",\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 725.2064159838483
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 20510.57441701414
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1.967958000022918
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01LL6HcUq1ZwasbtEcqNhpF8",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 464.51504196738824
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__utilities__current_date_time",
+            "input": {},
+            "id": "toolu_01MWpr7bFQ4wv9Gk4gCbXnK6",
+            "output": "{\"currentDateTime\":\"2026-09-30T23:33:31.593330Z\",\"currentDateTimeDescription\":\"Today's date is 2026-09-30 and time is 23:33:31.\"}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 98.70737500023097
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 12574.086792010348
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 2.27591599104926
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01QKEwxpZxXMuyJq6KetpHYg",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 534.3783749849536
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 12133.056042017415
+      },
+      {
+        "index": 11,
+        "text": "The DGA classifier is down (two attempts), so I computed the Rogers Ratios by hand from the 2024\u201101\u201118 sample. Nothing else is pending \u2014 no new work order is warranted (see below), so the calendar/technician lookups aren't needed.\n\n## TDCG per sample (H2 + CH4 + C2H6 + C2H4 + C2H2 + CO)\n\n| Sample | H2 | CH4 | C2H6 | C2H4 | C2H2 | CO | TDCG (ppm) |\n|---|---|---|---|---|---|---|---|\n| 2024\u201101\u201115 | 2845 | 7406 | 5467 | 16684 | 7 | 32 | **32,441** |\n| 2024\u201101\u201116 | 2950 | 7200 | 5400 | 16500 | 6 | 30 | **32,086** |\n| 2024\u201101\u201117 | 2800 | 7300 | 5500 | 16700 | 8 | 35 | **32,343** |\n| 2024\u201101\u201118 | 2900 | 7350 | 5450 | 16600 | 7 | 33 | **32,340** |\n\nAll 4 samples have all six gases, so the rate is computable.\n\n**TDCG rate (first \u2192 last):** (32,340 \u2212 32,441) / 3 days = **\u221233.7 ppm/day** (TDCG is flat-to-slightly-falling; the 01\u201115 \u2192 01\u201118 change is \u2212101 ppm, ~0.3%).\n**Gas contributing most to the increase:** **Hydrogen** (+55 ppm, 2845 \u2192 2900). CO +1; methane \u221256, ethane \u221217, ethylene \u221284, acetylene 0.\n\n## Anomaly screen\nNote: the TSFM anomaly detector needs a file-pointer dataset, and there's no tool here to materialize these IoT rows into one; with only 4 samples a model-based detector would be meaningless anyway, so I applied a robust (median/MAD) screen per gas. Every gas stays within ~\u00b12% of its median across all four samples (largest deviations: H2 on 01\u201116 at +2.6% and 01\u201117 at \u22122.6%; CO within \u00b13 ppm). **No sample is anomalous, and none is driving a rise** \u2014 there is no rise to drive. No recomputation needed; the rate stands at \u221233.7 ppm/day (single band: *under 10 ppm/day \u2192 90 days*).\n\n## Fault classification (latest complete sample, 2024\u201101\u201118, manual Rogers Ratio)\n- C2H2/C2H4 = 7/16600 = 0.0004 \u2192 code 0\n- CH4/H2 = 7350/2900 = 2.53 \u2192 code 2\n- C2H4/C2H6 = 16600/5450 = 3.05 \u2192 code 2 (just over the 3.0 threshold)\n- Code **0\u20112\u20112 \u2192 T3, thermal fault > 700 \u00b0C** (Rogers). Caveat: IEC 60599 uses > 4 for the ethylene/ethane ratio, which would call this T2 (300\u2013700 \u00b0C); either way it's a high\u2011temperature thermal fault, and absolute levels (TDCG \u2248 32,300 ppm, ethylene 16,600 ppm) are far into IEEE C57.104 Condition 4.\n\n## Interval decision\n- Rate-based band: < 10 ppm/day \u2192 90 days.\n- **Classification override: T3 \u2192 7 days.** Target next sample: **2026\u201110\u201107** (7 days from today, 2026\u201109\u201130).\n\n## Work order check\nAn open sampling job already exists, so I did **not** create a new one:\n- **WO 1000051** \u2014 \"OLTC inspection \u2013 Transformer 1 (suspected contact wear/coking)\", type PdM, priority 1, status **APPR**. Its long description explicitly adds a confirmatory oil sample for lab DGA at the visit (added 2026\u201109\u201130).\n- **Scheduled date: none** \u2014 schedstart/targstart are blank.\n- **Should it move earlier?** It needs a date, not a move: it must be **scheduled no later than 2026\u201110\u201107** to satisfy the 7\u2011day T3 requirement. If the OLTC inspection itself can't be fitted in by then, the oil sample should be pulled as a separate visit on/before 10\u201107 and the inspection kept on its own timeline. Say the word and I'll set the schedule date / assign a technician on 1000051.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 6040.523874980863
+      }
+    ],
+    "started_at": "2026-09-30T23:33:02.471710+00:00"
+  }
+}

@@ -1,0 +1,228 @@
+{
+  "run_id": "fable-5-1_0047",
+  "scenario_id": "transformer_scenario_47",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "My engineers disagree about whether the gassing in Transformer 1 at site MAIN is driven by load or by a fault that gasses no matter what the load is. Settle it with the data.\n\nBetween 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, characterize how two groups move together: the fault gases (hydrogen, methane, ethylene and co) and the loading channels (il1, il2, il3 and inut). For each sample, give me the total phase current and the sum of the four gases. Tell me whether the gas sum rises in the same samples where current rises.\n\nSeparately, run a dissolved gas fault classification on the latest complete sample using hydrogen, methane, ethane, ethylene and acetylene. Also tell me whether top-oil temperature (oti) got close to its alarm reading (oti_a) at the highest-current sample.\n\nDecide as follows:\n- Call it load-driven only if the gases track current and the class is T1 or T2. In that case, don't create an inspection. Recommend a loading limit, and add a note about it to any open oil sampling work order on Transformer 1. If there's no such work order, say so.\n- Call it a load-independent fault if the gases rise while current stays within 10% of its first value, or the class is PD, D1, D2 or T3. In that case, check open work orders on Transformer 1 for an existing internal inspection. If there's none, create a priority 2 inspection work order with the class and the gas trend in the notes.\n- If neither case fits cleanly, create nothing. Recommend a confirmatory resample and explain the conflict.\n\nOnly use samples where all four current channels and all four gases are non-null. If fewer than 3 such samples remain, say that the correlation can't be judged, and base the decision on the gas classification alone.",
+  "answer": "Both assessors are down again, so I computed the IEC 60599 Rogers ratios directly. Nothing else is needed \u2014 here is the verdict.\n\n## Sample-by-sample (all 4 samples complete; correlation can be judged)\n\n| Timestamp | il1+il2+il3 (A) | \u0394 current | H2+CH4+C2H4+CO (ppm) | \u0394 gas |\n|---|---|---|---|---|\n| 2024-01-15 | 300 | \u2014 | 26,967 | \u2014 |\n| 2024-01-16 | 301 | +1 | 26,680 | \u2212287 |\n| 2024-01-17 | 299 | \u22122 | 26,835 | +155 |\n| 2024-01-18 | 301 | +2 | 26,883 | +48 |\n\n**Do gases rise where current rises? No.** Sign agreement is 1 of 3 steps (current up/gas down on 01-16, current down/gas up on 01-17, both up on 01-18). Current is essentially flat \u2014 every sample is within 0.3% of the first value (300 A), far inside the 10% band. The gas sum is also flat: it ends 84 ppm (0.3%) *below* where it started and wobbles within ~1%. Neither channel group has a trend for the other to track.\n\n## DGA classification \u2014 latest complete sample (2024-01-18)\nH2 2900 / CH4 7350 / C2H6 5450 / C2H4 16600 / C2H2 7 ppm\n- C2H2/C2H4 = 0.0004 (<0.1)\n- CH4/H2 = 2.53 (>1)\n- C2H4/C2H6 = 3.05 (1\u20134)\n\n\u2192 IEC code **0-2-1 \u2192 T2, thermal fault 300\u2013700 \u00b0C**. (Note: the `interpret_dga` service was unavailable on two attempts; this is a manual Rogers-ratio computation, consistent with the \"DGA T2 thermal\" already recorded on WO 1000051.) Absolute levels are very high (C2H4 16,600 ppm), so this is a serious established fault, but it is not gassing progressively over this window.\n\n## Top-oil vs. alarm at highest-current sample\nHighest current is a tie at 301 A (01-16, 01-18): OTI = 87 \u00b0C and 86 \u00b0C. `oti_a` is a flag, not a temperature setpoint, and it is non-zero (2) in every sample \u2014 as is `oti_t` (1). So there is no \"approach\" to assess: the alarm and trip flags read as already asserted throughout the window regardless of load, which is either a persistent alarm condition or a stuck/misconfigured signal and should be verified. Top-oil rise over ambient is only ~8 K, which does not indicate load-driven heating.\n\n## Decision: neither case fits cleanly \u2014 no work order created\n- **Not load-driven**: class T2 qualifies, but the gases do not track current (the tracking condition fails). No loading limit recommended and no note added.\n- **Not a clean load-independent fault**: current does stay within 10% of its first value, but the gas sum does not rise across the window, and T2 is not in {PD, D1, D2, T3}.\n\n**The conflict**: the oil carries a very high, T2-pattern thermal gas signature, yet over these four days neither load nor gassing moved \u2014 the gases are static at a high plateau. That's consistent with a historical/stalled thermal fault (or prior gassing that hasn't been degassed) rather than either an active load-proportional or active load-independent process. Four daily samples at constant load simply can't discriminate the two hypotheses your engineers are arguing over.\n\n**Recommendation**: take a confirmatory resample (ideally two, ~1 week apart, plus one during a deliberately different load level) and compute the gassing rate (ppm/day) for C2H4 and CH4. A rising rate with flat load settles it as load-independent; a rate that scales with load settles it as load-driven; a zero rate means the fault is inactive and the debate is moot. Also verify the OTI alarm/trip flags, which appear stuck on.\n\nFor reference, the only open work order on Transformer 1 is **WO 1000051** (APPR, P1) \u2014 an OLTC inspection for suspected contact wear/coking. There is no open oil-sampling work order, and no internal-inspection order was created, per the rules above.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 4193.727083969861
+      },
+      {
+        "index": 1,
+        "text": "I'll start by pulling the telemetry for Transformer 1 in that window, along with the open work orders.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 509.1745000099763
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "hydrogen",
+                "methane",
+                "ethylene",
+                "co",
+                "ethane",
+                "acetylene",
+                "il1",
+                "il2",
+                "il3",
+                "inut",
+                "oti",
+                "oti_a",
+                "wti",
+                "ati",
+                "oti_t"
+              ]
+            },
+            "id": "toolu_01XZGehidZoSnjWuP6Xi6Cuf",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"methane\":7406,\"ethylene\":16684,\"co\":32,\"ethane\":5467,\"acetylene\":7,\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5,\"oti\":85,\"oti_a\":2,\"wti\":80,\"ati\":78,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"methane\":7200,\"ethylene\":16500,\"co\":30,\"ethane\":5400,\"acetylene\":6,\"il1\":102,\"il2\":103,\"il3\":96,\"inut\":6,\"oti\":87,\"oti_a\":2,\"wti\":82,\"ati\":79,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"methane\":7300,\"ethylene\":16700,\"co\":35,\"ethane\":5500,\"acetylene\":8,\"il1\":101,\"il2\":104,\"il3\":94,\"inut\":5,\"oti\":84,\"oti_a\":1,\"wti\":79,\"ati\":77,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"methane\":7350,\"ethylene\":16600,\"co\":33,\"ethane\":5450,\"acetylene\":7,\"il1\":100,\"il2\":106,\"il3\":95,\"inut\":5,\"oti\":86,\"oti_a\":2,\"wti\":81,\"ati\":78,\"oti_t\":1}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 2133.7445409735665
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "OPEN",
+              "page_size": 0
+            },
+            "id": "toolu_01CBcEgSwBR9zd5Pc91e6v3R",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"OPEN\",\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T22:33:49+00:00\",\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 918.0573750054464
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 10796.385416993871
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2.975250012241304
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01BZj6iwPB9iPjd1UHhJHRF1",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 529.2617080267519
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__assess_winding_temperature",
+            "input": {
+              "asset_name": "Transformer 1",
+              "wti": 82,
+              "oti": 87,
+              "ati": 79,
+              "oti_a": 1,
+              "oti_t": 1
+            },
+            "id": "toolu_0176nzpjt8G3cr3bWNRLz1Lm",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1230.3506669704802
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 8838.989167008549
+      },
+      {
+        "index": 9,
+        "text": "Both LLM-backed assessors returned \"LLM unavailable\". I'll retry them once in parallel; if they fail again I'll fall back to computing the IEC 60599 Rogers ratios directly from the readings.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1.4242079923860729
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01AWhdD7CnEkLnDPbJZFQq6n",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1500.3581669880077
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__assess_winding_temperature",
+            "input": {
+              "asset_name": "Transformer 1",
+              "wti": 82,
+              "oti": 87,
+              "ati": 79,
+              "oti_a": 1,
+              "oti_t": 1
+            },
+            "id": "toolu_0117wYbaoKLd4BWAuU8aopWM",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1157.8500830219127
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 20818.454707972705
+      },
+      {
+        "index": 13,
+        "text": "Both assessors are down again, so I computed the IEC 60599 Rogers ratios directly. Nothing else is needed \u2014 here is the verdict.\n\n## Sample-by-sample (all 4 samples complete; correlation can be judged)\n\n| Timestamp | il1+il2+il3 (A) | \u0394 current | H2+CH4+C2H4+CO (ppm) | \u0394 gas |\n|---|---|---|---|---|\n| 2024-01-15 | 300 | \u2014 | 26,967 | \u2014 |\n| 2024-01-16 | 301 | +1 | 26,680 | \u2212287 |\n| 2024-01-17 | 299 | \u22122 | 26,835 | +155 |\n| 2024-01-18 | 301 | +2 | 26,883 | +48 |\n\n**Do gases rise where current rises? No.** Sign agreement is 1 of 3 steps (current up/gas down on 01-16, current down/gas up on 01-17, both up on 01-18). Current is essentially flat \u2014 every sample is within 0.3% of the first value (300 A), far inside the 10% band. The gas sum is also flat: it ends 84 ppm (0.3%) *below* where it started and wobbles within ~1%. Neither channel group has a trend for the other to track.\n\n## DGA classification \u2014 latest complete sample (2024-01-18)\nH2 2900 / CH4 7350 / C2H6 5450 / C2H4 16600 / C2H2 7 ppm\n- C2H2/C2H4 = 0.0004 (<0.1)\n- CH4/H2 = 2.53 (>1)\n- C2H4/C2H6 = 3.05 (1\u20134)\n\n\u2192 IEC code **0-2-1 \u2192 T2, thermal fault 300\u2013700 \u00b0C**. (Note: the `interpret_dga` service was unavailable on two attempts; this is a manual Rogers-ratio computation, consistent with the \"DGA T2 thermal\" already recorded on WO 1000051.) Absolute levels are very high (C2H4 16,600 ppm), so this is a serious established fault, but it is not gassing progressively over this window.\n\n## Top-oil vs. alarm at highest-current sample\nHighest current is a tie at 301 A (01-16, 01-18): OTI = 87 \u00b0C and 86 \u00b0C. `oti_a` is a flag, not a temperature setpoint, and it is non-zero (2) in every sample \u2014 as is `oti_t` (1). So there is no \"approach\" to assess: the alarm and trip flags read as already asserted throughout the window regardless of load, which is either a persistent alarm condition or a stuck/misconfigured signal and should be verified. Top-oil rise over ambient is only ~8 K, which does not indicate load-driven heating.\n\n## Decision: neither case fits cleanly \u2014 no work order created\n- **Not load-driven**: class T2 qualifies, but the gases do not track current (the tracking condition fails). No loading limit recommended and no note added.\n- **Not a clean load-independent fault**: current does stay within 10% of its first value, but the gas sum does not rise across the window, and T2 is not in {PD, D1, D2, T3}.\n\n**The conflict**: the oil carries a very high, T2-pattern thermal gas signature, yet over these four days neither load nor gassing moved \u2014 the gases are static at a high plateau. That's consistent with a historical/stalled thermal fault (or prior gassing that hasn't been degassed) rather than either an active load-proportional or active load-independent process. Four daily samples at constant load simply can't discriminate the two hypotheses your engineers are arguing over.\n\n**Recommendation**: take a confirmatory resample (ideally two, ~1 week apart, plus one during a deliberately different load level) and compute the gassing rate (ppm/day) for C2H4 and CH4. A rising rate with flat load settles it as load-independent; a rate that scales with load settles it as load-driven; a zero rate means the fault is inactive and the debate is moot. Also verify the OTI alarm/trip flags, which appear stuck on.\n\nFor reference, the only open work order on Transformer 1 is **WO 1000051** (APPR, P1) \u2014 an OLTC inspection for suspected contact wear/coking. There is no open oil-sampling work order, and no internal-inspection order was created, per the rules above.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 7745.901042013429
+      }
+    ],
+    "started_at": "2026-09-30T22:53:21.889499+00:00"
+  }
+}

@@ -1,0 +1,344 @@
+{
+  "run_id": "opus-5-5_0037",
+  "scenario_id": "transformer_scenario_37",
+  "runner": "claude-agent",
+  "model": "claude-opus-5-5",
+  "question": "We're short on crews this month, and I'd like to push the next planned job on Transformer 1 at site MAIN back by 30 days. Tell me whether that's safe.\n\nFind the open or pending-approval work order on Transformer 1 with the earliest scheduled date. Give me its number, description, priority and scheduled date. If it's an oil sampling or DGA job, don't defer it under any circumstances. Just say why.\n\nOtherwise, build two separate pieces of evidence:\n1. Using the samples between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, forecast hydrogen, ethylene and acetylene 7 days ahead from the last sample, with an 80% upper bound. Compare the upper bounds with the IEEE C57.104 Condition 1 limits of 100 ppm for hydrogen, 50 ppm for ethylene and 1 ppm for acetylene.\n2. Run a dissolved gas fault classification on the latest complete sample, using hydrogen, methane, ethane, ethylene and acetylene.\n\nDecide as follows:\n- Approve the deferral only if no upper bound crosses its limit and the class is not D1, D2 or T3. In that case, find a day about 30 days after the current scheduled date where MAIN has fewer than 3 scheduled work orders. Add a note to the work order with the proposed new date and the evidence behind it.\n- If both pieces of evidence point to risk, keep the original date. Raise the priority to 1 if acetylene is the gas crossing its limit.\n- If they disagree, keep the original date, don't change the priority, and recommend a confirmatory oil resample before revisiting the deferral.\n\nIf any of the three gases has fewer than 4 usable samples, don't model it. Project its last value forward 7 days using the average daily change between the first and last samples, and label it as a linear extrapolation with no interval.",
+  "answer": "**Don't defer it.** Keep work order 1000051 on its original date and priority. The two pieces of evidence disagree, so your rule applies: keep the date, leave the priority alone, and get a confirmatory oil resample before revisiting the deferral.\n\n**Next job on Transformer 1 (MAIN)**\n- **Number:** 1000051 (awaiting approval)\n- **Description:** OLTC inspection \u2013 Transformer 1 on-load tap changer (suspected contact wear/coking)\n- **Priority:** 1\n- **Scheduled date:** 2024-01-19. No work order at MAIN has a formal scheduled date, so this is the target start written in the work order's text. The only other job, 1000052, has a target of 2026-10-01. The 2024 date is already long past.\n\nIt's a tap-changer inspection, not an oil sampling or DGA job, so I built the evidence.\n\n**Evidence 1 \u2013 7-day forecast (samples 2024-01-15 to 01-18; each gas has 4 samples, so all were modelled)**\nThe forecasting tool couldn't read the data because there's no file for this asset. I calculated the same trend-line (drift) forecast by hand instead, with an approximate 80% upper bound from the day-to-day scatter. The bounds are estimates, but no reasonable bound would change the result:\n\n| Gas | Last value (ppm) | Forecast for 2024-01-25 (ppm) | ~80% upper bound (ppm) | Limit (ppm) | Crosses? |\n|---|---|---|---|---|---|\n| Hydrogen | 2,900 | \u22483,028 | \u22483,314 | 100 | Yes |\n| Ethylene | 16,600 | \u224816,404 | \u224816,816 | 50 | Yes |\n| Acetylene | 7 | \u22487 | \u224810.4 | 1 | Yes |\n\n\u2192 This points to **risk**. All three gases are already far above their limits, including acetylene.\n\n**Evidence 2 \u2013 fault classification (2024-01-18 sample)**\nThe classification tool returned \"LLM unavailable\", so I calculated the standard IEC 60599 ratios by hand:\n- C\u2082H\u2082/C\u2082H\u2084 = 0.0004 (below 0.1)\n- CH\u2084/H\u2082 = 2.53 (above 1)\n- C\u2082H\u2084/C\u2082H\u2086 = 3.05 (between 1 and 4)\n\n\u2192 **T2 thermal fault (300\u2013700 \u00b0C)**. That isn't D1, D2 or T3, so this evidence alone doesn't point to risk. One caveat: a different method (the Duval triangle, which uses only methane, ethylene and acetylene) would put this sample in T3, which would count as risk.\n\n**Decision:** Because the evidence disagrees, I left 1000051 unchanged and wrote no note on it. The confirmatory resample is already planned as work order 1000052 (oil DGA retest and insulation check, approved, target 2026-10-01). Don't let crew shortages slip that job. It's the one that would settle whether a deferral is safe. And if the resample classifies as T3, all your conditions for keeping the date and raising the priority to 1 are already met (acetylene is over its limit), but 1000051 is already at priority 1.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 3877.3669590009376
+      },
+      {
+        "index": 1,
+        "text": "I'll start by finding the open and pending-approval work orders on Transformer 1.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 486.7808329872787
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "OPEN",
+              "page_size": 0
+            },
+            "id": "toolu_011e3hW6pm3Ns3erdgHDqRME",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"OPEN\",\"labor_code\":null,\"total\":2,\"work_orders\":[{\"wonum\":\"1000052\",\"description\":\"Transformer 1 - oil sample retest (DGA) and insulation check for T2 thermal fault\",\"description_longdescription\":\"Target start 2026-10-01 (0 WOs scheduled at MAIN that day). DGA 2024-01-15 -> 2024-01-18: CO 32->33 ppm, C2H4 16684->16600 ppm, CH4 7406->7350 ppm. Rogers/IEC 60599 ratios on last sample: C2H2/C2H4=0.0004, CH4/H2=2.53, C2H4/C2H6=3.05 -> T2 thermal fault (300-700 C). CO low (33 ppm), CO2/CO~40 -> paper involvement not indicated, so P3. Failure code FC006 (overheating). Retest oil DGA and perform insulation check. Technician not assigned: no technician has prior work history on Transformer 1. Automated DGA tool unavailable; ratios computed manually.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T23:18:38+00:00\",\"worktype\":\"CM\",\"wopriority\":3,\"reportdate\":\"2026-09-30T23:15:41+00:00\",\"reportedby\":null,\"failurecode\":\"FC006\",\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000052\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"},{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"WAPPR\",\"status_date\":null,\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 2 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 718.6996670207009
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "APPROVED_PENDING",
+              "page_size": 0
+            },
+            "id": "toolu_01A4L9uoNR8ZC64Wcn8vQz1L",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"APPROVED_PENDING\",\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000052\",\"description\":\"Transformer 1 - oil sample retest (DGA) and insulation check for T2 thermal fault\",\"description_longdescription\":\"Target start 2026-10-01 (0 WOs scheduled at MAIN that day). DGA 2024-01-15 -> 2024-01-18: CO 32->33 ppm, C2H4 16684->16600 ppm, CH4 7406->7350 ppm. Rogers/IEC 60599 ratios on last sample: C2H2/C2H4=0.0004, CH4/H2=2.53, C2H4/C2H6=3.05 -> T2 thermal fault (300-700 C). CO low (33 ppm), CO2/CO~40 -> paper involvement not indicated, so P3. Failure code FC006 (overheating). Retest oil DGA and perform insulation check. Technician not assigned: no technician has prior work history on Transformer 1. Automated DGA tool unavailable; ratios computed manually.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T23:18:38+00:00\",\"worktype\":\"CM\",\"wopriority\":3,\"reportdate\":\"2026-09-30T23:15:41+00:00\",\"reportedby\":null,\"failurecode\":\"FC006\",\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000052\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 1007.3557909927331
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 2768.010667001363
+      },
+      {
+        "index": 5,
+        "text": "Neither record has a `schedstart` field filled in. I'll check the site schedule calendar to see whether either one has a scheduled date there.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 0.3488750080578029
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__get_schedule_calendar",
+            "input": {
+              "site_id": "MAIN",
+              "date_from": "2024-01-01",
+              "date_to": "2027-12-31"
+            },
+            "id": "toolu_01GETXCCEwVuA9WWvSBiWHXN",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"date_from\":\"2024-01-01\",\"date_to\":\"2027-12-31\",\"total_scheduled\":0,\"by_date\":[],\"workorders\":null,\"message\":\"0 scheduled at MAIN.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 592.9457079619169
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 3290.5650419997983
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 2.8903750353492796
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000"
+            },
+            "id": "toolu_01BnbhtdpX7CQbivSFXppjQr",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"oxygen\":5860,\"nitrogen\":27842,\"methane\":7406,\"co\":32,\"co2\":1344,\"ethylene\":16684,\"ethane\":5467,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"oxygen\":5700,\"nitrogen\":28000,\"methane\":7200,\"co\":30,\"co2\":1300,\"ethylene\":16500,\"ethane\":5400,\"acetylene\":6,\"dbds\":18,\"power_factor\":1.2,\"interfacial_v\":44,\"dielectric_rigidity\":53,\"water_content\":1,\"vl1\":112,\"vl2\":114,\"vl3\":109,\"il1\":102,\"il2\":103,\"il3\":96,\"vl12\":226,\"vl23\":221,\"vl31\":219,\"inut\":6,\"rated_mva\":100,\"wti\":82,\"oti\":87,\"ati\":79,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"oxygen\":5900,\"nitrogen\":27700,\"methane\":7300,\"co\":35,\"co2\":1350,\"ethylene\":16700,\"ethane\":5500,\"acetylene\":8,\"dbds\":20,\"power_factor\":0.9,\"interfacial_v\":46,\"dielectric_rigidity\":56,\"water_content\":0,\"vl1\":109,\"vl2\":116,\"vl3\":107,\"il1\":101,\"il2\":104,\"il3\":94,\"vl12\":224,\"vl23\":219,\"vl31\":217,\"inut\":5,\"rated_mva\":100,\"wti\":79,\"oti\":84,\"ati\":77,\"oti_a\":1,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"oxygen\":5800,\"nitrogen\":27950,\"methane\":7350,\"co\":33,\"co2\":1325,\"ethylene\":16600,\"ethane\":5450,\"acetylene\":7,\"dbds\":19,\"power_factor\":1.1,\"interfacial_v\":45,\"dielectric_rigidity\":54,\"water_content\":1,\"vl1\":111,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":106,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":81,\"oti\":86,\"ati\":78,\"oti_a\":2,\"oti_t\":1}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 0.1907499972730875
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "duration_ms": 2985.881917004008
+      },
+      {
+        "index": 11,
+        "text": "Each gas has 4 usable samples, so the rule says to model all three. Let me check how the forecasting tool accepts input.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "duration_ms": 0.6175409653224051
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__recipe_template",
+            "input": {},
+            "id": "toolu_01MFQqs9mTzD2dw7ot9zZ8PS",
+            "output": "{\"task_choices\":[\"omitted / anything else  - FORECASTING: transforms -> single|ensemble -> conformal\",\"tsfm_anomaly_detection   - detector path, producing dense anomaly labels\",\"tsfm_classification | tsfm_regression | tsfm_clustering  - run_tabular_recipe only\"],\"estimator_spec\":[\"model_id     - a catalog card, e.g. {\\\"model_id\\\": \\\"ttm_r1_512_96\\\"}; its sktime_class and params are read from the card (see find_models / resolve_model)\",\"sktime_class - an inline class path + params, e.g. {\\\"sktime_class\\\": \\\"sktime.forecasting.naive.NaiveForecaster\\\", \\\"params\\\": {\\\"strategy\\\": \\\"drift\\\"}}\"],\"optional_blocks\":[\"fh         - forecast horizon, e.g. [1, 2, 3]. Default [1, 2, 3, 4, 5]\",\"transforms - list of transform specs applied to the target before the forecaster\",\"ensemble   - {\\\"members\\\": [<estimator spec>, ...], \\\"combine\\\": \\\"mean|median|min|max|weighted|stack\\\", \\\"weights\\\": [...]} - use INSTEAD of estimator\",\"conformal  - {\\\"coverage\\\": 0.9} for calibrated prediction intervals\",\"finetune   - training block; see param_hints (lr, epochs, batch_size, ...)\",\"save_to    - directory path; after a fine-tune, persist the fitted weights there and return checkpoint_path in the result (feed it to register_finetuned)\",\"anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)\",\"impute     - fill gaps before fitting\",\"eval       - {\\\"metrics\\\": [\\\"smape\\\", ...]} - the first metric scores the backtest\"],\"rules\":[\"a recipe MUST carry an `estimator` or an `ensemble` (not both)\",\"`model_id` must exist in the catalog; run_recipe errors if it does not\",\"run_tabular_recipe extracts FLOps features first, then fits `estimator`; omit label_column for clustering\",\"the series itself is never in the recipe - it arrives via dataset_path\"],\"examples\":{\"forecast_with_a_catalog_model\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1,2,3]},\"forecast_inline_estimator\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3,4,5],\"eval\":{\"metrics\":[\"smape\"]}},\"forecast_ensemble_with_intervals\":{\"ensemble\":{\"members\":[{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"mean\"}}],\"combine\":\"mean\"},\"fh\":[1,2,3],\"conformal\":{\"coverage\":0.9}},\"anomaly_detection\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":24,\"n_neighbors\":5,\"novelty\":true}}},\"tabular_classification\":{\"task\":\"tsfm_classification\",\"estimator\":{\"sktime_class\":\"sklearn.ensemble.RandomForestClassifier\",\"params\":{\"n_estimators\":100}}}}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "duration_ms": 250.19979203352705
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01KK4HPMD7dhdV3Qg9bEgmKW",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "duration_ms": 1040.0222499738447
+      },
+      {
+        "index": 14,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 7968.8484580256045
+      },
+      {
+        "index": 15,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 1.5465000178664923
+      },
+      {
+        "index": 16,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__list_runs",
+            "input": {
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_0141uRrEztYQ5MDsNZwpBiwR",
+            "output": "{\"runs\":[{\"_id\":\"run:10d8c01740\",\"run_id\":\"run:10d8c01740\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:36+00:00\"},{\"_id\":\"run:122b256421\",\"run_id\":\"run:122b256421\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0651,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[2918.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":2918.3333},\"0_0.9_upper\":{\"4\":2918.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:27+00:00\"},{\"_id\":\"run:2522577cac\",\"run_id\":\"run:2522577cac\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":5,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":5,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:44:48+00:00\"},{\"_id\":\"run:25c6964363\",\"run_id\":\"run:25c6964363\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1]},\"training_regime\":\"fine_tune\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.692,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[26.017799377441406],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:46:22+00:00\"},{\"_id\":\"run:28f1e6703b\",\"run_id\":\"run:28f1e6703b\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3],\"eval\":{\"metrics\":[\"smape\"],\"window_length\":1,\"initial_window\":1},\"backtest\":false},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0057,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[16572,16544,16516],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T19:04:25+00:00\"},{\"_id\":\"run:60a5e01c1c\",\"run_id\":\"run:60a5e01c1c\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"last\"}},\"fh\":[1]},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.1538,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[35],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:46:21+00:00\"},{\"_id\":\"run:63268a84f9\",\"run_id\":\"run:63268a84f9\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:52:48+00:00\"},{\"_id\":\"run:685113cca6\",\"run_id\":\"run:685113cca6\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.1615,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[33.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":33.3333},\"0_0.9_upper\":{\"4\":33.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:42+00:00\"},{\"_id\":\"run:7c2f981391\",\"run_id\":\"run:7c2f981391\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.3275,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[7],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":7},\"0_0.9_upper\":{\"4\":7}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:41+00:00\"},{\"_id\":\"run:7dd23f2ef5\",\"run_id\":\"run:7dd23f2ef5\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1]},\"training_regime\":\"fine_tune\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.4529,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[65.83740234375],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:44:14+00:00\"},{\"_id\":\"run:809e510e45\",\"run_id\":\"run:809e510e45\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3],\"eval\":{\"metrics\":[\"smape\"],\"window_length\":1,\"initial_window\":1}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0238,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[2918.3333,2936.6667,2955],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T19:04:33+00:00\"},{\"_id\":\"run:9a54de85c5\",\"run_id\":\"run:9a54de85c5\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0285,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[7331.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":7331.3333},\"0_0.9_upper\":{\"4\":7331.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:36+00:00\"},{\"_id\":\"run:9f745d8aa6\",\"run_id\":\"run:9f745d8aa6\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:19+00:00\"},{\"_id\":\"run:afb669e27e\",\"run_id\":\"run:afb669e27e\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:31+00:00\"},{\"_id\":\"run:b404c8096d\",\"run_id\":\"run:b404c8096d\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:20+00:00\"},{\"_id\":\"run:c1feaadf0f\",\"run_id\":\"run:c1feaadf0f\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:18+00:00\"},{\"_id\":\"run:d27f2359d9\",\"run_id\":\"run:d27f2359d9\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0149,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[16572],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":16572},\"0_0.9_upper\":{\"4\":16572}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:39+00:00\"},{\"_id\":\"run:d8322fcb43\",\"run_id\":\"run:d8322fcb43\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":1,\"n_observations\":4,\"anomaly_indices\":[1],\"created_at\":\"2026-09-30T18:56:07+00:00\"},{\"_id\":\"run:daaa778604\",\"run_id\":\"run:daaa778604\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:59:32+00:00\"},{\"_id\":\"run:de5de8a443\",\"run_id\":\"run:de5de8a443\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0651,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[2918.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":2918.3333},\"0_0.9_upper\":{\"4\":2918.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:35+00:00\"},{\"_id\":\"run:eb9fd458c1\",\"run_id\":\"run:eb9fd458c1\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:37+00:00\"},{\"_id\":\"run:f44941e4fb\",\"run_id\":\"run:f44941e4fb\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0215,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[5444.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":5444.3333},\"0_0.9_upper\":{\"4\":5444.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:38+00:00\"},{\"_id\":\"run:f7dcb641b7\",\"run_id\":\"run:f7dcb641b7\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:39+00:00\"}],\"plans\":[]}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 0.1698339474387467
+      },
+      {
+        "index": 17,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 1202.554333023727
+      },
+      {
+        "index": 18,
+        "text": "The run list doesn't show where the data came from. I'll open one run to find its dataset path.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 0.2346250112168491
+      },
+      {
+        "index": 19,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__get_run",
+            "input": {
+              "run_id": "run:809e510e45"
+            },
+            "id": "toolu_01RkkARG1XuY6J21nCjeShYP",
+            "output": "{\"result\":{\"run_id\":\"run:809e510e45\",\"_id\":\"run:809e510e45\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3],\"eval\":{\"metrics\":[\"smape\"],\"window_length\":1,\"initial_window\":1}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0238,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[2918.3333,2936.6667,2955],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T19:04:33+00:00\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 235.77550001209602
+      },
+      {
+        "index": 20,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 2687.243291991763
+      },
+      {
+        "index": 21,
+        "text": "The run records don't store a dataset path. I'll try passing the IoT asset directly to the forecasting tool.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 0.3115829895250499
+      },
+      {
+        "index": 22,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__run_recipe",
+            "input": {
+              "dataset_path": "iot://MAIN/Transformer 1?start=2024-01-15T00:00:00.000000&end=2024-01-19T00:00:00.000000",
+              "timestamp_column": "timestamp",
+              "target_columns": [
+                "hydrogen",
+                "ethylene",
+                "acetylene"
+              ],
+              "recipe": {
+                "estimator": {
+                  "sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+                  "params": {
+                    "strategy": "drift"
+                  }
+                },
+                "fh": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ],
+                "conformal": {
+                  "coverage": 0.8
+                }
+              },
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01WS1QQJ6oGQhTge92ZkF2SP",
+            "output": "{\"result\":{\"error\":\"Protocol not known: iot\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 1881.4600000041537
+      },
+      {
+        "index": 23,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 17411.737042013556
+      },
+      {
+        "index": 24,
+        "text": "**Don't defer it.** Keep work order 1000051 on its original date and priority. The two pieces of evidence disagree, so your rule applies: keep the date, leave the priority alone, and get a confirmatory oil resample before revisiting the deferral.\n\n**Next job on Transformer 1 (MAIN)**\n- **Number:** 1000051 (awaiting approval)\n- **Description:** OLTC inspection \u2013 Transformer 1 on-load tap changer (suspected contact wear/coking)\n- **Priority:** 1\n- **Scheduled date:** 2024-01-19. No work order at MAIN has a formal scheduled date, so this is the target start written in the work order's text. The only other job, 1000052, has a target of 2026-10-01. The 2024 date is already long past.\n\nIt's a tap-changer inspection, not an oil sampling or DGA job, so I built the evidence.\n\n**Evidence 1 \u2013 7-day forecast (samples 2024-01-15 to 01-18; each gas has 4 samples, so all were modelled)**\nThe forecasting tool couldn't read the data because there's no file for this asset. I calculated the same trend-line (drift) forecast by hand instead, with an approximate 80% upper bound from the day-to-day scatter. The bounds are estimates, but no reasonable bound would change the result:\n\n| Gas | Last value (ppm) | Forecast for 2024-01-25 (ppm) | ~80% upper bound (ppm) | Limit (ppm) | Crosses? |\n|---|---|---|---|---|---|\n| Hydrogen | 2,900 | \u22483,028 | \u22483,314 | 100 | Yes |\n| Ethylene | 16,600 | \u224816,404 | \u224816,816 | 50 | Yes |\n| Acetylene | 7 | \u22487 | \u224810.4 | 1 | Yes |\n\n\u2192 This points to **risk**. All three gases are already far above their limits, including acetylene.\n\n**Evidence 2 \u2013 fault classification (2024-01-18 sample)**\nThe classification tool returned \"LLM unavailable\", so I calculated the standard IEC 60599 ratios by hand:\n- C\u2082H\u2082/C\u2082H\u2084 = 0.0004 (below 0.1)\n- CH\u2084/H\u2082 = 2.53 (above 1)\n- C\u2082H\u2084/C\u2082H\u2086 = 3.05 (between 1 and 4)\n\n\u2192 **T2 thermal fault (300\u2013700 \u00b0C)**. That isn't D1, D2 or T3, so this evidence alone doesn't point to risk. One caveat: a different method (the Duval triangle, which uses only methane, ethylene and acetylene) would put this sample in T3, which would count as risk.\n\n**Decision:** Because the evidence disagrees, I left 1000051 unchanged and wrote no note on it. The confirmatory resample is already planned as work order 1000052 (oil DGA retest and insulation check, approved, target 2026-10-01). Don't let crew shortages slip that job. It's the one that would settle whether a deferral is safe. And if the resample classifies as T3, all your conditions for keeping the date and raising the priority to 1 are already met (acetylene is over its limit), but 1000051 is already at priority 1.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 2162.2745829517953
+      }
+    ],
+    "started_at": "2026-09-30T23:21:18.001940+00:00"
+  }
+}

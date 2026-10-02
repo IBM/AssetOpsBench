@@ -298,3 +298,16 @@ async def test_run_empty_result():
     assert result.answer == ""
     assert isinstance(result.trajectory, Trajectory)
     assert result.trajectory.turns == []
+
+
+def test_parallel_tool_outputs_preserve_call_identity_for_grading():
+    from types import SimpleNamespace
+    from agent.openai_agent.runner import _build_trajectory
+    items=[_make_tool_call_item('history','{"asset":"a"}','call-a'),
+           _make_tool_call_item('history','{"asset":"b"}','call-b'),
+           SimpleNamespace(type='tool_call_output_item',raw_item={'call_id':'call-b'},output='B data'),
+           SimpleNamespace(type='tool_call_output_item',raw_item={'call_id':'call-a'},output='A data')]
+    trajectory=_build_trajectory(_make_run_result(items))
+    first,second=trajectory.all_tool_calls
+    assert first.input=={'asset':'a'} and first.output=='A data'
+    assert second.input=={'asset':'b'} and second.output=='B data'

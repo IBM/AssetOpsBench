@@ -1,0 +1,105 @@
+{
+  "run_id": "fable-5-1_0017",
+  "scenario_id": "transformer_scenario_17",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "I've heard the ratio method can give odd answers when gas levels are low, so I want a second opinion on Transformer 1 at site MAIN. Using the average hydrogen, methane, ethane, ethylene and acetylene over the available window, run the IEC 60599 ratio classification. Separately, work out the Duval Triangle 1 percentages from methane, ethylene and acetylene, and name the zone they fall in (PD, D1, D2, DT, T1, T2 or T3). Tell me whether the two methods agree. If they disagree, tell me which one you trust more and why, looking at whether the gases are high enough for ratios to mean anything. Then name the single most likely failure mode from our known transformer list. Use averages, not single samples. If the combined methane, ethylene and acetylene is under 10 ppm, say that the Duval result isn't meaningful and rely on the ratio result alone. If methane or ethylene has no data at all, say that neither method can be applied reliably and give a key-gas view from the largest gas instead.",
+  "answer": "**Transformer 1 (MAIN) \u2014 DGA second opinion**\nWindow: 2024\u201101\u201115 \u2192 2024\u201101\u201119, 5 samples, averages used. (The `interpret_dga` service returned \"LLM unavailable\", so the ratio/triangle arithmetic below was computed directly from the averages \u2014 it is deterministic per IEC 60599 / Duval.)\n\n**Average gases (ppm):** H\u2082 2869 \u00b7 CH\u2084 7331 \u00b7 C\u2082H\u2086 5457 \u00b7 C\u2082H\u2084 16 627 \u00b7 C\u2082H\u2082 7\n\n**1. IEC 60599 ratio classification**\n- C\u2082H\u2082/C\u2082H\u2084 = 7 / 16 627 = **0.0004** (code 0, <0.1)\n- CH\u2084/H\u2082 = 7331 / 2869 = **2.56** (code 2, >1)\n- C\u2082H\u2084/C\u2082H\u2086 = 16 627 / 5457 = **3.05** (1\u20134 band)\n- \u2192 **T2 \u2013 thermal fault 300\u2013700 \u00b0C**, but sitting close to the T3 boundary (C\u2082H\u2084/C\u2082H\u2086 > 4). No discharge signature (acetylene essentially absent). Note: the Rogers code (0\u20112\u20112) would already read as thermal >700 \u00b0C.\n\n**2. Duval Triangle 1**\n- Sum CH\u2084+C\u2082H\u2084+C\u2082H\u2082 = 23 965 ppm (\u226b 10 ppm, so the triangle is meaningful)\n- %CH\u2084 = **30.6 %**, %C\u2082H\u2084 = **69.4 %**, %C\u2082H\u2082 = **0.03 %**\n- \u2192 **T3 \u2013 thermal fault > 700 \u00b0C** (C\u2082H\u2084 well above the 50 % line, C\u2082H\u2082 far below 15 %).\n\n**3. Do they agree?**\nPartly. Both say a pure thermal fault with no arcing/PD, but IEC puts it in T2 and Duval in T3. The disagreement is a boundary effect, not a low\u2011gas artefact: every gas is orders of magnitude above the IEC 60599 typical\u2011concentration limits (e.g. C\u2082H\u2084 \u2248 16 600 ppm vs a typical 90th\u2011percentile of a few hundred), so the ratios are numerically sound. **I trust the Duval T3 result more**: the ratio method's T2/T3 split rests on a single ratio (C\u2082H\u2084/C\u2082H\u2086 = 3.05 vs threshold 4) and is sensitive to ethane, whereas Duval places the point deep inside T3 (69 % ethylene vs 50 % boundary) with no undefined regions, and the dominant key gas (ethylene) is the classic signature of >700 \u00b0C overheating. Rogers agrees with Duval. Treat this as a severe high\u2011temperature hot\u2011spot condition either way \u2014 and note that the oil\u2011temperature trip flag is also set (oti_t = 1 across the window).\n\n**4. Most likely failure mode (from the known transformer list)**\n**Thermal Fault \u2014 Core/Winding** (high\u2011temperature hot spot, e.g. circulating currents, bad joint/contact, or core lamination overheating), rather than oil\u2011only overheating.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 3576.9693750189617
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__sensor_stats",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01BRQVCCAW1xRM5Cr2JLTCan",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 951.1329579981975
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__get_failure_modes",
+            "input": {
+              "asset_class": "transformer"
+            },
+            "id": "toolu_01CS593326idFpygyBQ9H289",
+            "output": "{\"result\":{\"asset_class\":\"transformer\",\"failure_modes\":[\"Partial Discharge in Oil\",\"Thermal Fault \u2014 Oil Overheating\",\"Thermal Fault \u2014 Core/Winding\",\"Low-Energy Arcing (Sparking)\",\"High-Energy Arcing\",\"Tap Changer Mechanical Wear\",\"Oil Contamination / Moisture Ingress\",\"Cellulose Insulation Ageing\",\"Oil Dielectric Degradation\"],\"exhaustive\":false,\"source\":\"curated transformer failure modes\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 6.457583978772163
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 4,
+        "duration_ms": 2115.37616600981
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2869,
+              "methane": 7331.2,
+              "acetylene": 7,
+              "ethylene": 16626.8,
+              "ethane": 5457.4
+            },
+            "id": "toolu_018ZPFgN3gLLra6pYrGBihNp",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 4,
+        "duration_ms": 1250.0845420290716
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 30609.0342499665
+      },
+      {
+        "index": 6,
+        "text": "**Transformer 1 (MAIN) \u2014 DGA second opinion**\nWindow: 2024\u201101\u201115 \u2192 2024\u201101\u201119, 5 samples, averages used. (The `interpret_dga` service returned \"LLM unavailable\", so the ratio/triangle arithmetic below was computed directly from the averages \u2014 it is deterministic per IEC 60599 / Duval.)\n\n**Average gases (ppm):** H\u2082 2869 \u00b7 CH\u2084 7331 \u00b7 C\u2082H\u2086 5457 \u00b7 C\u2082H\u2084 16 627 \u00b7 C\u2082H\u2082 7\n\n**1. IEC 60599 ratio classification**\n- C\u2082H\u2082/C\u2082H\u2084 = 7 / 16 627 = **0.0004** (code 0, <0.1)\n- CH\u2084/H\u2082 = 7331 / 2869 = **2.56** (code 2, >1)\n- C\u2082H\u2084/C\u2082H\u2086 = 16 627 / 5457 = **3.05** (1\u20134 band)\n- \u2192 **T2 \u2013 thermal fault 300\u2013700 \u00b0C**, but sitting close to the T3 boundary (C\u2082H\u2084/C\u2082H\u2086 > 4). No discharge signature (acetylene essentially absent). Note: the Rogers code (0\u20112\u20112) would already read as thermal >700 \u00b0C.\n\n**2. Duval Triangle 1**\n- Sum CH\u2084+C\u2082H\u2084+C\u2082H\u2082 = 23 965 ppm (\u226b 10 ppm, so the triangle is meaningful)\n- %CH\u2084 = **30.6 %**, %C\u2082H\u2084 = **69.4 %**, %C\u2082H\u2082 = **0.03 %**\n- \u2192 **T3 \u2013 thermal fault > 700 \u00b0C** (C\u2082H\u2084 well above the 50 % line, C\u2082H\u2082 far below 15 %).\n\n**3. Do they agree?**\nPartly. Both say a pure thermal fault with no arcing/PD, but IEC puts it in T2 and Duval in T3. The disagreement is a boundary effect, not a low\u2011gas artefact: every gas is orders of magnitude above the IEC 60599 typical\u2011concentration limits (e.g. C\u2082H\u2084 \u2248 16 600 ppm vs a typical 90th\u2011percentile of a few hundred), so the ratios are numerically sound. **I trust the Duval T3 result more**: the ratio method's T2/T3 split rests on a single ratio (C\u2082H\u2084/C\u2082H\u2086 = 3.05 vs threshold 4) and is sensitive to ethane, whereas Duval places the point deep inside T3 (69 % ethylene vs 50 % boundary) with no undefined regions, and the dominant key gas (ethylene) is the classic signature of >700 \u00b0C overheating. Rogers agrees with Duval. Treat this as a severe high\u2011temperature hot\u2011spot condition either way \u2014 and note that the oil\u2011temperature trip flag is also set (oti_t = 1 across the window).\n\n**4. Most likely failure mode (from the known transformer list)**\n**Thermal Fault \u2014 Core/Winding** (high\u2011temperature hot spot, e.g. circulating currents, bad joint/contact, or core lamination overheating), rather than oil\u2011only overheating.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1436.3709170138463
+      }
+    ],
+    "started_at": "2026-09-30T22:15:46.809013+00:00"
+  }
+}

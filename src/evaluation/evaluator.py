@@ -35,9 +35,11 @@ class Evaluator:
         self,
         default_scorer: str = "llm_judge",
         judge_model: str | None = None,
+        allow_self_judge: bool = False,
     ) -> None:
         self.default_scorer = default_scorer
         self.judge_model = judge_model
+        self.allow_self_judge = allow_self_judge
 
     def evaluate(
         self,
@@ -85,7 +87,7 @@ class Evaluator:
         return scorer_registry.get(name)
 
     def _validate_judge_model(self, scorer_name: str, traj: PersistedTrajectory) -> None:
-        if scorer_name != "llm_judge" or not self.judge_model:
+        if self.allow_self_judge or scorer_name != "llm_judge" or not self.judge_model:
             return
 
         trajectory_model = _normalize_model_id(traj.model)
@@ -124,6 +126,7 @@ def _normalize_model_id(model_id: str | None) -> str:
     if not model_id:
         return ""
     normalized = model_id.strip()
-    if normalized.startswith("litellm_proxy/"):
-        normalized = normalized[len("litellm_proxy/") :]
+    for prefix in ("litellm_proxy/", "claude-code/", "zai/"):
+        if normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
     return normalized

@@ -1,0 +1,105 @@
+{
+  "run_id": "fable-5-1_0010",
+  "scenario_id": "transformer_scenario_10",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "Take the latest oil sample for Transformer 1 at site MAIN and tell me what kind of fault the dissolved gases point to under the IEC 60599 ratio method. Give me the three Rogers ratios (CH4/H2, C2H2/C2H4, C2H4/C2H6), the resulting fault class (PD, D1, D2, T1, T2 or T3) and how confident you are in it. Then check whether the paper is involved using co and co2 from the same sample. Rank the three most likely failure modes from the known transformer failure list, with one sentence of sensor evidence for each. Use only hydrogen, methane, ethane, ethylene and acetylene for the ratio classification. If the ratios fall into a code combination that IEC 60599 leaves unclassified, say so, and fall back to the key-gas method, naming the dominant gas instead of forcing a class. If acetylene is null in the latest sample, treat it as 0 ppm for the ratio and state that the D1/D2 distinction is unreliable.",
+  "answer": "**Transformer 1 (MAIN) \u2014 latest oil sample 2024\u201101\u201119** (H2 2850, CH4 7400, C2H2 7, C2H4 16650, C2H6 5470 ppm; CO 32, CO2 1340 ppm). Note: the automated DGA interpreter returned \"LLM unavailable\", so the ratios and classification below were computed directly from the IEC 60599 tables.\n\n**Rogers / IEC 60599 ratios**\n- CH4/H2 = 7400 / 2850 = **2.60** \u2192 code 2 (>1)\n- C2H2/C2H4 = 7 / 16650 = **0.0004** \u2192 code 0 (<0.1)\n- C2H4/C2H6 = 16650 / 5470 = **3.04** \u2192 code 1 (1\u20134)\n\n**Fault class: T2 \u2014 thermal fault, 300\u2013700 \u00b0C.** This is a classified combination (not an unclassified code set), so no key\u2011gas fallback is needed; for reference the dominant key gas is ethylene (16,650 ppm), which is itself the T2/T3 signature gas.\nConfidence: **high (~80%)**. All three ratios sit inside the T2 window; the only caveat is C2H4/C2H6 = 3.04, which is close to the T3 boundary (>4), so a >700 \u00b0C fault cannot be fully excluded. Acetylene was not null (7 ppm), so the D1/D2 caveat does not apply \u2014 the near\u2011zero C2H2 actively rules out arcing.\n\n**Paper involvement (CO / CO2)**\nCO2/CO = 1340 / 32 = **41.9**. IEC 60599 flags cellulose involvement when CO2/CO < 3 (and CO strongly elevated); a ratio this high with CO at only 32 ppm indicates the hot spot is **not degrading the paper** \u2014 the fault is in the oil / on bare metal, and the CO2 is consistent with normal slow ageing.\n\n**Top three failure modes (from the transformer failure list)**\n1. **Thermal Fault \u2014 Oil Overheating** (most likely): ethylene 16,650 ppm dominates with CH4/H2 = 2.6 and C2H4/C2H6 = 3.0 (T2), while CO is only 32 ppm, pointing to a 300\u2013700 \u00b0C hot spot in oil rather than in cellulose; OTI 85 \u00b0C with the oil\u2011temperature alarm and trip flags set (oti_a = 2, oti_t = 1) supports an active thermal problem.\n2. **Thermal Fault \u2014 Core/Winding** (possible): C2H4/C2H6 at 3.04 is near the T3 border and CH4 at 7,400 ppm is very high, consistent with hot metal (core circulating currents / bad joint) that heats oil without charring paper, and WTI reads 80 \u00b0C.\n3. **Cellulose Insulation Ageing** (unlikely, ranked for completeness): CO2 at 1,340 ppm with CO2/CO \u2248 42 and CO at 32 ppm reflects only slow background ageing, not an active paper fault. (Low\u2011/high\u2011energy arcing and PD are effectively excluded: C2H2/C2H4 = 0.0004 and CH4/H2 \u226b 0.1.)",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 4044.5784999756142
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__latest_reading",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01GoYCzqwNhnhZfXmHgaLmLN",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 1142.745291988831
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__get_failure_modes",
+            "input": {
+              "asset_class": "transformer"
+            },
+            "id": "toolu_01XTLk2ZpMiXWy82Rrhu3auw",
+            "output": "{\"result\":{\"asset_class\":\"transformer\",\"failure_modes\":[\"Partial Discharge in Oil\",\"Thermal Fault \u2014 Oil Overheating\",\"Thermal Fault \u2014 Core/Winding\",\"Low-Energy Arcing (Sparking)\",\"High-Energy Arcing\",\"Tap Changer Mechanical Wear\",\"Oil Contamination / Moisture Ingress\",\"Cellulose Insulation Ageing\",\"Oil Dielectric Degradation\"],\"exhaustive\":false,\"source\":\"curated transformer failure modes\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 6.850542034953833
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 4722.260374983307
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "acetylene": 7,
+              "ethylene": 16650,
+              "ethane": 5470
+            },
+            "id": "toolu_01JtrgkmnVa1NrCtEw5jHfLa",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1264.0927500324324
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 25303.399124997668
+      },
+      {
+        "index": 6,
+        "text": "**Transformer 1 (MAIN) \u2014 latest oil sample 2024\u201101\u201119** (H2 2850, CH4 7400, C2H2 7, C2H4 16650, C2H6 5470 ppm; CO 32, CO2 1340 ppm). Note: the automated DGA interpreter returned \"LLM unavailable\", so the ratios and classification below were computed directly from the IEC 60599 tables.\n\n**Rogers / IEC 60599 ratios**\n- CH4/H2 = 7400 / 2850 = **2.60** \u2192 code 2 (>1)\n- C2H2/C2H4 = 7 / 16650 = **0.0004** \u2192 code 0 (<0.1)\n- C2H4/C2H6 = 16650 / 5470 = **3.04** \u2192 code 1 (1\u20134)\n\n**Fault class: T2 \u2014 thermal fault, 300\u2013700 \u00b0C.** This is a classified combination (not an unclassified code set), so no key\u2011gas fallback is needed; for reference the dominant key gas is ethylene (16,650 ppm), which is itself the T2/T3 signature gas.\nConfidence: **high (~80%)**. All three ratios sit inside the T2 window; the only caveat is C2H4/C2H6 = 3.04, which is close to the T3 boundary (>4), so a >700 \u00b0C fault cannot be fully excluded. Acetylene was not null (7 ppm), so the D1/D2 caveat does not apply \u2014 the near\u2011zero C2H2 actively rules out arcing.\n\n**Paper involvement (CO / CO2)**\nCO2/CO = 1340 / 32 = **41.9**. IEC 60599 flags cellulose involvement when CO2/CO < 3 (and CO strongly elevated); a ratio this high with CO at only 32 ppm indicates the hot spot is **not degrading the paper** \u2014 the fault is in the oil / on bare metal, and the CO2 is consistent with normal slow ageing.\n\n**Top three failure modes (from the transformer failure list)**\n1. **Thermal Fault \u2014 Oil Overheating** (most likely): ethylene 16,650 ppm dominates with CH4/H2 = 2.6 and C2H4/C2H6 = 3.0 (T2), while CO is only 32 ppm, pointing to a 300\u2013700 \u00b0C hot spot in oil rather than in cellulose; OTI 85 \u00b0C with the oil\u2011temperature alarm and trip flags set (oti_a = 2, oti_t = 1) supports an active thermal problem.\n2. **Thermal Fault \u2014 Core/Winding** (possible): C2H4/C2H6 at 3.04 is near the T3 border and CH4 at 7,400 ppm is very high, consistent with hot metal (core circulating currents / bad joint) that heats oil without charring paper, and WTI reads 80 \u00b0C.\n3. **Cellulose Insulation Ageing** (unlikely, ranked for completeness): CO2 at 1,340 ppm with CO2/CO \u2248 42 and CO at 32 ppm reflects only slow background ageing, not an active paper fault. (Low\u2011/high\u2011energy arcing and PD are effectively excluded: C2H2/C2H4 = 0.0004 and CH4/H2 \u226b 0.1.)",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1687.7270829863846
+      }
+    ],
+    "started_at": "2026-09-30T22:09:16.318957+00:00"
+  }
+}

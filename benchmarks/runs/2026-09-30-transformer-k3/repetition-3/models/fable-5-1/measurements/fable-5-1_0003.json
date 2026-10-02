@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "run_id": "fable-5-1_0003",
+  "scenario_id": "transformer_scenario_03",
+  "attempt": 1,
+  "settings": {
+    "generation_run": "../suite",
+    "agent": "claude",
+    "model": "claude-fable-5-1",
+    "sdk_version": "0.1.56",
+    "cli_version": "2.1.286 (Claude Code)",
+    "suite_sha256": "aeba796f98ad8c1f75d9aaf0dab5acc599fed1fc592fdc81cf2d3064dc2390d4",
+    "repetition_index": 3,
+    "provider": "anthropic",
+    "harness": "agent.claude_agent.cli",
+    "reasoning_effort": null,
+    "token_limit": null,
+    "temperature": null,
+    "timeout_seconds": 900,
+    "retry_policy": null,
+    "max_turns": 30,
+    "invocation_retry_policy": {
+      "max_attempts": 3,
+      "scope": "whole scenario invocation"
+    },
+    "concurrency_level": 5,
+    "execution_order": "suite order, serial within target",
+    "judge_model": "claude-code/claude-fable-5-1",
+    "allow_same_model_judge": true,
+    "grading_settings": {
+      "temperature": null,
+      "requested_temperature": 0,
+      "trajectory_character_limit": 8000
+    },
+    "rubric_sha256": "43088a0fff281b3ddb2bca0b4f1c5abb31e02ce90ac4d4d2645b6df72d345bdc",
+    "database_policy": {
+      "snapshot_sha256": "b6b1c09cada7b204dcda76e110a1fe2f11478abc911493500d2c757a6905a58a",
+      "namespace": "eval_fable_5_1_1790809360_",
+      "snapshot_captured_at": "1790805918",
+      "namespace_created_at": "1790809360",
+      "reset_policy": "same initial snapshot per model; persisted within model in suite order",
+      "database_count": 12,
+      "document_count": 14416
+    },
+    "token_semantics": "input includes reported cache tokens; output follows provider totals; raw usage and cache/reasoning subdivisions retained separately"
+  },
+  "execution_index": 3,
+  "trace_file": "models/fable-5-1/events/fable-5-1_0003.jsonl.gz",
+  "grading": {
+    "runtime_versions": {
+      "sdk_version": "0.1.56",
+      "cli_version": "2.1.286 (Claude Code)"
+    },
+    "model": "claude-code/claude-fable-5-1",
+    "separate_session": true,
+    "same_model_allowed": true,
+    "start": "2026-09-30T23:04:11.055318+00:00",
+    "end": "2026-09-30T23:04:28.892337+00:00",
+    "duration_ms": 17836.55266702408,
+    "status": "completed",
+    "result": {
+      "scenario_id": "transformer_scenario_03",
+      "scenario_type": "iot",
+      "run_id": "fable-5-1_0003",
+      "runner": "claude-agent",
+      "model": "claude-fable-5-1",
+      "question": "I want to know if Transformer 1 at MAIN is running hot compared with its load. Over the available data window, summarize top-oil temperature (oti), its alarm and trip readings (oti_a, oti_t), and the three phase currents (il1, il2, il3) with neutral current (inut), giving min, max and mean for each. Then tell me whether the highest oti reading happened at the same timestamp as the highest total phase current. Flag any phase whose mean current differs from the other phases' average by more than 10%. If oti has no data, use ati for context and say that the thermal correlation can't be confirmed.",
+      "answer": "I have everything needed \u2014 oti has full data, so no ati fallback is required.\n\n**Transformer 1 @ MAIN \u2014 data window: 2024-01-15 to 2024-01-19 (5 daily readings)**\n\n| Sensor | Min | Max | Mean |\n|---|---|---|---|\n| oti (top-oil temp, \u00b0C) | 84 | 87 | 85.4 |\n| oti_a (oil temp alarm flag) | 1 | 2 | 1.8 |\n| oti_t (oil temp trip flag) | 1 | 1 | 1.0 |\n| il1 (A) | 100 | 102 | 100.6 |\n| il2 (A) | 103 | 106 | 104.6 |\n| il3 (A) | 94 | 96 | 95.0 |\n| inut (neutral, A) | 5 | 6 | 5.2 |\n\n**Peak oti vs. peak total phase current**\n- Highest oti = 87 \u00b0C at **2024-01-16**.\n- Total phase current (il1+il2+il3) by day: 300, **301**, 299, **301**, 300 A. The maximum (301 A) occurs on **2024-01-16 and 2024-01-18** (tie).\n- **Yes** \u2014 the peak oti timestamp (01-16) coincides with a peak total current timestamp, though 01-18 also hit 301 A with a lower oti (86 \u00b0C). With such a flat load (299\u2013301 A) the correlation is weak evidence; the 3 \u00b0C oti swing isn't explained by load alone.\n\n**Phase imbalance check (>10% of the other two phases' average)**\n- il1: 100.6 vs 99.8 \u2192 +0.8% \u2014 OK\n- il2: 104.6 vs 97.8 \u2192 +7.0% \u2014 OK\n- il3: 95.0 vs 102.6 \u2192 \u22127.4% \u2014 OK\n- **No phase flagged.** il2 runs consistently highest and il3 lowest, but both stay within the 10% threshold.\n\n**Is it running hot relative to load?**\n- Load is essentially constant (~300 A total, ~100 A/phase against a 100 MVA rating) yet **oti_a is active on every reading (value 2 on 4 of 5 days) and oti_t = 1 on all 5 readings** \u2014 the trip flag is asserted throughout the window. Top-oil 84\u201387 \u00b0C is well above the ~70\u201375 \u00b0C region where alarms are typically set, and ati (ambient indicator) reads 77\u201379 \u00b0C, which is implausibly high for true ambient and suggests either a sensor/scaling issue or a very hot enclosure.\n- Bottom line: oti is elevated with persistent alarm/trip flags while load is light and steady, so the temperature is **not** load-driven. I'd recommend verifying the OTI/ATI sensors and cooling system rather than attributing it to loading. I did not create a work order \u2014 say so if you'd like one raised.",
+      "score": {
+        "scorer": "llm_judge",
+        "passed": true,
+        "score": 1.0,
+        "rationale": "The visible trace shows iot.measured_sensors and iot.sensor_stats (which also provided the 2024-01-15 to 2024-01-19 window via first/last timestamps, standing in for stream_extent), but it is truncated before any iot.history call is shown. The final answer's per-day totals (300, 301, 299, 301, 300 A; mean 300.2 A) are internally consistent with the reported per-phase means (100.6+104.6+95.0 = 300.2), so the peak-timestamp comparison appears grounded in real data, but the agent should ensure the ",
+        "details": {
+          "task_completion": true,
+          "data_retrieval_accuracy": true,
+          "generalized_result_verification": true,
+          "agent_sequence_correct": true,
+          "clarity_and_justification": true,
+          "hallucinations": false,
+          "suggestions": "The visible trace shows iot.measured_sensors and iot.sensor_stats (which also provided the 2024-01-15 to 2024-01-19 window via first/last timestamps, standing in for stream_extent), but it is truncated before any iot.history call is shown. The final answer's per-day totals (300, 301, 299, 301, 300 A; mean 300.2 A) are internally consistent with the reported per-phase means (100.6+104.6+95.0 = 300.2), so the peak-timestamp comparison appears grounded in real data, but the agent should ensure the history retrieval is explicit in its reasoning. Statistics for oti, oti_a, oti_t, il1, il2, il3 and inut are correct; the 10% imbalance check (il1 +0.8%, il2 +7.0%, il3 -7.4%) is computed correctly with no phase flagged; the oti/ati fallback was correctly deemed unnecessary. Minor: the agent could have explicitly called iot.stream_extent and iot.installed_sensors as named in the expected behavior, and noted the tie in peak total current more cautiously when asserting the timestamps 'match'."
+        }
+      },
+      "ops": {
+        "turn_count": 9,
+        "tool_call_count": 3,
+        "unique_tools": [
+          "mcp__iot__history",
+          "mcp__iot__measured_sensors",
+          "mcp__iot__sensor_stats"
+        ],
+        "tokens_in": 168,
+        "tokens_out": 32,
+        "duration_ms": 35779.433666029945,
+        "est_cost_usd": null
+      }
+    },
+    "error": null,
+    "attempts": [
+      {
+        "start": "2026-09-30T23:04:11.055912+00:00",
+        "status": "completed",
+        "end": "2026-09-30T23:04:28.890700+00:00",
+        "duration_ms": 17834.80408397736,
+        "trace_file": "models/fable-5-1/events/fable-5-1_0003.judge-1.jsonl.gz"
+      }
+    ],
+    "retry_policy": {
+      "max_attempts": 3,
+      "scope": "judge backend/parse failures"
+    },
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 7571,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 1070,
+      "output_tokens_details": {
+        "thinking_tokens": 594
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 7571,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "not_available",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1070,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 7571,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 7571
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "provider_reported_cost_usd": 0.20494,
+    "actual_api_cost_usd": null,
+    "estimated_cost_usd": 0.20494,
+    "trace_file": "models/fable-5-1/events/fable-5-1_0003.judge-1.jsonl.gz"
+  },
+  "metrics": {
+    "input_tokens": 114933,
+    "uncached_input_tokens": 66,
+    "output_tokens": 1945,
+    "reasoning_tokens": null,
+    "cache_read_tokens": 110201,
+    "cache_write_tokens": 4666,
+    "model_requests": null,
+    "tool_call_count": 3,
+    "unique_tools": [
+      "mcp__iot__history",
+      "mcp__iot__measured_sensors",
+      "mcp__iot__sensor_stats"
+    ],
+    "calls_by_tool": {
+      "mcp__iot__measured_sensors": 1,
+      "mcp__iot__sensor_stats": 1,
+      "mcp__iot__history": 1
+    },
+    "calls_by_server": {
+      "iot": 3
+    },
+    "tool_calls": [
+      {
+        "timestamp": "2026-09-30T23:03:37.554993+00:00",
+        "kind": "tool_end",
+        "id": "toolu_01QTYnB2rNkmFTGcSCjZKaNF",
+        "name": "mcp__iot__measured_sensors",
+        "server": "iot",
+        "arguments": {
+          "site_name": "MAIN",
+          "asset_id": "Transformer 1"
+        },
+        "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"total_sensors\":30,\"sensors\":[\"acetylene\",\"ati\",\"co\",\"co2\",\"dbds\",\"dielectric_rigidity\",\"ethane\",\"ethylene\",\"hydrogen\",\"il1\",\"il2\",\"il3\",\"interfacial_v\",\"inut\",\"methane\",\"nitrogen\",\"oti\",\"oti_a\",\"oti_t\",\"oxygen\",\"power_factor\",\"rated_mva\",\"vl1\",\"vl12\",\"vl2\",\"vl23\",\"vl3\",\"vl31\",\"water_content\",\"wti\"],\"message\":\"found 30 sensors for asset_id Transformer 1 and site_name MAIN: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen, power_factor, rated_mva, vl1, vl12, vl2, vl23, vl3, vl31, water_content, wti.\"}}",
+        "duration_ms": 55.73749996256083,
+        "error": null
+      },
+      {
+        "timestamp": "2026-09-30T23:03:38.920919+00:00",
+        "kind": "tool_end",
+        "id": "toolu_01HjmxXckkTW69uc8eQ372X3",
+        "name": "mcp__iot__sensor_stats",
+        "server": "iot",
+        "arguments": {
+          "site_name": "MAIN",
+          "asset_id": "Transformer 1"
+        },
+        "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"stats\":[{\"sensor\":\"acetylene\",\"count\":5,\"null_count\":0,\"min\":6,\"max\":8,\"mean\":7,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ati\",\"count\":5,\"null_count\":0,\"min\":77,\"max\":79,\"mean\":78,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"co\",\"count\":5,\"null_count\":0,\"min\":30,\"max\":35,\"mean\":32.4,\"stddev\":1.6248076809271914,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"co2\",\"count\":5,\"null_count\":0,\"min\":1300,\"max\":1350,\"mean\":1331.8,\"stddev\":17.915356541246965,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"dbds\",\"count\":5,\"null_count\":0,\"min\":18,\"max\":20,\"mean\":19,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"dielectric_rigidity\",\"count\":5,\"null_count\":0,\"min\":53,\"max\":56,\"mean\":54.6,\"stddev\":1.0198039027185573,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ethane\",\"count\":5,\"null_count\":0,\"min\":5400,\"max\":5500,\"mean\":5457.4,\"stddev\":32.909573075322584,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ethylene\",\"count\":5,\"null_count\":0,\"min\":16500,\"max\":16700,\"mean\":16626.8,\"stddev\":72.06219535928672,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"hydrogen\",\"count\":5,\"null_count\":0,\"min\":2800,\"max\":2950,\"mean\":2869,\"stddev\":51.419840528729765,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il1\",\"count\":5,\"null_count\":0,\"min\":100,\"max\":102,\"mean\":100.6,\"stddev\":0.7999999999999995,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il2\",\"count\":5,\"null_count\":0,\"min\":103,\"max\":106,\"mean\":104.6,\"stddev\":1.0198039027185573,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il3\",\"count\":5,\"null_count\":0,\"min\":94,\"max\":96,\"mean\":95,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"interfacial_v\",\"count\":5,\"null_count\":0,\"min\":44,\"max\":46,\"mean\":45,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"inut\",\"count\":5,\"null_count\":0,\"min\":5,\"max\":6,\"mean\":5.2,\"stddev\":0.39999999999999997,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"methane\",\"count\":5,\"null_count\":0,\"min\":7200,\"max\":7406,\"mean\":7331.2,\"stddev\":75.98526172883794,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"nitrogen\",\"count\":5,\"null_count\":0,\"min\":27700,\"max\":28000,\"mean\":27868.4,\"stddev\":103.31621363561467,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti\",\"count\":5,\"null_count\":0,\"min\":84,\"max\":87,\"mean\":85.4,\"stddev\":1.0198039027185566,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti_a\",\"count\":5,\"null_count\":0,\"min\":1,\"max\":2,\"mean\":1.8,\"stddev\":0.4,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti_t\",\"count\":5,\"null_count\":0,\"min\":1,\"max\":1,\"mean\":1,\"stddev\":0,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oxygen\",\"count\":5,\"null_count\":0,\"min\":5700,\"max\":5900,\"mean\":5822,\"stddev\":68.81860213634101,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"power_factor\",\"count\":5,\"null_count\":0,\"min\":0.9,\"max\":1.2,\"mean\":1.04,\"stddev\":0.1019803902718557,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"rated_mva\",\"count\":5,\"null_count\":0,\"min\":100,\"max\":100,\"mean\":100,\"stddev\":0,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl1\",\"count\":5,\"null_count\":0,\"min\":109,\"max\":112,\"mean\":110.4,\"stddev\":1.0198039027185566,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl12\",\"count\":5,\"null_count\":0,\"min\":224,\"max\":226,\"mean\":225,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl2\",\"count\":5,\"null_count\":0,\"min\":114,\"max\":116,\"mean\":115,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl23\",\"count\":5,\"null_count\":0,\"min\":219,\"max\":221,\"mean\":220,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl3\",\"count\":5,\"null_count\":0,\"min\":107,\"max\":109,\"mean\":108,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl31\",\"count\":5,\"null_count\":0,\"min\":217,\"max\":219,\"mean\":218,\"stddev\":0.6324555320336759,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"water_content\",\"count\":5,\"null_count\":0,\"min\":0,\"max\":1,\"mean\":0.4,\"stddev\":0.4898979485566356,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"wti\",\"count\":5,\"null_count\":0,\"min\":79,\"max\":82,\"mean\":80.4,\"stddev\":1.0198039027185566,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"}],\"message\":\"numeric stats for 30 sensor(s) on asset_id Transformer 1.\"}}",
+        "duration_ms": 24.076832982245833,
+        "error": null
+      },
+      {
+        "timestamp": "2026-09-30T23:03:45.841862+00:00",
+        "kind": "tool_end",
+        "id": "toolu_01BpVQ1Q95sZHoV1XGxgoqM8",
+        "name": "mcp__iot__history",
+        "server": "iot",
+        "arguments": {
+          "site_name": "MAIN",
+          "asset_id": "Transformer 1",
+          "sensors": [
+            "oti",
+            "oti_a",
+            "oti_t",
+            "il1",
+            "il2",
+            "il3",
+            "inut",
+            "ati"
+          ]
+        },
+        "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"oti\":85,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5,\"ati\":78},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"oti\":87,\"oti_a\":2,\"oti_t\":1,\"il1\":102,\"il2\":103,\"il3\":96,\"inut\":6,\"ati\":79},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"oti\":84,\"oti_a\":1,\"oti_t\":1,\"il1\":101,\"il2\":104,\"il3\":94,\"inut\":5,\"ati\":77},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"oti\":86,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":106,\"il3\":95,\"inut\":5,\"ati\":78},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-19T00:00:00.000000\",\"oti\":85,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5,\"ati\":78}],\"returned\":5,\"next_cursor\":null,\"has_more\":false,\"start\":null,\"end\":null,\"message\":\"returned 5 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+        "duration_ms": 23.17991596646607,
+        "error": null
+      }
+    ],
+    "tool_incomplete": 0,
+    "tool_errors": 0,
+    "tool_timeouts": 0,
+    "repeated_identical_calls": 0,
+    "retries": null,
+    "context_compactions": 0,
+    "termination_reason": "end_turn",
+    "turn_limit_hit": false,
+    "database_writes_attempted": 0,
+    "database_writes_succeeded": 0,
+    "database_records_created": 0,
+    "database_records_changed": 0,
+    "actual_api_cost_usd": null,
+    "estimated_cost_usd": 0.21991025,
+    "provider_reported_cost_usd": 0.21991025,
+    "model_turns": 4,
+    "time_to_first_response_ms": 7531.896,
+    "time_to_final_answer_ms": 36971.665
+  },
+  "status": "completed",
+  "execution_start": "2026-09-30T23:03:29.175928+00:00",
+  "execution_end": "2026-09-30T23:04:06.742198+00:00",
+  "execution_duration_ms": 37566.372208006214,
+  "error": null,
+  "agent_error": null,
+  "database_audit": []
+}

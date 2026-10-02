@@ -1,0 +1,84 @@
+You are the Validator and Repair agent for the AssetOps Bench scenario generator.
+
+You are given a list of JSON scenarios and the corresponding Asset Profile.
+Your job is to validate and repair them based on:
+1. Do they fit exactly the JSON schema (text, category, characteristic_form)?
+2. Does the characteristic_form identify the required tools with exact available namespace.tool references (for example, iot.history)? Ordinary words like history do not identify a tool.
+3. Does the 'text' field contain only natural operator language, with no explicit MCP tool references, function identifiers, or parenthetical hints like "e.g. get_failure_modes tool"? If any appear in 'text', remove or rewrite them and keep tool names in characteristic_form only.
+4. Does each scenario clearly satisfy the prompt rules for primary focus 'iot' even if it uses supporting cross-agent steps?
+5. In closed_form mode, does each scenario text include explicit inline sensor readings (name, value, unit) per Mode-specific grounding rules? Are there duplicates, near-duplicates, or (for open_form) ungrounded identifiers?
+6. Are the scenarios phrased like direct end-user requests rather than internal benchmark instructions?
+7. Does this batch satisfy the hard-scenario contract: at least 3 of the 4 scenarios should ask for at least two outputs or actions, include an explicit constraint, and include an if/else, fallback, or missing-data instruction?
+8. Fix every deterministic validation failure listed below.
+
+Target Focus:
+iot
+
+Suggested Categories:
+- Data Query
+- Knowledge Query
+
+Primary-focus requirements:
+- Keep the primary burden on telemetry retrieval, asset discovery, sensor discovery, or historical observations.
+- Supporting FMSR, TSFM, vibration, or WO steps are allowed, but IoT must remain the main focus.
+
+Hard-scenario contract:
+- At least 3 of the 4 scenarios should satisfy the hard rubric.
+- Hard rubric: ask for at least two distinct outputs or actions, include at least one explicit constraint, and include an if/else, fallback, or missing-data instruction.
+- Focus-specific hard patterns:
+- Make hard IoT scenarios combine telemetry retrieval with at least one follow-up comparison, prioritization, or summary request.
+- Use fallback clauses for missing or conflicting channels, such as asking for an alternate signal or a secondary comparison if a sensor is unavailable.
+
+Avoid these bad patterns:
+- Keep explicit MCP references out of scenario text. Ordinary words such as sites, assets, and history are allowed in natural prose. In characteristic_form, identify tools with their exact available namespace and name, such as iot.history or fmsr.get_failure_modes. Bare common words do not establish tool use. Do not invent tools or use obsolete get_sites/get_assets/get_sensors/get_history names.
+- Avoid turning a primary IoT scenario into a generic asset essay with no telemetry task.
+
+Mode-specific grounding rules:
+- Use only grounded identifiers from the Asset Profile.
+- Allowed sites: MAIN
+- Allowed asset ids: Transformer 1
+- Allowed sensors: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen
+- Allowed timestamps: 2024-01-15T00:00:00.000000, 2024-01-19T00:00:00.000000
+
+Asset Profile:
+.redacted
+
+Input Scenarios:
+[
+  {
+    "text": "Before I trust any DGA numbers from Transformer 1 at site MAIN, confirm the transformer is registered at that site. Then compare the sensors assigned to it with the fields that actually show up in its data stream. List any assigned sensor that never reports a value, and for each measured channel give its non-null count and first and last timestamps. Pay particular attention to hydrogen, methane, ethane, ethylene, acetylene, co and co2, and tell me which of these have enough data for a fault interpretation, meaning at least 3 non-null samples. If any of those seven gases is assigned but never measured, name it and say which remaining gas can stand in for it. Use hydrogen for acetylene, ethane for methane, and co2 for co.",
+    "category": "Data Query",
+    "characteristic_form": "The agent should first use iot.sites to confirm MAIN and iot.asset_ids(site_name='MAIN') to confirm Transformer 1 is registered there. It should then call iot.installed_sensors and iot.measured_sensors for Transformer 1 and compare the two lists, flagging sensors that are assigned but never observed. Next it should call iot.sensor_coverage to report the non-null count and the earliest and latest timestamps for each measured channel. The expected answer covers the seven key gases (hydrogen, methane, ethane, ethylene, acetylene, co, co2) and marks each as sufficient only if it has at least 3 non-null samples within the 2024-01-15T00:00:00.000000 to 2024-01-19T00:00:00.000000 data window. If a key gas is missing, the agent must name it and apply the stated substitute (hydrogen for acetylene, ethane for methane, co2 for co), and it must not invent values for the missing gas."
+  },
+  {
+    "text": "Work out TDCG for Transformer 1 at MAIN at both the first and the last oil sample between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000. Add up only hydrogen, methane, ethane, ethylene, acetylene and co, and leave out co2, oxygen and nitrogen. For each of the two samples, give me the timestamp, each gas value and the total. State which IEEE C57.104 condition level each total falls in, using these limits: Condition 1 up to 720 ppm, Condition 2 from 721 to 1920, Condition 3 from 1921 to 4630, and Condition 4 above 4630. Then give the change in TDCG in ppm/day between the two samples. If either sample is missing any of the six gases, don't use it. Move to the next earliest or next latest complete sample, and tell me which timestamps you ended up using.",
+    "category": "Knowledge Query",
+    "characteristic_form": "The agent should call iot.stream_extent for Transformer 1 at MAIN to confirm the 2024-01-15T00:00:00.000000 to 2024-01-19T00:00:00.000000 window. It should then call iot.history with sensors hydrogen, methane, ethane, ethylene, acetylene and co over that window and select the earliest and latest samples in which all six gases are non-null. The fallback applies when a sample is incomplete: the agent should skip it, use the next complete sample, and report the timestamps actually used. TDCG is the sum of the six combustible gases only; co2, oxygen and nitrogen must be excluded. Each total must be mapped to its IEEE C57.104 condition using the limits given (\u2264720, 721\u20131920, 1921\u20134630, >4630 ppm). The agent should report both totals and conditions and compute the rate of change in ppm/day as the TDCG difference divided by the elapsed days. It may optionally use fmsr.interpret_dga to cross-check the result, but the answer must be grounded in the retrieved telemetry values."
+  },
+  {
+    "text": "I'm worried the paper insulation in Transformer 1 at MAIN may be involved. Pull co and co2 for every sample in the available window and work out the CO2/CO ratio for each sample. Flag any sample with a ratio below 3, which suggests paper involved in a fault, or above 10, which suggests general cellulose ageing. Also give me the min, max and mean of co and co2 over the window. Tell me whether the ratio is trending up or down across the samples. If co2 is missing for a sample, skip the ratio for that sample and say so. If co2 has no data at all, report the co trend alongside oxygen instead and say that the ratio test couldn't be done.",
+    "category": "Knowledge Query",
+    "characteristic_form": "The agent should use iot.stream_extent or iot.sensor_coverage to confirm the data window (2024-01-15T00:00:00.000000 to 2024-01-19T00:00:00.000000) and the availability of co and co2 for Transformer 1 at MAIN. It should retrieve per-sample values with iot.history (sensors co and co2) and summary statistics with iot.sensor_stats for co and co2. For each timestamp with both values, it computes CO2/CO and flags ratios below 3 (paper involved in a fault) or above 10 (cellulose ageing). It then states the direction of the ratio across the samples. Samples missing co2 are excluded and noted. If co2 is absent entirely, the agent reports the co trend together with oxygen from iot.history or iot.sensor_stats and explicitly states that the ratio test was not possible. The response must use retrieved values only."
+  },
+  {
+    "text": "Give me a sample-by-sample picture of the fault gases in Transformer 1 at MAIN between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000. For each sample, list hydrogen, methane, ethane, ethylene and acetylene. Name the dominant gas, meaning the one with the highest ppm, and give its percentage of the five-gas total. Then tell me whether the dominant gas changed at any point in the window. Say what that shift points to, for example hydrogen pointing to partial discharge, ethylene to a hotter thermal fault, or acetylene to arcing. Also rank the five gases by their percentage growth from the first to the last sample. If a gas is null in a sample, leave it out of that sample's total and mark it as missing. If fewer than two samples have all five gases, give the ranking from the latest reading alone and say that no trend could be established.",
+    "category": "Data Query",
+    "characteristic_form": "The agent should call iot.history for Transformer 1 at MAIN over 2024-01-15T00:00:00.000000 to 2024-01-19T00:00:00.000000 with sensors hydrogen, methane, ethane, ethylene and acetylene, and may use iot.stream_extent to confirm sample counts. For each sample it reports the five values, the dominant gas and that gas's percentage share, with null gases excluded and marked as missing. It then states whether the dominant gas shifted and gives the key-gas interpretation of any shift: hydrogen for PD, ethylene for higher-temperature thermal faults (T2/T3), acetylene for arcing (D1/D2). It also ranks the five gases by percentage growth from the first to the last sample. Fallback: if fewer than two complete samples exist, the agent uses iot.latest_reading to rank gases from the newest record only and states that no trend is available. fmsr.interpret_dga may be used as a supporting step, but the answer must be driven by the telemetry."
+  }
+]
+
+Already accepted scenario texts. Avoid duplicates or near-duplicates of any of them:
+[
+  "Pull the latest oil sample for Transformer 1 at site MAIN and list which dissolved gases (hydrogen, methane, ethane, ethylene, acetylene, co) exceed the IEEE C57.104 Condition 1 single-gas limits. Also report the sample timestamp and how old the reading is. Only count combustible gases, and leave out co2, oxygen and nitrogen. If acetylene is missing from the newest record, use the most recent non-null acetylene value, give its timestamp separately, and say that it comes from an older sample.",
+  "Did hydrogen and ethylene in Transformer 1's oil at MAIN go up between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000? Give me the first and last values of each gas, its min, max and mean over that window, and an estimated daily rise in ppm/day. Use only the samples inside that window. If either gas has fewer than two valid samples, say the rate can't be computed and report methane's trend over the same window instead.",
+  "I want to know if Transformer 1 at MAIN is running hot compared with its load. Over the available data window, summarize top-oil temperature (oti), its alarm and trip readings (oti_a, oti_t), and the three phase currents (il1, il2, il3) with neutral current (inut), giving min, max and mean for each. Then tell me whether the highest oti reading happened at the same timestamp as the highest total phase current. Flag any phase whose mean current differs from the other phases' average by more than 10%. If oti has no data, use ati for context and say that the thermal correlation can't be confirmed.",
+  "Before we run any trend model on Transformer 1 at MAIN, check how complete the acetylene and co records are between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000. For each gas, report the non-null count, the first and last timestamps with data, and any day in the window with no sample. Give each channel a verdict of 'usable' only if it has at least 4 non-null samples. If a channel fails, check whether hydrogen has at least 4 samples in the same window and could be used instead.",
+  "My manager wants a quick look at the oil condition on Transformer 1 at site MAIN. From the latest reading and the stats over the full available window, give me dielectric_rigidity, interfacial_v, oxygen, nitrogen and dbds, and say whether any of them moved in a direction that points to moisture ingress, air ingress or oil ageing. Rank the three concerns from most to least supported by the data. Don't use the combustible gases for this. If dielectric_rigidity or interfacial_v has no data, say so and base the ranking on oxygen and nitrogen only."
+]
+
+Deterministic validation failures that MUST be fixed:
+[]
+
+Always review the full batch for end-user-centric phrasing and hardness, even when the deterministic failure list is empty.
+Return ONLY the corrected and repaired JSON array. If a scenario is perfectly fine, keep it as is.
+CRITICAL: Do not include any explanation, markdown formatting, or Python code. Output MUST be raw JSON text only.

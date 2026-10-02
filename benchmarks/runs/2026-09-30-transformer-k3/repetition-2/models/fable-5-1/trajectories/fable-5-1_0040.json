@@ -1,0 +1,324 @@
+{
+  "run_id": "fable-5-1_0040",
+  "scenario_id": "transformer_scenario_40",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "The neutral current on Transformer 1 at site MAIN looks higher than I'd expect. I want to know if we have a phase imbalance that's heating something inside the unit.\n\nBetween 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, give me the mean of il1, il2, il3 and inut. For each sample, work out the current imbalance as the largest deviation of any phase from the three-phase average, in percent. Screen inut together with the three phase currents for anomalous samples using a proper anomaly detection model, and list any flagged timestamps.\n\nThen run a dissolved gas fault classification on the oil sample nearest to the worst-imbalance timestamp, using hydrogen, methane, ethane, ethylene and acetylene. Check co from that same sample to see whether the paper is involved.\n\nDecide as follows:\n- Escalate only if two things are both true: imbalance exceeds 10% in at least one sample or inut is flagged anomalous, and the gas class is thermal (T1, T2 or T3). In that case, look up the failure code in our catalog that best fits a core or winding thermal fault. Check open work orders on Transformer 1 so you don't duplicate one. Then create a priority 2 work order for a load-balance review and an electrical test, coded with that failure code.\n- If only the electrical evidence or only the gas evidence points to a problem, don't create a work order. Recommend a confirmatory oil resample and say which side disagreed.\n\nOnly use samples where all four current channels are non-null. If fewer than 4 such samples remain, skip the anomaly model and use the 10% imbalance rule on its own.",
+  "answer": "**What I need next:** nothing further from the tools. The DGA classifier LLM is down (two attempts), and the TSFM engine only accepts file pointers \u2014 there is no IoT\u2011materialization tool exposed in this session, so the anomaly model cannot be fed the four rows. I'll fall back to deterministic IEC 60599 ratios for the gas class and to the 10 % rule (plus a plain statistical check) for the electrical side, and flag both substitutions clearly.\n\n## Transformer 1 (MAIN), 2024\u201101\u201115 \u2192 2024\u201101\u201119\n\n**Samples used:** 4 (all four current channels non\u2011null in every row).\n\n**Means:** il1 = 100.75 A \u00b7 il2 = 104.50 A \u00b7 il3 = 95.00 A \u00b7 inut = 5.25 A\n\n**Per\u2011sample imbalance** (max |phase \u2212 3\u2011phase avg| / avg):\n\n| Timestamp | il1 / il2 / il3 | inut | Imbalance |\n|---|---|---|---|\n| 2024\u201101\u201115 00:00 | 100 / 105 / 95 | 5 | 5.00 % |\n| 2024\u201101\u201116 00:00 | 102 / 103 / 96 | 6 | 4.32 % |\n| **2024\u201101\u201117 00:00** | 101 / 104 / 94 | 5 | **5.69 % (worst)** |\n| 2024\u201101\u201118 00:00 | 100 / 106 / 95 | 5 | 5.65 % |\n\nNo sample exceeds 10 %.\n\n**Anomaly screen (il1, il2, il3, inut):** \u26a0\ufe0f Model not executed. The model catalog has no anomaly\u2011detection cards, and `run_recipe` with the inline SubLOF detector rejected the IoT stream (`Protocol not known: iot`) \u2014 no tool is available to write the telemetry to a file. Statistically the channels are flat (inut 5\u20136 A, range 1 A; every phase within \u00b12 A of its mean), so nothing stands out; **flagged timestamps: none**. The neutral current (~5 % of phase current) is exactly what the ~5 % phase spread would produce \u2014 it is not disproportionate.\n\n**DGA \u2014 sample at 2024\u201101\u201117 00:00 (nearest to worst imbalance):** \u26a0\ufe0f `interpret_dga` returned \"LLM unavailable\" twice; ratios computed directly per IEC 60599:\n- C2H2/C2H4 = 8/16700 = 0.0005 \u00b7 CH4/H2 = 7300/2800 = 2.61 \u00b7 C2H4/C2H6 = 16700/5500 = 3.04\n- \u2192 **T2, thermal fault 300\u2013700 \u00b0C** (C2H4/C2H6 sits near the T2/T3 boundary; Rogers code 0\u20112\u20112 would read as T3). Either way the class is thermal. Absolute gas levels are very high (C2H4 16.7 k ppm, CH4 7.3 k ppm, H2 2.8 k ppm).\n- **CO = 35 ppm** \u2014 low; no indication that cellulose/paper insulation is involved. The hot spot appears to be in oil/metal (e.g., tap\u2011changer contacts, core/clamp circulating current, bad joint), not the winding paper.\n\n## Decision: no work order created\n\nEscalation requires *both* electrical and gas evidence. Only the gas side points to a problem:\n- **Gas side:** thermal (T2) \u2192 problem \u2714\n- **Electrical side:** max imbalance 5.69 % (< 10 %), inut not anomalous \u2192 **disagreed** \u2718\n\n**Recommendation:** take a confirmatory oil resample (and, given the boundary T2/T3 ratios and very high absolute gases, run a CO2/CO ratio and a 7\u2011day rate\u2011of\u2011change check). The thermal signature is real but is not being driven by load imbalance; the existing approved WO **1000051** (P1, OLTC inspection \u2014 \"DGA T2 thermal, C2H2 7 ppm\") already covers the most likely non\u2011paper hot\u2011spot source, so no new order is warranted. If the resample confirms T2/T3 and load current is still balanced, expand 1000051's scope to core\u2011ground / circulating\u2011current tests rather than a load\u2011balance review.\n\n**Caveats:** gas class derived by hand from IEC 60599 ratios (not the classifier tool); anomaly result is a statistical read of 4 points, not the requested model. Rerun `interpret_dga` and the SubLOF screen once the LLM backend and a file\u2011materialization path are available to formally close these out.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 3295.032750000246
+      },
+      {
+        "index": 1,
+        "text": "I'll start by pulling the current telemetry for Transformer 1 in the requested window.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 667.3543750075623
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "il1",
+                "il2",
+                "il3",
+                "inut"
+              ]
+            },
+            "id": "toolu_0144tpjXsT8eF44b5EJWgGkh",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"il1\":102,\"il2\":103,\"il3\":96,\"inut\":6},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"il1\":101,\"il2\":104,\"il3\":94,\"inut\":5},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"il1\":100,\"il2\":106,\"il3\":95,\"inut\":5}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 1598.313040973153
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__measured_sensors",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01FtfYWBQJWs6kzLQFWvaGq6",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"total_sensors\":30,\"sensors\":[\"acetylene\",\"ati\",\"co\",\"co2\",\"dbds\",\"dielectric_rigidity\",\"ethane\",\"ethylene\",\"hydrogen\",\"il1\",\"il2\",\"il3\",\"interfacial_v\",\"inut\",\"methane\",\"nitrogen\",\"oti\",\"oti_a\",\"oti_t\",\"oxygen\",\"power_factor\",\"rated_mva\",\"vl1\",\"vl12\",\"vl2\",\"vl23\",\"vl3\",\"vl31\",\"water_content\",\"wti\"],\"message\":\"found 30 sensors for asset_id Transformer 1 and site_name MAIN: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen, power_factor, rated_mva, vl1, vl12, vl2, vl23, vl3, vl31, water_content, wti.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 543.2334590004757
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 17718.147041043267
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.4266669750213623
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__recipe_template",
+            "input": {},
+            "id": "toolu_01NoTbuJ2ZKyoFJs13U5CLU5",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 0.15199999324977398
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__find_models",
+            "input": {
+              "task_id": "tsfm_anomaly_detection"
+            },
+            "id": "toolu_01YEa5WC1Rep3sLUNa6qkP2F",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.1132499785162508
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-10T00:00:00.000000",
+              "end": "2024-01-25T00:00:00.000000",
+              "sensors": [
+                "hydrogen",
+                "methane",
+                "ethane",
+                "ethylene",
+                "acetylene",
+                "co"
+              ]
+            },
+            "id": "toolu_01QCT8KQjapsMrD6PXkyRnH8",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 0.39116700645536184
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "OPEN",
+              "page_size": 0
+            },
+            "id": "toolu_018YEU6QL4DmXC4jQTDbbUkj",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"OPEN\",\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T22:33:49+00:00\",\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 0.2857500221580267
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 13422.356333001517
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 2.7175419963896275
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2800,
+              "methane": 7300,
+              "acetylene": 8,
+              "ethylene": 16700,
+              "ethane": 5500
+            },
+            "id": "toolu_011XMAfFgqM6stF522Ehudvo",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 313.60091600799933
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__search_models",
+            "input": {
+              "text": "anomaly"
+            },
+            "id": "toolu_01TxPkT5RcrK2or282ULeVpK",
+            "output": "{\"result\":{\"models\":[]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 229.4539170106873
+      },
+      {
+        "index": 14,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 11917.162291996647
+      },
+      {
+        "index": 15,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2.8737499960698187
+      },
+      {
+        "index": 16,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2800,
+              "methane": 7300,
+              "acetylene": 8,
+              "ethylene": 16700,
+              "ethane": 5500
+            },
+            "id": "toolu_01TojtNC8fa8omBDsEaBbZui",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 309.1509160003625
+      },
+      {
+        "index": 17,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__run_recipe",
+            "input": {
+              "dataset_path": "iot://MAIN/Transformer 1?sensors=il1,il2,il3,inut&start=2024-01-15T00:00:00&end=2024-01-19T00:00:00",
+              "timestamp_column": "timestamp",
+              "target_columns": [
+                "il1",
+                "il2",
+                "il3",
+                "inut"
+              ],
+              "recipe": {
+                "task": "tsfm_anomaly_detection",
+                "estimator": {
+                  "sktime_class": "sktime.detection.lof.SubLOF",
+                  "params": {
+                    "window_size": 2,
+                    "n_neighbors": 2,
+                    "novelty": true
+                  }
+                }
+              },
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_018LL8ii2BjMgy7rZPXEpHjq",
+            "output": "{\"result\":{\"error\":\"Protocol not known: iot\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2389.583792013582
+      },
+      {
+        "index": 18,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 21934.76087495219
+      },
+      {
+        "index": 19,
+        "text": "**What I need next:** nothing further from the tools. The DGA classifier LLM is down (two attempts), and the TSFM engine only accepts file pointers \u2014 there is no IoT\u2011materialization tool exposed in this session, so the anomaly model cannot be fed the four rows. I'll fall back to deterministic IEC 60599 ratios for the gas class and to the 10 % rule (plus a plain statistical check) for the electrical side, and flag both substitutions clearly.\n\n## Transformer 1 (MAIN), 2024\u201101\u201115 \u2192 2024\u201101\u201119\n\n**Samples used:** 4 (all four current channels non\u2011null in every row).\n\n**Means:** il1 = 100.75 A \u00b7 il2 = 104.50 A \u00b7 il3 = 95.00 A \u00b7 inut = 5.25 A\n\n**Per\u2011sample imbalance** (max |phase \u2212 3\u2011phase avg| / avg):\n\n| Timestamp | il1 / il2 / il3 | inut | Imbalance |\n|---|---|---|---|\n| 2024\u201101\u201115 00:00 | 100 / 105 / 95 | 5 | 5.00 % |\n| 2024\u201101\u201116 00:00 | 102 / 103 / 96 | 6 | 4.32 % |\n| **2024\u201101\u201117 00:00** | 101 / 104 / 94 | 5 | **5.69 % (worst)** |\n| 2024\u201101\u201118 00:00 | 100 / 106 / 95 | 5 | 5.65 % |\n\nNo sample exceeds 10 %.\n\n**Anomaly screen (il1, il2, il3, inut):** \u26a0\ufe0f Model not executed. The model catalog has no anomaly\u2011detection cards, and `run_recipe` with the inline SubLOF detector rejected the IoT stream (`Protocol not known: iot`) \u2014 no tool is available to write the telemetry to a file. Statistically the channels are flat (inut 5\u20136 A, range 1 A; every phase within \u00b12 A of its mean), so nothing stands out; **flagged timestamps: none**. The neutral current (~5 % of phase current) is exactly what the ~5 % phase spread would produce \u2014 it is not disproportionate.\n\n**DGA \u2014 sample at 2024\u201101\u201117 00:00 (nearest to worst imbalance):** \u26a0\ufe0f `interpret_dga` returned \"LLM unavailable\" twice; ratios computed directly per IEC 60599:\n- C2H2/C2H4 = 8/16700 = 0.0005 \u00b7 CH4/H2 = 7300/2800 = 2.61 \u00b7 C2H4/C2H6 = 16700/5500 = 3.04\n- \u2192 **T2, thermal fault 300\u2013700 \u00b0C** (C2H4/C2H6 sits near the T2/T3 boundary; Rogers code 0\u20112\u20112 would read as T3). Either way the class is thermal. Absolute gas levels are very high (C2H4 16.7 k ppm, CH4 7.3 k ppm, H2 2.8 k ppm).\n- **CO = 35 ppm** \u2014 low; no indication that cellulose/paper insulation is involved. The hot spot appears to be in oil/metal (e.g., tap\u2011changer contacts, core/clamp circulating current, bad joint), not the winding paper.\n\n## Decision: no work order created\n\nEscalation requires *both* electrical and gas evidence. Only the gas side points to a problem:\n- **Gas side:** thermal (T2) \u2192 problem \u2714\n- **Electrical side:** max imbalance 5.69 % (< 10 %), inut not anomalous \u2192 **disagreed** \u2718\n\n**Recommendation:** take a confirmatory oil resample (and, given the boundary T2/T3 ratios and very high absolute gases, run a CO2/CO ratio and a 7\u2011day rate\u2011of\u2011change check). The thermal signature is real but is not being driven by load imbalance; the existing approved WO **1000051** (P1, OLTC inspection \u2014 \"DGA T2 thermal, C2H2 7 ppm\") already covers the most likely non\u2011paper hot\u2011spot source, so no new order is warranted. If the resample confirms T2/T3 and load current is still balanced, expand 1000051's scope to core\u2011ground / circulating\u2011current tests rather than a load\u2011balance review.\n\n**Caveats:** gas class derived by hand from IEC 60599 ratios (not the classifier tool); anomaly result is a statistical read of 4 points, not the requested model. Rerun `interpret_dga` and the SubLOF screen once the LLM backend and a file\u2011materialization path are available to formally close these out.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 8295.445208030287
+      }
+    ],
+    "started_at": "2026-09-30T22:43:09.780208+00:00"
+  }
+}

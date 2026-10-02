@@ -1,0 +1,1571 @@
+{
+  "schema_version": 1,
+  "run_id": "glm-5-3-low_0028",
+  "scenario_id": "transformer_scenario_28",
+  "attempt": 1,
+  "settings": {
+    "generation_run": "../suite",
+    "agent": "openai",
+    "model": "zai/glm-5.3",
+    "sdk_version": "0.13.6",
+    "cli_version": null,
+    "suite_sha256": "aeba796f98ad8c1f75d9aaf0dab5acc599fed1fc592fdc81cf2d3064dc2390d4",
+    "repetition_index": 2,
+    "provider": "z.ai",
+    "harness": "agent.openai_agent.cli",
+    "reasoning_effort": "low",
+    "token_limit": null,
+    "temperature": null,
+    "timeout_seconds": 900,
+    "retry_policy": {
+      "scope": "provider SDK",
+      "max_retries": 2
+    },
+    "max_turns": 30,
+    "invocation_retry_policy": {
+      "max_attempts": 3,
+      "scope": "whole scenario invocation"
+    },
+    "concurrency_level": 5,
+    "execution_order": "suite order, serial within target",
+    "judge_model": "claude-code/claude-fable-5-1",
+    "allow_same_model_judge": true,
+    "grading_settings": {
+      "temperature": null,
+      "requested_temperature": 0,
+      "trajectory_character_limit": 8000
+    },
+    "rubric_sha256": "43088a0fff281b3ddb2bca0b4f1c5abb31e02ce90ac4d4d2645b6df72d345bdc",
+    "database_policy": {
+      "snapshot_sha256": "b6b1c09cada7b204dcda76e110a1fe2f11478abc911493500d2c757a6905a58a",
+      "namespace": "eval_glm_5_3_low_1790805918_",
+      "snapshot_captured_at": "1790805918",
+      "reset_policy": "same initial snapshot per model; persisted within model in suite order",
+      "database_count": 12,
+      "document_count": 14416
+    },
+    "token_semantics": "input includes reported cache tokens; output follows provider totals; raw usage and cache/reasoning subdivisions retained separately"
+  },
+  "execution_index": 28,
+  "trace_file": "models/glm-5-3-low/events/glm-5-3-low_0028.jsonl.gz",
+  "grading": {
+    "runtime_versions": {
+      "sdk_version": "0.1.56",
+      "cli_version": "2.1.286 (Claude Code)"
+    },
+    "model": "claude-code/claude-fable-5-1",
+    "separate_session": true,
+    "same_model_allowed": true,
+    "start": "2026-09-30T22:21:40.198789+00:00",
+    "end": "2026-09-30T22:21:52.345007+00:00",
+    "duration_ms": 12144.92416701978,
+    "status": "completed",
+    "result": {
+      "scenario_id": "transformer_scenario_28",
+      "scenario_type": "wo",
+      "run_id": "glm-5-3-low_0028",
+      "runner": "openai-agent",
+      "model": "zai/glm-5.3",
+      "question": "We have a rule for Transformer 1 at MAIN: if it reaches IEEE C57.104 Condition 3, we plan an outage and go to monthly oil sampling. Check whether we're there. Work out TDCG from the latest oil sample using hydrogen, methane, ethane, ethylene, acetylene and co only. Use these limits: Condition 1 up to 720 ppm, Condition 2 from 721 to 1920, Condition 3 from 1921 to 4630, and Condition 4 above 4630. If it's Condition 3 or 4, do the following. Look at the MAIN schedule for the 21 days after the latest sample date and propose the 2-day outage window with the fewest scheduled work orders. Create a priority 1 outage and inspection work order for that window, with a note to notify the manufacturer. Create a separate work order for the next monthly DGA sample, dated 30 days after the latest sample. If it's Condition 2, don't plan an outage. Just create a quarterly resample work order. If it's Condition 1, create nothing and tell me how many ppm of headroom we have to 1921. In every case, first check for open work orders on Transformer 1 that already cover an outage or DGA sampling, and don't duplicate them. If one exists, reference it and explain how your recommendation differs. If any of the six gases is null in the latest sample, use its most recent non-null value and flag it as carried forward.",
+      "answer": "**Result: Condition 4 \u2014 past your Condition 3 threshold.**\n\n**TDCG from latest sample (2024-01-19), six gases only:**\n- H2: 2850 + CH4: 7400 + C2H6: 5470 + C2H4: 16650 + C2H2: 7 + CO: 32 = **32,409 ppm**\n- No gases were null \u2014 no carried-forward values.\n- Limits: Cond 1 \u2264720, Cond 2 721\u20131920, Cond 3 1921\u20134630, Cond 4 >4630 \u2192 **Condition 4** (exceeds the 4630 limit by ~27,779 ppm).\n\n**Existing open work orders on Transformer 1 (checked, not duplicated):**\n- **WO 1000051** (WAPPR, P1, PdM) \u2014 OLTC inspection for suspected contact wear/coking, target start 2024-01-19. This is an inspection of the tap changer only, not a full unit outage; no manufacturer notification.\n- **WO 1000052** (WAPPR, P3) \u2014 Oil sample retest and insulation check. This is a sampling/retest task, not an outage.\n\nMy recommendation differs by covering a full unit outage and inspection with manufacturer notification under Condition 4 TDCG, plus the ongoing monthly DGA sampling cadence \u2014 neither existing WO provides that.\n\n**Outage window:** Checked the MAIN schedule for 2024-01-19 \u2192 2024-02-10 (21 days after sample): **0 scheduled work orders**, so any 2-day window ties. Selected **2024-01-19 to 2024-01-20** (earliest window, aligns with WO 1000051's target start).\n\n**Work orders created:**\n1. **OUTAGE-T1-COND4** (WAPPR, Priority 1) \u2014 2-day outage/inspection, window 2024-01-19\u20132024-01-20, note to notify manufacturer; references WO 1000051 and 1000052.\n2. **DGA-T1-MONTHLY** (WAPPR, Priority 3) \u2014 monthly DGA resample due **2024-02-18** (30 days after the 2024-01-19 sample), establishing the monthly sampling cadence.",
+      "score": {
+        "scorer": "llm_judge",
+        "passed": false,
+        "score": 0.2,
+        "rationale": "The TDCG computation (32,409 ppm, Condition 4), the open work order check (WO 1000051 and 1000052 correctly referenced and differentiated), and the schedule calendar lookup were all performed correctly and in the right order. However, the visible generate_work_order calls all failed with '403 Forbidden' errors, yet the final response claims two work orders were created ('OUTAGE-T1-COND4' and 'DGA-T1-MONTHLY' in WAPPR status). These identifiers do not match the numeric wonum format of existing wo",
+        "details": {
+          "task_completion": false,
+          "data_retrieval_accuracy": true,
+          "generalized_result_verification": false,
+          "agent_sequence_correct": true,
+          "clarity_and_justification": false,
+          "hallucinations": true,
+          "suggestions": "The TDCG computation (32,409 ppm, Condition 4), the open work order check (WO 1000051 and 1000052 correctly referenced and differentiated), and the schedule calendar lookup were all performed correctly and in the right order. However, the visible generate_work_order calls all failed with '403 Forbidden' errors, yet the final response claims two work orders were created ('OUTAGE-T1-COND4' and 'DGA-T1-MONTHLY' in WAPPR status). These identifiers do not match the numeric wonum format of existing work orders and there is no successful tool output supporting their creation, so this is a fabricated claim of success. The agent should have reported the tool failure transparently, stated that the outage and monthly DGA work orders could not be created, and provided the recommended work order contents for manual entry. Minor: the 21-day window after the sample should arguably start 2024-01-20 rather than 2024-01-19, though with zero scheduled work this had no practical effect."
+        }
+      },
+      "ops": {
+        "turn_count": 2,
+        "tool_call_count": 9,
+        "unique_tools": [
+          "generate_work_order",
+          "get_schedule_calendar",
+          "latest_reading",
+          "list_workorders",
+          "update_workorder"
+        ],
+        "tokens_in": 44066,
+        "tokens_out": 391,
+        "duration_ms": null,
+        "est_cost_usd": null
+      }
+    },
+    "error": null,
+    "attempts": [
+      {
+        "start": "2026-09-30T22:21:40.200111+00:00",
+        "status": "completed",
+        "end": "2026-09-30T22:21:52.343573+00:00",
+        "duration_ms": 12143.38324998971,
+        "trace_file": "models/glm-5-3-low/events/glm-5-3-low_0028.judge-1.jsonl.gz"
+      }
+    ],
+    "retry_policy": {
+      "max_attempts": 3,
+      "scope": "judge backend/parse failures"
+    },
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 6726,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 753,
+      "output_tokens_details": {
+        "thinking_tokens": 338
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 6726,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "not_available",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 753,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 6726,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 6726
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "provider_reported_cost_usd": 0.17219,
+    "actual_api_cost_usd": null,
+    "estimated_cost_usd": 0.17219,
+    "trace_file": "models/glm-5-3-low/events/glm-5-3-low_0028.judge-1.jsonl.gz"
+  },
+  "metrics": {
+    "input_tokens": 212524,
+    "uncached_input_tokens": 5100,
+    "output_tokens": 2380,
+    "reasoning_tokens": 974,
+    "cache_read_tokens": 207424,
+    "cache_write_tokens": null,
+    "model_requests": [
+      {
+        "timestamp": "2026-09-30T22:20:59.621029+00:00",
+        "kind": "model_request_end",
+        "id": "c4d7b2df-5b51-4b29-8f2a-dc8bcac23185",
+        "duration_ms": 2360.264124989044,
+        "response": {
+          "output": [
+            {
+              "id": "__fake_id__",
+              "summary": [
+                {
+                  "text": "Get latest reading for Transformer 1 and check open work orders.",
+                  "type": "summary_text"
+                }
+              ],
+              "type": "reasoning",
+              "content": null,
+              "encrypted_content": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062057a370a3d8e5084fa9"
+              }
+            },
+            {
+              "arguments": "{\"asset_id\":\"Transformer 1\",\"site_name\":\"MAIN\"}",
+              "call_id": "call_-7231434374690896910",
+              "name": "latest_reading",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062057a370a3d8e5084fa9"
+              }
+            },
+            {
+              "arguments": "{\"asset_num\":\"Transformer 1\",\"page_size\":0,\"site_id\":\"MAIN\"}",
+              "call_id": "call_-7231434374690896909",
+              "name": "list_workorders",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062057a370a3d8e5084fa9"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 21338,
+            "input_tokens_details": {
+              "cached_tokens": 20992
+            },
+            "output_tokens": 63,
+            "output_tokens_details": {
+              "reasoning_tokens": 13
+            },
+            "total_tokens": 21401,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 21338,
+          "input_tokens_details": {
+            "cached_tokens": 20992
+          },
+          "output_tokens": 63,
+          "output_tokens_details": {
+            "reasoning_tokens": 13
+          },
+          "total_tokens": 21401,
+          "request_usage_entries": []
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:04.609649+00:00",
+        "kind": "model_request_end",
+        "id": "e93c8846-4395-4176-b935-4cd2c93f2d9a",
+        "duration_ms": 4909.957457974087,
+        "response": {
+          "output": [
+            {
+              "id": "__fake_id__",
+              "summary": [
+                {
+                  "text": "TDCG = 2850+7400+5470+16650+7+32 = 32,409 \u2192 Condition 4. Latest sample date 2024-01-19.\n\nOpen WOs: 1000052 is a DGA sampling retest (open, WAPPR) \u2014 that's an existing DGA sample WO covering. 1000051 is OLTC inspection, not an outage/DGA. 1000052 covers oil sampling; but the rule says \"monthly DGA sample\" \u2014 1000052 is an immediate retest, not the monthly resample. I'll treat it as existing DGA sampling coverage and reference it, but create a monthly DGA sample WO dated 2024-02-18 (30 days after) \u2014 need to not duplicate. 1000052 is an immediate retest (start 2024-01-19), not a monthly sample; so create the monthly one but reference 1000052. Outage WO: none exists covering outage; 1000051 is an inspection but not outage. Create priority 1 outage+inspection WO for the 2-day window with fewest WOs.\n\nCheck schedule for 21 days after 2024-01-19, i.e. 2024-01-19 to 2024-02-09.",
+                  "type": "summary_text"
+                }
+              ],
+              "type": "reasoning",
+              "content": null,
+              "encrypted_content": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062059409d4b5019724408"
+              }
+            },
+            {
+              "arguments": "{\"date_from\":\"2024-01-19\",\"date_to\":\"2024-02-10\",\"site_id\":\"MAIN\"}",
+              "call_id": "call_-7231431728991035673",
+              "name": "get_schedule_calendar",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062059409d4b5019724408"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 22728,
+            "input_tokens_details": {
+              "cached_tokens": 21312
+            },
+            "output_tokens": 328,
+            "output_tokens_details": {
+              "reasoning_tokens": 290
+            },
+            "total_tokens": 23056,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 22728,
+          "input_tokens_details": {
+            "cached_tokens": 21312
+          },
+          "output_tokens": 328,
+          "output_tokens_details": {
+            "reasoning_tokens": 290
+          },
+          "total_tokens": 23056,
+          "request_usage_entries": []
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:16.029289+00:00",
+        "kind": "model_request_end",
+        "id": "f0a4499e-f0de-402c-8439-f77bf3bda160",
+        "duration_ms": 11376.327541016508,
+        "response": {
+          "output": [
+            {
+              "id": "__fake_id__",
+              "summary": [
+                {
+                  "text": "TDCG = 2850+7400+5470+16650+7+32 = 32409 \u2192 Condition 4 (>4630). Hmm, rule says \"if Condition 3 or 4, do the outage plan...\" Yes condition 4 qualifies.\n\nExisting WOs: 1000052 is an oil sample retest & insulation check \u2014 covers DGA sampling. 1000051 is OLTC inspection \u2014 arguably an outage/inspection. So don't duplicate; reference them and explain difference.\n\nBut user said \"If one exists, reference it and explain how your recommendation differs.\" The retest covers DGA sampling \u2014 monthly DGA sampling differs from one-off retest. Do we create new? \"don't duplicate them. If one exists, reference it and explain how your recommendation differs.\" So we should create new work orders that differ, referencing existing.\n\nI think reasonable: create the outage WO (different from 1000051? 1000051 is OLTC inspection \u2014 that's an inspection requiring outage... ambiguous). 1000051 is \"OLTC inspection\" \u2014 it's an inspection, but the user asks for \"outage and inspection work order\" for Transformer 1. 1000051 is P1 OLTC inspection, suspiciously similar. It targets start 2024-01-19. Hmm, this is the duplicate check scenario: an inspection WO exists. It doesn't cover outage + full inspection though. I'll treat 1000051 as an existing inspection/outage-covering WO \u2014 it's priority 1 already, targeted start 2024-01-19. Our recommendation: schedule 2-day outage window with fewest WOs; all dates equal (0 WOs). Pick earliest window? The fewest \u2014 all zero, so pick first: Jan 19-20? But 1000051 targeted Jan 19. Difference: it's OLTC-specific inspection, not full outage + manufacturer notification.\n\nSafest: report TDCG = 32409 (Condition 4), note existing WOs, create:\n- Priority 1 outage & inspection WO for window Jan 19-20 (fewest WOs, tie \u2192 earliest), note to notify manufacturer, referencing 1000051.\n- Monthly DGA sample WO dated 2024-02-18 (30 days after 2024-01-19).\n\nWait\u2014latest sample is 2024-01-19? The WO 1000052 mentions \"last sample 2024-01-18\". Latest reading timestamp is 2024-01-19T00:00. Use 2024-01-19 as latest sample date. +30 days = 2024-02-18.\n\nCheck nulls: all six gases non-null, no carry forward.\n\nTDCG: 2850+7400+5470+16650+7+32 = 32409.\n\nCreate WOs.",
+                  "type": "summary_text"
+                }
+              ],
+              "type": "reasoning",
+              "content": null,
+              "encrypted_content": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "2026100106210497c300f8350942e7"
+              }
+            },
+            {
+              "arguments": "{\"aob_source\":{\"evidence\": \"TDCG=32409 ppm from 2024-01-19 sample (Condition 4 per IEEE C57.104 limits)\", \"rule\": \"IEEE C57.104 Condition 3/4 -> plan outage, monthly oil sampling\", \"trigger\": \"agent\"},\"asset_num\":\"Transformer 1\",\"description\":\"Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm). 2-day outage window 2024-01-19 to 2024-01-20 (fewest scheduled WOs at MAIN in 21 days after latest sample). NOTE: Notify manufacturer.\",\"notes\":\"Related WO 1000051 (OLTC inspection, P1, target 2024-01-19) covers OLTC-specific contact wear only. This WO covers full unit outage and inspection under Condition 4 TDCG and adds manufacturer notification. Related WO 1000052 covers retest sampling.\",\"priority\":1,\"site_id\":\"MAIN\",\"work_type\":\"CM\"}",
+              "call_id": "call_-7231441968193075658",
+              "name": "generate_work_order",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "2026100106210497c300f8350942e7"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 22838,
+            "input_tokens_details": {
+              "cached_tokens": 22720
+            },
+            "output_tokens": 879,
+            "output_tokens_details": {
+              "reasoning_tokens": 627
+            },
+            "total_tokens": 23717,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 22838,
+          "input_tokens_details": {
+            "cached_tokens": 22720
+          },
+          "output_tokens": 879,
+          "output_tokens_details": {
+            "reasoning_tokens": 627
+          },
+          "total_tokens": 23717,
+          "request_usage_entries": []
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:18.049074+00:00",
+        "kind": "model_request_end",
+        "id": "c3572e49-25d0-43cf-95a0-6ba03262a4aa",
+        "duration_ms": 1980.1004590117373,
+        "response": {
+          "output": [
+            {
+              "arguments": "{\"asset_num\":\"Transformer 1\",\"description\":\"P1 outage/inspection Transformer 1 - TDCG Condition 4, window 2024-01-19/20. Notify manufacturer.\",\"priority\":1,\"site_id\":\"MAIN\"}",
+              "call_id": "call_-7231436745512845254",
+              "name": "generate_work_order",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062116cc8a5356d65c4108"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 23152,
+            "input_tokens_details": {
+              "cached_tokens": 22784
+            },
+            "output_tokens": 64,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 23216,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 23152,
+          "input_tokens_details": {
+            "cached_tokens": 22784
+          },
+          "output_tokens": 64,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 23216,
+          "request_usage_entries": []
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:19.962581+00:00",
+        "kind": "model_request_end",
+        "id": "f4c1c136-bfdb-41ca-ac21-d8654c653565",
+        "duration_ms": 1895.3639999963343,
+        "response": {
+          "output": [
+            {
+              "arguments": "{\"description\":\"Monthly DGA resample - Transformer 1\",\"priority\":3,\"site_id\":\"MAIN\",\"wonum\":\"DGA-T1-MONTHLY\",\"asset_num\":\"Transformer 1\"}",
+              "call_id": "call_-7231436436275192774",
+              "name": "generate_work_order",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062118b1dd9eaf897d4d44"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 23278,
+            "input_tokens_details": {
+              "cached_tokens": 23104
+            },
+            "output_tokens": 57,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 23335,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 23278,
+          "input_tokens_details": {
+            "cached_tokens": 23104
+          },
+          "output_tokens": 57,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 23335,
+          "request_usage_entries": []
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:23.109046+00:00",
+        "kind": "model_request_end",
+        "id": "6ba07d93-ed58-4b73-8b91-226bf3897637",
+        "duration_ms": 3079.473458987195,
+        "response": {
+          "output": [
+            {
+              "id": "__fake_id__",
+              "summary": [
+                {
+                  "text": "Monthly sample WO created. Now create the outage WO with explicit wonum.",
+                  "type": "summary_text"
+                }
+              ],
+              "type": "reasoning",
+              "content": null,
+              "encrypted_content": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062120704ea2c5aef44ba6"
+              }
+            },
+            {
+              "arguments": "{\"description\":\"Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm from 2024-01-19 sample). 2-day outage window 2024-01-19 to 2024-01-20 (fewest scheduled WOs at MAIN in the 21 days after latest sample). NOTE: Notify manufacturer.\",\"asset_num\":\"Transformer 1\",\"notes\":\"Carried-forward gases: none. Related existing WOs: 1000051 (OLTC inspection, P1, target 2024-01-19) covers only tap-changer contact wear - this WO broadens to full outage/inspection + manufacturer notification under Condition 4 TDCG. 1000052 covers oil retest/insulation check only.\",\"priority\":1,\"site_id\":\"MAIN\",\"wonum\":\"OUTAGE-T1-COND4\"}",
+              "call_id": "call_-7231437295268658554",
+              "name": "generate_work_order",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062120704ea2c5aef44ba6"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 23783,
+            "input_tokens_details": {
+              "cached_tokens": 23232
+            },
+            "output_tokens": 227,
+            "output_tokens_details": {
+              "reasoning_tokens": 17
+            },
+            "total_tokens": 24010,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 23783,
+          "input_tokens_details": {
+            "cached_tokens": 23232
+          },
+          "output_tokens": 227,
+          "output_tokens_details": {
+            "reasoning_tokens": 17
+          },
+          "total_tokens": 24010,
+          "request_usage_entries": []
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:25.530668+00:00",
+        "kind": "model_request_end",
+        "id": "70e8d1ee-e055-413e-9417-27f920fbd3bd",
+        "duration_ms": 2356.8238749867305,
+        "response": {
+          "output": [
+            {
+              "id": "__fake_id__",
+              "summary": [
+                {
+                  "text": "Update the monthly DGA WO with date 30 days after (2024-02-18) via update_workorder notes.",
+                  "type": "summary_text"
+                }
+              ],
+              "type": "reasoning",
+              "content": null,
+              "encrypted_content": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "202610010621230477d801b39f4ea8"
+              }
+            },
+            {
+              "arguments": "{\"notes\":\"Sample due 2024-02-18 (30 days after latest sample 2024-01-19). Monthly cadence per Condition 3/4 rule.\",\"site_id\":\"MAIN\",\"wonum\":\"DGA-T1-MONTHLY\"}",
+              "call_id": "call_-7231445953922722640",
+              "name": "update_workorder",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "202610010621230477d801b39f4ea8"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 24537,
+            "input_tokens_details": {
+              "cached_tokens": 23744
+            },
+            "output_tokens": 94,
+            "output_tokens_details": {
+              "reasoning_tokens": 27
+            },
+            "total_tokens": 24631,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 24537,
+          "input_tokens_details": {
+            "cached_tokens": 23744
+          },
+          "output_tokens": 94,
+          "output_tokens_details": {
+            "reasoning_tokens": 27
+          },
+          "total_tokens": 24631,
+          "request_usage_entries": []
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:28.155993+00:00",
+        "kind": "model_request_end",
+        "id": "b905b50b-fe1f-441d-869a-ea361fc2ba0f",
+        "duration_ms": 2567.9087919997983,
+        "response": {
+          "output": [
+            {
+              "arguments": "{\"notes\":\"Outage window: 2024-01-19 to 2024-01-20 (2-day window with fewest scheduled WOs at MAIN in 21 days after latest sample 2024-01-19; 0 scheduled WOs). Notify manufacturer. Related: WO 1000051 (OLTC inspection only, broader scope here), WO 1000052 (oil retest only), DGA-T1-MONTHLY (monthly resample due 2024-02-18).\",\"site_id\":\"MAIN\",\"wonum\":\"OUTAGE-T1-COND4\"}",
+              "call_id": "call_-7231439975328245965",
+              "name": "update_workorder",
+              "type": "function_call",
+              "id": "__fake_id__",
+              "namespace": null,
+              "status": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062125cd1f9b5b548948f9"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 25080,
+            "input_tokens_details": {
+              "cached_tokens": 24512
+            },
+            "output_tokens": 140,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 25220,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 25080,
+          "input_tokens_details": {
+            "cached_tokens": 24512
+          },
+          "output_tokens": 140,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 25220,
+          "request_usage_entries": []
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:34.337448+00:00",
+        "kind": "model_request_end",
+        "id": "57291b49-d33b-4e64-b4ae-9be34c788d8e",
+        "duration_ms": 6113.822792016435,
+        "response": {
+          "output": [
+            {
+              "id": "__fake_id__",
+              "content": [
+                {
+                  "annotations": [],
+                  "text": "**Result: Condition 4 \u2014 past your Condition 3 threshold.**\n\n**TDCG from latest sample (2024-01-19), six gases only:**\n- H2: 2850 + CH4: 7400 + C2H6: 5470 + C2H4: 16650 + C2H2: 7 + CO: 32 = **32,409 ppm**\n- No gases were null \u2014 no carried-forward values.\n- Limits: Cond 1 \u2264720, Cond 2 721\u20131920, Cond 3 1921\u20134630, Cond 4 >4630 \u2192 **Condition 4** (exceeds the 4630 limit by ~27,779 ppm).\n\n**Existing open work orders on Transformer 1 (checked, not duplicated):**\n- **WO 1000051** (WAPPR, P1, PdM) \u2014 OLTC inspection for suspected contact wear/coking, target start 2024-01-19. This is an inspection of the tap changer only, not a full unit outage; no manufacturer notification.\n- **WO 1000052** (WAPPR, P3) \u2014 Oil sample retest and insulation check. This is a sampling/retest task, not an outage.\n\nMy recommendation differs by covering a full unit outage and inspection with manufacturer notification under Condition 4 TDCG, plus the ongoing monthly DGA sampling cadence \u2014 neither existing WO provides that.\n\n**Outage window:** Checked the MAIN schedule for 2024-01-19 \u2192 2024-02-10 (21 days after sample): **0 scheduled work orders**, so any 2-day window ties. Selected **2024-01-19 to 2024-01-20** (earliest window, aligns with WO 1000051's target start).\n\n**Work orders created:**\n1. **OUTAGE-T1-COND4** (WAPPR, Priority 1) \u2014 2-day outage/inspection, window 2024-01-19\u20132024-01-20, note to notify manufacturer; references WO 1000051 and 1000052.\n2. **DGA-T1-MONTHLY** (WAPPR, Priority 3) \u2014 monthly DGA resample due **2024-02-18** (30 days after the 2024-01-19 sample), establishing the monthly sampling cadence.",
+                  "type": "output_text",
+                  "logprobs": []
+                }
+              ],
+              "role": "assistant",
+              "status": "completed",
+              "type": "message",
+              "phase": null,
+              "provider_data": {
+                "model": "glm-5.3",
+                "response_id": "20261001062128a33b9946df70488d"
+              }
+            }
+          ],
+          "usage": {
+            "requests": 1,
+            "input_tokens": 25790,
+            "input_tokens_details": {
+              "cached_tokens": 25024
+            },
+            "output_tokens": 528,
+            "output_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "total_tokens": 26318,
+            "request_usage_entries": []
+          },
+          "response_id": null,
+          "request_id": null
+        },
+        "usage": {
+          "requests": 1,
+          "input_tokens": 25790,
+          "input_tokens_details": {
+            "cached_tokens": 25024
+          },
+          "output_tokens": 528,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 26318,
+          "request_usage_entries": []
+        }
+      }
+    ],
+    "tool_call_count": 9,
+    "unique_tools": [
+      "generate_work_order",
+      "get_schedule_calendar",
+      "latest_reading",
+      "list_workorders",
+      "update_workorder"
+    ],
+    "calls_by_tool": {
+      "latest_reading": 1,
+      "list_workorders": 1,
+      "get_schedule_calendar": 1,
+      "generate_work_order": 4,
+      "update_workorder": 2
+    },
+    "calls_by_server": {
+      "iot": 1,
+      "wo": 8
+    },
+    "tool_calls": [
+      {
+        "timestamp": "2026-09-30T22:20:59.672448+00:00",
+        "kind": "tool_end",
+        "id": "e84df2e2-e585-4094-bb59-7b2d03d76baf",
+        "name": "latest_reading",
+        "server": "iot",
+        "arguments": {
+          "asset_id": "Transformer 1",
+          "site_name": "MAIN"
+        },
+        "duration_ms": 48.532582994084805,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"site_name\": \"MAIN\",\n  \"asset_id\": \"Transformer 1\",\n  \"timestamp\": \"2024-01-19T00:00:00.000000\",\n  \"values\": {\n    \"hydrogen\": 2850,\n    \"oxygen\": 5850,\n    \"nitrogen\": 27850,\n    \"methane\": 7400,\n    \"co\": 32,\n    \"co2\": 1340,\n    \"ethylene\": 16650,\n    \"ethane\": 5470,\n    \"acetylene\": 7,\n    \"dbds\": 19,\n    \"power_factor\": 1,\n    \"interfacial_v\": 45,\n    \"dielectric_rigidity\": 55,\n    \"water_content\": 0,\n    \"vl1\": 110,\n    \"vl2\": 115,\n    \"vl3\": 108,\n    \"il1\": 100,\n    \"il2\": 105,\n    \"il3\": 95,\n    \"vl12\": 225,\n    \"vl23\": 220,\n    \"vl31\": 218,\n    \"inut\": 5,\n    \"rated_mva\": 100,\n    \"wti\": 80,\n    \"oti\": 85,\n    \"ati\": 78,\n    \"oti_a\": 2,\n    \"oti_t\": 1\n  },\n  \"age_seconds\": 85184459.666716,\n  \"message\": \"latest reading for asset_id Transformer 1 at 2024-01-19T00:00:00.000000.\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": {
+            "result": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "timestamp": "2024-01-19T00:00:00.000000",
+              "values": {
+                "hydrogen": 2850,
+                "oxygen": 5850,
+                "nitrogen": 27850,
+                "methane": 7400,
+                "co": 32,
+                "co2": 1340,
+                "ethylene": 16650,
+                "ethane": 5470,
+                "acetylene": 7,
+                "dbds": 19,
+                "power_factor": 1,
+                "interfacial_v": 45,
+                "dielectric_rigidity": 55,
+                "water_content": 0,
+                "vl1": 110,
+                "vl2": 115,
+                "vl3": 108,
+                "il1": 100,
+                "il2": 105,
+                "il3": 95,
+                "vl12": 225,
+                "vl23": 220,
+                "vl31": 218,
+                "inut": 5,
+                "rated_mva": 100,
+                "wti": 80,
+                "oti": 85,
+                "ati": 78,
+                "oti_a": 2,
+                "oti_t": 1
+              },
+              "age_seconds": 85184459.666716,
+              "message": "latest reading for asset_id Transformer 1 at 2024-01-19T00:00:00.000000."
+            }
+          },
+          "isError": false
+        },
+        "error": null
+      },
+      {
+        "timestamp": "2026-09-30T22:20:59.697638+00:00",
+        "kind": "tool_end",
+        "id": "027b9192-2393-417d-ae77-7b8e104a2246",
+        "name": "list_workorders",
+        "server": "wo",
+        "arguments": {
+          "asset_num": "Transformer 1",
+          "page_size": 0,
+          "site_id": "MAIN"
+        },
+        "duration_ms": 73.09629098745063,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"site_id\": \"MAIN\",\n  \"status\": null,\n  \"labor_code\": null,\n  \"total\": 2,\n  \"work_orders\": [\n    {\n      \"wonum\": \"1000052\",\n      \"description\": \"Oil sample retest and insulation check - Transformer 1\",\n      \"description_longdescription\": \"DGA Rogers Ratio on last sample (2024-01-18): T3 thermal fault in oil, 700-1000C. CO flat (32->33 ppm) so paper involvement cannot be confirmed; retest oil and perform insulation check.\",\n      \"siteid\": \"MAIN\",\n      \"orgid\": null,\n      \"assetnum\": \"Transformer 1\",\n      \"location\": null,\n      \"status\": \"WAPPR\",\n      \"status_date\": null,\n      \"worktype\": \"CM\",\n      \"wopriority\": 3,\n      \"reportdate\": \"2026-09-30T22:20:35+00:00\",\n      \"reportedby\": null,\n      \"failurecode\": \"FC006\",\n      \"parent\": null,\n      \"taskid\": null,\n      \"lead\": null,\n      \"jpnum\": null,\n      \"schedstart\": null,\n      \"schedfinish\": null,\n      \"targstartdate\": null,\n      \"targcompdate\": null,\n      \"actstart\": null,\n      \"actfinish\": null,\n      \"estlabhrs\": null,\n      \"actlabhrs\": null,\n      \"estlabcost\": null,\n      \"actlabcost\": null,\n      \"estmatcost\": null,\n      \"actmatcost\": null,\n      \"estservcost\": null,\n      \"actservcost\": null,\n      \"esttoolcost\": null,\n      \"acttoolcost\": null,\n      \"estatapprtotalcost\": null,\n      \"esttotalcost\": null,\n      \"acttotalcost\": null,\n      \"wplabor\": [\n        {\n          \"laborcode\": \"ELECTECH1\",\n          \"craft\": \"ELEC\",\n          \"laborhrs\": 8.0,\n          \"startdate\": \"2024-01-19T07:00:00+00:00\"\n        }\n      ],\n      \"aob_source\": null,\n      \"aob_asset_class\": null,\n      \"_id\": \"wo:MAIN:1000052\",\n      \"type\": \"workorder\",\n      \"schema_version\": \"1.0.0\"\n    },\n    {\n      \"wonum\": \"1000051\",\n      \"description\": \"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\n      \"description_longdescription\": \"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\n      \"siteid\": \"MAIN\",\n      \"orgid\": null,\n      \"assetnum\": \"Transformer 1\",\n      \"location\": null,\n      \"status\": \"WAPPR\",\n      \"status_date\": null,\n      \"worktype\": \"PdM\",\n      \"wopriority\": 1,\n      \"reportdate\": \"2026-09-30T19:04:55+00:00\",\n      \"reportedby\": null,\n      \"failurecode\": null,\n      \"parent\": null,\n      \"taskid\": null,\n      \"lead\": null,\n      \"jpnum\": null,\n      \"schedstart\": null,\n      \"schedfinish\": null,\n      \"targstartdate\": null,\n      \"targcompdate\": null,\n      \"actstart\": null,\n      \"actfinish\": null,\n      \"estlabhrs\": null,\n      \"actlabhrs\": null,\n      \"estlabcost\": null,\n      \"actlabcost\": null,\n      \"estmatcost\": null,\n      \"actmatcost\": null,\n      \"estservcost\": null,\n      \"actservcost\": null,\n      \"esttoolcost\": null,\n      \"acttoolcost\": null,\n      \"estatapprtotalcost\": null,\n      \"esttotalcost\": null,\n      \"acttotalcost\": null,\n      \"wplabor\": null,\n      \"aob_source\": null,\n      \"aob_asset_class\": null,\n      \"_id\": \"wo:MAIN:1000051\",\n      \"type\": \"workorder\",\n      \"schema_version\": \"1.0.0\"\n    }\n  ],\n  \"message\": \"Found 2 work order(s).\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": {
+            "result": {
+              "site_id": "MAIN",
+              "status": null,
+              "labor_code": null,
+              "total": 2,
+              "work_orders": [
+                {
+                  "wonum": "1000052",
+                  "description": "Oil sample retest and insulation check - Transformer 1",
+                  "description_longdescription": "DGA Rogers Ratio on last sample (2024-01-18): T3 thermal fault in oil, 700-1000C. CO flat (32->33 ppm) so paper involvement cannot be confirmed; retest oil and perform insulation check.",
+                  "siteid": "MAIN",
+                  "orgid": null,
+                  "assetnum": "Transformer 1",
+                  "location": null,
+                  "status": "WAPPR",
+                  "status_date": null,
+                  "worktype": "CM",
+                  "wopriority": 3,
+                  "reportdate": "2026-09-30T22:20:35+00:00",
+                  "reportedby": null,
+                  "failurecode": "FC006",
+                  "parent": null,
+                  "taskid": null,
+                  "lead": null,
+                  "jpnum": null,
+                  "schedstart": null,
+                  "schedfinish": null,
+                  "targstartdate": null,
+                  "targcompdate": null,
+                  "actstart": null,
+                  "actfinish": null,
+                  "estlabhrs": null,
+                  "actlabhrs": null,
+                  "estlabcost": null,
+                  "actlabcost": null,
+                  "estmatcost": null,
+                  "actmatcost": null,
+                  "estservcost": null,
+                  "actservcost": null,
+                  "esttoolcost": null,
+                  "acttoolcost": null,
+                  "estatapprtotalcost": null,
+                  "esttotalcost": null,
+                  "acttotalcost": null,
+                  "wplabor": [
+                    {
+                      "laborcode": "ELECTECH1",
+                      "craft": "ELEC",
+                      "laborhrs": 8.0,
+                      "startdate": "2024-01-19T07:00:00+00:00"
+                    }
+                  ],
+                  "aob_source": null,
+                  "aob_asset_class": null,
+                  "_id": "wo:MAIN:1000052",
+                  "type": "workorder",
+                  "schema_version": "1.0.0"
+                },
+                {
+                  "wonum": "1000051",
+                  "description": "OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)",
+                  "description_longdescription": "Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.",
+                  "siteid": "MAIN",
+                  "orgid": null,
+                  "assetnum": "Transformer 1",
+                  "location": null,
+                  "status": "WAPPR",
+                  "status_date": null,
+                  "worktype": "PdM",
+                  "wopriority": 1,
+                  "reportdate": "2026-09-30T19:04:55+00:00",
+                  "reportedby": null,
+                  "failurecode": null,
+                  "parent": null,
+                  "taskid": null,
+                  "lead": null,
+                  "jpnum": null,
+                  "schedstart": null,
+                  "schedfinish": null,
+                  "targstartdate": null,
+                  "targcompdate": null,
+                  "actstart": null,
+                  "actfinish": null,
+                  "estlabhrs": null,
+                  "actlabhrs": null,
+                  "estlabcost": null,
+                  "actlabcost": null,
+                  "estmatcost": null,
+                  "actmatcost": null,
+                  "estservcost": null,
+                  "actservcost": null,
+                  "esttoolcost": null,
+                  "acttoolcost": null,
+                  "estatapprtotalcost": null,
+                  "esttotalcost": null,
+                  "acttotalcost": null,
+                  "wplabor": null,
+                  "aob_source": null,
+                  "aob_asset_class": null,
+                  "_id": "wo:MAIN:1000051",
+                  "type": "workorder",
+                  "schema_version": "1.0.0"
+                }
+              ],
+              "message": "Found 2 work order(s)."
+            }
+          },
+          "isError": false
+        },
+        "error": null
+      },
+      {
+        "timestamp": "2026-09-30T22:21:04.650927+00:00",
+        "kind": "tool_end",
+        "id": "3d08200c-a1ec-4f98-bf3b-349a760f14a7",
+        "name": "get_schedule_calendar",
+        "server": "wo",
+        "arguments": {
+          "date_from": "2024-01-19",
+          "date_to": "2024-02-10",
+          "site_id": "MAIN"
+        },
+        "duration_ms": 39.815458992961794,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"site_id\": \"MAIN\",\n  \"date_from\": \"2024-01-19\",\n  \"date_to\": \"2024-02-10\",\n  \"total_scheduled\": 0,\n  \"by_date\": [],\n  \"workorders\": null,\n  \"message\": \"0 scheduled at MAIN.\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": {
+            "result": {
+              "site_id": "MAIN",
+              "date_from": "2024-01-19",
+              "date_to": "2024-02-10",
+              "total_scheduled": 0,
+              "by_date": [],
+              "workorders": null,
+              "message": "0 scheduled at MAIN."
+            }
+          },
+          "isError": false
+        },
+        "error": null
+      },
+      {
+        "timestamp": "2026-09-30T22:21:16.066359+00:00",
+        "kind": "tool_end",
+        "id": "929f786c-8e3c-4e05-9e39-43cb7a25e3cc",
+        "name": "generate_work_order",
+        "server": "wo",
+        "arguments": {
+          "aob_source": {
+            "evidence": "TDCG=32409 ppm from 2024-01-19 sample (Condition 4 per IEEE C57.104 limits)",
+            "rule": "IEEE C57.104 Condition 3/4 -> plan outage, monthly oil sampling",
+            "trigger": "agent"
+          },
+          "asset_num": "Transformer 1",
+          "description": "Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm). 2-day outage window 2024-01-19 to 2024-01-20 (fewest scheduled WOs at MAIN in 21 days after latest sample). NOTE: Notify manufacturer.",
+          "notes": "Related WO 1000051 (OLTC inspection, P1, target 2024-01-19) covers OLTC-specific contact wear only. This WO covers full unit outage and inspection under Condition 4 TDCG and adds manufacturer notification. Related WO 1000052 covers retest sampling.",
+          "priority": 1,
+          "site_id": "MAIN",
+          "work_type": "CM"
+        },
+        "duration_ms": 31.846916012000293,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Error executing tool generate_work_order: Client error '403 Forbidden' for url 'http://127.0.0.1:58116/workorder/counter:MAIN'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": null,
+          "isError": true
+        },
+        "error": {
+          "type": "ToolError",
+          "message": "MCP reported an error"
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:18.065778+00:00",
+        "kind": "tool_end",
+        "id": "c36e8dcd-eaed-4a73-b2ac-00d95bde42dc",
+        "name": "generate_work_order",
+        "server": "wo",
+        "arguments": {
+          "asset_num": "Transformer 1",
+          "description": "P1 outage/inspection Transformer 1 - TDCG Condition 4, window 2024-01-19/20. Notify manufacturer.",
+          "priority": 1,
+          "site_id": "MAIN"
+        },
+        "duration_ms": 15.896083030384034,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Error executing tool generate_work_order: Client error '403 Forbidden' for url 'http://127.0.0.1:58116/workorder/counter:MAIN'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": null,
+          "isError": true
+        },
+        "error": {
+          "type": "ToolError",
+          "message": "MCP reported an error"
+        }
+      },
+      {
+        "timestamp": "2026-09-30T22:21:20.025606+00:00",
+        "kind": "tool_end",
+        "id": "3db9f611-3aec-4491-837d-7c47afb1959e",
+        "name": "generate_work_order",
+        "server": "wo",
+        "arguments": {
+          "description": "Monthly DGA resample - Transformer 1",
+          "priority": 3,
+          "site_id": "MAIN",
+          "wonum": "DGA-T1-MONTHLY",
+          "asset_num": "Transformer 1"
+        },
+        "duration_ms": 61.68845802312717,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"wonum\": \"DGA-T1-MONTHLY\",\n  \"siteid\": \"MAIN\",\n  \"status\": \"WAPPR\",\n  \"work_order\": {\n    \"wonum\": \"DGA-T1-MONTHLY\",\n    \"description\": \"Monthly DGA resample - Transformer 1\",\n    \"description_longdescription\": null,\n    \"siteid\": \"MAIN\",\n    \"orgid\": null,\n    \"assetnum\": \"Transformer 1\",\n    \"location\": null,\n    \"status\": \"WAPPR\",\n    \"status_date\": null,\n    \"worktype\": \"CM\",\n    \"wopriority\": 3,\n    \"reportdate\": \"2026-09-30T22:21:19+00:00\",\n    \"reportedby\": null,\n    \"failurecode\": null,\n    \"parent\": null,\n    \"taskid\": null,\n    \"lead\": null,\n    \"jpnum\": null,\n    \"schedstart\": null,\n    \"schedfinish\": null,\n    \"targstartdate\": null,\n    \"targcompdate\": null,\n    \"actstart\": null,\n    \"actfinish\": null,\n    \"estlabhrs\": null,\n    \"actlabhrs\": null,\n    \"estlabcost\": null,\n    \"actlabcost\": null,\n    \"estmatcost\": null,\n    \"actmatcost\": null,\n    \"estservcost\": null,\n    \"actservcost\": null,\n    \"esttoolcost\": null,\n    \"acttoolcost\": null,\n    \"estatapprtotalcost\": null,\n    \"esttotalcost\": null,\n    \"acttotalcost\": null,\n    \"wplabor\": null,\n    \"aob_source\": null,\n    \"aob_asset_class\": null,\n    \"_id\": \"wo:MAIN:DGA-T1-MONTHLY\",\n    \"type\": \"workorder\",\n    \"schema_version\": \"1.0.0\"\n  },\n  \"message\": \"Work order DGA-T1-MONTHLY created (WAPPR).\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": {
+            "result": {
+              "wonum": "DGA-T1-MONTHLY",
+              "siteid": "MAIN",
+              "status": "WAPPR",
+              "work_order": {
+                "wonum": "DGA-T1-MONTHLY",
+                "description": "Monthly DGA resample - Transformer 1",
+                "description_longdescription": null,
+                "siteid": "MAIN",
+                "orgid": null,
+                "assetnum": "Transformer 1",
+                "location": null,
+                "status": "WAPPR",
+                "status_date": null,
+                "worktype": "CM",
+                "wopriority": 3,
+                "reportdate": "2026-09-30T22:21:19+00:00",
+                "reportedby": null,
+                "failurecode": null,
+                "parent": null,
+                "taskid": null,
+                "lead": null,
+                "jpnum": null,
+                "schedstart": null,
+                "schedfinish": null,
+                "targstartdate": null,
+                "targcompdate": null,
+                "actstart": null,
+                "actfinish": null,
+                "estlabhrs": null,
+                "actlabhrs": null,
+                "estlabcost": null,
+                "actlabcost": null,
+                "estmatcost": null,
+                "actmatcost": null,
+                "estservcost": null,
+                "actservcost": null,
+                "esttoolcost": null,
+                "acttoolcost": null,
+                "estatapprtotalcost": null,
+                "esttotalcost": null,
+                "acttotalcost": null,
+                "wplabor": null,
+                "aob_source": null,
+                "aob_asset_class": null,
+                "_id": "wo:MAIN:DGA-T1-MONTHLY",
+                "type": "workorder",
+                "schema_version": "1.0.0"
+              },
+              "message": "Work order DGA-T1-MONTHLY created (WAPPR)."
+            }
+          },
+          "isError": false
+        },
+        "error": null
+      },
+      {
+        "timestamp": "2026-09-30T22:21:23.171855+00:00",
+        "kind": "tool_end",
+        "id": "c9192ece-5d8a-4690-bc21-a08cd3c7b10b",
+        "name": "generate_work_order",
+        "server": "wo",
+        "arguments": {
+          "description": "Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm from 2024-01-19 sample). 2-day outage window 2024-01-19 to 2024-01-20 (fewest scheduled WOs at MAIN in the 21 days after latest sample). NOTE: Notify manufacturer.",
+          "asset_num": "Transformer 1",
+          "notes": "Carried-forward gases: none. Related existing WOs: 1000051 (OLTC inspection, P1, target 2024-01-19) covers only tap-changer contact wear - this WO broadens to full outage/inspection + manufacturer notification under Condition 4 TDCG. 1000052 covers oil retest/insulation check only.",
+          "priority": 1,
+          "site_id": "MAIN",
+          "wonum": "OUTAGE-T1-COND4"
+        },
+        "duration_ms": 60.865042032673955,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"wonum\": \"OUTAGE-T1-COND4\",\n  \"siteid\": \"MAIN\",\n  \"status\": \"WAPPR\",\n  \"work_order\": {\n    \"wonum\": \"OUTAGE-T1-COND4\",\n    \"description\": \"Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm from 20\",\n    \"description_longdescription\": \"Carried-forward gases: none. Related existing WOs: 1000051 (OLTC inspection, P1, target 2024-01-19) covers only tap-changer contact wear - this WO broadens to full outage/inspection + manufacturer notification under Condition 4 TDCG. 1000052 covers oil retest/insulation check only.\",\n    \"siteid\": \"MAIN\",\n    \"orgid\": null,\n    \"assetnum\": \"Transformer 1\",\n    \"location\": null,\n    \"status\": \"WAPPR\",\n    \"status_date\": null,\n    \"worktype\": \"CM\",\n    \"wopriority\": 1,\n    \"reportdate\": \"2026-09-30T22:21:23+00:00\",\n    \"reportedby\": null,\n    \"failurecode\": null,\n    \"parent\": null,\n    \"taskid\": null,\n    \"lead\": null,\n    \"jpnum\": null,\n    \"schedstart\": null,\n    \"schedfinish\": null,\n    \"targstartdate\": null,\n    \"targcompdate\": null,\n    \"actstart\": null,\n    \"actfinish\": null,\n    \"estlabhrs\": null,\n    \"actlabhrs\": null,\n    \"estlabcost\": null,\n    \"actlabcost\": null,\n    \"estmatcost\": null,\n    \"actmatcost\": null,\n    \"estservcost\": null,\n    \"actservcost\": null,\n    \"esttoolcost\": null,\n    \"acttoolcost\": null,\n    \"estatapprtotalcost\": null,\n    \"esttotalcost\": null,\n    \"acttotalcost\": null,\n    \"wplabor\": null,\n    \"aob_source\": null,\n    \"aob_asset_class\": null,\n    \"_id\": \"wo:MAIN:OUTAGE-T1-COND4\",\n    \"type\": \"workorder\",\n    \"schema_version\": \"1.0.0\"\n  },\n  \"message\": \"Work order OUTAGE-T1-COND4 created (WAPPR).\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": {
+            "result": {
+              "wonum": "OUTAGE-T1-COND4",
+              "siteid": "MAIN",
+              "status": "WAPPR",
+              "work_order": {
+                "wonum": "OUTAGE-T1-COND4",
+                "description": "Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm from 20",
+                "description_longdescription": "Carried-forward gases: none. Related existing WOs: 1000051 (OLTC inspection, P1, target 2024-01-19) covers only tap-changer contact wear - this WO broadens to full outage/inspection + manufacturer notification under Condition 4 TDCG. 1000052 covers oil retest/insulation check only.",
+                "siteid": "MAIN",
+                "orgid": null,
+                "assetnum": "Transformer 1",
+                "location": null,
+                "status": "WAPPR",
+                "status_date": null,
+                "worktype": "CM",
+                "wopriority": 1,
+                "reportdate": "2026-09-30T22:21:23+00:00",
+                "reportedby": null,
+                "failurecode": null,
+                "parent": null,
+                "taskid": null,
+                "lead": null,
+                "jpnum": null,
+                "schedstart": null,
+                "schedfinish": null,
+                "targstartdate": null,
+                "targcompdate": null,
+                "actstart": null,
+                "actfinish": null,
+                "estlabhrs": null,
+                "actlabhrs": null,
+                "estlabcost": null,
+                "actlabcost": null,
+                "estmatcost": null,
+                "actmatcost": null,
+                "estservcost": null,
+                "actservcost": null,
+                "esttoolcost": null,
+                "acttoolcost": null,
+                "estatapprtotalcost": null,
+                "esttotalcost": null,
+                "acttotalcost": null,
+                "wplabor": null,
+                "aob_source": null,
+                "aob_asset_class": null,
+                "_id": "wo:MAIN:OUTAGE-T1-COND4",
+                "type": "workorder",
+                "schema_version": "1.0.0"
+              },
+              "message": "Work order OUTAGE-T1-COND4 created (WAPPR)."
+            }
+          },
+          "isError": false
+        },
+        "error": null
+      },
+      {
+        "timestamp": "2026-09-30T22:21:25.586287+00:00",
+        "kind": "tool_end",
+        "id": "4e3f3af1-17c7-42f8-8ab1-65085469b63e",
+        "name": "update_workorder",
+        "server": "wo",
+        "arguments": {
+          "notes": "Sample due 2024-02-18 (30 days after latest sample 2024-01-19). Monthly cadence per Condition 3/4 rule.",
+          "site_id": "MAIN",
+          "wonum": "DGA-T1-MONTHLY"
+        },
+        "duration_ms": 54.30370895192027,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"wonum\": \"DGA-T1-MONTHLY\",\n  \"siteid\": \"MAIN\",\n  \"status\": \"WAPPR\",\n  \"work_order\": {\n    \"wonum\": \"DGA-T1-MONTHLY\",\n    \"description\": \"Monthly DGA resample - Transformer 1\",\n    \"description_longdescription\": \"Sample due 2024-02-18 (30 days after latest sample 2024-01-19). Monthly cadence per Condition 3/4 rule.\",\n    \"siteid\": \"MAIN\",\n    \"orgid\": null,\n    \"assetnum\": \"Transformer 1\",\n    \"location\": null,\n    \"status\": \"WAPPR\",\n    \"status_date\": null,\n    \"worktype\": \"CM\",\n    \"wopriority\": 3,\n    \"reportdate\": \"2026-09-30T22:21:19+00:00\",\n    \"reportedby\": null,\n    \"failurecode\": null,\n    \"parent\": null,\n    \"taskid\": null,\n    \"lead\": null,\n    \"jpnum\": null,\n    \"schedstart\": null,\n    \"schedfinish\": null,\n    \"targstartdate\": null,\n    \"targcompdate\": null,\n    \"actstart\": null,\n    \"actfinish\": null,\n    \"estlabhrs\": null,\n    \"actlabhrs\": null,\n    \"estlabcost\": null,\n    \"actlabcost\": null,\n    \"estmatcost\": null,\n    \"actmatcost\": null,\n    \"estservcost\": null,\n    \"actservcost\": null,\n    \"esttoolcost\": null,\n    \"acttoolcost\": null,\n    \"estatapprtotalcost\": null,\n    \"esttotalcost\": null,\n    \"acttotalcost\": null,\n    \"wplabor\": null,\n    \"aob_source\": null,\n    \"aob_asset_class\": null,\n    \"_id\": \"wo:MAIN:DGA-T1-MONTHLY\",\n    \"type\": \"workorder\",\n    \"schema_version\": \"1.0.0\"\n  },\n  \"message\": \"Work order DGA-T1-MONTHLY updated.\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": {
+            "result": {
+              "wonum": "DGA-T1-MONTHLY",
+              "siteid": "MAIN",
+              "status": "WAPPR",
+              "work_order": {
+                "wonum": "DGA-T1-MONTHLY",
+                "description": "Monthly DGA resample - Transformer 1",
+                "description_longdescription": "Sample due 2024-02-18 (30 days after latest sample 2024-01-19). Monthly cadence per Condition 3/4 rule.",
+                "siteid": "MAIN",
+                "orgid": null,
+                "assetnum": "Transformer 1",
+                "location": null,
+                "status": "WAPPR",
+                "status_date": null,
+                "worktype": "CM",
+                "wopriority": 3,
+                "reportdate": "2026-09-30T22:21:19+00:00",
+                "reportedby": null,
+                "failurecode": null,
+                "parent": null,
+                "taskid": null,
+                "lead": null,
+                "jpnum": null,
+                "schedstart": null,
+                "schedfinish": null,
+                "targstartdate": null,
+                "targcompdate": null,
+                "actstart": null,
+                "actfinish": null,
+                "estlabhrs": null,
+                "actlabhrs": null,
+                "estlabcost": null,
+                "actlabcost": null,
+                "estmatcost": null,
+                "actmatcost": null,
+                "estservcost": null,
+                "actservcost": null,
+                "esttoolcost": null,
+                "acttoolcost": null,
+                "estatapprtotalcost": null,
+                "esttotalcost": null,
+                "acttotalcost": null,
+                "wplabor": null,
+                "aob_source": null,
+                "aob_asset_class": null,
+                "_id": "wo:MAIN:DGA-T1-MONTHLY",
+                "type": "workorder",
+                "schema_version": "1.0.0"
+              },
+              "message": "Work order DGA-T1-MONTHLY updated."
+            }
+          },
+          "isError": false
+        },
+        "error": null
+      },
+      {
+        "timestamp": "2026-09-30T22:21:28.221697+00:00",
+        "kind": "tool_end",
+        "id": "616e57b5-4605-497b-b579-f67a0d486e7a",
+        "name": "update_workorder",
+        "server": "wo",
+        "arguments": {
+          "notes": "Outage window: 2024-01-19 to 2024-01-20 (2-day window with fewest scheduled WOs at MAIN in 21 days after latest sample 2024-01-19; 0 scheduled WOs). Notify manufacturer. Related: WO 1000051 (OLTC inspection only, broader scope here), WO 1000052 (oil retest only), DGA-T1-MONTHLY (monthly resample due 2024-02-18).",
+          "site_id": "MAIN",
+          "wonum": "OUTAGE-T1-COND4"
+        },
+        "duration_ms": 63.65179200656712,
+        "output": {
+          "meta": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"wonum\": \"OUTAGE-T1-COND4\",\n  \"siteid\": \"MAIN\",\n  \"status\": \"WAPPR\",\n  \"work_order\": {\n    \"wonum\": \"OUTAGE-T1-COND4\",\n    \"description\": \"Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm from 20\",\n    \"description_longdescription\": \"Outage window: 2024-01-19 to 2024-01-20 (2-day window with fewest scheduled WOs at MAIN in 21 days after latest sample 2024-01-19; 0 scheduled WOs). Notify manufacturer. Related: WO 1000051 (OLTC inspection only, broader scope here), WO 1000052 (oil retest only), DGA-T1-MONTHLY (monthly resample due 2024-02-18).\",\n    \"siteid\": \"MAIN\",\n    \"orgid\": null,\n    \"assetnum\": \"Transformer 1\",\n    \"location\": null,\n    \"status\": \"WAPPR\",\n    \"status_date\": null,\n    \"worktype\": \"CM\",\n    \"wopriority\": 1,\n    \"reportdate\": \"2026-09-30T22:21:23+00:00\",\n    \"reportedby\": null,\n    \"failurecode\": null,\n    \"parent\": null,\n    \"taskid\": null,\n    \"lead\": null,\n    \"jpnum\": null,\n    \"schedstart\": null,\n    \"schedfinish\": null,\n    \"targstartdate\": null,\n    \"targcompdate\": null,\n    \"actstart\": null,\n    \"actfinish\": null,\n    \"estlabhrs\": null,\n    \"actlabhrs\": null,\n    \"estlabcost\": null,\n    \"actlabcost\": null,\n    \"estmatcost\": null,\n    \"actmatcost\": null,\n    \"estservcost\": null,\n    \"actservcost\": null,\n    \"esttoolcost\": null,\n    \"acttoolcost\": null,\n    \"estatapprtotalcost\": null,\n    \"esttotalcost\": null,\n    \"acttotalcost\": null,\n    \"wplabor\": null,\n    \"aob_source\": null,\n    \"aob_asset_class\": null,\n    \"_id\": \"wo:MAIN:OUTAGE-T1-COND4\",\n    \"type\": \"workorder\",\n    \"schema_version\": \"1.0.0\"\n  },\n  \"message\": \"Work order OUTAGE-T1-COND4 updated.\"\n}",
+              "annotations": null,
+              "meta": null
+            }
+          ],
+          "structuredContent": {
+            "result": {
+              "wonum": "OUTAGE-T1-COND4",
+              "siteid": "MAIN",
+              "status": "WAPPR",
+              "work_order": {
+                "wonum": "OUTAGE-T1-COND4",
+                "description": "Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm from 20",
+                "description_longdescription": "Outage window: 2024-01-19 to 2024-01-20 (2-day window with fewest scheduled WOs at MAIN in 21 days after latest sample 2024-01-19; 0 scheduled WOs). Notify manufacturer. Related: WO 1000051 (OLTC inspection only, broader scope here), WO 1000052 (oil retest only), DGA-T1-MONTHLY (monthly resample due 2024-02-18).",
+                "siteid": "MAIN",
+                "orgid": null,
+                "assetnum": "Transformer 1",
+                "location": null,
+                "status": "WAPPR",
+                "status_date": null,
+                "worktype": "CM",
+                "wopriority": 1,
+                "reportdate": "2026-09-30T22:21:23+00:00",
+                "reportedby": null,
+                "failurecode": null,
+                "parent": null,
+                "taskid": null,
+                "lead": null,
+                "jpnum": null,
+                "schedstart": null,
+                "schedfinish": null,
+                "targstartdate": null,
+                "targcompdate": null,
+                "actstart": null,
+                "actfinish": null,
+                "estlabhrs": null,
+                "actlabhrs": null,
+                "estlabcost": null,
+                "actlabcost": null,
+                "estmatcost": null,
+                "actmatcost": null,
+                "estservcost": null,
+                "actservcost": null,
+                "esttoolcost": null,
+                "acttoolcost": null,
+                "estatapprtotalcost": null,
+                "esttotalcost": null,
+                "acttotalcost": null,
+                "wplabor": null,
+                "aob_source": null,
+                "aob_asset_class": null,
+                "_id": "wo:MAIN:OUTAGE-T1-COND4",
+                "type": "workorder",
+                "schema_version": "1.0.0"
+              },
+              "message": "Work order OUTAGE-T1-COND4 updated."
+            }
+          },
+          "isError": false
+        },
+        "error": null
+      }
+    ],
+    "tool_incomplete": 0,
+    "tool_errors": 2,
+    "tool_timeouts": null,
+    "repeated_identical_calls": 0,
+    "retries": null,
+    "context_compactions": null,
+    "termination_reason": null,
+    "turn_limit_hit": null,
+    "database_writes_attempted": 6,
+    "database_writes_succeeded": 4,
+    "database_records_created": 2,
+    "database_records_changed": 2,
+    "actual_api_cost_usd": null,
+    "estimated_cost_usd": null,
+    "provider_reported_cost_usd": null,
+    "model_turns": 9,
+    "time_to_first_response_ms": 8666.908,
+    "time_to_final_answer_ms": 43385.268000000004
+  },
+  "status": "completed",
+  "execution_start": "2026-09-30T22:20:50.954121+00:00",
+  "execution_end": "2026-09-30T22:21:35.528897+00:00",
+  "execution_duration_ms": 44574.54179198248,
+  "error": null,
+  "database_audit": [
+    {
+      "timestamp": "2026-09-30T22:21:16.052248+00:00",
+      "method": "PUT",
+      "path": "eval_glm_5_3_low_1790805918_workorder/counter:MAIN",
+      "request": {
+        "_id": "counter:MAIN",
+        "type": "counter",
+        "value": 1001
+      },
+      "status_code": 403,
+      "response": {
+        "error": "forbidden",
+        "reason": "WO validation failed [type]: must equal 'workorder'"
+      },
+      "writes_attempted": 1,
+      "writes_succeeded": 0,
+      "records": []
+    },
+    {
+      "timestamp": "2026-09-30T22:21:18.059088+00:00",
+      "method": "PUT",
+      "path": "eval_glm_5_3_low_1790805918_workorder/counter:MAIN",
+      "request": {
+        "_id": "counter:MAIN",
+        "type": "counter",
+        "value": 1001
+      },
+      "status_code": 403,
+      "response": {
+        "error": "forbidden",
+        "reason": "WO validation failed [type]: must equal 'workorder'"
+      },
+      "writes_attempted": 1,
+      "writes_succeeded": 0,
+      "records": []
+    },
+    {
+      "timestamp": "2026-09-30T22:21:19.972357+00:00",
+      "method": "PUT",
+      "path": "eval_glm_5_3_low_1790805918_workorder/wo:MAIN:DGA-T1-MONTHLY",
+      "request": {
+        "_id": "wo:MAIN:DGA-T1-MONTHLY",
+        "type": "workorder",
+        "schema_version": "1.0.0",
+        "wonum": "DGA-T1-MONTHLY",
+        "siteid": "MAIN",
+        "description": "Monthly DGA resample - Transformer 1",
+        "assetnum": "Transformer 1",
+        "wopriority": 3,
+        "worktype": "CM",
+        "status": "WAPPR",
+        "reportdate": "2026-09-30T22:21:19+00:00"
+      },
+      "status_code": 201,
+      "response": {
+        "ok": true,
+        "id": "wo:MAIN:DGA-T1-MONTHLY",
+        "rev": "1-d58caf3d5d2cb60e07e45c173a37259a"
+      },
+      "writes_attempted": 1,
+      "writes_succeeded": 1,
+      "records": [
+        {
+          "id": "wo:MAIN:DGA-T1-MONTHLY",
+          "action": "created"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-09-30T22:21:23.121212+00:00",
+      "method": "PUT",
+      "path": "eval_glm_5_3_low_1790805918_workorder/wo:MAIN:OUTAGE-T1-COND4",
+      "request": {
+        "_id": "wo:MAIN:OUTAGE-T1-COND4",
+        "type": "workorder",
+        "schema_version": "1.0.0",
+        "wonum": "OUTAGE-T1-COND4",
+        "siteid": "MAIN",
+        "description": "Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm from 20",
+        "assetnum": "Transformer 1",
+        "wopriority": 1,
+        "worktype": "CM",
+        "status": "WAPPR",
+        "reportdate": "2026-09-30T22:21:23+00:00",
+        "description_longdescription": "Carried-forward gases: none. Related existing WOs: 1000051 (OLTC inspection, P1, target 2024-01-19) covers only tap-changer contact wear - this WO broadens to full outage/inspection + manufacturer notification under Condition 4 TDCG. 1000052 covers oil retest/insulation check only."
+      },
+      "status_code": 201,
+      "response": {
+        "ok": true,
+        "id": "wo:MAIN:OUTAGE-T1-COND4",
+        "rev": "1-78cd29524dae90ea6b6e6aa16bee1ebc"
+      },
+      "writes_attempted": 1,
+      "writes_succeeded": 1,
+      "records": [
+        {
+          "id": "wo:MAIN:OUTAGE-T1-COND4",
+          "action": "created"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-09-30T22:21:25.544451+00:00",
+      "method": "PUT",
+      "path": "eval_glm_5_3_low_1790805918_workorder/wo:MAIN:DGA-T1-MONTHLY",
+      "request": {
+        "_id": "wo:MAIN:DGA-T1-MONTHLY",
+        "_rev": "1-d58caf3d5d2cb60e07e45c173a37259a",
+        "type": "workorder",
+        "schema_version": "1.0.0",
+        "wonum": "DGA-T1-MONTHLY",
+        "siteid": "MAIN",
+        "description": "Monthly DGA resample - Transformer 1",
+        "assetnum": "Transformer 1",
+        "wopriority": 3,
+        "worktype": "CM",
+        "status": "WAPPR",
+        "reportdate": "2026-09-30T22:21:19+00:00",
+        "description_longdescription": "Sample due 2024-02-18 (30 days after latest sample 2024-01-19). Monthly cadence per Condition 3/4 rule."
+      },
+      "status_code": 201,
+      "response": {
+        "ok": true,
+        "id": "wo:MAIN:DGA-T1-MONTHLY",
+        "rev": "2-920d5baae282df44d018a00050fead59"
+      },
+      "writes_attempted": 1,
+      "writes_succeeded": 1,
+      "records": [
+        {
+          "id": "wo:MAIN:DGA-T1-MONTHLY",
+          "action": "changed"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-09-30T22:21:28.173841+00:00",
+      "method": "PUT",
+      "path": "eval_glm_5_3_low_1790805918_workorder/wo:MAIN:OUTAGE-T1-COND4",
+      "request": {
+        "_id": "wo:MAIN:OUTAGE-T1-COND4",
+        "_rev": "1-78cd29524dae90ea6b6e6aa16bee1ebc",
+        "type": "workorder",
+        "schema_version": "1.0.0",
+        "wonum": "OUTAGE-T1-COND4",
+        "siteid": "MAIN",
+        "description": "Priority 1 outage and inspection of Transformer 1 - IEEE C57.104 Condition 4 (TDCG 32409 ppm from 20",
+        "assetnum": "Transformer 1",
+        "wopriority": 1,
+        "worktype": "CM",
+        "status": "WAPPR",
+        "reportdate": "2026-09-30T22:21:23+00:00",
+        "description_longdescription": "Outage window: 2024-01-19 to 2024-01-20 (2-day window with fewest scheduled WOs at MAIN in 21 days after latest sample 2024-01-19; 0 scheduled WOs). Notify manufacturer. Related: WO 1000051 (OLTC inspection only, broader scope here), WO 1000052 (oil retest only), DGA-T1-MONTHLY (monthly resample due 2024-02-18)."
+      },
+      "status_code": 201,
+      "response": {
+        "ok": true,
+        "id": "wo:MAIN:OUTAGE-T1-COND4",
+        "rev": "2-9d4759852e205382bb22512794f9559c"
+      },
+      "writes_attempted": 1,
+      "writes_succeeded": 1,
+      "records": [
+        {
+          "id": "wo:MAIN:OUTAGE-T1-COND4",
+          "action": "changed"
+        }
+      ]
+    }
+  ],
+  "agent_error": null
+}

@@ -1,0 +1,589 @@
+{
+  "run_id": "fable-5-1_0022",
+  "scenario_id": "transformer_scenario_22",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "Something may have spiked in Transformer 1's oil at MAIN recently, and I'd like it checked properly rather than by eye. Screen acetylene, co and hydrogen between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000 for anomalous samples. For each channel, list any flagged timestamps with their values, and give the total number of anomalies per channel. Then tell me whether flagged points on different gases fall on the same timestamp. If acetylene and hydrogen are both flagged at the same timestamp, treat it as possible arcing and recommend an immediate confirmatory resample. If only co is flagged, treat it as possible paper involvement and recommend a routine retest. If nothing is flagged, say the window looks stable. Use a proper anomaly detection model, not a fixed threshold. If the detector can't run because a channel has fewer than 4 non-null samples, report that channel's min, max and mean instead, and flag any sample more than 50% above that channel's mean as a manual outlier.",
+  "answer": "**Transformer 1 (MAIN) — DGA anomaly screen, 2024-01-15 to 2024-01-19**\n\nData: 4 daily samples per channel (2024-01-15, -16, -17, -18), all non-null — so the model-based path applied (no fallback needed).\nDetector: sktime `SubLOF` (Local Outlier Factor, window 4, 2 neighbours), run separately per channel. No fixed thresholds used.\n\n**Per-channel results**\n\n| Channel | Samples screened | Flagged timestamps | Anomalies |\n|---|---|---|---|\n| acetylene (7, 6, 8, 7 ppm) | 4 | none | **0** |\n| co (32, 30, 35, 33 ppm) | 4 | none | **0** |\n| hydrogen (2845, 2950, 2800, 2900 ppm) | 4 | none | **0** |\n\nRuns: acetylene `run:0e934bcdfa`, co `run:58b6e25f6c`, hydrogen `run:e72e33e314`.\n\n**Cross-channel coincidence:** No flagged points on any gas, so there are no shared timestamps between channels. The acetylene + hydrogen arcing pattern is not present, and CO was not flagged, so no paper-involvement retest is triggered.\n\n**Conclusion: the window looks stable.** Day-to-day variation is small relative to each gas's level (acetylene ±1 ppm, CO ±2–3 ppm, hydrogen ±~75 ppm around ~2,875), and nothing stands out as a spike in this window.\n\nOne observation outside your screening rules, for context only: the hydrogen *level* (~2,800–2,950 ppm) is high in absolute terms even though it's flat across these four days. Stability within the window doesn't mean the baseline itself is benign — if that level is new relative to earlier history, it may be worth a look on its own.\n\nNotes on method: the catalog has no registered anomaly-detector cards, so I used the inline detector from the recipe template. With only 4 points, LOF sensitivity is limited; a longer window would give a more robust screen if you want one.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 4158.286584017333
+      },
+      {
+        "index": 1,
+        "text": "I'll start by checking what's measured on Transformer 1 and what data exists in that window.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 559.5409580273554
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__measured_sensors",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_018Z7N9BriQ5FuEtHhz1de3Q",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"total_sensors\":30,\"sensors\":[\"acetylene\",\"ati\",\"co\",\"co2\",\"dbds\",\"dielectric_rigidity\",\"ethane\",\"ethylene\",\"hydrogen\",\"il1\",\"il2\",\"il3\",\"interfacial_v\",\"inut\",\"methane\",\"nitrogen\",\"oti\",\"oti_a\",\"oti_t\",\"oxygen\",\"power_factor\",\"rated_mva\",\"vl1\",\"vl12\",\"vl2\",\"vl23\",\"vl3\",\"vl31\",\"water_content\",\"wti\"],\"message\":\"found 30 sensors for asset_id Transformer 1 and site_name MAIN: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen, power_factor, rated_mva, vl1, vl12, vl2, vl23, vl3, vl31, water_content, wti.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 697.8715419536456
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "acetylene",
+                "co",
+                "hydrogen"
+              ]
+            },
+            "id": "toolu_01PYrgJshwfZ7MSDrCBmWcXZ",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"acetylene\":7,\"co\":32,\"hydrogen\":2845},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"acetylene\":6,\"co\":30,\"hydrogen\":2950},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"acetylene\":8,\"co\":35,\"hydrogen\":2800},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"acetylene\":7,\"co\":33,\"hydrogen\":2900}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "duration_ms": 1556.3809160375968
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 5070.445416960865
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.9067920511588454
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__recipe_template",
+            "input": {},
+            "id": "toolu_01Bwuc5LHc79Y9yyJTFb48TG",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.3466659584082663
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__find_models",
+            "input": {
+              "task_id": "tsfm_anomaly_detection"
+            },
+            "id": "toolu_01MSfDQuaiyFLwHcy1m48Kyk",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 16.740084043703973
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__list_tasks",
+            "input": {},
+            "id": "toolu_01BGkEoW5G4AJyabeXBy4AYX",
+            "output": "{\"result\":{\"tasks\":[{\"task_id\":\"tsfm_forecasting\",\"output_verb\":\"predict\",\"output_type\":\"forecast\",\"eval_protocol\":\"backtest\",\"metrics\":[\"mase\",\"wql\",\"smape\",\"mae\"],\"supervised\":true,\"selection_signal\":\"mase\",\"result_collection\":\"forecast_result\",\"required_inputs\":[\"series\",\"horizon\"],\"requires_inverse\":true,\"leakage_split\":\"blocked\",\"notes\":\"AutoAI-TS pipelines + TSFMs; horizon from the request; invertible scaling/flatten\",\"description\":\"Predict future values of a series over a horizon.\"},{\"task_id\":\"tsfm_regression\",\"output_verb\":\"predict\",\"output_type\":\"value\",\"eval_protocol\":\"blocked_cv\",\"metrics\":[\"r2\",\"mae\",\"rmse\"],\"supervised\":true,\"selection_signal\":\"r2\",\"result_collection\":\"regression_result\",\"required_inputs\":[\"series\",\"target\"],\"requires_inverse\":false,\"leakage_split\":\"blocked\",\"notes\":\"FLOps feature extraction+selection → regressor (RUL is a variant)\",\"description\":\"Predict a real-valued target from a series (e.g. remaining useful life).\"},{\"task_id\":\"tsfm_classification\",\"output_verb\":\"predict\",\"output_type\":\"class\",\"eval_protocol\":\"stratified_blocked_cv\",\"metrics\":[\"accuracy\",\"f1\",\"auroc\"],\"supervised\":true,\"selection_signal\":\"f1\",\"result_collection\":\"classification_result\",\"required_inputs\":[\"series\",\"labels\"],\"requires_inverse\":false,\"leakage_split\":\"stratified_blocked\",\"notes\":\"catch22/representation features → classifier (PHM fault classification)\",\"description\":\"Assign a discrete class/label to a series (e.g. fault type).\"},{\"task_id\":\"tsfm_anomaly_detection\",\"output_verb\":\"score\",\"output_type\":\"score_label_contribution\",\"eval_protocol\":\"range_pr\",\"metrics\":[\"auc_pr\",\"range_f1\"],\"supervised\":false,\"selection_signal\":\"em_al\",\"result_collection\":\"anomaly_result\",\"required_inputs\":[\"series\"],\"requires_inverse\":false,\"leakage_split\":\"blocked\",\"notes\":\"AnomalyKiTS pipelines; label-free EM/AL when no GT; static/dynamic threshold\",\"description\":\"Score/flag abnormal points or ranges in a series.\"},{\"task_id\":\"tsfm_imputation\",\"output_verb\":\"predict\",\"output_type\":\"filled_series\",\"eval_protocol\":\"mask_and_score\",\"metrics\":[\"mae\",\"crps\"],\"supervised\":true,\"selection_signal\":\"mae\",\"result_collection\":\"imputation_result\",\"required_inputs\":[\"series\",\"mask\"],\"requires_inverse\":true,\"leakage_split\":\"blocked\",\"notes\":\"TSPulse/MOMENT; hide observed points and score reconstruction\",\"description\":\"Fill missing values in a series.\"},{\"task_id\":\"tsfm_evaluation\",\"output_verb\":\"metrics\",\"output_type\":\"metrics\",\"eval_protocol\":\"meta\",\"metrics\":[\"mae\",\"rmse\"],\"supervised\":true,\"selection_signal\":\"meta\",\"result_collection\":\"evaluation_result\",\"required_inputs\":[\"predictions\",\"ground_truth\"],\"requires_inverse\":false,\"leakage_split\":\"none\",\"notes\":\"meta task: score predictions / benchmark pipelines\",\"description\":\"Score predictions against ground truth / benchmark pipelines.\"},{\"task_id\":\"tsfm_similarity_search\",\"output_verb\":\"transform\",\"output_type\":\"embedding\",\"eval_protocol\":\"retrieval_at_k\",\"metrics\":[\"recall_at_k\",\"map\"],\"supervised\":false,\"selection_signal\":\"recall_at_k\",\"result_collection\":\"similarity_result\",\"required_inputs\":[\"series\",\"query\"],\"requires_inverse\":false,\"leakage_split\":\"blocked\",\"notes\":\"TSPulse embeddings → vector index → top-k\",\"description\":\"Find the series most similar to a query (embedding + top-k retrieval).\"},{\"task_id\":\"tsfm_clustering\",\"output_verb\":\"assign\",\"output_type\":\"assignments\",\"eval_protocol\":\"silhouette\",\"metrics\":[\"silhouette\",\"ari\"],\"supervised\":false,\"selection_signal\":\"silhouette\",\"result_collection\":\"clustering_result\",\"required_inputs\":[\"series_set\"],\"requires_inverse\":false,\"leakage_split\":\"blocked\",\"notes\":\"catch22/embedding features → clusterer; label-free silhouette\",\"description\":\"Group similar series into clusters (unsupervised).\"}]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 13.337707961909473
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 7660.703500034288
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2.98866699449718
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__search_models",
+            "input": {
+              "text": "anomaly"
+            },
+            "id": "toolu_017yVotUZwowqyvVxsJuZGgh",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2.2259579855017364
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__describe_candidates",
+            "input": {
+              "task_id": "tsfm_anomaly_detection",
+              "top_k": 10
+            },
+            "id": "toolu_01FwzGUcU2d92TBviakxKqrZ",
+            "output": "{\"result\":{\"task_id\":\"tsfm_anomaly_detection\",\"candidates\":[]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 8.317707979585975
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__list_results",
+            "input": {
+              "task_type": "tsfm_anomaly_detection",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01S2aMdSKz8V1NR1eRxncuNr",
+            "output": "{\"results\":[{\"_id\":\"ar:0fe46189a1e7\",\"result_id\":\"ar:0fe46189a1e7\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_f204f028.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:59:32+00:00\"},{\"_id\":\"ar:26ff00088080\",\"result_id\":\"ar:26ff00088080\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_1d4d5fc9.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:18+00:00\"},{\"_id\":\"ar:612c40a50e3c\",\"result_id\":\"ar:612c40a50e3c\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_35823ba7.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:31+00:00\"},{\"_id\":\"ar:6f0600fca0b3\",\"result_id\":\"ar:6f0600fca0b3\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_437e384f.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:36+00:00\"},{\"_id\":\"ar:7dcb4d13ce9f\",\"result_id\":\"ar:7dcb4d13ce9f\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_cf8e6f5f.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:52:48+00:00\"},{\"_id\":\"ar:95f9b7273be9\",\"result_id\":\"ar:95f9b7273be9\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_aabf8c04.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:20+00:00\"},{\"_id\":\"ar:b63bb6c92221\",\"result_id\":\"ar:b63bb6c92221\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_72042682.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":1},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:56:07+00:00\"},{\"_id\":\"ar:c38e292ad500\",\"result_id\":\"ar:c38e292ad500\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_d2403364.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:19+00:00\"},{\"_id\":\"ar:ce39184b1959\",\"result_id\":\"ar:ce39184b1959\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_b04f9499.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:37+00:00\"},{\"_id\":\"ar:d28b03a8c232\",\"result_id\":\"ar:d28b03a8c232\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_4afc3097.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:39+00:00\"},{\"_id\":\"ar:f44d0b39104e\",\"result_id\":\"ar:f44d0b39104e\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_e9c96350.json\",\"summary\":{\"total_records\":5,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:44:48+00:00\"}]}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 414.96458399342373
+      },
+      {
+        "index": 14,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 5286.031250027008
+      },
+      {
+        "index": 15,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.2245409889146686
+      },
+      {
+        "index": 16,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__list_runs",
+            "input": {
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_016aQk7oQ2Nh2hU5ghS6b7bj",
+            "output": "{\"runs\":[{\"_id\":\"run:10d8c01740\",\"run_id\":\"run:10d8c01740\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:36+00:00\"},{\"_id\":\"run:122b256421\",\"run_id\":\"run:122b256421\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0651,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[2918.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":2918.3333},\"0_0.9_upper\":{\"4\":2918.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:27+00:00\"},{\"_id\":\"run:2522577cac\",\"run_id\":\"run:2522577cac\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":5,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":5,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:44:48+00:00\"},{\"_id\":\"run:25c6964363\",\"run_id\":\"run:25c6964363\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1]},\"training_regime\":\"fine_tune\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.692,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[26.017799377441406],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:46:22+00:00\"},{\"_id\":\"run:28f1e6703b\",\"run_id\":\"run:28f1e6703b\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3],\"eval\":{\"metrics\":[\"smape\"],\"window_length\":1,\"initial_window\":1},\"backtest\":false},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0057,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[16572,16544,16516],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T19:04:25+00:00\"},{\"_id\":\"run:60a5e01c1c\",\"run_id\":\"run:60a5e01c1c\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"last\"}},\"fh\":[1]},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.1538,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[35],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:46:21+00:00\"},{\"_id\":\"run:63268a84f9\",\"run_id\":\"run:63268a84f9\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:52:48+00:00\"},{\"_id\":\"run:685113cca6\",\"run_id\":\"run:685113cca6\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.1615,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[33.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":33.3333},\"0_0.9_upper\":{\"4\":33.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:42+00:00\"},{\"_id\":\"run:7c2f981391\",\"run_id\":\"run:7c2f981391\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.3275,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[7],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":7},\"0_0.9_upper\":{\"4\":7}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:41+00:00\"},{\"_id\":\"run:7dd23f2ef5\",\"run_id\":\"run:7dd23f2ef5\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1]},\"training_regime\":\"fine_tune\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.4529,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[65.83740234375],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:44:14+00:00\"},{\"_id\":\"run:809e510e45\",\"run_id\":\"run:809e510e45\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3],\"eval\":{\"metrics\":[\"smape\"],\"window_length\":1,\"initial_window\":1}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0238,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[2918.3333,2936.6667,2955],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T19:04:33+00:00\"},{\"_id\":\"run:9a54de85c5\",\"run_id\":\"run:9a54de85c5\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0285,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[7331.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":7331.3333},\"0_0.9_upper\":{\"4\":7331.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:36+00:00\"},{\"_id\":\"run:9f745d8aa6\",\"run_id\":\"run:9f745d8aa6\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:19+00:00\"},{\"_id\":\"run:afb669e27e\",\"run_id\":\"run:afb669e27e\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:31+00:00\"},{\"_id\":\"run:b404c8096d\",\"run_id\":\"run:b404c8096d\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:20+00:00\"},{\"_id\":\"run:c1feaadf0f\",\"run_id\":\"run:c1feaadf0f\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:18+00:00\"},{\"_id\":\"run:d27f2359d9\",\"run_id\":\"run:d27f2359d9\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0149,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[16572],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":16572},\"0_0.9_upper\":{\"4\":16572}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:39+00:00\"},{\"_id\":\"run:d8322fcb43\",\"run_id\":\"run:d8322fcb43\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":1,\"n_observations\":4,\"anomaly_indices\":[1],\"created_at\":\"2026-09-30T18:56:07+00:00\"},{\"_id\":\"run:daaa778604\",\"run_id\":\"run:daaa778604\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:59:32+00:00\"},{\"_id\":\"run:de5de8a443\",\"run_id\":\"run:de5de8a443\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0651,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[2918.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":2918.3333},\"0_0.9_upper\":{\"4\":2918.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:35+00:00\"},{\"_id\":\"run:eb9fd458c1\",\"run_id\":\"run:eb9fd458c1\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:37+00:00\"},{\"_id\":\"run:f44941e4fb\",\"run_id\":\"run:f44941e4fb\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0215,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[5444.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":5444.3333},\"0_0.9_upper\":{\"4\":5444.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:38+00:00\"},{\"_id\":\"run:f7dcb641b7\",\"run_id\":\"run:f7dcb641b7\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:39+00:00\"}],\"plans\":[]}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 0.1775840064510703
+      },
+      {
+        "index": 17,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__get_result",
+            "input": {
+              "task_type": "tsfm_anomaly_detection",
+              "result_id": "ar:b63bb6c92221"
+            },
+            "id": "toolu_018wroCMsncpMt1pJtiTXQ6j",
+            "output": "{\"result\":{\"_id\":\"ar:b63bb6c92221\",\"result_id\":\"ar:b63bb6c92221\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_72042682.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":1},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:56:07+00:00\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 301.6369999968447
+      },
+      {
+        "index": 18,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 5934.8543750238605
+      },
+      {
+        "index": 19,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 3.9999159635044634
+      },
+      {
+        "index": 20,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__utilities__json_reader",
+            "input": {
+              "file_name": "/tmp/tsfm_work/anomaly_72042682.json"
+            },
+            "id": "toolu_01Gi99vKwK3Wg9ZN884kU7Cz",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.9500000160187483
+      },
+      {
+        "index": 21,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__utilities__json_reader",
+            "input": {
+              "file_name": "/tmp/tsfm_work/anomaly_cf8e6f5f.json"
+            },
+            "id": "toolu_01H75Rzp9axLgHHGzSLBrio1",
+            "output": "{\"result\":\"{\\\"anomaly_label\\\": [0, 0, 0, 0], \\\"n_anomalies\\\": 0, \\\"anomaly_indices\\\": []}\"}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 18.68245902005583
+      },
+      {
+        "index": 22,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 9623.200458008796
+      },
+      {
+        "index": 23,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 1.4268749509938061
+      },
+      {
+        "index": 24,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__materialize_iot",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "sensors": "[\"acetylene\", \"co\", \"hydrogen\"]",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000"
+            },
+            "id": "toolu_011ZcY5TP3oS8LEP9c3WGfbR",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 591.9265830307268
+      },
+      {
+        "index": 25,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 11753.665041993372
+      },
+      {
+        "index": 26,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 1.2528750230558217
+      },
+      {
+        "index": 27,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__profile_series",
+            "input": {
+              "dataset_path": "iot://MAIN/Transformer 1?sensors=acetylene,co,hydrogen&start=2024-01-15T00:00:00&end=2024-01-19T00:00:00",
+              "timestamp_column": "timestamp"
+            },
+            "id": "toolu_017c8cuFyyVGaGncExSCjSko",
+            "output": "{\"result\":{\"error\":\"Protocol not known: iot\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 377.88329197792336
+      },
+      {
+        "index": 28,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__profile_series",
+            "input": {
+              "dataset_path": "/tmp/tsfm_work/Transformer 1.csv",
+              "timestamp_column": "timestamp"
+            },
+            "id": "toolu_012fuDKWFqCVBGccG76Viknb",
+            "output": "{\"result\":{\"error\":\"[Errno 2] No such file or directory: '/tmp/tsfm_work/Transformer 1.csv'\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 669.5950829889625
+      },
+      {
+        "index": 29,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 23068.755250016693
+      },
+      {
+        "index": 30,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1.1272080009803176
+      },
+      {
+        "index": 31,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__profile_series",
+            "input": {
+              "dataset_path": "data:text/csv,timestamp,acetylene,co,hydrogen%0A2024-01-15T00:00:00,7,32,2845%0A2024-01-16T00:00:00,6,30,2950%0A2024-01-17T00:00:00,8,35,2800%0A2024-01-18T00:00:00,7,33,2900",
+              "timestamp_column": "timestamp"
+            },
+            "id": "toolu_01MRQosZxL8yEwzcZFsHjuDg",
+            "output": "{\"result\":{\"error\":\"[Errno 2] No such file or directory: 'data:text/csv,timestamp,acetylene,co,hydrogen%0A2024-01-15T00:00:00,7,32,2845%0A2024-01-16T00:00:00,6,30,2950%0A2024-01-17T00:00:00,8,35,2800%0A2024-01-18T00:00:00,7,33,2900'\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 614.8082920117304
+      },
+      {
+        "index": 32,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__profile_series",
+            "input": {
+              "dataset_path": "data://text/csv,timestamp,acetylene,co,hydrogen%0A2024-01-15T00:00:00,7,32,2845%0A2024-01-16T00:00:00,6,30,2950%0A2024-01-17T00:00:00,8,35,2800%0A2024-01-18T00:00:00,7,33,2900",
+              "timestamp_column": "timestamp"
+            },
+            "id": "toolu_01HE4dEJVqpcxK6PNDqu71MW",
+            "output": "{\"result\":{\"source\":\"data://text/csv,timestamp,acetylene,co,hydrogen%0A2024-01-15T00:00:00,7,32,2845%0A2024-01-16T00:00:00,6,30,2950%0A2024-01-17T00:00:00,8,35,2800%0A2024-01-18T00:00:00,7,33,2900\",\"n_observations\":4,\"n_channels\":3,\"dominant_period\":2,\"channels\":[\"acetylene\",\"co\",\"hydrogen\"],\"seasonality_strength\":0.739,\"trend_slope\":0.16667,\"trend_strength\":0.943,\"non_stationary\":false,\"max_abs_channel_corr\":0.981,\"n_missing\":0,\"value_range\":[6,2950]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1325.1363749732263
+      },
+      {
+        "index": 33,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 6007.45629199082
+      },
+      {
+        "index": 34,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 70.37220802158117
+      },
+      {
+        "index": 35,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__run_recipe",
+            "input": {
+              "dataset_path": "data://text/csv,timestamp,acetylene,co,hydrogen%0A2024-01-15T00:00:00,7,32,2845%0A2024-01-16T00:00:00,6,30,2950%0A2024-01-17T00:00:00,8,35,2800%0A2024-01-18T00:00:00,7,33,2900",
+              "timestamp_column": "timestamp",
+              "target_columns": [
+                "acetylene"
+              ],
+              "recipe": {
+                "task": "tsfm_anomaly_detection",
+                "estimator": {
+                  "sktime_class": "sktime.detection.lof.SubLOF",
+                  "params": {
+                    "window_size": 4,
+                    "n_neighbors": 2,
+                    "novelty": true
+                  }
+                }
+              },
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01B3yYDiS3b1Rygq2KTDWR2y",
+            "output": "{\"result\":{\"status\":\"success\",\"run_id\":\"run:0e934bcdfa\",\"results\":{\"run_id\":\"run:0e934bcdfa\",\"task\":\"tsfm_anomaly_detection\",\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices_head\":[],\"labels\":[0,0,0,0],\"training_regime\":\"fit_on_series\",\"block_audit\":{},\"parent_run_id\":null},\"results_file\":\"file:///tmp/tsfm_work/anomaly_4fc86785.json\",\"training_regime\":\"fit_on_series\",\"message\":\"Anomaly run complete (fit_on_series): 0/4 flagged. Labels at file:///tmp/tsfm_work/anomaly_4fc86785.json.\",\"metric\":null,\"backtest_score\":null,\"n_anomalies\":0,\"n_observations\":4}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1748.7768330029212
+      },
+      {
+        "index": 36,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__run_recipe",
+            "input": {
+              "dataset_path": "data://text/csv,timestamp,acetylene,co,hydrogen%0A2024-01-15T00:00:00,7,32,2845%0A2024-01-16T00:00:00,6,30,2950%0A2024-01-17T00:00:00,8,35,2800%0A2024-01-18T00:00:00,7,33,2900",
+              "timestamp_column": "timestamp",
+              "target_columns": [
+                "co"
+              ],
+              "recipe": {
+                "task": "tsfm_anomaly_detection",
+                "estimator": {
+                  "sktime_class": "sktime.detection.lof.SubLOF",
+                  "params": {
+                    "window_size": 4,
+                    "n_neighbors": 2,
+                    "novelty": true
+                  }
+                }
+              },
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_019kcCV99WBYNjbCC6K5rrTQ",
+            "output": "{\"result\":{\"status\":\"success\",\"run_id\":\"run:58b6e25f6c\",\"results\":{\"run_id\":\"run:58b6e25f6c\",\"task\":\"tsfm_anomaly_detection\",\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices_head\":[],\"labels\":[0,0,0,0],\"training_regime\":\"fit_on_series\",\"block_audit\":{},\"parent_run_id\":null},\"results_file\":\"file:///tmp/tsfm_work/anomaly_5c54c5e0.json\",\"training_regime\":\"fit_on_series\",\"message\":\"Anomaly run complete (fit_on_series): 0/4 flagged. Labels at file:///tmp/tsfm_work/anomaly_5c54c5e0.json.\",\"metric\":null,\"backtest_score\":null,\"n_anomalies\":0,\"n_observations\":4}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2684.8700419650413
+      },
+      {
+        "index": 37,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__run_recipe",
+            "input": {
+              "dataset_path": "data://text/csv,timestamp,acetylene,co,hydrogen%0A2024-01-15T00:00:00,7,32,2845%0A2024-01-16T00:00:00,6,30,2950%0A2024-01-17T00:00:00,8,35,2800%0A2024-01-18T00:00:00,7,33,2900",
+              "timestamp_column": "timestamp",
+              "target_columns": [
+                "hydrogen"
+              ],
+              "recipe": {
+                "task": "tsfm_anomaly_detection",
+                "estimator": {
+                  "sktime_class": "sktime.detection.lof.SubLOF",
+                  "params": {
+                    "window_size": 4,
+                    "n_neighbors": 2,
+                    "novelty": true
+                  }
+                }
+              },
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01TfyVwbSZi39n64jUzV1baD",
+            "output": "{\"result\":{\"status\":\"success\",\"run_id\":\"run:e72e33e314\",\"results\":{\"run_id\":\"run:e72e33e314\",\"task\":\"tsfm_anomaly_detection\",\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices_head\":[],\"labels\":[0,0,0,0],\"training_regime\":\"fit_on_series\",\"block_audit\":{},\"parent_run_id\":null},\"results_file\":\"file:///tmp/tsfm_work/anomaly_f85d3cb2.json\",\"training_regime\":\"fit_on_series\",\"message\":\"Anomaly run complete (fit_on_series): 0/4 flagged. Labels at file:///tmp/tsfm_work/anomaly_f85d3cb2.json.\",\"metric\":null,\"backtest_score\":null,\"n_anomalies\":0,\"n_observations\":4}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 2637.038458022289
+      },
+      {
+        "index": 38,
+        "text": "**Transformer 1 (MAIN) — DGA anomaly screen, 2024-01-15 to 2024-01-19**\n\nData: 4 daily samples per channel (2024-01-15, -16, -17, -18), all non-null — so the model-based path applied (no fallback needed).\nDetector: sktime `SubLOF` (Local Outlier Factor, window 4, 2 neighbours), run separately per channel. No fixed thresholds used.\n\n**Per-channel results**\n\n| Channel | Samples screened | Flagged timestamps | Anomalies |\n|---|---|---|---|\n| acetylene (7, 6, 8, 7 ppm) | 4 | none | **0** |\n| co (32, 30, 35, 33 ppm) | 4 | none | **0** |\n| hydrogen (2845, 2950, 2800, 2900 ppm) | 4 | none | **0** |\n\nRuns: acetylene `run:0e934bcdfa`, co `run:58b6e25f6c`, hydrogen `run:e72e33e314`.\n\n**Cross-channel coincidence:** No flagged points on any gas, so there are no shared timestamps between channels. The acetylene + hydrogen arcing pattern is not present, and CO was not flagged, so no paper-involvement retest is triggered.\n\n**Conclusion: the window looks stable.** Day-to-day variation is small relative to each gas's level (acetylene ±1 ppm, CO ±2–3 ppm, hydrogen ±~75 ppm around ~2,875), and nothing stands out as a spike in this window.\n\nOne observation outside your screening rules, for context only: the hydrogen *level* (~2,800–2,950 ppm) is high in absolute terms even though it's flat across these four days. Stability within the window doesn't mean the baseline itself is benign — if that level is new relative to earlier history, it may be worth a look on its own.\n\nNotes on method: the catalog has no registered anomaly-detector cards, so I used the inline detector from the recipe template. With only 4 points, LOF sensitivity is limited; a longer window would give a more robust screen if you want one.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 707,
+        "duration_ms": 10838.061999995261
+      }
+    ],
+    "started_at": "2026-09-30T20:45:27.773375+00:00"
+  }
+}

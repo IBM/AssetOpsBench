@@ -1,0 +1,125 @@
+{
+  "run_id": "fable-5-1_0013",
+  "scenario_id": "transformer_scenario_13",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "Transformer 1 at MAIN is showing thermal gases, and I need to know if it's the oil overheating or something hotter at the core or winding with paper involved. Using the samples between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, classify the thermal fault as T1, T2 or T3 from methane, ethane and ethylene, and say whether acetylene rules out a pure thermal fault. Check co alongside it for paper involvement. Then line the gas picture up against top-oil temperature (oti), ambient (ati) and the alarm and trip readings (oti_a, oti_t) to judge whether the heating looks like load or ambient driven, or like a localized hot spot. Give a final verdict between 'Thermal Fault \u2014 Oil Overheating' and 'Thermal Fault \u2014 Core/Winding' with a confidence of high, medium or low. Ignore samples where ethylene is null. If oti_a or oti_t showed an alarm or trip at any point, put that first in the answer and recommend immediate action. If the gas class and the temperature evidence disagree, for example a T3 gas signature with normal oti, say so and lean toward a localized core or winding hot spot.",
+  "answer": "**\u26a0\ufe0f ALARM/TRIP ACTIVE \u2014 IMMEDIATE ACTION REQUIRED**\nAcross all 4 samples (2024-01-15 \u2192 2024-01-18) the top-oil alarm flag `oti_a` was asserted (values 2, 2, 1, 2) and the trip flag `oti_t` was asserted (1) on every sample. The transformer has been sitting in an alarmed/tripped thermal state for the entire window. Recommend: confirm actual breaker/trip status now, de-energize or keep de-energized if still under load, isolate Transformer 1 pending internal inspection, and do not re-energize until the hot-spot source is found.\n\n*(Note: the DGA and winding-temperature interpreter services returned \"LLM unavailable\", so the analysis below is computed manually from the raw samples using IEC 60599 / Duval.)*\n\n**Data used** \u2014 4 daily samples, none with null ethylene (all retained):\n\n| Gas / reading | Range | Mean |\n|---|---|---|\n| CH\u2084 | 7200\u20137406 ppm | ~7314 |\n| C\u2082H\u2086 | 5400\u20135500 ppm | ~5454 |\n| C\u2082H\u2084 | 16500\u201316700 ppm | ~16621 |\n| C\u2082H\u2082 | 6\u20138 ppm | ~7 |\n| H\u2082 | 2800\u20132950 ppm | ~2874 |\n| CO | 30\u201335 ppm | ~33 |\n| OTI / ATI / WTI | 84\u201387 / 77\u201379 / 79\u201382 \u00b0C | 85.5 / 78 / 80.5 |\n\n**1. Thermal class (CH\u2084, C\u2082H\u2086, C\u2082H\u2084)**\n- C\u2082H\u2084/C\u2082H\u2086 = 3.05 \u2192 IEC code 1; CH\u2084/H\u2082 = 2.54 \u2192 code 2; C\u2082H\u2082/C\u2082H\u2084 = 0.0004 \u2192 code 0. IEC code **0-2-1 = upper T2** (300\u2013700 \u00b0C), just under the >4 threshold for T3.\n- Duval Triangle 1: C\u2082H\u2084 \u2248 69 %, CH\u2084 \u2248 31 %, C\u2082H\u2082 \u2248 0 % \u2192 **T3** (>700 \u00b0C).\n- Ethylene strongly dominant at ~16,600 ppm (extreme absolute level). **Classification: T3 (high-temperature thermal fault, T2/T3 boundary)** \u2014 this is not a mild T1 oil-only overheat (<300 \u00b0C).\n\n**2. Acetylene** \u2014 6\u20138 ppm, C\u2082H\u2082/C\u2082H\u2084 \u2248 0.0004. This is trace-level and consistent with a >700 \u00b0C thermal fault; it does **not** indicate arcing/discharge and **does not rule out a pure thermal fault** \u2014 it confirms one.\n\n**3. CO / paper involvement** \u2014 CO only 30\u201335 ppm, far below the levels (hundreds of ppm) expected if cellulose insulation were being cooked. **No paper involvement indicated.** The hot spot is in metal/oil (core laminations, circulating currents, bad joint/contact, shielding), not in the winding paper.\n\n**4. Gas vs temperature picture**\n- Top-oil rise over ambient is only 7\u20138 K (85.5 vs 78 \u00b0C); WTI reads *below* OTI. Bulk oil is essentially tracking a high ambient, not a heavy load \u2014 this is **not** a load- or ambient-driven bulk overheat, which would produce a 40\u201360 K oil rise with WTI above OTI.\n- The alarm/trip flags are asserted even though the absolute oil temperature is modest, which points to either a fault-driven hot-spot trip or a device fault; either way it warrants inspection.\n- **The T3 gas signature and the near-normal bulk oil temperature disagree.** Bulk oil overheating cannot generate >700 \u00b0C ethylene-dominant gassing at a 7 K oil rise. Per the rule for this disagreement, the evidence points to a **localized hot spot**.\n\n**Final verdict: Thermal Fault \u2014 Core/Winding**\n**Confidence: Medium** \u2014 the gas class (T3, ethylene-dominant, no arcing) and the gas/temperature disagreement strongly favor a localized metallic hot spot in the core/winding region; confidence is held at medium rather than high because CO shows no paper involvement (so it is a core/metal hot spot rather than winding insulation), the IEC ratio sits at the T2/T3 boundary, and the alarm-flag values (2) are non-standard and should be verified against the device.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 6825.391791993752
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000",
+              "sensors": [
+                "methane",
+                "ethane",
+                "ethylene",
+                "acetylene",
+                "hydrogen",
+                "co",
+                "oti",
+                "ati",
+                "oti_a",
+                "oti_t",
+                "wti"
+              ]
+            },
+            "id": "toolu_01FHAExQcKKEnMooR5JHTyJi",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"methane\":7406,\"ethane\":5467,\"ethylene\":16684,\"acetylene\":7,\"hydrogen\":2845,\"co\":32,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1,\"wti\":80},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"methane\":7200,\"ethane\":5400,\"ethylene\":16500,\"acetylene\":6,\"hydrogen\":2950,\"co\":30,\"oti\":87,\"ati\":79,\"oti_a\":2,\"oti_t\":1,\"wti\":82},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"methane\":7300,\"ethane\":5500,\"ethylene\":16700,\"acetylene\":8,\"hydrogen\":2800,\"co\":35,\"oti\":84,\"ati\":77,\"oti_a\":1,\"oti_t\":1,\"wti\":79},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"methane\":7350,\"ethane\":5450,\"ethylene\":16600,\"acetylene\":7,\"hydrogen\":2900,\"co\":33,\"oti\":86,\"ati\":78,\"oti_a\":2,\"oti_t\":1,\"wti\":81}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 2212.983500037808
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 5451.90270798048
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2874,
+              "methane": 7314,
+              "acetylene": 7,
+              "ethylene": 16621,
+              "ethane": 5454
+            },
+            "id": "toolu_01RfwXnVzRSsAECrW9yQVD7w",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 1501.5990000101738
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__assess_winding_temperature",
+            "input": {
+              "asset_name": "Transformer 1",
+              "wti": 82,
+              "oti": 87,
+              "ati": 79,
+              "oti_a": 1,
+              "oti_t": 1
+            },
+            "id": "toolu_01UgkkpkZCUXmwL2iUCFANnV",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 5,
+        "duration_ms": 1043.2164579979144
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 35716.63737500785
+      },
+      {
+        "index": 6,
+        "text": "**\u26a0\ufe0f ALARM/TRIP ACTIVE \u2014 IMMEDIATE ACTION REQUIRED**\nAcross all 4 samples (2024-01-15 \u2192 2024-01-18) the top-oil alarm flag `oti_a` was asserted (values 2, 2, 1, 2) and the trip flag `oti_t` was asserted (1) on every sample. The transformer has been sitting in an alarmed/tripped thermal state for the entire window. Recommend: confirm actual breaker/trip status now, de-energize or keep de-energized if still under load, isolate Transformer 1 pending internal inspection, and do not re-energize until the hot-spot source is found.\n\n*(Note: the DGA and winding-temperature interpreter services returned \"LLM unavailable\", so the analysis below is computed manually from the raw samples using IEC 60599 / Duval.)*\n\n**Data used** \u2014 4 daily samples, none with null ethylene (all retained):\n\n| Gas / reading | Range | Mean |\n|---|---|---|\n| CH\u2084 | 7200\u20137406 ppm | ~7314 |\n| C\u2082H\u2086 | 5400\u20135500 ppm | ~5454 |\n| C\u2082H\u2084 | 16500\u201316700 ppm | ~16621 |\n| C\u2082H\u2082 | 6\u20138 ppm | ~7 |\n| H\u2082 | 2800\u20132950 ppm | ~2874 |\n| CO | 30\u201335 ppm | ~33 |\n| OTI / ATI / WTI | 84\u201387 / 77\u201379 / 79\u201382 \u00b0C | 85.5 / 78 / 80.5 |\n\n**1. Thermal class (CH\u2084, C\u2082H\u2086, C\u2082H\u2084)**\n- C\u2082H\u2084/C\u2082H\u2086 = 3.05 \u2192 IEC code 1; CH\u2084/H\u2082 = 2.54 \u2192 code 2; C\u2082H\u2082/C\u2082H\u2084 = 0.0004 \u2192 code 0. IEC code **0-2-1 = upper T2** (300\u2013700 \u00b0C), just under the >4 threshold for T3.\n- Duval Triangle 1: C\u2082H\u2084 \u2248 69 %, CH\u2084 \u2248 31 %, C\u2082H\u2082 \u2248 0 % \u2192 **T3** (>700 \u00b0C).\n- Ethylene strongly dominant at ~16,600 ppm (extreme absolute level). **Classification: T3 (high-temperature thermal fault, T2/T3 boundary)** \u2014 this is not a mild T1 oil-only overheat (<300 \u00b0C).\n\n**2. Acetylene** \u2014 6\u20138 ppm, C\u2082H\u2082/C\u2082H\u2084 \u2248 0.0004. This is trace-level and consistent with a >700 \u00b0C thermal fault; it does **not** indicate arcing/discharge and **does not rule out a pure thermal fault** \u2014 it confirms one.\n\n**3. CO / paper involvement** \u2014 CO only 30\u201335 ppm, far below the levels (hundreds of ppm) expected if cellulose insulation were being cooked. **No paper involvement indicated.** The hot spot is in metal/oil (core laminations, circulating currents, bad joint/contact, shielding), not in the winding paper.\n\n**4. Gas vs temperature picture**\n- Top-oil rise over ambient is only 7\u20138 K (85.5 vs 78 \u00b0C); WTI reads *below* OTI. Bulk oil is essentially tracking a high ambient, not a heavy load \u2014 this is **not** a load- or ambient-driven bulk overheat, which would produce a 40\u201360 K oil rise with WTI above OTI.\n- The alarm/trip flags are asserted even though the absolute oil temperature is modest, which points to either a fault-driven hot-spot trip or a device fault; either way it warrants inspection.\n- **The T3 gas signature and the near-normal bulk oil temperature disagree.** Bulk oil overheating cannot generate >700 \u00b0C ethylene-dominant gassing at a 7 K oil rise. Per the rule for this disagreement, the evidence points to a **localized hot spot**.\n\n**Final verdict: Thermal Fault \u2014 Core/Winding**\n**Confidence: Medium** \u2014 the gas class (T3, ethylene-dominant, no arcing) and the gas/temperature disagreement strongly favor a localized metallic hot spot in the core/winding region; confidence is held at medium rather than high because CO shows no paper involvement (so it is a core/metal hot spot rather than winding insulation), the IEC ratio sits at the T2/T3 boundary, and the alarm-flag values (2) are non-standard and should be verified against the device.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 7317.479249963071
+      }
+    ],
+    "started_at": "2026-09-30T23:08:48.409468+00:00"
+  }
+}

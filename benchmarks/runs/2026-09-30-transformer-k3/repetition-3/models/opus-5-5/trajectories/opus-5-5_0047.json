@@ -1,0 +1,101 @@
+{
+  "run_id": "opus-5-5_0047",
+  "scenario_id": "transformer_scenario_47",
+  "runner": "claude-agent",
+  "model": "claude-opus-5-5",
+  "question": "My engineers disagree about whether the gassing in Transformer 1 at site MAIN is driven by load or by a fault that gasses no matter what the load is. Settle it with the data.\n\nBetween 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, characterize how two groups move together: the fault gases (hydrogen, methane, ethylene and co) and the loading channels (il1, il2, il3 and inut). For each sample, give me the total phase current and the sum of the four gases. Tell me whether the gas sum rises in the same samples where current rises.\n\nSeparately, run a dissolved gas fault classification on the latest complete sample using hydrogen, methane, ethane, ethylene and acetylene. Also tell me whether top-oil temperature (oti) got close to its alarm reading (oti_a) at the highest-current sample.\n\nDecide as follows:\n- Call it load-driven only if the gases track current and the class is T1 or T2. In that case, don't create an inspection. Recommend a loading limit, and add a note about it to any open oil sampling work order on Transformer 1. If there's no such work order, say so.\n- Call it a load-independent fault if the gases rise while current stays within 10% of its first value, or the class is PD, D1, D2 or T3. In that case, check open work orders on Transformer 1 for an existing internal inspection. If there's none, create a priority 2 inspection work order with the class and the gas trend in the notes.\n- If neither case fits cleanly, create nothing. Recommend a confirmatory resample and explain the conflict.\n\nOnly use samples where all four current channels and all four gases are non-null. If fewer than 3 such samples remain, say that the correlation can't be judged, and base the decision on the gas classification alone.",
+  "answer": "The data doesn't settle it either way. Gas levels don't follow current, and the fault class falls just short of the load-independent threshold. Following your rules, I created nothing and recommend a confirmatory resample.\n\n**1. Do gases rise with current? (Jan 15\u201318, 4 samples, all complete)**\n\nTotal current is il1+il2+il3. The gas sum is hydrogen + methane + ethylene + CO.\n\n| Sample | Total current (A) | inut (A) | Gas sum (ppm) | Current change | Gas change |\n|---|---|---|---|---|---|\n| 01-15 | 300 | 5 | 26,967 | \u2013 | \u2013 |\n| 01-16 | 301 | 6 | 26,680 | +1 | \u2212287 |\n| 01-17 | 299 | 5 | 26,835 | \u22122 | +155 |\n| 01-18 | 301 | 5 | 26,883 | +2 | +48 |\n\n- **No, the gas sum does not rise in the samples where current rises.** It moved the same way as current in only 1 of 3 steps. The correlation is about \u22120.33, so if anything slightly opposite.\n- Current stayed within \u00b10.33% of its first value, well inside the 10% band.\n- The gas sum did not rise either. It ended 0.3% below where it started (26,967 \u2192 26,883) and was flat overall. Hydrogen (+1.9%) and CO (+3%) crept up a little, but methane and ethylene fell.\n- So neither \"gases track current\" nor \"gases rise while current is flat\" holds. The load stayed nearly constant the whole time, so this window can't separate the two explanations.\n\n**2. Gas fault class (latest complete sample, 2024-01-18)**\n\nThe DGA tool returned \"LLM unavailable\", so I worked out the ratios by hand:\n- C\u2082H\u2082/C\u2082H\u2084 = 0.0004\n- CH\u2084/H\u2082 = 2.53\n- C\u2082H\u2084/C\u2082H\u2086 = 3.05\n\n- **IEC 60599 ratio table: T2** (thermal fault, 300\u2013700 \u00b0C). This is not T1 or T2's opposite case (PD, D1, D2 or T3).\n- The result is borderline. C\u2082H\u2084/C\u2082H\u2086 = 3.05 is near the T2/T3 cutoff of 4. The older Rogers coding and the Duval triangle (69% C\u2082H\u2084) would both call it **T3**.\n\n**3. Top-oil temperature vs alarm at the highest-current samples (301 A, on 01-16 and 01-18)**\n\nI couldn't judge this. oti was 87 \u00b0C and 86 \u00b0C, but oti_a is 2 in both samples. oti_a is a flag that should be 0 or 1, not a temperature reading, so there's nothing to compare against. The trip flag oti_t also reads 1 in every sample. Both flag channels look suspect and should be checked.\n\n**Decision: neither case fits cleanly, so I created nothing**\n- **Not load-driven:** the class is T2, but the gases don't track current.\n- **Not a load-independent fault:** current was flat but the gases didn't rise, and the IEC 60599 class is T2 rather than T3.\n- **The conflict:** gas levels are very high (ethylene around 16,600 ppm) and steady at an unchanging load. That points toward a fault that gasses regardless of load, but the rules don't trigger on it. The T2/T3 call also depends on which ratio method you use.\n\n**Recommendation:** resample the oil for DGA to confirm the result. Ideally take samples at two clearly different load levels, so you can test the load link properly and settle T2 vs T3. There's already an approved open work order that covers this retest: 1000052, \"oil sample retest (DGA) and insulation check for T2 thermal fault\". I left it unchanged, along with the other open work order (1000051, OLTC inspection).",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000000"
+            },
+            "id": "toolu_01GNDn16bRBm6TzBH12iLskk",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"oxygen\":5860,\"nitrogen\":27842,\"methane\":7406,\"co\":32,\"co2\":1344,\"ethylene\":16684,\"ethane\":5467,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"oxygen\":5700,\"nitrogen\":28000,\"methane\":7200,\"co\":30,\"co2\":1300,\"ethylene\":16500,\"ethane\":5400,\"acetylene\":6,\"dbds\":18,\"power_factor\":1.2,\"interfacial_v\":44,\"dielectric_rigidity\":53,\"water_content\":1,\"vl1\":112,\"vl2\":114,\"vl3\":109,\"il1\":102,\"il2\":103,\"il3\":96,\"vl12\":226,\"vl23\":221,\"vl31\":219,\"inut\":6,\"rated_mva\":100,\"wti\":82,\"oti\":87,\"ati\":79,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"oxygen\":5900,\"nitrogen\":27700,\"methane\":7300,\"co\":35,\"co2\":1350,\"ethylene\":16700,\"ethane\":5500,\"acetylene\":8,\"dbds\":20,\"power_factor\":0.9,\"interfacial_v\":46,\"dielectric_rigidity\":56,\"water_content\":0,\"vl1\":109,\"vl2\":116,\"vl3\":107,\"il1\":101,\"il2\":104,\"il3\":94,\"vl12\":224,\"vl23\":219,\"vl31\":217,\"inut\":5,\"rated_mva\":100,\"wti\":79,\"oti\":84,\"ati\":77,\"oti_a\":1,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"oxygen\":5800,\"nitrogen\":27950,\"methane\":7350,\"co\":33,\"co2\":1325,\"ethylene\":16600,\"ethane\":5450,\"acetylene\":7,\"dbds\":19,\"power_factor\":1.1,\"interfacial_v\":45,\"dielectric_rigidity\":54,\"water_content\":1,\"vl1\":111,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":106,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":81,\"oti\":86,\"ati\":78,\"oti_a\":2,\"oti_t\":1}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00.000000\",\"end\":\"2024-01-19T00:00:00.000000\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 24,
+        "duration_ms": 6614.567957993131
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 10544.10254204413
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01DSUFJLzHfxEPjdVAPUze4i",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 1036.3317909650505
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "asset_num": "Transformer 1",
+              "status": "OPEN",
+              "page_size": 0
+            },
+            "id": "toolu_01LNEjj7qSE1GVgSedAmSiuF",
+            "output": "{\"result\":{\"site_id\":null,\"status\":\"OPEN\",\"labor_code\":null,\"total\":2,\"work_orders\":[{\"wonum\":\"1000052\",\"description\":\"Transformer 1 - oil sample retest (DGA) and insulation check for T2 thermal fault\",\"description_longdescription\":\"Target start 2026-10-01 (0 WOs scheduled at MAIN that day). DGA 2024-01-15 -> 2024-01-18: CO 32->33 ppm, C2H4 16684->16600 ppm, CH4 7406->7350 ppm. Rogers/IEC 60599 ratios on last sample: C2H2/C2H4=0.0004, CH4/H2=2.53, C2H4/C2H6=3.05 -> T2 thermal fault (300-700 C). CO low (33 ppm), CO2/CO~40 -> paper involvement not indicated, so P3. Failure code FC006 (overheating). Retest oil DGA and perform insulation check. Technician not assigned: no technician has prior work history on Transformer 1. Automated DGA tool unavailable; ratios computed manually.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T23:18:38+00:00\",\"worktype\":\"CM\",\"wopriority\":3,\"reportdate\":\"2026-09-30T23:15:41+00:00\",\"reportedby\":null,\"failurecode\":\"FC006\",\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000052\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"},{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"WAPPR\",\"status_date\":null,\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 2 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 10,
+        "duration_ms": 4.77133400272578
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 23140.340041019954
+      },
+      {
+        "index": 5,
+        "text": "The data doesn't settle it either way. Gas levels don't follow current, and the fault class falls just short of the load-independent threshold. Following your rules, I created nothing and recommend a confirmatory resample.\n\n**1. Do gases rise with current? (Jan 15\u201318, 4 samples, all complete)**\n\nTotal current is il1+il2+il3. The gas sum is hydrogen + methane + ethylene + CO.\n\n| Sample | Total current (A) | inut (A) | Gas sum (ppm) | Current change | Gas change |\n|---|---|---|---|---|---|\n| 01-15 | 300 | 5 | 26,967 | \u2013 | \u2013 |\n| 01-16 | 301 | 6 | 26,680 | +1 | \u2212287 |\n| 01-17 | 299 | 5 | 26,835 | \u22122 | +155 |\n| 01-18 | 301 | 5 | 26,883 | +2 | +48 |\n\n- **No, the gas sum does not rise in the samples where current rises.** It moved the same way as current in only 1 of 3 steps. The correlation is about \u22120.33, so if anything slightly opposite.\n- Current stayed within \u00b10.33% of its first value, well inside the 10% band.\n- The gas sum did not rise either. It ended 0.3% below where it started (26,967 \u2192 26,883) and was flat overall. Hydrogen (+1.9%) and CO (+3%) crept up a little, but methane and ethylene fell.\n- So neither \"gases track current\" nor \"gases rise while current is flat\" holds. The load stayed nearly constant the whole time, so this window can't separate the two explanations.\n\n**2. Gas fault class (latest complete sample, 2024-01-18)**\n\nThe DGA tool returned \"LLM unavailable\", so I worked out the ratios by hand:\n- C\u2082H\u2082/C\u2082H\u2084 = 0.0004\n- CH\u2084/H\u2082 = 2.53\n- C\u2082H\u2084/C\u2082H\u2086 = 3.05\n\n- **IEC 60599 ratio table: T2** (thermal fault, 300\u2013700 \u00b0C). This is not T1 or T2's opposite case (PD, D1, D2 or T3).\n- The result is borderline. C\u2082H\u2084/C\u2082H\u2086 = 3.05 is near the T2/T3 cutoff of 4. The older Rogers coding and the Duval triangle (69% C\u2082H\u2084) would both call it **T3**.\n\n**3. Top-oil temperature vs alarm at the highest-current samples (301 A, on 01-16 and 01-18)**\n\nI couldn't judge this. oti was 87 \u00b0C and 86 \u00b0C, but oti_a is 2 in both samples. oti_a is a flag that should be 0 or 1, not a temperature reading, so there's nothing to compare against. The trip flag oti_t also reads 1 in every sample. Both flag channels look suspect and should be checked.\n\n**Decision: neither case fits cleanly, so I created nothing**\n- **Not load-driven:** the class is T2, but the gases don't track current.\n- **Not a load-independent fault:** current was flat but the gases didn't rise, and the IEC 60599 class is T2 rather than T3.\n- **The conflict:** gas levels are very high (ethylene around 16,600 ppm) and steady at an unchanging load. That points toward a fault that gasses regardless of load, but the rules don't trigger on it. The T2/T3 call also depends on which ratio method you use.\n\n**Recommendation:** resample the oil for DGA to confirm the result. Ideally take samples at two clearly different load levels, so you can test the load link properly and settle T2 vs T3. There's already an approved open work order that covers this retest: 1000052, \"oil sample retest (DGA) and insulation check for T2 thermal fault\". I left it unchanged, along with the other open work order (1000051, OLTC inspection).",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 4057.857709005475
+      }
+    ],
+    "started_at": "2026-09-30T23:27:13.003372+00:00"
+  }
+}

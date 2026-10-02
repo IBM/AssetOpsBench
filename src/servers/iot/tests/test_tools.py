@@ -6,6 +6,37 @@ from servers.iot.main import mcp
 from .conftest import call_tool, requires_couchdb, requires_iot_db
 
 
+def test_asset_coverage_uses_registry_sites_and_timestamp_order(mock_asset_db, mock_iot_db):
+    from servers.iot.main import get_asset_coverage
+
+    def registry_find(selector, **kwargs):
+        if isinstance(selector["siteid"], dict):
+            return {"docs": [{"siteid": "NORTH"}, {"siteid": "SOUTH"}]}
+        return {"docs": [{"assetnum": f"{selector['siteid']}-1", "assettype": "TRANSFORMER"}]}
+
+    def telemetry_find(selector, **kwargs):
+        return {"docs": [
+            {"asset_id": selector["asset_id"], "timestamp": "2024-01-01T09:00:00+02:00", "temperature": 20},
+            {"asset_id": selector["asset_id"], "timestamp": "2024-01-01T08:00:00+00:00", "pressure": 30},
+        ]}
+
+    mock_asset_db.find.side_effect = registry_find
+    mock_iot_db.find.side_effect = telemetry_find
+    rows = get_asset_coverage()
+
+    assert [(row["site_name"], row["asset_id"]) for row in rows] == [
+        ("NORTH", "NORTH-1"), ("SOUTH", "SOUTH-1"),
+    ]
+    for row in rows:
+        assert row["asset_class"] == "TRANSFORMER"
+        assert row["sensors"] == ["pressure", "temperature"]
+        assert row["time_range"] == {
+            "start": "2024-01-01T09:00:00+02:00",
+            "end": "2024-01-01T08:00:00+00:00",
+            "total_observations": 2,
+        }
+
+
 class TestToolRegistration:
     @pytest.mark.anyio
     async def test_registry_tools_are_registered(self):

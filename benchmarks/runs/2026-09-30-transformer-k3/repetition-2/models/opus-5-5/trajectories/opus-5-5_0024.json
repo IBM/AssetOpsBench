@@ -1,0 +1,391 @@
+{
+  "run_id": "opus-5-5_0024",
+  "scenario_id": "transformer_scenario_24",
+  "runner": "claude-agent",
+  "model": "claude-opus-5-5",
+  "question": "My operators keep asking whether Transformer 1 at MAIN heats up because of load or for some other reason. Over the available window, characterize how oti, oti_a and oti_t move together with the phase currents il1, il2, il3 and inut. Tell me whether the temperature group and the current group rise and fall in the same samples. Then run an anomaly check on the temperature channels together with the currents, and list any timestamp where temperature is anomalous but current is not. Treat those timestamps as possible non-load heating, and pull the dissolved gas classification from the nearest oil sample to see whether it shows a thermal fault. Only use samples where all four current channels are non-null. If none of the temperature anomalies lines up with a thermal gas class, say that the heating looks load or ambient driven, and check ati at the same timestamps. If fewer than 4 complete samples remain after cleaning, skip the anomaly model and report only the characterization with its limits.",
+  "answer": "I couldn't run the anomaly model or get the gas classification from the tool, so the steps below are a manual stand-in using the 5 samples. With so little data, treat the result as indicative only.\n\n**Data:** Transformer 1 at MAIN has 5 daily samples, 2024-01-15 to 2024-01-19. All 5 have il1, il2, il3 and inut, so 5 complete samples remain and the 4-sample cut-off doesn't apply.\n\n**Whether the tools ran**\n- **Characterization and anomaly model:** these tools need a data file, and there isn't one for this asset. I have no tool to create one, and none of the earlier anomaly runs recorded which file they used.\n- **Detector catalog:** it is empty.\n- **Gas classification:** the gas tool returned \"LLM unavailable\" for both samples I sent.\n- **What I did instead:** I did the correlation, the anomaly screen and the gas ratios by hand.\n\n**How temperature and current move together**\n\n| Date | oti | oti_a | oti_t | il1 / il2 / il3 | Total current (il1+il2+il3) | inut | ati |\n|---|---|---|---|---|---|---|---|\n| 01-15 | 85 | 2 | 1 | 100/105/95 | 300 | 5 | 78 |\n| 01-16 | 87 | 2 | 1 | 102/103/96 | 301 | 6 | 79 |\n| 01-17 | 84 | 1 | 1 | 101/104/94 | 299 | 5 | 77 |\n| 01-18 | 86 | 2 | 1 | 100/106/95 | 301 | 5 | 78 |\n| 01-19 | 85 | 2 | 1 | 100/105/95 | 300 | 5 | 78 |\n\n- **Yes, the two groups rise and fall in the same samples.** Oil temperature (oti) and total phase current move the same way on every day-to-day step (up, down, up, down). Their correlation is 0.94.\n- **By channel:** oti tracks il3 (0.93) and inut (0.78) closely. It barely tracks il1 (0.44) and moves slightly against il2 (\u22120.23).\n- **Alarm flag:** oti_a falls only on 01-17, which is also the day with the lowest oil temperature and the lowest total current.\n- **Trip flag:** oti_t is stuck at 1 in every sample, so it carries no pattern. Also, oti_a reads 2, which doesn't fit a 0/1 flag. Both flag signals look suspect and should be checked.\n- **Ambient:** ambient temperature (ati) tracks oti just as closely (0.93).\n- **Limits:** the swings are tiny (oti moves 3 \u00b0C, total current moves 2 A), and 5 points can't separate the effect of load from the effect of ambient.\n\n**Anomaly screen (manual, flagging readings more than 2 standard deviations from the mean)**\n- **oti:** nothing flagged. The largest deviation is 1.6.\n- **oti_a:** 2024-01-17 is exactly at the limit (\u22122.0). No current channel is past the limit that day (il3 is \u22121.6, total current \u22121.6).\n- **This is not non-load heating.** The 01-17 flag is a cooling dip that coincides with the lowest current and lowest ambient. No sample shows temperature rising while current stays flat.\n\n**Gas check (my own IEC 60599 ratios, because the tool was unavailable)**\n- **The oil sample closest to 01-17 is from the same day.** Acetylene/ethylene is 0.0005, methane/hydrogen is 2.6 and ethylene/ethane is 3.0. That pattern points to a thermal fault: T2 (300\u2013700 \u00b0C) on IEC 60599 limits, or over 700 \u00b0C on the older Rogers codes.\n- **The gas levels are extremely high** (ethylene about 16,700 ppm, methane about 7,300 ppm). They are almost identical in all 5 samples, so this is a lasting condition and not tied to any one day.\n\n**Conclusion:** the only borderline temperature point sits on a thermal gas result, but it is a dip that follows load and ambient down, not heating. The day-to-day heating in this window looks driven by load and ambient temperature: ati at the flagged timestamp (01-17) was 77 \u00b0C, the lowest in the window. Separately, the gas levels show a serious ongoing thermal fault regardless of load, and the stuck trip flag and the \"2\" alarm readings need checking. I'd raise both with maintenance rather than treating this as a normal loading question.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 3176.734499982558
+      },
+      {
+        "index": 1,
+        "text": "I'll start by checking what telemetry exists for Transformer 1.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 413.80325000500306
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__sensor_coverage",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01XAUKXkCbmrHG51EZJMzNWp",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 922.3197500105016
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__stream_extent",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01PqUdUAMPoHeHbf21f7Sh49",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"sensor\":null,\"start_time\":\"2024-01-15T00:00:00.000000\",\"end_time\":\"2024-01-19T00:00:00.000000\",\"total_records\":5,\"exceeds_page_limit\":false,\"approx_interval_seconds\":86400,\"message\":\"5 record(s) for asset_id Transformer 1 from 2024-01-15T00:00:00.000000 to 2024-01-19T00:00:00.000000.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 4.276374995242804
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_019ooFTTdXA5mXqvLGakdc9R",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"oxygen\":5860,\"nitrogen\":27842,\"methane\":7406,\"co\":32,\"co2\":1344,\"ethylene\":16684,\"ethane\":5467,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"oxygen\":5700,\"nitrogen\":28000,\"methane\":7200,\"co\":30,\"co2\":1300,\"ethylene\":16500,\"ethane\":5400,\"acetylene\":6,\"dbds\":18,\"power_factor\":1.2,\"interfacial_v\":44,\"dielectric_rigidity\":53,\"water_content\":1,\"vl1\":112,\"vl2\":114,\"vl3\":109,\"il1\":102,\"il2\":103,\"il3\":96,\"vl12\":226,\"vl23\":221,\"vl31\":219,\"inut\":6,\"rated_mva\":100,\"wti\":82,\"oti\":87,\"ati\":79,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"oxygen\":5900,\"nitrogen\":27700,\"methane\":7300,\"co\":35,\"co2\":1350,\"ethylene\":16700,\"ethane\":5500,\"acetylene\":8,\"dbds\":20,\"power_factor\":0.9,\"interfacial_v\":46,\"dielectric_rigidity\":56,\"water_content\":0,\"vl1\":109,\"vl2\":116,\"vl3\":107,\"il1\":101,\"il2\":104,\"il3\":94,\"vl12\":224,\"vl23\":219,\"vl31\":217,\"inut\":5,\"rated_mva\":100,\"wti\":79,\"oti\":84,\"ati\":77,\"oti_a\":1,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"oxygen\":5800,\"nitrogen\":27950,\"methane\":7350,\"co\":33,\"co2\":1325,\"ethylene\":16600,\"ethane\":5450,\"acetylene\":7,\"dbds\":19,\"power_factor\":1.1,\"interfacial_v\":45,\"dielectric_rigidity\":54,\"water_content\":1,\"vl1\":111,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":106,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":81,\"oti\":86,\"ati\":78,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-19T00:00:00.000000\",\"hydrogen\":2850,\"oxygen\":5850,\"nitrogen\":27850,\"methane\":7400,\"co\":32,\"co2\":1340,\"ethylene\":16650,\"ethane\":5470,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1}],\"returned\":5,\"next_cursor\":null,\"has_more\":false,\"start\":null,\"end\":null,\"message\":\"returned 5 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 24,
+        "duration_ms": 1967.1129169873893
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "duration_ms": 5198.427083028946
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "duration_ms": 1.3173330225981772
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__recipe_template",
+            "input": {},
+            "id": "toolu_014pwfuUWfm1znE8C5VP6so6",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "duration_ms": 0.10604195995256305
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__find_models",
+            "input": {
+              "task_id": "tsfm_anomaly_detection"
+            },
+            "id": "toolu_014mqT2wSgK6WuGCrfrpbkR8",
+            "output": "{\"result\":{\"models\":[]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 2,
+        "duration_ms": 0.869792012963444
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 6,
+        "duration_ms": 2139.908540993929
+      },
+      {
+        "index": 10,
+        "text": "The catalog returned no anomaly detectors. I'll search the catalog more broadly and look for any existing dataset file for this asset.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 6,
+        "duration_ms": 0.5994589882902801
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__search_models",
+            "input": {
+              "text": "anomaly"
+            },
+            "id": "toolu_01MWQ6DFdSa2EWwFdQ4Cchah",
+            "output": "{\"result\":{\"models\":[]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 6,
+        "duration_ms": 632.5778330210596
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__list_runs",
+            "input": {
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_016qk8teyop1dWKf4jsmtWLi",
+            "output": "{\"runs\":[{\"_id\":\"run:10d8c01740\",\"run_id\":\"run:10d8c01740\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:36+00:00\"},{\"_id\":\"run:122b256421\",\"run_id\":\"run:122b256421\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0651,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[2918.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":2918.3333},\"0_0.9_upper\":{\"4\":2918.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:27+00:00\"},{\"_id\":\"run:2522577cac\",\"run_id\":\"run:2522577cac\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":5,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":5,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:44:48+00:00\"},{\"_id\":\"run:25c6964363\",\"run_id\":\"run:25c6964363\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1]},\"training_regime\":\"fine_tune\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.692,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[26.017799377441406],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:46:22+00:00\"},{\"_id\":\"run:28f1e6703b\",\"run_id\":\"run:28f1e6703b\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3],\"eval\":{\"metrics\":[\"smape\"],\"window_length\":1,\"initial_window\":1},\"backtest\":false},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0057,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[16572,16544,16516],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T19:04:25+00:00\"},{\"_id\":\"run:60a5e01c1c\",\"run_id\":\"run:60a5e01c1c\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"last\"}},\"fh\":[1]},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.1538,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[35],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:46:21+00:00\"},{\"_id\":\"run:63268a84f9\",\"run_id\":\"run:63268a84f9\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:52:48+00:00\"},{\"_id\":\"run:685113cca6\",\"run_id\":\"run:685113cca6\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.1615,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[33.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":33.3333},\"0_0.9_upper\":{\"4\":33.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:42+00:00\"},{\"_id\":\"run:7c2f981391\",\"run_id\":\"run:7c2f981391\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.3275,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[7],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":7},\"0_0.9_upper\":{\"4\":7}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:41+00:00\"},{\"_id\":\"run:7dd23f2ef5\",\"run_id\":\"run:7dd23f2ef5\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1]},\"training_regime\":\"fine_tune\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.4529,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[65.83740234375],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:44:14+00:00\"},{\"_id\":\"run:809e510e45\",\"run_id\":\"run:809e510e45\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3],\"eval\":{\"metrics\":[\"smape\"],\"window_length\":1,\"initial_window\":1}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0238,\"folds\":1,\"per_member_score\":{},\"forecast_head\":[2918.3333,2936.6667,2955],\"prediction_interval\":null,\"checkpoint_path\":null,\"created_at\":\"2026-09-30T19:04:33+00:00\"},{\"_id\":\"run:9a54de85c5\",\"run_id\":\"run:9a54de85c5\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0285,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[7331.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":7331.3333},\"0_0.9_upper\":{\"4\":7331.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:36+00:00\"},{\"_id\":\"run:9f745d8aa6\",\"run_id\":\"run:9f745d8aa6\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:19+00:00\"},{\"_id\":\"run:afb669e27e\",\"run_id\":\"run:afb669e27e\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:31+00:00\"},{\"_id\":\"run:b404c8096d\",\"run_id\":\"run:b404c8096d\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:20+00:00\"},{\"_id\":\"run:c1feaadf0f\",\"run_id\":\"run:c1feaadf0f\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T19:03:18+00:00\"},{\"_id\":\"run:d27f2359d9\",\"run_id\":\"run:d27f2359d9\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0149,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[16572],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":16572},\"0_0.9_upper\":{\"4\":16572}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:39+00:00\"},{\"_id\":\"run:d8322fcb43\",\"run_id\":\"run:d8322fcb43\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":1,\"n_observations\":4,\"anomaly_indices\":[1],\"created_at\":\"2026-09-30T18:56:07+00:00\"},{\"_id\":\"run:daaa778604\",\"run_id\":\"run:daaa778604\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":4,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:59:32+00:00\"},{\"_id\":\"run:de5de8a443\",\"run_id\":\"run:de5de8a443\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0651,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[2918.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":2918.3333},\"0_0.9_upper\":{\"4\":2918.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:35+00:00\"},{\"_id\":\"run:eb9fd458c1\",\"run_id\":\"run:eb9fd458c1\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:37+00:00\"},{\"_id\":\"run:f44941e4fb\",\"run_id\":\"run:f44941e4fb\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"recipe\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1],\"conformal\":{\"coverage\":0.9}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"metric\":\"MeanAbsolutePercentageError\",\"backtest_score\":0.0215,\"folds\":2,\"per_member_score\":{},\"forecast_head\":[5444.3333],\"prediction_interval\":{\"0_0.9_lower\":{\"4\":5444.3333},\"0_0.9_upper\":{\"4\":5444.3333}},\"checkpoint_path\":null,\"created_at\":\"2026-09-30T18:45:38+00:00\"},{\"_id\":\"run:f7dcb641b7\",\"run_id\":\"run:f7dcb641b7\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":2,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":4,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:43:39+00:00\"}],\"plans\":[]}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 6,
+        "duration_ms": 78.4792079939507
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__list_results",
+            "input": {
+              "task_type": "tsfm_anomaly_detection",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_0151wA5TEKRrD9Q3HW73WL8m",
+            "output": "{\"results\":[{\"_id\":\"ar:0fe46189a1e7\",\"result_id\":\"ar:0fe46189a1e7\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_f204f028.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:59:32+00:00\"},{\"_id\":\"ar:26ff00088080\",\"result_id\":\"ar:26ff00088080\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_1d4d5fc9.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:18+00:00\"},{\"_id\":\"ar:612c40a50e3c\",\"result_id\":\"ar:612c40a50e3c\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_35823ba7.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:31+00:00\"},{\"_id\":\"ar:6f0600fca0b3\",\"result_id\":\"ar:6f0600fca0b3\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_437e384f.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:36+00:00\"},{\"_id\":\"ar:7dcb4d13ce9f\",\"result_id\":\"ar:7dcb4d13ce9f\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_cf8e6f5f.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:52:48+00:00\"},{\"_id\":\"ar:95f9b7273be9\",\"result_id\":\"ar:95f9b7273be9\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_aabf8c04.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:20+00:00\"},{\"_id\":\"ar:b63bb6c92221\",\"result_id\":\"ar:b63bb6c92221\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_72042682.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":1},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:56:07+00:00\"},{\"_id\":\"ar:c38e292ad500\",\"result_id\":\"ar:c38e292ad500\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_d2403364.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:19+00:00\"},{\"_id\":\"ar:ce39184b1959\",\"result_id\":\"ar:ce39184b1959\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_b04f9499.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:37+00:00\"},{\"_id\":\"ar:d28b03a8c232\",\"result_id\":\"ar:d28b03a8c232\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_4afc3097.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:39+00:00\"},{\"_id\":\"ar:f44d0b39104e\",\"result_id\":\"ar:f44d0b39104e\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_e9c96350.json\",\"summary\":{\"total_records\":5,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:44:48+00:00\"}]}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 6,
+        "duration_ms": 423.0397500214167
+      },
+      {
+        "index": 14,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 2543.749167001806
+      },
+      {
+        "index": 15,
+        "text": "Earlier runs on this asset exist. I'll open the one that used all 5 observations to find the dataset file it read.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 0.32879196805879474
+      },
+      {
+        "index": 16,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__get_run",
+            "input": {
+              "run_id": "run:2522577cac"
+            },
+            "id": "toolu_0143e2UaZTxuvVPA4wpqyg4H",
+            "output": "{\"result\":{\"run_id\":\"run:2522577cac\",\"_id\":\"run:2522577cac\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":5,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":5,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:44:48+00:00\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 98.11508300481364
+      },
+      {
+        "index": 17,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__utilities__json_reader",
+            "input": {
+              "file_name": "/tmp/tsfm_work/anomaly_e9c96350.json"
+            },
+            "id": "toolu_01BcXSy157foGDJ3sGmKMLMb",
+            "output": "{\"result\":\"{\\\"anomaly_label\\\": [0, 0, 0, 0, 0], \\\"n_anomalies\\\": 0, \\\"anomaly_indices\\\": []}\"}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 363.5796250309795
+      },
+      {
+        "index": 18,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 3242.345499980729
+      },
+      {
+        "index": 19,
+        "text": "That run did not record its dataset path, and I have no tool to write a file. I'll check whether a Transformer 1 CSV already exists in the usual working locations.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 0.6065419875085354
+      },
+      {
+        "index": 20,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__profile_series",
+            "input": {
+              "dataset_path": "/tmp/tsfm_work/transformer_1.csv",
+              "timestamp_column": "timestamp"
+            },
+            "id": "toolu_019YJZ1y3HRDm18P9vqM3Mpj",
+            "output": "{\"result\":{\"error\":\"[Errno 2] No such file or directory: '/tmp/tsfm_work/transformer_1.csv'\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 591.8294999864884
+      },
+      {
+        "index": 21,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__profile_series",
+            "input": {
+              "dataset_path": "/tmp/tsfm_work/Transformer 1.csv",
+              "timestamp_column": "timestamp"
+            },
+            "id": "toolu_01CC8TPcKZFJw1uPCbZ59A5A",
+            "output": "{\"result\":{\"error\":\"[Errno 2] No such file or directory: '/tmp/tsfm_work/Transformer 1.csv'\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 578.6546250456013
+      },
+      {
+        "index": 22,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 22970.723457983695
+      },
+      {
+        "index": 23,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 1.7174999811686575
+      },
+      {
+        "index": 24,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2800,
+              "methane": 7300,
+              "acetylene": 8,
+              "ethylene": 16700,
+              "ethane": 5500
+            },
+            "id": "toolu_01Hts3YjsR6uDZQgyC4BtWzh",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 0.25512499269098043
+      },
+      {
+        "index": 25,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "acetylene": 7,
+              "ethylene": 16650,
+              "ethane": 5470
+            },
+            "id": "toolu_01RwqYEBRm5fvfsn9eSjV3qN",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 491.95649998728186
+      },
+      {
+        "index": 26,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 12858.03758300608
+      },
+      {
+        "index": 27,
+        "text": "I couldn't run the anomaly model or get the gas classification from the tool, so the steps below are a manual stand-in using the 5 samples. With so little data, treat the result as indicative only.\n\n**Data:** Transformer 1 at MAIN has 5 daily samples, 2024-01-15 to 2024-01-19. All 5 have il1, il2, il3 and inut, so 5 complete samples remain and the 4-sample cut-off doesn't apply.\n\n**Whether the tools ran**\n- **Characterization and anomaly model:** these tools need a data file, and there isn't one for this asset. I have no tool to create one, and none of the earlier anomaly runs recorded which file they used.\n- **Detector catalog:** it is empty.\n- **Gas classification:** the gas tool returned \"LLM unavailable\" for both samples I sent.\n- **What I did instead:** I did the correlation, the anomaly screen and the gas ratios by hand.\n\n**How temperature and current move together**\n\n| Date | oti | oti_a | oti_t | il1 / il2 / il3 | Total current (il1+il2+il3) | inut | ati |\n|---|---|---|---|---|---|---|---|\n| 01-15 | 85 | 2 | 1 | 100/105/95 | 300 | 5 | 78 |\n| 01-16 | 87 | 2 | 1 | 102/103/96 | 301 | 6 | 79 |\n| 01-17 | 84 | 1 | 1 | 101/104/94 | 299 | 5 | 77 |\n| 01-18 | 86 | 2 | 1 | 100/106/95 | 301 | 5 | 78 |\n| 01-19 | 85 | 2 | 1 | 100/105/95 | 300 | 5 | 78 |\n\n- **Yes, the two groups rise and fall in the same samples.** Oil temperature (oti) and total phase current move the same way on every day-to-day step (up, down, up, down). Their correlation is 0.94.\n- **By channel:** oti tracks il3 (0.93) and inut (0.78) closely. It barely tracks il1 (0.44) and moves slightly against il2 (\u22120.23).\n- **Alarm flag:** oti_a falls only on 01-17, which is also the day with the lowest oil temperature and the lowest total current.\n- **Trip flag:** oti_t is stuck at 1 in every sample, so it carries no pattern. Also, oti_a reads 2, which doesn't fit a 0/1 flag. Both flag signals look suspect and should be checked.\n- **Ambient:** ambient temperature (ati) tracks oti just as closely (0.93).\n- **Limits:** the swings are tiny (oti moves 3 \u00b0C, total current moves 2 A), and 5 points can't separate the effect of load from the effect of ambient.\n\n**Anomaly screen (manual, flagging readings more than 2 standard deviations from the mean)**\n- **oti:** nothing flagged. The largest deviation is 1.6.\n- **oti_a:** 2024-01-17 is exactly at the limit (\u22122.0). No current channel is past the limit that day (il3 is \u22121.6, total current \u22121.6).\n- **This is not non-load heating.** The 01-17 flag is a cooling dip that coincides with the lowest current and lowest ambient. No sample shows temperature rising while current stays flat.\n\n**Gas check (my own IEC 60599 ratios, because the tool was unavailable)**\n- **The oil sample closest to 01-17 is from the same day.** Acetylene/ethylene is 0.0005, methane/hydrogen is 2.6 and ethylene/ethane is 3.0. That pattern points to a thermal fault: T2 (300\u2013700 \u00b0C) on IEC 60599 limits, or over 700 \u00b0C on the older Rogers codes.\n- **The gas levels are extremely high** (ethylene about 16,700 ppm, methane about 7,300 ppm). They are almost identical in all 5 samples, so this is a lasting condition and not tied to any one day.\n\n**Conclusion:** the only borderline temperature point sits on a thermal gas result, but it is a dip that follows load and ambient down, not heating. The day-to-day heating in this window looks driven by load and ambient temperature: ati at the flagged timestamp (01-17) was 77 \u00b0C, the lowest in the window. Separately, the gas levels show a serious ongoing thermal fault regardless of load, and the stuck trip flag and the \"2\" alarm readings need checking. I'd raise both with maintenance rather than treating this as a normal loading question.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 8,
+        "duration_ms": 6897.637542046141
+      }
+    ],
+    "started_at": "2026-09-30T22:16:03.556367+00:00"
+  }
+}

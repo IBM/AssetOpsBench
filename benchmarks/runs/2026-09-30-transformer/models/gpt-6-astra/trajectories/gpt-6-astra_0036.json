@@ -1,0 +1,372 @@
+{
+  "run_id": "gpt-6-astra_0036",
+  "scenario_id": "transformer_scenario_36",
+  "runner": "codex-agent",
+  "model": "gpt-6-astra",
+  "question": "I want to set the next oil sampling date for Transformer 1 at site MAIN based on how fast the gases are actually growing, not on a fixed calendar.\n\nUsing the samples between 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, work out TDCG for every sample. Use only hydrogen, methane, ethane, ethylene, acetylene and co, and leave out co2, oxygen and nitrogen. Give me the TDCG rate in ppm/day between the first and last sample, and name the gas that contributes most to the increase.\n\nBefore trusting that rate, screen the six gases for anomalous samples. If a single anomalous sample is driving the rise, recompute the rate without it and show me both numbers.\n\nSet the interval with this rule:\n- Under 10 ppm/day: next sample in 90 days.\n- 10 to 30 ppm/day: next sample in 30 days.\n- Above 30 ppm/day: next sample in 7 days.\n\nIf the rate with and without the anomalous sample lands in different bands, don't escalate on the higher one. Use the lower band's interval and add a confirmatory resample within 7 days to settle it.\n\nAlso run a fault classification on the latest complete sample. If it comes back D1, D2 or T3, use 7 days no matter what the rate says.\n\nThen check open work orders on Transformer 1. If a sampling job is already open, don't create another. Tell me its number and date, and whether it should move earlier. Otherwise, pick the first day on or after the target date where MAIN has fewer than 3 scheduled work orders, create the sampling work order for that day, and assign a technician who has sampled Transformer 1 before.\n\nIf fewer than two samples in the window have all six gases, say the rate can't be computed. In that case, base the interval on the classification alone: 7 days for D1, D2 or T3, and 30 days otherwise.",
+  "answer": "### TDCG — Transformer 1, MAIN\nOnly hydrogen, methane, ethane, ethylene, acetylene and CO were included.\n\n| Sample date | TDCG (ppm) |\n|---|---:|\n| 2024-01-15 | 32,441 |\n| 2024-01-16 | 32,086 |\n| 2024-01-17 | 32,343 |\n| 2024-01-18 | 32,340 |\n| 2024-01-19 | 32,409 |\n\n**Rate:** (32,409 − 32,441) ÷ 4 = **−8 ppm/day**.\n\nThere is no net increase. **Hydrogen** contributes the largest positive change: **+5 ppm**.\n\n**Anomaly screen:** No samples flagged using per-gas modified Z-scores above 3.5; acetylene’s zero-MAD series was checked using IQR fences. All five samples are complete. No exclusion or alternative rate is warranted, although five samples provide limited statistical confidence.\n\n**Classification:** Attempted on January 19, but the service returned “LLM unavailable.” The D1/D2/T3 override therefore remains unverified.\n\n**Provisional interval:** **90 days**, targeting **2024-04-18**, measured from the latest sample. No anomaly-based confirmatory resample is required.\n\n**Existing work order:** **1000051** is open and includes DGA sampling in its scope, with the next sample documented for **2024-02-18**. Its actual scheduling fields are blank. That documented date is already earlier than the rate-based target; **no earlier move is indicated by the rate**. No duplicate was created.\n\nThese dates are historical and overdue as of today; classification must succeed before finalizing the interval.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000001",
+              "sensors": [
+                "hydrogen",
+                "methane",
+                "ethane",
+                "ethylene",
+                "acetylene",
+                "co"
+              ],
+              "limit": 1000
+            },
+            "id": "item_3",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"site_name\": \"MAIN\",\n  \"asset_id\": \"Transformer 1\",\n  \"observations\": [\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-15T00:00:00.000000\",\n      \"hydrogen\": 2845,\n      \"methane\": 7406,\n      \"ethane\": 5467,\n      \"ethylene\": 16684,\n      \"acetylene\": 7,\n      \"co\": 32\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-16T00:00:00.000000\",\n      \"hydrogen\": 2950,\n      \"methane\": 7200,\n      \"ethane\": 5400,\n      \"ethylene\": 16500,\n      \"acetylene\": 6,\n      \"co\": 30\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-17T00:00:00.000000\",\n      \"hydrogen\": 2800,\n      \"methane\": 7300,\n      \"ethane\": 5500,\n      \"ethylene\": 16700,\n      \"acetylene\": 8,\n      \"co\": 35\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-18T00:00:00.000000\",\n      \"hydrogen\": 2900,\n      \"methane\": 7350,\n      \"ethane\": 5450,\n      \"ethylene\": 16600,\n      \"acetylene\": 7,\n      \"co\": 33\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-19T00:00:00.000000\",\n      \"hydrogen\": 2850,\n      \"methane\": 7400,\n      \"ethane\": 5470,\n      \"ethylene\": 16650,\n      \"acetylene\": 7,\n      \"co\": 32\n    }\n  ],\n  \"returned\": 5,\n  \"next_cursor\": null,\n  \"has_more\": false,\n  \"start\": \"2024-01-15T00:00:00.000000\",\n  \"end\": \"2024-01-19T00:00:00.000001\",\n  \"message\": \"returned 5 observation(s) for asset_id Transformer 1; has_more=False.\"\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "site_name": "MAIN",
+                  "asset_id": "Transformer 1",
+                  "observations": [
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-15T00:00:00.000000",
+                      "hydrogen": 2845,
+                      "methane": 7406,
+                      "ethane": 5467,
+                      "ethylene": 16684,
+                      "acetylene": 7,
+                      "co": 32
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-16T00:00:00.000000",
+                      "hydrogen": 2950,
+                      "methane": 7200,
+                      "ethane": 5400,
+                      "ethylene": 16500,
+                      "acetylene": 6,
+                      "co": 30
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-17T00:00:00.000000",
+                      "hydrogen": 2800,
+                      "methane": 7300,
+                      "ethane": 5500,
+                      "ethylene": 16700,
+                      "acetylene": 8,
+                      "co": 35
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-18T00:00:00.000000",
+                      "hydrogen": 2900,
+                      "methane": 7350,
+                      "ethane": 5450,
+                      "ethylene": 16600,
+                      "acetylene": 7,
+                      "co": 33
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-19T00:00:00.000000",
+                      "hydrogen": 2850,
+                      "methane": 7400,
+                      "ethane": 5470,
+                      "ethylene": 16650,
+                      "acetylene": 7,
+                      "co": 32
+                    }
+                  ],
+                  "returned": 5,
+                  "next_cursor": null,
+                  "has_more": false,
+                  "start": "2024-01-15T00:00:00.000000",
+                  "end": "2024-01-19T00:00:00.000001",
+                  "message": "returned 5 observation(s) for asset_id Transformer 1; has_more=False."
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 1,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "OPEN",
+              "page_size": 0
+            },
+            "id": "item_4",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"site_id\": \"MAIN\",\n  \"status\": \"OPEN\",\n  \"labor_code\": null,\n  \"total\": 1,\n  \"work_orders\": [\n    {\n      \"wonum\": \"1000051\",\n      \"description\": \"Transformer 1 - Condition 4 outage and inspection, 2024-01-20 to 2024-01-21 (includes OLTC)\",\n      \"description_longdescription\": \"Expanded existing OLTC inspection to avoid duplicate outage/inspection work. Proposed two-day outage: 2024-01-20 through 2024-01-21 inclusive. MAIN schedule checked for 2024-01-20 through 2024-02-09 (21 days after latest sample): zero scheduled work orders; all two-day windows tied, earliest selected. Notify the manufacturer. Inspect transformer and OLTC, including suspected contact wear/coking. Latest oil sample 2024-01-19: hydrogen 2850 + methane 7400 + ethane 5470 + ethylene 16650 + acetylene 7 + CO 32 = TDCG 32409 ppm, Condition 4 (>4630), using user-specified limits. No gas values carried forward. Initiate monthly DGA sampling; next sample 2024-02-18. Previous scope: OLTC inspection, target start 2024-01-19, DGA T2 thermal, acetylene 7 ppm; no tap-changer FCC code and no technician with prior work on this unit noted. New recommendation extends scope to two-day transformer outage and inspection with manufacturer notification. Dates are historical relative to current date 2026-09-30; these are sample-relative proposed dates, not a current executable schedule. Scheduling fields cannot be set through available tools; dates recorded here only.\",\n      \"siteid\": \"MAIN\",\n      \"orgid\": null,\n      \"assetnum\": \"Transformer 1\",\n      \"location\": null,\n      \"status\": \"APPR\",\n      \"status_date\": \"2026-09-30T20:52:48+00:00\",\n      \"worktype\": \"PdM\",\n      \"wopriority\": 1,\n      \"reportdate\": \"2026-09-30T19:04:55+00:00\",\n      \"reportedby\": null,\n      \"failurecode\": null,\n      \"parent\": null,\n      \"taskid\": null,\n      \"lead\": null,\n      \"jpnum\": null,\n      \"schedstart\": null,\n      \"schedfinish\": null,\n      \"targstartdate\": null,\n      \"targcompdate\": null,\n      \"actstart\": null,\n      \"actfinish\": null,\n      \"estlabhrs\": null,\n      \"actlabhrs\": null,\n      \"estlabcost\": null,\n      \"actlabcost\": null,\n      \"estmatcost\": null,\n      \"actmatcost\": null,\n      \"estservcost\": null,\n      \"actservcost\": null,\n      \"esttoolcost\": null,\n      \"acttoolcost\": null,\n      \"estatapprtotalcost\": null,\n      \"esttotalcost\": null,\n      \"acttotalcost\": null,\n      \"wplabor\": null,\n      \"aob_source\": null,\n      \"aob_asset_class\": null,\n      \"_id\": \"wo:MAIN:1000051\",\n      \"type\": \"workorder\",\n      \"schema_version\": \"1.0.0\"\n    }\n  ],\n  \"message\": \"Found 1 work order(s).\"\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "site_id": "MAIN",
+                  "status": "OPEN",
+                  "labor_code": null,
+                  "total": 1,
+                  "work_orders": [
+                    {
+                      "wonum": "1000051",
+                      "description": "Transformer 1 - Condition 4 outage and inspection, 2024-01-20 to 2024-01-21 (includes OLTC)",
+                      "description_longdescription": "Expanded existing OLTC inspection to avoid duplicate outage/inspection work. Proposed two-day outage: 2024-01-20 through 2024-01-21 inclusive. MAIN schedule checked for 2024-01-20 through 2024-02-09 (21 days after latest sample): zero scheduled work orders; all two-day windows tied, earliest selected. Notify the manufacturer. Inspect transformer and OLTC, including suspected contact wear/coking. Latest oil sample 2024-01-19: hydrogen 2850 + methane 7400 + ethane 5470 + ethylene 16650 + acetylene 7 + CO 32 = TDCG 32409 ppm, Condition 4 (>4630), using user-specified limits. No gas values carried forward. Initiate monthly DGA sampling; next sample 2024-02-18. Previous scope: OLTC inspection, target start 2024-01-19, DGA T2 thermal, acetylene 7 ppm; no tap-changer FCC code and no technician with prior work on this unit noted. New recommendation extends scope to two-day transformer outage and inspection with manufacturer notification. Dates are historical relative to current date 2026-09-30; these are sample-relative proposed dates, not a current executable schedule. Scheduling fields cannot be set through available tools; dates recorded here only.",
+                      "siteid": "MAIN",
+                      "orgid": null,
+                      "assetnum": "Transformer 1",
+                      "location": null,
+                      "status": "APPR",
+                      "status_date": "2026-09-30T20:52:48+00:00",
+                      "worktype": "PdM",
+                      "wopriority": 1,
+                      "reportdate": "2026-09-30T19:04:55+00:00",
+                      "reportedby": null,
+                      "failurecode": null,
+                      "parent": null,
+                      "taskid": null,
+                      "lead": null,
+                      "jpnum": null,
+                      "schedstart": null,
+                      "schedfinish": null,
+                      "targstartdate": null,
+                      "targcompdate": null,
+                      "actstart": null,
+                      "actfinish": null,
+                      "estlabhrs": null,
+                      "actlabhrs": null,
+                      "estlabcost": null,
+                      "actlabcost": null,
+                      "estmatcost": null,
+                      "actmatcost": null,
+                      "estservcost": null,
+                      "actservcost": null,
+                      "esttoolcost": null,
+                      "acttoolcost": null,
+                      "estatapprtotalcost": null,
+                      "esttotalcost": null,
+                      "acttotalcost": null,
+                      "wplabor": null,
+                      "aob_source": null,
+                      "aob_asset_class": null,
+                      "_id": "wo:MAIN:1000051",
+                      "type": "workorder",
+                      "schema_version": "1.0.0"
+                    }
+                  ],
+                  "message": "Found 1 work order(s)."
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2850,
+              "methane": 7400,
+              "ethane": 5470,
+              "ethylene": 16650,
+              "acetylene": 7
+            },
+            "id": "item_5",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"error\": \"LLM unavailable\"\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "error": "LLM unavailable"
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__find_models",
+            "input": {
+              "task_id": "tsfm_anomaly_detection"
+            },
+            "id": "item_6",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"models\": []\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "models": []
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00.000000",
+              "end": "2024-01-19T00:00:00.000001",
+              "sensors": [
+                "hydrogen",
+                "methane",
+                "ethane",
+                "ethylene",
+                "acetylene",
+                "co"
+              ],
+              "limit": 1000
+            },
+            "id": "item_7",
+            "output": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\n  \"site_name\": \"MAIN\",\n  \"asset_id\": \"Transformer 1\",\n  \"observations\": [\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-15T00:00:00.000000\",\n      \"hydrogen\": 2845,\n      \"methane\": 7406,\n      \"ethane\": 5467,\n      \"ethylene\": 16684,\n      \"acetylene\": 7,\n      \"co\": 32\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-16T00:00:00.000000\",\n      \"hydrogen\": 2950,\n      \"methane\": 7200,\n      \"ethane\": 5400,\n      \"ethylene\": 16500,\n      \"acetylene\": 6,\n      \"co\": 30\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-17T00:00:00.000000\",\n      \"hydrogen\": 2800,\n      \"methane\": 7300,\n      \"ethane\": 5500,\n      \"ethylene\": 16700,\n      \"acetylene\": 8,\n      \"co\": 35\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-18T00:00:00.000000\",\n      \"hydrogen\": 2900,\n      \"methane\": 7350,\n      \"ethane\": 5450,\n      \"ethylene\": 16600,\n      \"acetylene\": 7,\n      \"co\": 33\n    },\n    {\n      \"asset_id\": \"Transformer 1\",\n      \"timestamp\": \"2024-01-19T00:00:00.000000\",\n      \"hydrogen\": 2850,\n      \"methane\": 7400,\n      \"ethane\": 5470,\n      \"ethylene\": 16650,\n      \"acetylene\": 7,\n      \"co\": 32\n    }\n  ],\n  \"returned\": 5,\n  \"next_cursor\": null,\n  \"has_more\": false,\n  \"start\": \"2024-01-15T00:00:00.000000\",\n  \"end\": \"2024-01-19T00:00:00.000001\",\n  \"message\": \"returned 5 observation(s) for asset_id Transformer 1; has_more=False.\"\n}"
+                }
+              ],
+              "structured_content": {
+                "result": {
+                  "site_name": "MAIN",
+                  "asset_id": "Transformer 1",
+                  "observations": [
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-15T00:00:00.000000",
+                      "hydrogen": 2845,
+                      "methane": 7406,
+                      "ethane": 5467,
+                      "ethylene": 16684,
+                      "acetylene": 7,
+                      "co": 32
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-16T00:00:00.000000",
+                      "hydrogen": 2950,
+                      "methane": 7200,
+                      "ethane": 5400,
+                      "ethylene": 16500,
+                      "acetylene": 6,
+                      "co": 30
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-17T00:00:00.000000",
+                      "hydrogen": 2800,
+                      "methane": 7300,
+                      "ethane": 5500,
+                      "ethylene": 16700,
+                      "acetylene": 8,
+                      "co": 35
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-18T00:00:00.000000",
+                      "hydrogen": 2900,
+                      "methane": 7350,
+                      "ethane": 5450,
+                      "ethylene": 16600,
+                      "acetylene": 7,
+                      "co": 33
+                    },
+                    {
+                      "asset_id": "Transformer 1",
+                      "timestamp": "2024-01-19T00:00:00.000000",
+                      "hydrogen": 2850,
+                      "methane": 7400,
+                      "ethane": 5470,
+                      "ethylene": 16650,
+                      "acetylene": 7,
+                      "co": 32
+                    }
+                  ],
+                  "returned": 5,
+                  "next_cursor": null,
+                  "has_more": false,
+                  "start": "2024-01-15T00:00:00.000000",
+                  "end": "2024-01-19T00:00:00.000001",
+                  "message": "returned 5 observation(s) for asset_id Transformer 1; has_more=False."
+                }
+              }
+            },
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "duration_ms": null
+      },
+      {
+        "index": 5,
+        "text": "### TDCG — Transformer 1, MAIN\nOnly hydrogen, methane, ethane, ethylene, acetylene and CO were included.\n\n| Sample date | TDCG (ppm) |\n|---|---:|\n| 2024-01-15 | 32,441 |\n| 2024-01-16 | 32,086 |\n| 2024-01-17 | 32,343 |\n| 2024-01-18 | 32,340 |\n| 2024-01-19 | 32,409 |\n\n**Rate:** (32,409 − 32,441) ÷ 4 = **−8 ppm/day**.\n\nThere is no net increase. **Hydrogen** contributes the largest positive change: **+5 ppm**.\n\n**Anomaly screen:** No samples flagged using per-gas modified Z-scores above 3.5; acetylene’s zero-MAD series was checked using IQR fences. All five samples are complete. No exclusion or alternative rate is warranted, although five samples provide limited statistical confidence.\n\n**Classification:** Attempted on January 19, but the service returned “LLM unavailable.” The D1/D2/T3 override therefore remains unverified.\n\n**Provisional interval:** **90 days**, targeting **2024-04-18**, measured from the latest sample. No anomaly-based confirmatory resample is required.\n\n**Existing work order:** **1000051** is open and includes DGA sampling in its scope, with the next sample documented for **2024-02-18**. Its actual scheduling fields are blank. That documented date is already earlier than the rate-based target; **no earlier move is indicated by the rate**. No duplicate was created.\n\nThese dates are historical and overdue as of today; classification must succeed before finalizing the interval.",
+        "tool_calls": [],
+        "input_tokens": 116904,
+        "output_tokens": 1112,
+        "duration_ms": null
+      }
+    ],
+    "started_at": "2026-09-30T20:55:20.049919+00:00"
+  }
+}

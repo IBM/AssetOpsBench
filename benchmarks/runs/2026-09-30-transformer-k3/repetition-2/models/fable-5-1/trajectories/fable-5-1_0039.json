@@ -1,0 +1,220 @@
+{
+  "run_id": "fable-5-1_0039",
+  "scenario_id": "transformer_scenario_39",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "I'm starting to suspect the cooling on Transformer 1 at site MAIN, such as fans, radiators or oil pumps, rather than anything inside the tank. Check this for me before I send a crew out.\n\nBetween 2024-01-15T00:00:00.000000 and 2024-01-19T00:00:00.000000, work out the top-oil rise over ambient (oti minus ati) for every sample. For each sample, give it alongside the total phase current (il1 + il2 + il3). Then tell me whether the rise is climbing while the current stays roughly flat, meaning total current changes by less than 10% from first to last sample. That pattern points to lost cooling capacity rather than load.\n\nForecast the oti-minus-ati rise 2 days ahead, one step per day, with an 80% upper bound. Then check whether oti itself would get closer to its alarm reading (oti_a) than it is today.\n\nSeparately, run a dissolved gas fault classification on the latest complete sample using hydrogen, methane, ethane, ethylene and acetylene. This tells me whether there's an internal thermal fault instead.\n\nDecide as follows:\n- Cooling problem: the rise is climbing with flat current, and the gas class is not T2, T3, D1 or D2. First check open work orders on Transformer 1 for an existing cooling system inspection. If there's none, create one at priority 3, or priority 2 if the forecast upper bound brings oti within 5 \u00b0C of oti_a.\n- Internal fault: the gas class is T2, T3, D1 or D2. Don't raise a cooling work order. Tell me the rise pattern is more likely a symptom of an internal fault and recommend a confirmatory oil resample.\n- Rise doesn't climb: say that cooling looks healthy and create nothing.\n\nIf oti or ati has fewer than 4 non-null samples, don't forecast. Report the first-to-last change in the rise per day as a linear extrapolation with no interval.",
+  "answer": "**Transformer 1 (MAIN) \u2014 cooling vs. internal fault check, 2024\u201101\u201115 \u2192 2024\u201101\u201119**\n\n**1. Top\u2011oil rise over ambient vs. total phase current (4 samples)**\n\n| Timestamp | oti | ati | Rise (oti\u2212ati) | il1+il2+il3 |\n|---|---|---|---|---|\n| 2024\u201101\u201115 00:00 | 85 | 78 | **7 \u00b0C** | 300 A |\n| 2024\u201101\u201116 00:00 | 87 | 79 | **8 \u00b0C** | 301 A |\n| 2024\u201101\u201117 00:00 | 84 | 77 | **7 \u00b0C** | 299 A |\n| 2024\u201101\u201118 00:00 | 86 | 78 | **8 \u00b0C** | 301 A |\n\n- Total current first\u2192last: 300 \u2192 301 A = **+0.3 %** (< 10 %, i.e. flat).\n- Rise first\u2192last: 7 \u2192 8 \u00b0C (**+1 \u00b0C**), least\u2011squares slope **+0.2 \u00b0C/day** \u2192 technically \"climbing with flat current\", but weakly: the series alternates 7/8/7/8. Note that **oti itself is flat (slope 0.0 \u00b0C/day, mean 85.5 \u00b0C)**; the rise creeps up only because ati dipped (slope \u22120.2 \u00b0C/day). That is not the signature you'd expect from fans/radiators/oil pumps losing capacity (oti would drift up at constant load).\n\n**2. Forecast of the rise (oti \u2212 ati), 2 days ahead, 1 step/day** \u2014 oti and ati both have 4 non\u2011null samples, so a forecast was made. The TSFM `run_recipe` path needs a file pointer to the series and none exists for this asset, so this is a linear\u2011trend forecast with an 80 % upper bound from the fit residuals (s = 0.63 \u00b0C, t\u2080.\u2089,\u2082 = 1.89):\n\n| Step | Date | Point | 80 % upper bound |\n|---|---|---|---|\n| +1 | 2024\u201101\u201119 | 8.0 \u00b0C | 9.2 \u00b0C |\n| +2 | 2024\u201101\u201120 | 8.2 \u00b0C | 9.4 \u00b0C |\n\n- oti vs. alarm: **oti is not trending toward alarm** \u2014 its 2\u2011day projection is flat at ~85.5 \u00b0C (today 86 \u00b0C), so it gets no closer than it is now. Caveat: the `oti_a` field on this asset reads 1\u20132 and is an **alarm flag, not a temperature setpoint**, so the \"within 5 \u00b0C of oti_a\" test cannot be evaluated literally; note the flag is already asserted (oti_a = 2, oti_t = 1) in every sample, which should itself be verified.\n\n**3. Dissolved\u2011gas fault classification (latest complete sample, 2024\u201101\u201118)**\nThe DGA classifier tool returned \"LLM unavailable\" on two attempts, so I applied the IEC 60599 / Rogers ratios directly:\nH\u2082 2900, CH\u2084 7350, C\u2082H\u2086 5450, C\u2082H\u2084 16600, C\u2082H\u2082 7 ppm\n- C\u2082H\u2082/C\u2082H\u2084 = 0.0004 \u2192 code 0\n- CH\u2084/H\u2082 = 2.53 \u2192 code 2\n- C\u2082H\u2084/C\u2082H\u2086 = 3.05 \u2192 code 2\n- IEC code **0\u20112\u20112 \u2192 T2 thermal fault (300\u2013700 \u00b0C)** (C\u2082H\u2084/C\u2082H\u2086 near the 4.0 boundary, so T3 >700 \u00b0C can't be excluded). Ethylene at 16,600 ppm is extreme for any in\u2011service unit. Either way the class is in the {T2, T3, D1, D2} set.\n\n**Decision: Internal fault \u2014 no cooling work order raised.**\nThe gas class is T2 (possibly T3), so per your rule the slight rise\u2011over\u2011ambient uptrend is more likely a **symptom of an internal thermal fault** (hot metal / overheated conductor or core path, or tap\u2011changer contacts) than of lost fan/radiator/oil\u2011pump capacity \u2014 and the flat oti with a 0.3 % load change doesn't support a cooling\u2011loss explanation anyway. I recommend a **confirmatory oil resample** (full DGA plus CO/CO\u2082 and furans, ideally with a second lab) before dispatching a cooling crew.\n\nFor context, the only open work order on Transformer 1 is **WO 1000051** (APPR, priority 1, PdM): \"OLTC inspection \u2014 on\u2011load tap changer (suspected contact wear/coking)\", whose notes already cite DGA T2 thermal. There is no cooling\u2011system inspection open, and I did not create one. You may want the resample folded into that OLTC job so the crew samples main tank and OLTC compartments separately to localize the source.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 5237.895416968968
+      },
+      {
+        "index": 1,
+        "text": "I'll start by pulling the telemetry for Transformer 1 in the requested window, plus its sensor list and open work orders.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 839.691125031095
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "start": "2024-01-15T00:00:00",
+              "end": "2024-01-19T00:00:00"
+            },
+            "id": "toolu_01JABHmGLrodyYCRW7E7Ncjj",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"hydrogen\":2845,\"oxygen\":5860,\"nitrogen\":27842,\"methane\":7406,\"co\":32,\"co2\":1344,\"ethylene\":16684,\"ethane\":5467,\"acetylene\":7,\"dbds\":19,\"power_factor\":1,\"interfacial_v\":45,\"dielectric_rigidity\":55,\"water_content\":0,\"vl1\":110,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":105,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":80,\"oti\":85,\"ati\":78,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"hydrogen\":2950,\"oxygen\":5700,\"nitrogen\":28000,\"methane\":7200,\"co\":30,\"co2\":1300,\"ethylene\":16500,\"ethane\":5400,\"acetylene\":6,\"dbds\":18,\"power_factor\":1.2,\"interfacial_v\":44,\"dielectric_rigidity\":53,\"water_content\":1,\"vl1\":112,\"vl2\":114,\"vl3\":109,\"il1\":102,\"il2\":103,\"il3\":96,\"vl12\":226,\"vl23\":221,\"vl31\":219,\"inut\":6,\"rated_mva\":100,\"wti\":82,\"oti\":87,\"ati\":79,\"oti_a\":2,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"hydrogen\":2800,\"oxygen\":5900,\"nitrogen\":27700,\"methane\":7300,\"co\":35,\"co2\":1350,\"ethylene\":16700,\"ethane\":5500,\"acetylene\":8,\"dbds\":20,\"power_factor\":0.9,\"interfacial_v\":46,\"dielectric_rigidity\":56,\"water_content\":0,\"vl1\":109,\"vl2\":116,\"vl3\":107,\"il1\":101,\"il2\":104,\"il3\":94,\"vl12\":224,\"vl23\":219,\"vl31\":217,\"inut\":5,\"rated_mva\":100,\"wti\":79,\"oti\":84,\"ati\":77,\"oti_a\":1,\"oti_t\":1},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"hydrogen\":2900,\"oxygen\":5800,\"nitrogen\":27950,\"methane\":7350,\"co\":33,\"co2\":1325,\"ethylene\":16600,\"ethane\":5450,\"acetylene\":7,\"dbds\":19,\"power_factor\":1.1,\"interfacial_v\":45,\"dielectric_rigidity\":54,\"water_content\":1,\"vl1\":111,\"vl2\":115,\"vl3\":108,\"il1\":100,\"il2\":106,\"il3\":95,\"vl12\":225,\"vl23\":220,\"vl31\":218,\"inut\":5,\"rated_mva\":100,\"wti\":81,\"oti\":86,\"ati\":78,\"oti_a\":2,\"oti_t\":1}],\"returned\":4,\"next_cursor\":null,\"has_more\":false,\"start\":\"2024-01-15T00:00:00\",\"end\":\"2024-01-19T00:00:00\",\"message\":\"returned 4 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 1258.2806249847636
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__measured_sensors",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_013P1HLtHwYv3JtHKri4Qres",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"total_sensors\":30,\"sensors\":[\"acetylene\",\"ati\",\"co\",\"co2\",\"dbds\",\"dielectric_rigidity\",\"ethane\",\"ethylene\",\"hydrogen\",\"il1\",\"il2\",\"il3\",\"interfacial_v\",\"inut\",\"methane\",\"nitrogen\",\"oti\",\"oti_a\",\"oti_t\",\"oxygen\",\"power_factor\",\"rated_mva\",\"vl1\",\"vl12\",\"vl2\",\"vl23\",\"vl3\",\"vl31\",\"water_content\",\"wti\"],\"message\":\"found 30 sensors for asset_id Transformer 1 and site_name MAIN: acetylene, ati, co, co2, dbds, dielectric_rigidity, ethane, ethylene, hydrogen, il1, il2, il3, interfacial_v, inut, methane, nitrogen, oti, oti_a, oti_t, oxygen, power_factor, rated_mva, vl1, vl12, vl2, vl23, vl3, vl31, water_content, wti.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 754.752125008963
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__wo__list_workorders",
+            "input": {
+              "site_id": "MAIN",
+              "asset_num": "Transformer 1",
+              "status": "OPEN",
+              "page_size": 0
+            },
+            "id": "toolu_01UbpDdhN5q15x8sXJ9rDYCp",
+            "output": "{\"result\":{\"site_id\":\"MAIN\",\"status\":\"OPEN\",\"labor_code\":null,\"total\":1,\"work_orders\":[{\"wonum\":\"1000051\",\"description\":\"OLTC inspection - Transformer 1 on-load tap changer (suspected contact wear/coking)\",\"description_longdescription\":\"Target start 2024-01-19 (0 WOs scheduled at MAIN). Uncoded: no tap-changer failure code in FCC catalog. DGA T2 thermal; C2H2 7 ppm -> P1. No technician with prior work on this unit.\",\"siteid\":\"MAIN\",\"orgid\":null,\"assetnum\":\"Transformer 1\",\"location\":null,\"status\":\"APPR\",\"status_date\":\"2026-09-30T22:33:49+00:00\",\"worktype\":\"PdM\",\"wopriority\":1,\"reportdate\":\"2026-09-30T19:04:55+00:00\",\"reportedby\":null,\"failurecode\":null,\"parent\":null,\"taskid\":null,\"lead\":null,\"jpnum\":null,\"schedstart\":null,\"schedfinish\":null,\"targstartdate\":null,\"targcompdate\":null,\"actstart\":null,\"actfinish\":null,\"estlabhrs\":null,\"actlabhrs\":null,\"estlabcost\":null,\"actlabcost\":null,\"estmatcost\":null,\"actmatcost\":null,\"estservcost\":null,\"actservcost\":null,\"esttoolcost\":null,\"acttoolcost\":null,\"estatapprtotalcost\":null,\"esttotalcost\":null,\"acttotalcost\":null,\"wplabor\":null,\"aob_source\":null,\"aob_asset_class\":null,\"_id\":\"wo:MAIN:1000051\",\"type\":\"workorder\",\"schema_version\":\"1.0.0\"}],\"message\":\"Found 1 work order(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 923.1611660216004
+      },
+      {
+        "index": 5,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 21140.60341694858
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 4.48066700482741
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_019r5Hd4yDATJFdd6Ak3x3En",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 395.5085830530152
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__recipe_template",
+            "input": {},
+            "id": "toolu_012QrQqzf7tHFp4gNcyKtK3P",
+            "output": "{\"task_choices\":[\"omitted / anything else  - FORECASTING: transforms -> single|ensemble -> conformal\",\"tsfm_anomaly_detection   - detector path, producing dense anomaly labels\",\"tsfm_classification | tsfm_regression | tsfm_clustering  - run_tabular_recipe only\"],\"estimator_spec\":[\"model_id     - a catalog card, e.g. {\\\"model_id\\\": \\\"ttm_r1_512_96\\\"}; its sktime_class and params are read from the card (see find_models / resolve_model)\",\"sktime_class - an inline class path + params, e.g. {\\\"sktime_class\\\": \\\"sktime.forecasting.naive.NaiveForecaster\\\", \\\"params\\\": {\\\"strategy\\\": \\\"drift\\\"}}\"],\"optional_blocks\":[\"fh         - forecast horizon, e.g. [1, 2, 3]. Default [1, 2, 3, 4, 5]\",\"transforms - list of transform specs applied to the target before the forecaster\",\"ensemble   - {\\\"members\\\": [<estimator spec>, ...], \\\"combine\\\": \\\"mean|median|min|max|weighted|stack\\\", \\\"weights\\\": [...]} - use INSTEAD of estimator\",\"conformal  - {\\\"coverage\\\": 0.9} for calibrated prediction intervals\",\"finetune   - training block; see param_hints (lr, epochs, batch_size, ...)\",\"save_to    - directory path; after a fine-tune, persist the fitted weights there and return checkpoint_path in the result (feed it to register_finetuned)\",\"anomaly    - detector block (false_alarm, ad_model_type, window_size, ...)\",\"impute     - fill gaps before fitting\",\"eval       - {\\\"metrics\\\": [\\\"smape\\\", ...]} - the first metric scores the backtest\"],\"rules\":[\"a recipe MUST carry an `estimator` or an `ensemble` (not both)\",\"`model_id` must exist in the catalog; run_recipe errors if it does not\",\"run_tabular_recipe extracts FLOps features first, then fits `estimator`; omit label_column for clustering\",\"the series itself is never in the recipe - it arrives via dataset_path\"],\"examples\":{\"forecast_with_a_catalog_model\":{\"estimator\":{\"model_id\":\"ttm_96_28\"},\"fh\":[1,2,3]},\"forecast_inline_estimator\":{\"estimator\":{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},\"fh\":[1,2,3,4,5],\"eval\":{\"metrics\":[\"smape\"]}},\"forecast_ensemble_with_intervals\":{\"ensemble\":{\"members\":[{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"drift\"}},{\"sktime_class\":\"sktime.forecasting.naive.NaiveForecaster\",\"params\":{\"strategy\":\"mean\"}}],\"combine\":\"mean\"},\"fh\":[1,2,3],\"conformal\":{\"coverage\":0.9}},\"anomaly_detection\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":24,\"n_neighbors\":5,\"novelty\":true}}},\"tabular_classification\":{\"task\":\"tsfm_classification\",\"estimator\":{\"sktime_class\":\"sklearn.ensemble.RandomForestClassifier\",\"params\":{\"n_estimators\":100}}}}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 251.3576249475591
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__find_models",
+            "input": {
+              "task_id": "tsfm_forecasting",
+              "prediction_length": 2,
+              "top_k": 5
+            },
+            "id": "toolu_01RUdHFN5UKSttGjz1E22KaX",
+            "output": "{\"result\":{\"models\":[{\"_id\":\"model:ttm_96_28\",\"model_id\":\"ttm_96_28\",\"model_checkpoint\":\"ttm_96_28\",\"model_family\":\"TinyTimeMixer\",\"provenance\":\"pretrained\",\"base_model_id\":null,\"task_ids\":[\"tsfm_forecasting\"],\"context_length\":96,\"prediction_length\":28,\"domain\":\"general\",\"frequency\":\"any\",\"source\":\"local_artifact\",\"artifact_path\":\"artifacts/tsfm_models/ttm_96_28\",\"hf_repo\":\"ibm-granite/granite-timeseries-ttm-r2\",\"description\":\"Pretrained TinyTimeMixer forecasting model, context length 96, prediction horizon 28. General-purpose zero-shot multivariate forecaster; good for short-context, short-horizon tasks.\",\"trained_on\":[\"pretraining-corpus\"],\"tags\":[\"ttm\",\"forecasting\",\"zero-shot\",\"short-context\"],\"status\":\"active\",\"version\":\"r2\",\"created_by\":\"seed\",\"created_at\":\"2026-06-20T00:00:00+00:00\",\"sktime_class\":\"sktime.forecasting.ttm.TinyTimeMixerForecaster\",\"params\":{\"model_path\":\"ibm-granite/granite-timeseries-ttm-r2\"},\"dataset\":\"model_catalog\"}]}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 718.1554170092568
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 22847.115957993083
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.9068330400623381
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2900,
+              "methane": 7350,
+              "acetylene": 7,
+              "ethylene": 16600,
+              "ethane": 5450
+            },
+            "id": "toolu_01154afY19dGWQucM9y6gqW3",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 333.66616698913276
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 22287.86170796957
+      },
+      {
+        "index": 14,
+        "text": "**Transformer 1 (MAIN) \u2014 cooling vs. internal fault check, 2024\u201101\u201115 \u2192 2024\u201101\u201119**\n\n**1. Top\u2011oil rise over ambient vs. total phase current (4 samples)**\n\n| Timestamp | oti | ati | Rise (oti\u2212ati) | il1+il2+il3 |\n|---|---|---|---|---|\n| 2024\u201101\u201115 00:00 | 85 | 78 | **7 \u00b0C** | 300 A |\n| 2024\u201101\u201116 00:00 | 87 | 79 | **8 \u00b0C** | 301 A |\n| 2024\u201101\u201117 00:00 | 84 | 77 | **7 \u00b0C** | 299 A |\n| 2024\u201101\u201118 00:00 | 86 | 78 | **8 \u00b0C** | 301 A |\n\n- Total current first\u2192last: 300 \u2192 301 A = **+0.3 %** (< 10 %, i.e. flat).\n- Rise first\u2192last: 7 \u2192 8 \u00b0C (**+1 \u00b0C**), least\u2011squares slope **+0.2 \u00b0C/day** \u2192 technically \"climbing with flat current\", but weakly: the series alternates 7/8/7/8. Note that **oti itself is flat (slope 0.0 \u00b0C/day, mean 85.5 \u00b0C)**; the rise creeps up only because ati dipped (slope \u22120.2 \u00b0C/day). That is not the signature you'd expect from fans/radiators/oil pumps losing capacity (oti would drift up at constant load).\n\n**2. Forecast of the rise (oti \u2212 ati), 2 days ahead, 1 step/day** \u2014 oti and ati both have 4 non\u2011null samples, so a forecast was made. The TSFM `run_recipe` path needs a file pointer to the series and none exists for this asset, so this is a linear\u2011trend forecast with an 80 % upper bound from the fit residuals (s = 0.63 \u00b0C, t\u2080.\u2089,\u2082 = 1.89):\n\n| Step | Date | Point | 80 % upper bound |\n|---|---|---|---|\n| +1 | 2024\u201101\u201119 | 8.0 \u00b0C | 9.2 \u00b0C |\n| +2 | 2024\u201101\u201120 | 8.2 \u00b0C | 9.4 \u00b0C |\n\n- oti vs. alarm: **oti is not trending toward alarm** \u2014 its 2\u2011day projection is flat at ~85.5 \u00b0C (today 86 \u00b0C), so it gets no closer than it is now. Caveat: the `oti_a` field on this asset reads 1\u20132 and is an **alarm flag, not a temperature setpoint**, so the \"within 5 \u00b0C of oti_a\" test cannot be evaluated literally; note the flag is already asserted (oti_a = 2, oti_t = 1) in every sample, which should itself be verified.\n\n**3. Dissolved\u2011gas fault classification (latest complete sample, 2024\u201101\u201118)**\nThe DGA classifier tool returned \"LLM unavailable\" on two attempts, so I applied the IEC 60599 / Rogers ratios directly:\nH\u2082 2900, CH\u2084 7350, C\u2082H\u2086 5450, C\u2082H\u2084 16600, C\u2082H\u2082 7 ppm\n- C\u2082H\u2082/C\u2082H\u2084 = 0.0004 \u2192 code 0\n- CH\u2084/H\u2082 = 2.53 \u2192 code 2\n- C\u2082H\u2084/C\u2082H\u2086 = 3.05 \u2192 code 2\n- IEC code **0\u20112\u20112 \u2192 T2 thermal fault (300\u2013700 \u00b0C)** (C\u2082H\u2084/C\u2082H\u2086 near the 4.0 boundary, so T3 >700 \u00b0C can't be excluded). Ethylene at 16,600 ppm is extreme for any in\u2011service unit. Either way the class is in the {T2, T3, D1, D2} set.\n\n**Decision: Internal fault \u2014 no cooling work order raised.**\nThe gas class is T2 (possibly T3), so per your rule the slight rise\u2011over\u2011ambient uptrend is more likely a **symptom of an internal thermal fault** (hot metal / overheated conductor or core path, or tap\u2011changer contacts) than of lost fan/radiator/oil\u2011pump capacity \u2014 and the flat oti with a 0.3 % load change doesn't support a cooling\u2011loss explanation anyway. I recommend a **confirmatory oil resample** (full DGA plus CO/CO\u2082 and furans, ideally with a second lab) before dispatching a cooling crew.\n\nFor context, the only open work order on Transformer 1 is **WO 1000051** (APPR, priority 1, PdM): \"OLTC inspection \u2014 on\u2011load tap changer (suspected contact wear/coking)\", whose notes already cite DGA T2 thermal. There is no cooling\u2011system inspection open, and I did not create one. You may want the resample folded into that OLTC job so the crew samples main tank and OLTC compartments separately to localize the source.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 8548.249542014673
+      }
+    ],
+    "started_at": "2026-09-30T22:41:42.367308+00:00"
+  }
+}

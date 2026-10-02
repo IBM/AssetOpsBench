@@ -1,0 +1,452 @@
+{
+  "run_id": "fable-5-1_0024",
+  "scenario_id": "transformer_scenario_24",
+  "runner": "claude-agent",
+  "model": "claude-fable-5-1",
+  "question": "My operators keep asking whether Transformer 1 at MAIN heats up because of load or for some other reason. Over the available window, characterize how oti, oti_a and oti_t move together with the phase currents il1, il2, il3 and inut. Tell me whether the temperature group and the current group rise and fall in the same samples. Then run an anomaly check on the temperature channels together with the currents, and list any timestamp where temperature is anomalous but current is not. Treat those timestamps as possible non-load heating, and pull the dissolved gas classification from the nearest oil sample to see whether it shows a thermal fault. Only use samples where all four current channels are non-null. If none of the temperature anomalies lines up with a thermal gas class, say that the heating looks load or ambient driven, and check ati at the same timestamps. If fewer than 4 complete samples remain after cleaning, skip the anomaly model and report only the characterization with its limits.",
+  "answer": "The DGA classifier service is down (two \"LLM unavailable\" responses), and there is no way to hand the telemetry to the TSFM detector (no materialize tool, no file pointer exposed by prior runs, `iot://` rejected). Everything else I need is already in hand — the 5-sample history, ati at every timestamp, and the raw gas values — so no further tool calls are required. I'm computing the Rogers ratios manually and finalizing the report.\n\n## Transformer 1 (MAIN) — Temperature vs. Load characterization\n\n**Data window:** 2024-01-15 → 2024-01-19, 5 daily samples, all four currents (il1, il2, il3, inut) non-null in every sample → 5 complete samples (≥ 4, so the anomaly step was attempted).\n\n### 1. How the groups move together\n\n| Date | oti | oti_a | oti_t | il1 | il2 | il3 | inut | ΣI (il1+il2+il3) | ati |\n|---|---|---|---|---|---|---|---|---|---|\n| 01-15 | 85 | 2 | 1 | 100 | 105 | 95 | 5 | 300 | 78 |\n| 01-16 | 87 ↑ | 2 | 1 | 102 ↑ | 103 ↓ | 96 ↑ | 6 ↑ | 301 ↑ | 79 ↑ |\n| 01-17 | 84 ↓ | 1 ↓ | 1 | 101 ↓ | 104 ↑ | 94 ↓ | 5 ↓ | 299 ↓ | 77 ↓ |\n| 01-18 | 86 ↑ | 2 ↑ | 1 | 100 ↓ | 106 ↑ | 95 ↑ | 5 | 301 ↑ | 78 ↑ |\n| 01-19 | 85 ↓ | 2 | 1 | 100 | 105 ↓ | 95 | 5 | 300 ↓ | 78 |\n\n- **Yes — the temperature group and the current group rise and fall in the same samples.** In all 4 step-to-step transitions, oti moves in the same direction as total load current (ΣI): +2/+1, −3/−2, +2/+2, −1/−1. oti_a follows oti (drops to 1 only on the coolest day, 01-17). oti_t is constant (1) and carries no information.\n- Individual phases are not perfectly in step (il2 moves opposite to il1/il3 on 01-16 and 01-18 — mild phase redistribution), but the aggregate load tracks oti sample-for-sample.\n- **ati moves identically** (+1, −2, +1, 0) — ambient co-varies with both oti and load, so load and ambient are confounded over this window.\n- Limits: 5 daily points, total oti range only 3 °C, load range only 2 A (~0.7 %). Co-movement is consistent but the sample is too small to separate load from ambient statistically.\n\n### 2. Anomaly check\n\n- **TSFM model: could not be run.** The detector requires a dataset file pointer; no `materialize_iot`/export tool is available in this session, prior runs don't expose their dataset path, and an `iot://` URI is rejected (\"Protocol not known\"). *(Prior stored runs of SubLOF on this asset's 5-sample series returned 0 anomalies, for reference.)*\n- **Manual within-series deviation screen (population z-score, |z| ≥ 2 flagged):**\n  - Temperature group: oti max |z| = 1.6 (01-16) — not flagged; **oti_a = 1 on 2024-01-17, z = −2.0 → flagged**; oti_t constant.\n  - Current group: **inut = 6 on 2024-01-16, z = +2.0 → flagged**; il1/il2/il3/ΣI max |z| = 1.6 — not flagged.\n- **Timestamps where temperature is anomalous but current is not: `2024-01-17T00:00:00`** (oti_a dip; ΣI z = −1.6, il3 z = −1.4, inut z = −0.5). Note this is a *cooling*-direction deviation (oti at its minimum, 84 °C), not a heating spike.\n\n### 3. Dissolved-gas class at the nearest oil sample (2024-01-17, same timestamp)\n\nThe `interpret_dga` service was unavailable (3 attempts), so the IEC 60599 Rogers ratios were computed directly:\n\n| Ratio | Value | IEC code |\n|---|---|---|\n| C2H2/C2H4 | 8 / 16 700 = 0.0005 | 0 |\n| CH4/H2 | 7 300 / 2 800 = 2.61 | 2 |\n| C2H4/C2H6 | 16 700 / 5 500 = 3.04 | 2 |\n\nCode **0-2-2 → T3 thermal fault (> 700 °C)**. Every one of the 5 oil samples gives the same code (C2H4 16.5–16.7 k ppm, CH4 7.2–7.4 k ppm, H2 2.8–2.95 k ppm, C2H2 ≤ 8 ppm), and the gas levels are stable — no acetylene, so no arcing.\n\n### Bottom line for operators\n\n1. **Day-to-day oti variation over this window is load/ambient driven**, not fault driven: oti tracks total current and ambient in the same direction at every step, and the single temperature-side deviation (01-17) is a cool-down that coincides with the lowest load (ΣI 299 A) and lowest ambient (ati 77 °C) — consistent with load/ambient, not with abnormal heating.\n2. **However, the oil chemistry independently shows a severe, persistent T3 high-temperature thermal fault** in all 5 samples. That fault is not what moves oti by ±2 °C daily, but it is a serious condition in its own right (very high C2H4/CH4/H2, 2 = oil-temp alarm flag active in 4 of 5 samples). The 2024-01-17 anomaly does not \"line up\" with a thermal class any more than the other days do — the thermal gas signature is present at every timestamp.\n3. **ati at the flagged timestamp:** 77 °C (2024-01-17), vs. 78–79 °C on the other days — ambient is very high throughout (77–79 °C), leaving only ~6–8 °C of oil-over-ambient rise, which reinforces that the *measured oti level* is largely ambient-set.\n\nRecommended: treat the DGA T3 classification as an actionable finding (confirm with a lab oil sample / DGA trending and an internal hot-metal inspection, e.g. core/tank circulating-current or lead-connection overheating) and re-run the model-based anomaly screen once a longer, higher-resolution telemetry window can be exported to a file pointer.",
+  "trajectory": {
+    "turns": [
+      {
+        "index": 0,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 3628.7180419894867
+      },
+      {
+        "index": 1,
+        "text": "I'll start by checking the asset and its sensor coverage.",
+        "tool_calls": [],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 572.4747910280712
+      },
+      {
+        "index": 2,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__asset_detail",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01DQaPBU5uDabN7GHZTi3pi3",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"description\":\"Smart grid transformer\",\"assettype\":\"TRANSFORMER\",\"status\":\"OPERATING\",\"location\":null,\"installdate\":null,\"vintage\":null,\"n_installed_sensors\":30,\"message\":\"asset Transformer 1 is a TRANSFORMER with 30 installed sensors.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 608.6308750091121
+      },
+      {
+        "index": 3,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__sensor_coverage",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01GEJ6vJncVGMFvjxWK3XXt6",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"docs_scanned\":5,\"sensors\":[{\"sensor\":\"acetylene\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ati\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"co\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"co2\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"dbds\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"dielectric_rigidity\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ethane\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"ethylene\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"hydrogen\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il1\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il2\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"il3\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"interfacial_v\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"inut\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"methane\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"nitrogen\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti_a\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oti_t\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"oxygen\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"power_factor\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"rated_mva\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl1\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl12\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl2\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl23\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl3\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"vl31\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"water_content\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"},{\"sensor\":\"wti\",\"non_null_count\":5,\"first_timestamp\":\"2024-01-15T00:00:00.000000\",\"last_timestamp\":\"2024-01-19T00:00:00.000000\"}],\"message\":\"coverage for 30 sensor(s) on asset_id Transformer 1 across 5 timestamped record(s).\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 2,
+        "output_tokens": 7,
+        "duration_ms": 812.9681670106947
+      },
+      {
+        "index": 4,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 3456.6013329895213
+      },
+      {
+        "index": 5,
+        "text": "Only 5 records exist (2024-01-15 to 2024-01-19), all channels non-null. I'll pull the full history for the temperature, current, ambient, and DGA channels in one call.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1.3612089678645134
+      },
+      {
+        "index": 6,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__iot__history",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "sensors": [
+                "oti",
+                "oti_a",
+                "oti_t",
+                "il1",
+                "il2",
+                "il3",
+                "inut",
+                "ati",
+                "wti",
+                "hydrogen",
+                "methane",
+                "acetylene",
+                "ethylene",
+                "ethane"
+              ]
+            },
+            "id": "toolu_01P6BT4g7Tbh7XXMk2w5Z3m3",
+            "output": "{\"result\":{\"site_name\":\"MAIN\",\"asset_id\":\"Transformer 1\",\"observations\":[{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-15T00:00:00.000000\",\"oti\":85,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5,\"ati\":78,\"wti\":80,\"hydrogen\":2845,\"methane\":7406,\"acetylene\":7,\"ethylene\":16684,\"ethane\":5467},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-16T00:00:00.000000\",\"oti\":87,\"oti_a\":2,\"oti_t\":1,\"il1\":102,\"il2\":103,\"il3\":96,\"inut\":6,\"ati\":79,\"wti\":82,\"hydrogen\":2950,\"methane\":7200,\"acetylene\":6,\"ethylene\":16500,\"ethane\":5400},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-17T00:00:00.000000\",\"oti\":84,\"oti_a\":1,\"oti_t\":1,\"il1\":101,\"il2\":104,\"il3\":94,\"inut\":5,\"ati\":77,\"wti\":79,\"hydrogen\":2800,\"methane\":7300,\"acetylene\":8,\"ethylene\":16700,\"ethane\":5500},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-18T00:00:00.000000\",\"oti\":86,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":106,\"il3\":95,\"inut\":5,\"ati\":78,\"wti\":81,\"hydrogen\":2900,\"methane\":7350,\"acetylene\":7,\"ethylene\":16600,\"ethane\":5450},{\"asset_id\":\"Transformer 1\",\"timestamp\":\"2024-01-19T00:00:00.000000\",\"oti\":85,\"oti_a\":2,\"oti_t\":1,\"il1\":100,\"il2\":105,\"il3\":95,\"inut\":5,\"ati\":78,\"wti\":80,\"hydrogen\":2850,\"methane\":7400,\"acetylene\":7,\"ethylene\":16650,\"ethane\":5470}],\"returned\":5,\"next_cursor\":null,\"has_more\":false,\"start\":null,\"end\":null,\"message\":\"returned 5 observation(s) for asset_id Transformer 1; has_more=False.\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 3,
+        "duration_ms": 1002.16316600563
+      },
+      {
+        "index": 7,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 14706.512625038158
+      },
+      {
+        "index": 8,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 10.638042003847659
+      },
+      {
+        "index": 9,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__find_models",
+            "input": {
+              "task_id": "tsfm_anomaly_detection",
+              "top_k": 5
+            },
+            "id": "toolu_01UYSfZEjEK3KBeVMkLnZiGK",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.5645829951390624
+      },
+      {
+        "index": 10,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__recipe_template",
+            "input": {},
+            "id": "toolu_017LbcCCpmU45iJHDGEvtUbC",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 2.6646669721230865
+      },
+      {
+        "index": 11,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__materialize_iot",
+            "input": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "sensors": "[\"oti\", \"oti_a\", \"oti_t\", \"il1\", \"il2\", \"il3\", \"inut\", \"ati\"]"
+            },
+            "id": "toolu_01SQSaSvwGkkY7RUhFMDZeBE",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 13.730083010159433
+      },
+      {
+        "index": 12,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 6931.582333985716
+      },
+      {
+        "index": 13,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 3.3174999989569187
+      },
+      {
+        "index": 14,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__search_models",
+            "input": {
+              "text": "anomaly"
+            },
+            "id": "toolu_013BBAFQjuABexWHT2UUx3dj",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.320332997944206
+      },
+      {
+        "index": 15,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__list_runs",
+            "input": {
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_01HNSS4wzP5UukdQbrzpBv9Z",
+            "output": null,
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1.994833000935614
+      },
+      {
+        "index": 16,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__list_results",
+            "input": {
+              "task_type": "tsfm_anomaly_detection"
+            },
+            "id": "toolu_011VxKadd96WoXzURNLRJPMJ",
+            "output": "{\"results\":[{\"_id\":\"ar:0fe46189a1e7\",\"result_id\":\"ar:0fe46189a1e7\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_f204f028.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:59:32+00:00\"},{\"_id\":\"ar:14ea066d1f4d\",\"result_id\":\"ar:14ea066d1f4d\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_4fc86785.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T20:46:56+00:00\"},{\"_id\":\"ar:26ff00088080\",\"result_id\":\"ar:26ff00088080\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_1d4d5fc9.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:18+00:00\"},{\"_id\":\"ar:612c40a50e3c\",\"result_id\":\"ar:612c40a50e3c\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_35823ba7.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:31+00:00\"},{\"_id\":\"ar:6f0600fca0b3\",\"result_id\":\"ar:6f0600fca0b3\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_437e384f.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:36+00:00\"},{\"_id\":\"ar:7717a19bd8a7\",\"result_id\":\"ar:7717a19bd8a7\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_5c54c5e0.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T20:46:58+00:00\"},{\"_id\":\"ar:7dcb4d13ce9f\",\"result_id\":\"ar:7dcb4d13ce9f\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_cf8e6f5f.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:52:48+00:00\"},{\"_id\":\"ar:94ea5460a30f\",\"result_id\":\"ar:94ea5460a30f\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_f85d3cb2.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T20:47:00+00:00\"},{\"_id\":\"ar:95f9b7273be9\",\"result_id\":\"ar:95f9b7273be9\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_aabf8c04.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:20+00:00\"},{\"_id\":\"ar:b63bb6c92221\",\"result_id\":\"ar:b63bb6c92221\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_72042682.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":1},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:56:07+00:00\"},{\"_id\":\"ar:c38e292ad500\",\"result_id\":\"ar:c38e292ad500\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_d2403364.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T19:03:19+00:00\"},{\"_id\":\"ar:ce39184b1959\",\"result_id\":\"ar:ce39184b1959\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_b04f9499.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:37+00:00\"},{\"_id\":\"ar:d28b03a8c232\",\"result_id\":\"ar:d28b03a8c232\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_4afc3097.json\",\"summary\":{\"total_records\":4,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:43:39+00:00\"},{\"_id\":\"ar:f44d0b39104e\",\"result_id\":\"ar:f44d0b39104e\",\"task_type\":\"tsfm_anomaly_detection\",\"asset_id\":\"Transformer 1\",\"model_id\":null,\"feature_ids\":[],\"dataset\":null,\"scenario_id\":null,\"results_file\":\"file:///tmp/tsfm_work/anomaly_e9c96350.json\",\"summary\":{\"total_records\":5,\"anomaly_count\":0},\"metrics\":[],\"status\":\"produced\",\"created_by\":\"agent.tsfm\",\"produced_at\":\"2026-09-30T18:44:48+00:00\"}]}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.6666670087724924
+      },
+      {
+        "index": 17,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 10,
+        "duration_ms": 3721.1977079859935
+      },
+      {
+        "index": 18,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__get_run",
+            "input": {
+              "run_id": "run:2522577cac"
+            },
+            "id": "toolu_01DXi6J1yCH9X36eeqYf5bt4",
+            "output": "{\"result\":{\"run_id\":\"run:2522577cac\",\"_id\":\"run:2522577cac\",\"parent_run_id\":null,\"asset_id\":\"Transformer 1\",\"scenario_id\":null,\"task\":\"tsfm_anomaly_detection\",\"recipe\":{\"task\":\"tsfm_anomaly_detection\",\"estimator\":{\"sktime_class\":\"sktime.detection.lof.SubLOF\",\"params\":{\"window_size\":5,\"n_neighbors\":2,\"novelty\":true}}},\"training_regime\":\"fit_on_series\",\"trained\":true,\"block_audit\":{},\"n_anomalies\":0,\"n_observations\":5,\"anomaly_indices\":[],\"created_at\":\"2026-09-30T18:44:48+00:00\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 10,
+        "duration_ms": 378.1759170233272
+      },
+      {
+        "index": 19,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__utilities__json_reader",
+            "input": {
+              "file_name": "/tmp/tsfm_work/anomaly_e9c96350.json"
+            },
+            "id": "toolu_01SnpvopBh8TkGcQ51fVCRQ2",
+            "output": "{\"result\":\"{\\\"anomaly_label\\\": [0, 0, 0, 0, 0], \\\"n_anomalies\\\": 0, \\\"anomaly_indices\\\": []}\"}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 10,
+        "duration_ms": 398.15349999116734
+      },
+      {
+        "index": 20,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 22891.798083030153
+      },
+      {
+        "index": 21,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 3.2519999658688903
+      },
+      {
+        "index": 22,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__tsfm__run_recipe",
+            "input": {
+              "dataset_path": "iot://MAIN/Transformer 1",
+              "timestamp_column": "timestamp",
+              "target_columns": [
+                "oti",
+                "oti_a",
+                "oti_t",
+                "il1",
+                "il2",
+                "il3",
+                "inut"
+              ],
+              "recipe": {
+                "task": "tsfm_anomaly_detection",
+                "estimator": {
+                  "sktime_class": "sktime.detection.lof.SubLOF",
+                  "params": {
+                    "window_size": 5,
+                    "n_neighbors": 2,
+                    "novelty": true
+                  }
+                }
+              },
+              "asset_id": "Transformer 1"
+            },
+            "id": "toolu_014zAju1Mx888f1F3SRqpotF",
+            "output": "{\"result\":{\"error\":\"Protocol not known: iot\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 811.6977090248838
+      },
+      {
+        "index": 23,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2800,
+              "methane": 7300,
+              "acetylene": 8,
+              "ethylene": 16700,
+              "ethane": 5500
+            },
+            "id": "toolu_01SqmowncdYN9BwNWyc5q6Uj",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1443.3319579693489
+      },
+      {
+        "index": 24,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2950,
+              "methane": 7200,
+              "acetylene": 6,
+              "ethylene": 16500,
+              "ethane": 5400
+            },
+            "id": "toolu_01463nUZZm3jfW7G39kCCuig",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 1302.6365000405349
+      },
+      {
+        "index": 25,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 10576.208749960642
+      },
+      {
+        "index": 26,
+        "text": "",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 3.6106249899603426
+      },
+      {
+        "index": 27,
+        "text": "",
+        "tool_calls": [
+          {
+            "name": "mcp__fmsr__interpret_dga",
+            "input": {
+              "asset_name": "Transformer 1",
+              "hydrogen": 2800,
+              "methane": 7300,
+              "acetylene": 8,
+              "ethylene": 16700,
+              "ethane": 5500
+            },
+            "id": "toolu_01SR4yBycp6YFjtW7UinKo4Q",
+            "output": "{\"result\":{\"error\":\"LLM unavailable\"}}",
+            "duration_ms": null
+          }
+        ],
+        "input_tokens": 32,
+        "output_tokens": 2,
+        "duration_ms": 0.3096250002272427
+      },
+      {
+        "index": 28,
+        "text": "The DGA classifier service is down (two \"LLM unavailable\" responses), and there is no way to hand the telemetry to the TSFM detector (no materialize tool, no file pointer exposed by prior runs, `iot://` rejected). Everything else I need is already in hand — the 5-sample history, ati at every timestamp, and the raw gas values — so no further tool calls are required. I'm computing the Rogers ratios manually and finalizing the report.\n\n## Transformer 1 (MAIN) — Temperature vs. Load characterization\n\n**Data window:** 2024-01-15 → 2024-01-19, 5 daily samples, all four currents (il1, il2, il3, inut) non-null in every sample → 5 complete samples (≥ 4, so the anomaly step was attempted).\n\n### 1. How the groups move together\n\n| Date | oti | oti_a | oti_t | il1 | il2 | il3 | inut | ΣI (il1+il2+il3) | ati |\n|---|---|---|---|---|---|---|---|---|---|\n| 01-15 | 85 | 2 | 1 | 100 | 105 | 95 | 5 | 300 | 78 |\n| 01-16 | 87 ↑ | 2 | 1 | 102 ↑ | 103 ↓ | 96 ↑ | 6 ↑ | 301 ↑ | 79 ↑ |\n| 01-17 | 84 ↓ | 1 ↓ | 1 | 101 ↓ | 104 ↑ | 94 ↓ | 5 ↓ | 299 ↓ | 77 ↓ |\n| 01-18 | 86 ↑ | 2 ↑ | 1 | 100 ↓ | 106 ↑ | 95 ↑ | 5 | 301 ↑ | 78 ↑ |\n| 01-19 | 85 ↓ | 2 | 1 | 100 | 105 ↓ | 95 | 5 | 300 ↓ | 78 |\n\n- **Yes — the temperature group and the current group rise and fall in the same samples.** In all 4 step-to-step transitions, oti moves in the same direction as total load current (ΣI): +2/+1, −3/−2, +2/+2, −1/−1. oti_a follows oti (drops to 1 only on the coolest day, 01-17). oti_t is constant (1) and carries no information.\n- Individual phases are not perfectly in step (il2 moves opposite to il1/il3 on 01-16 and 01-18 — mild phase redistribution), but the aggregate load tracks oti sample-for-sample.\n- **ati moves identically** (+1, −2, +1, 0) — ambient co-varies with both oti and load, so load and ambient are confounded over this window.\n- Limits: 5 daily points, total oti range only 3 °C, load range only 2 A (~0.7 %). Co-movement is consistent but the sample is too small to separate load from ambient statistically.\n\n### 2. Anomaly check\n\n- **TSFM model: could not be run.** The detector requires a dataset file pointer; no `materialize_iot`/export tool is available in this session, prior runs don't expose their dataset path, and an `iot://` URI is rejected (\"Protocol not known\"). *(Prior stored runs of SubLOF on this asset's 5-sample series returned 0 anomalies, for reference.)*\n- **Manual within-series deviation screen (population z-score, |z| ≥ 2 flagged):**\n  - Temperature group: oti max |z| = 1.6 (01-16) — not flagged; **oti_a = 1 on 2024-01-17, z = −2.0 → flagged**; oti_t constant.\n  - Current group: **inut = 6 on 2024-01-16, z = +2.0 → flagged**; il1/il2/il3/ΣI max |z| = 1.6 — not flagged.\n- **Timestamps where temperature is anomalous but current is not: `2024-01-17T00:00:00`** (oti_a dip; ΣI z = −1.6, il3 z = −1.4, inut z = −0.5). Note this is a *cooling*-direction deviation (oti at its minimum, 84 °C), not a heating spike.\n\n### 3. Dissolved-gas class at the nearest oil sample (2024-01-17, same timestamp)\n\nThe `interpret_dga` service was unavailable (3 attempts), so the IEC 60599 Rogers ratios were computed directly:\n\n| Ratio | Value | IEC code |\n|---|---|---|\n| C2H2/C2H4 | 8 / 16 700 = 0.0005 | 0 |\n| CH4/H2 | 7 300 / 2 800 = 2.61 | 2 |\n| C2H4/C2H6 | 16 700 / 5 500 = 3.04 | 2 |\n\nCode **0-2-2 → T3 thermal fault (> 700 °C)**. Every one of the 5 oil samples gives the same code (C2H4 16.5–16.7 k ppm, CH4 7.2–7.4 k ppm, H2 2.8–2.95 k ppm, C2H2 ≤ 8 ppm), and the gas levels are stable — no acetylene, so no arcing.\n\n### Bottom line for operators\n\n1. **Day-to-day oti variation over this window is load/ambient driven**, not fault driven: oti tracks total current and ambient in the same direction at every step, and the single temperature-side deviation (01-17) is a cool-down that coincides with the lowest load (ΣI 299 A) and lowest ambient (ati 77 °C) — consistent with load/ambient, not with abnormal heating.\n2. **However, the oil chemistry independently shows a severe, persistent T3 high-temperature thermal fault** in all 5 samples. That fault is not what moves oti by ±2 °C daily, but it is a serious condition in its own right (very high C2H4/CH4/H2, 2 = oil-temp alarm flag active in 4 of 5 samples). The 2024-01-17 anomaly does not \"line up\" with a thermal class any more than the other days do — the thermal gas signature is present at every timestamp.\n3. **ati at the flagged timestamp:** 77 °C (2024-01-17), vs. 78–79 °C on the other days — ambient is very high throughout (77–79 °C), leaving only ~6–8 °C of oil-over-ambient rise, which reinforces that the *measured oti level* is largely ambient-set.\n\nRecommended: treat the DGA T3 classification as an actionable finding (confirm with a lab oil sample / DGA trending and an internal hot-metal inspection, e.g. core/tank circulating-current or lead-connection overheating) and re-run the model-based anomaly screen once a longer, higher-resolution telemetry window can be exported to a file pointer.",
+        "tool_calls": [],
+        "input_tokens": 32,
+        "output_tokens": 961,
+        "duration_ms": 29698.53958301246
+      }
+    ],
+    "started_at": "2026-09-30T20:47:46.585584+00:00"
+  }
+}

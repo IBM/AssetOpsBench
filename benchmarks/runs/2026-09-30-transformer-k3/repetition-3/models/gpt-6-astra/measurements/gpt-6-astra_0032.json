@@ -1,0 +1,489 @@
+{
+  "schema_version": 1,
+  "run_id": "gpt-6-astra_0032",
+  "scenario_id": "transformer_scenario_32",
+  "attempt": 1,
+  "settings": {
+    "generation_run": "../suite",
+    "agent": "codex",
+    "model": "gpt-6-astra",
+    "sdk_version": null,
+    "cli_version": "codex-cli 0.159.0",
+    "suite_sha256": "aeba796f98ad8c1f75d9aaf0dab5acc599fed1fc592fdc81cf2d3064dc2390d4",
+    "repetition_index": 3,
+    "provider": "openai",
+    "harness": "agent.codex_agent.cli",
+    "reasoning_effort": null,
+    "token_limit": null,
+    "temperature": null,
+    "timeout_seconds": 900,
+    "retry_policy": null,
+    "max_turns": null,
+    "invocation_retry_policy": {
+      "max_attempts": 3,
+      "scope": "whole scenario invocation"
+    },
+    "concurrency_level": 5,
+    "execution_order": "suite order, serial within target",
+    "judge_model": "claude-code/claude-fable-5-1",
+    "allow_same_model_judge": true,
+    "grading_settings": {
+      "temperature": null,
+      "requested_temperature": 0,
+      "trajectory_character_limit": 8000
+    },
+    "rubric_sha256": "43088a0fff281b3ddb2bca0b4f1c5abb31e02ce90ac4d4d2645b6df72d345bdc",
+    "database_policy": {
+      "snapshot_sha256": "b6b1c09cada7b204dcda76e110a1fe2f11478abc911493500d2c757a6905a58a",
+      "namespace": "eval_gpt_6_astra_1790809360_",
+      "snapshot_captured_at": "1790805918",
+      "namespace_created_at": "1790809360",
+      "reset_policy": "same initial snapshot per model; persisted within model in suite order",
+      "database_count": 12,
+      "document_count": 14416
+    },
+    "token_semantics": "input includes reported cache tokens; output follows provider totals; raw usage and cache/reasoning subdivisions retained separately"
+  },
+  "execution_index": 32,
+  "trace_file": "models/gpt-6-astra/events/gpt-6-astra_0032.jsonl.gz",
+  "grading": {
+    "runtime_versions": {
+      "sdk_version": "0.1.56",
+      "cli_version": "2.1.286 (Claude Code)"
+    },
+    "model": "claude-code/claude-fable-5-1",
+    "separate_session": true,
+    "same_model_allowed": true,
+    "start": "2026-09-30T23:24:27.474411+00:00",
+    "end": "2026-09-30T23:24:46.078479+00:00",
+    "duration_ms": 18603.33516600076,
+    "status": "completed",
+    "result": {
+      "scenario_id": "transformer_scenario_32",
+      "scenario_type": "wo",
+      "run_id": "gpt-6-astra_0032",
+      "runner": "codex-agent",
+      "model": "gpt-6-astra",
+      "question": "Several work orders on Transformer 1 at site MAIN are sitting in pending approval, and I want them cleared out properly rather than rubber-stamped. Pull every pending-approval work order on Transformer 1 and give me each one's number, description, priority, reported date and any failure code. Then check the latest oil sample and run a dissolved gas fault classification on it. Use the five fault gases (hydrogen, methane, ethane, ethylene and acetylene), and use co to check whether the paper is involved.\n\nSort each pending work order into one of three outcomes:\n- Approve it if its description matches the fault the gases currently indicate, or if it is a routine oil sampling job.\n- Cancel it if another open or pending work order on Transformer 1 already covers the same job. Keep the older one, cancel the newer one, and put the older work order's number in the cancellation reason.\n- Otherwise, leave it pending and tell me in one sentence why.\n\nFor any work order you approve that deals with arcing, discharge or tap changer work, raise its priority to 1 if the latest acetylene is above 1 ppm. Don't change the priority of anything else. Finish with a table showing every work order, its outcome and the evidence behind it.\n\nIf the latest sample is missing any of the five fault gases, so the classification can't be made reliably, don't approve anything other than routine oil sampling jobs, and don't cancel anything except exact duplicates. Say which gas was missing. If there are no pending-approval work orders at all, say so, and tell me whether the current gas picture justifies raising a new one.",
+      "answer": "Found **one** pending-approval work order on Transformer 1 at MAIN; no duplicate open/pending jobs were found.\n\n**Latest sample: January 19, 2024** \u2014 hydrogen 2,850; methane 7,400; ethane 5,470; ethylene 16,650; acetylene 7; CO 32 ppm. All five fault gases are present, but this historical sample cannot establish today's condition.\n\nThe DGA service returned \u201cLLM unavailable.\u201d Manual IEC ratio assessment indicates **T2 thermal fault (300\u2013700\u00b0C)**: CH\u2084/H\u2082 = 2.60, C\u2082H\u2082/C\u2082H\u2084 = 0.00042, C\u2082H\u2084/C\u2082H\u2086 = 3.04. CO at 32 ppm does not suggest significant paper involvement, though it cannot exclude it. The gases do not establish the OLTC as the fault location.\n\n| Work order | Description | Priority | Reported date (UTC) | Failure code | Outcome | Evidence |\n|---|---|---|---|---|---|---|\n| 1000051 | Transformer 1 - 2-day outage and inspection including OLTC; Condition 4 DGA | 1, unchanged | 2026-09-30 19:04:55 | None | **Approved (APPR)** | Inspection scope matches the thermal-fault evidence; no duplicate exists. OLTC work meets your acetylene >1 ppm priority rule, but priority was already 1. Historical outage dates require revalidation before execution. |",
+      "score": {
+        "scorer": "llm_judge",
+        "passed": true,
+        "score": 1.0,
+        "rationale": "The visible trace is truncated after the latest_reading call, so the fmsr.interpret_dga call (reported as 'LLM unavailable'), the OPEN-status duplicate check, and the wo.approve_workorder call for WO 1000051 could not be directly confirmed; the agent should make these tool invocations and their results explicit in the response. Listing without a status filter did return every WO on the asset (only one, WAPPR), which effectively covers both the pending-approval query and the open-duplicate check.",
+        "details": {
+          "task_completion": true,
+          "data_retrieval_accuracy": true,
+          "generalized_result_verification": true,
+          "agent_sequence_correct": true,
+          "clarity_and_justification": true,
+          "hallucinations": false,
+          "suggestions": "The visible trace is truncated after the latest_reading call, so the fmsr.interpret_dga call (reported as 'LLM unavailable'), the OPEN-status duplicate check, and the wo.approve_workorder call for WO 1000051 could not be directly confirmed; the agent should make these tool invocations and their results explicit in the response. Listing without a status filter did return every WO on the asset (only one, WAPPR), which effectively covers both the pending-approval query and the open-duplicate check. The manual IEC 60599 ratio classification (CH4/H2=2.60, C2H2/C2H4\u22480, C2H4/C2H6=3.04 -> T2) is correct as a fallback, CO=32 ppm correctly interpreted as no clear paper involvement, and the acetylene>1 ppm priority rule was correctly applied (priority already 1, no change). The final table includes number, description, priority, reported date, failure code, outcome and evidence as requested."
+        }
+      },
+      "ops": {
+        "turn_count": 5,
+        "tool_call_count": 4,
+        "unique_tools": [
+          "mcp__fmsr__interpret_dga",
+          "mcp__iot__latest_reading",
+          "mcp__wo__approve_workorder",
+          "mcp__wo__list_workorders"
+        ],
+        "tokens_in": 130236,
+        "tokens_out": 670,
+        "duration_ms": null,
+        "est_cost_usd": null
+      }
+    },
+    "error": null,
+    "attempts": [
+      {
+        "start": "2026-09-30T23:24:27.475265+00:00",
+        "status": "completed",
+        "end": "2026-09-30T23:24:46.077419+00:00",
+        "duration_ms": 18602.167708042543,
+        "trace_file": "models/gpt-6-astra/events/gpt-6-astra_0032.judge-1.jsonl.gz"
+      }
+    ],
+    "retry_policy": {
+      "max_attempts": 3,
+      "scope": "judge backend/parse failures"
+    },
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 6282,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 1269,
+      "output_tokens_details": {
+        "thinking_tokens": 856
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 6282,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "not_available",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 1269,
+          "cache_read_input_tokens": 0,
+          "cache_creation_input_tokens": 6282,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 6282
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "provider_reported_cost_usd": 0.18911,
+    "actual_api_cost_usd": null,
+    "estimated_cost_usd": 0.18911,
+    "trace_file": "models/gpt-6-astra/events/gpt-6-astra_0032.judge-1.jsonl.gz"
+  },
+  "metrics": {
+    "input_tokens": 130236,
+    "uncached_input_tokens": 29244,
+    "output_tokens": 670,
+    "reasoning_tokens": null,
+    "cache_read_tokens": 100992,
+    "cache_write_tokens": null,
+    "model_requests": null,
+    "tool_call_count": 4,
+    "unique_tools": [
+      "approve_workorder",
+      "interpret_dga",
+      "latest_reading",
+      "list_workorders"
+    ],
+    "calls_by_tool": {
+      "list_workorders": 1,
+      "latest_reading": 1,
+      "interpret_dga": 1,
+      "approve_workorder": 1
+    },
+    "calls_by_server": {
+      "wo": 2,
+      "iot": 1,
+      "fmsr": 1
+    },
+    "tool_calls": [
+      {
+        "timestamp": "2026-09-30T23:23:59.385445+00:00",
+        "kind": "tool_end",
+        "id": "item_3",
+        "name": "list_workorders",
+        "server": "wo",
+        "arguments": {
+          "site_id": "MAIN",
+          "asset_num": "Transformer 1",
+          "page_size": 0
+        },
+        "output": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"site_id\": \"MAIN\",\n  \"status\": null,\n  \"labor_code\": null,\n  \"total\": 1,\n  \"work_orders\": [\n    {\n      \"wonum\": \"1000051\",\n      \"description\": \"Transformer 1 - 2-day outage and inspection including OLTC; Condition 4 DGA\",\n      \"description_longdescription\": \"Existing OLTC inspection scope retained: suspected contact wear/coking; prior note: DGA T2 thermal, C2H2 7 ppm; no tap-changer FCC code and no technician with prior work on unit. Expanded scope per user rule: plan a two-day transformer outage and inspection, including OLTC. Notify the manufacturer. Latest available oil sample 2024-01-19: H2 2850 + CH4 7400 + C2H6 5470 + C2H4 16650 + C2H2 7 + CO 32 = TDCG 32409 ppm, Condition 4 (>4630); no carried-forward gases. MAIN schedule checked 2024-01-20 through 2024-02-09: zero scheduled work orders. Proposed outage 2024-01-20 through 2024-01-21 inclusive, earliest tied minimum, zero competing scheduled WOs. Replaces prior single target 2024-01-19 with two-day outage window. Dates are historical, anchored to sample per request; require operational revalidation before execution. Scheduling fields cannot be set with available tools; proposed dates recorded here only. Monthly DGA next due 2024-02-18.\",\n      \"siteid\": \"MAIN\",\n      \"orgid\": null,\n      \"assetnum\": \"Transformer 1\",\n      \"location\": null,\n      \"status\": \"WAPPR\",\n      \"status_date\": null,\n      \"worktype\": \"PdM\",\n      \"wopriority\": 1,\n      \"reportdate\": \"2026-09-30T19:04:55+00:00\",\n      \"reportedby\": null,\n      \"failurecode\": null,\n      \"parent\": null,\n      \"taskid\": null,\n      \"lead\": null,\n      \"jpnum\": null,\n      \"schedstart\": null,\n      \"schedfinish\": null,\n      \"targstartdate\": null,\n      \"targcompdate\": null,\n      \"actstart\": null,\n      \"actfinish\": null,\n      \"estlabhrs\": null,\n      \"actlabhrs\": null,\n      \"estlabcost\": null,\n      \"actlabcost\": null,\n      \"estmatcost\": null,\n      \"actmatcost\": null,\n      \"estservcost\": null,\n      \"actservcost\": null,\n      \"esttoolcost\": null,\n      \"acttoolcost\": null,\n      \"estatapprtotalcost\": null,\n      \"esttotalcost\": null,\n      \"acttotalcost\": null,\n      \"wplabor\": null,\n      \"aob_source\": null,\n      \"aob_asset_class\": null,\n      \"_id\": \"wo:MAIN:1000051\",\n      \"type\": \"workorder\",\n      \"schema_version\": \"1.0.0\"\n    }\n  ],\n  \"message\": \"Found 1 work order(s).\"\n}"
+            }
+          ],
+          "structured_content": {
+            "result": {
+              "site_id": "MAIN",
+              "status": null,
+              "labor_code": null,
+              "total": 1,
+              "work_orders": [
+                {
+                  "wonum": "1000051",
+                  "description": "Transformer 1 - 2-day outage and inspection including OLTC; Condition 4 DGA",
+                  "description_longdescription": "Existing OLTC inspection scope retained: suspected contact wear/coking; prior note: DGA T2 thermal, C2H2 7 ppm; no tap-changer FCC code and no technician with prior work on unit. Expanded scope per user rule: plan a two-day transformer outage and inspection, including OLTC. Notify the manufacturer. Latest available oil sample 2024-01-19: H2 2850 + CH4 7400 + C2H6 5470 + C2H4 16650 + C2H2 7 + CO 32 = TDCG 32409 ppm, Condition 4 (>4630); no carried-forward gases. MAIN schedule checked 2024-01-20 through 2024-02-09: zero scheduled work orders. Proposed outage 2024-01-20 through 2024-01-21 inclusive, earliest tied minimum, zero competing scheduled WOs. Replaces prior single target 2024-01-19 with two-day outage window. Dates are historical, anchored to sample per request; require operational revalidation before execution. Scheduling fields cannot be set with available tools; proposed dates recorded here only. Monthly DGA next due 2024-02-18.",
+                  "siteid": "MAIN",
+                  "orgid": null,
+                  "assetnum": "Transformer 1",
+                  "location": null,
+                  "status": "WAPPR",
+                  "status_date": null,
+                  "worktype": "PdM",
+                  "wopriority": 1,
+                  "reportdate": "2026-09-30T19:04:55+00:00",
+                  "reportedby": null,
+                  "failurecode": null,
+                  "parent": null,
+                  "taskid": null,
+                  "lead": null,
+                  "jpnum": null,
+                  "schedstart": null,
+                  "schedfinish": null,
+                  "targstartdate": null,
+                  "targcompdate": null,
+                  "actstart": null,
+                  "actfinish": null,
+                  "estlabhrs": null,
+                  "actlabhrs": null,
+                  "estlabcost": null,
+                  "actlabcost": null,
+                  "estmatcost": null,
+                  "actmatcost": null,
+                  "estservcost": null,
+                  "actservcost": null,
+                  "esttoolcost": null,
+                  "acttoolcost": null,
+                  "estatapprtotalcost": null,
+                  "esttotalcost": null,
+                  "acttotalcost": null,
+                  "wplabor": null,
+                  "aob_source": null,
+                  "aob_asset_class": null,
+                  "_id": "wo:MAIN:1000051",
+                  "type": "workorder",
+                  "schema_version": "1.0.0"
+                }
+              ],
+              "message": "Found 1 work order(s)."
+            }
+          }
+        },
+        "error": null,
+        "duration_ms": 42.54345904337242
+      },
+      {
+        "timestamp": "2026-09-30T23:23:59.426561+00:00",
+        "kind": "tool_end",
+        "id": "item_4",
+        "name": "latest_reading",
+        "server": "iot",
+        "arguments": {
+          "site_name": "MAIN",
+          "asset_id": "Transformer 1"
+        },
+        "output": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"site_name\": \"MAIN\",\n  \"asset_id\": \"Transformer 1\",\n  \"timestamp\": \"2024-01-19T00:00:00.000000\",\n  \"values\": {\n    \"hydrogen\": 2850,\n    \"oxygen\": 5850,\n    \"nitrogen\": 27850,\n    \"methane\": 7400,\n    \"co\": 32,\n    \"co2\": 1340,\n    \"ethylene\": 16650,\n    \"ethane\": 5470,\n    \"acetylene\": 7,\n    \"dbds\": 19,\n    \"power_factor\": 1,\n    \"interfacial_v\": 45,\n    \"dielectric_rigidity\": 55,\n    \"water_content\": 0,\n    \"vl1\": 110,\n    \"vl2\": 115,\n    \"vl3\": 108,\n    \"il1\": 100,\n    \"il2\": 105,\n    \"il3\": 95,\n    \"vl12\": 225,\n    \"vl23\": 220,\n    \"vl31\": 218,\n    \"inut\": 5,\n    \"rated_mva\": 100,\n    \"wti\": 80,\n    \"oti\": 85,\n    \"ati\": 78,\n    \"oti_a\": 2,\n    \"oti_t\": 1\n  },\n  \"age_seconds\": 85188239.423384,\n  \"message\": \"latest reading for asset_id Transformer 1 at 2024-01-19T00:00:00.000000.\"\n}"
+            }
+          ],
+          "structured_content": {
+            "result": {
+              "site_name": "MAIN",
+              "asset_id": "Transformer 1",
+              "timestamp": "2024-01-19T00:00:00.000000",
+              "values": {
+                "hydrogen": 2850,
+                "oxygen": 5850,
+                "nitrogen": 27850,
+                "methane": 7400,
+                "co": 32,
+                "co2": 1340,
+                "ethylene": 16650,
+                "ethane": 5470,
+                "acetylene": 7,
+                "dbds": 19,
+                "power_factor": 1,
+                "interfacial_v": 45,
+                "dielectric_rigidity": 55,
+                "water_content": 0,
+                "vl1": 110,
+                "vl2": 115,
+                "vl3": 108,
+                "il1": 100,
+                "il2": 105,
+                "il3": 95,
+                "vl12": 225,
+                "vl23": 220,
+                "vl31": 218,
+                "inut": 5,
+                "rated_mva": 100,
+                "wti": 80,
+                "oti": 85,
+                "ati": 78,
+                "oti_a": 2,
+                "oti_t": 1
+              },
+              "age_seconds": 85188239.423384,
+              "message": "latest reading for asset_id Transformer 1 at 2024-01-19T00:00:00.000000."
+            }
+          }
+        },
+        "error": null,
+        "duration_ms": 40.9340420155786
+      },
+      {
+        "timestamp": "2026-09-30T23:24:03.968508+00:00",
+        "kind": "tool_end",
+        "id": "item_5",
+        "name": "interpret_dga",
+        "server": "fmsr",
+        "arguments": {
+          "asset_name": "Transformer 1",
+          "hydrogen": 2850,
+          "methane": 7400,
+          "ethane": 5470,
+          "ethylene": 16650,
+          "acetylene": 7
+        },
+        "output": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"error\": \"LLM unavailable\"\n}"
+            }
+          ],
+          "structured_content": {
+            "result": {
+              "error": "LLM unavailable"
+            }
+          }
+        },
+        "error": {
+          "type": "ToolResultError",
+          "message": "LLM unavailable"
+        },
+        "duration_ms": 12.505541031714529
+      },
+      {
+        "timestamp": "2026-09-30T23:24:08.902471+00:00",
+        "kind": "tool_end",
+        "id": "item_6",
+        "name": "approve_workorder",
+        "server": "wo",
+        "arguments": {
+          "site_id": "MAIN",
+          "wonum": "1000051"
+        },
+        "output": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"wonum\": \"1000051\",\n  \"siteid\": \"MAIN\",\n  \"status\": \"APPR\",\n  \"work_order\": {\n    \"wonum\": \"1000051\",\n    \"description\": \"Transformer 1 - 2-day outage and inspection including OLTC; Condition 4 DGA\",\n    \"description_longdescription\": \"Existing OLTC inspection scope retained: suspected contact wear/coking; prior note: DGA T2 thermal, C2H2 7 ppm; no tap-changer FCC code and no technician with prior work on unit. Expanded scope per user rule: plan a two-day transformer outage and inspection, including OLTC. Notify the manufacturer. Latest available oil sample 2024-01-19: H2 2850 + CH4 7400 + C2H6 5470 + C2H4 16650 + C2H2 7 + CO 32 = TDCG 32409 ppm, Condition 4 (>4630); no carried-forward gases. MAIN schedule checked 2024-01-20 through 2024-02-09: zero scheduled work orders. Proposed outage 2024-01-20 through 2024-01-21 inclusive, earliest tied minimum, zero competing scheduled WOs. Replaces prior single target 2024-01-19 with two-day outage window. Dates are historical, anchored to sample per request; require operational revalidation before execution. Scheduling fields cannot be set with available tools; proposed dates recorded here only. Monthly DGA next due 2024-02-18.\",\n    \"siteid\": \"MAIN\",\n    \"orgid\": null,\n    \"assetnum\": \"Transformer 1\",\n    \"location\": null,\n    \"status\": \"APPR\",\n    \"status_date\": \"2026-09-30T23:24:08+00:00\",\n    \"worktype\": \"PdM\",\n    \"wopriority\": 1,\n    \"reportdate\": \"2026-09-30T19:04:55+00:00\",\n    \"reportedby\": null,\n    \"failurecode\": null,\n    \"parent\": null,\n    \"taskid\": null,\n    \"lead\": null,\n    \"jpnum\": null,\n    \"schedstart\": null,\n    \"schedfinish\": null,\n    \"targstartdate\": null,\n    \"targcompdate\": null,\n    \"actstart\": null,\n    \"actfinish\": null,\n    \"estlabhrs\": null,\n    \"actlabhrs\": null,\n    \"estlabcost\": null,\n    \"actlabcost\": null,\n    \"estmatcost\": null,\n    \"actmatcost\": null,\n    \"estservcost\": null,\n    \"actservcost\": null,\n    \"esttoolcost\": null,\n    \"acttoolcost\": null,\n    \"estatapprtotalcost\": null,\n    \"esttotalcost\": null,\n    \"acttotalcost\": null,\n    \"wplabor\": null,\n    \"aob_source\": null,\n    \"aob_asset_class\": null,\n    \"_id\": \"wo:MAIN:1000051\",\n    \"type\": \"workorder\",\n    \"schema_version\": \"1.0.0\"\n  },\n  \"message\": \"Work order 1000051 approved (APPR).\"\n}"
+            }
+          ],
+          "structured_content": {
+            "result": {
+              "wonum": "1000051",
+              "siteid": "MAIN",
+              "status": "APPR",
+              "work_order": {
+                "wonum": "1000051",
+                "description": "Transformer 1 - 2-day outage and inspection including OLTC; Condition 4 DGA",
+                "description_longdescription": "Existing OLTC inspection scope retained: suspected contact wear/coking; prior note: DGA T2 thermal, C2H2 7 ppm; no tap-changer FCC code and no technician with prior work on unit. Expanded scope per user rule: plan a two-day transformer outage and inspection, including OLTC. Notify the manufacturer. Latest available oil sample 2024-01-19: H2 2850 + CH4 7400 + C2H6 5470 + C2H4 16650 + C2H2 7 + CO 32 = TDCG 32409 ppm, Condition 4 (>4630); no carried-forward gases. MAIN schedule checked 2024-01-20 through 2024-02-09: zero scheduled work orders. Proposed outage 2024-01-20 through 2024-01-21 inclusive, earliest tied minimum, zero competing scheduled WOs. Replaces prior single target 2024-01-19 with two-day outage window. Dates are historical, anchored to sample per request; require operational revalidation before execution. Scheduling fields cannot be set with available tools; proposed dates recorded here only. Monthly DGA next due 2024-02-18.",
+                "siteid": "MAIN",
+                "orgid": null,
+                "assetnum": "Transformer 1",
+                "location": null,
+                "status": "APPR",
+                "status_date": "2026-09-30T23:24:08+00:00",
+                "worktype": "PdM",
+                "wopriority": 1,
+                "reportdate": "2026-09-30T19:04:55+00:00",
+                "reportedby": null,
+                "failurecode": null,
+                "parent": null,
+                "taskid": null,
+                "lead": null,
+                "jpnum": null,
+                "schedstart": null,
+                "schedfinish": null,
+                "targstartdate": null,
+                "targcompdate": null,
+                "actstart": null,
+                "actfinish": null,
+                "estlabhrs": null,
+                "actlabhrs": null,
+                "estlabcost": null,
+                "actlabcost": null,
+                "estmatcost": null,
+                "actmatcost": null,
+                "estservcost": null,
+                "actservcost": null,
+                "esttoolcost": null,
+                "acttoolcost": null,
+                "estatapprtotalcost": null,
+                "esttotalcost": null,
+                "acttotalcost": null,
+                "wplabor": null,
+                "aob_source": null,
+                "aob_asset_class": null,
+                "_id": "wo:MAIN:1000051",
+                "type": "workorder",
+                "schema_version": "1.0.0"
+              },
+              "message": "Work order 1000051 approved (APPR)."
+            }
+          }
+        },
+        "error": null,
+        "duration_ms": 50.30133295804262
+      }
+    ],
+    "tool_incomplete": 0,
+    "tool_errors": 1,
+    "tool_timeouts": null,
+    "repeated_identical_calls": 0,
+    "retries": null,
+    "context_compactions": null,
+    "termination_reason": null,
+    "turn_limit_hit": null,
+    "database_writes_attempted": 1,
+    "database_writes_succeeded": 1,
+    "database_records_created": 0,
+    "database_records_changed": 1,
+    "actual_api_cost_usd": null,
+    "estimated_cost_usd": null,
+    "provider_reported_cost_usd": null,
+    "model_turns": null,
+    "time_to_first_response_ms": 14121.085000000001,
+    "time_to_final_answer_ms": 37115.449
+  },
+  "status": "completed",
+  "execution_start": "2026-09-30T23:23:45.222027+00:00",
+  "execution_end": "2026-09-30T23:24:22.591902+00:00",
+  "execution_duration_ms": 37369.95174997719,
+  "error": null,
+  "agent_error": null,
+  "database_audit": [
+    {
+      "timestamp": "2026-09-30T23:24:08.870172+00:00",
+      "method": "PUT",
+      "path": "eval_gpt_6_astra_1790809360_workorder/wo:MAIN:1000051",
+      "request": {
+        "_id": "wo:MAIN:1000051",
+        "_rev": "2-3b78da6754dcefd667b395a70dc32f25",
+        "type": "workorder",
+        "schema_version": "1.0.0",
+        "wonum": "1000051",
+        "siteid": "MAIN",
+        "description": "Transformer 1 - 2-day outage and inspection including OLTC; Condition 4 DGA",
+        "assetnum": "Transformer 1",
+        "wopriority": 1,
+        "worktype": "PdM",
+        "status": "APPR",
+        "reportdate": "2026-09-30T19:04:55+00:00",
+        "description_longdescription": "Existing OLTC inspection scope retained: suspected contact wear/coking; prior note: DGA T2 thermal, C2H2 7 ppm; no tap-changer FCC code and no technician with prior work on unit. Expanded scope per user rule: plan a two-day transformer outage and inspection, including OLTC. Notify the manufacturer. Latest available oil sample 2024-01-19: H2 2850 + CH4 7400 + C2H6 5470 + C2H4 16650 + C2H2 7 + CO 32 = TDCG 32409 ppm, Condition 4 (>4630); no carried-forward gases. MAIN schedule checked 2024-01-20 through 2024-02-09: zero scheduled work orders. Proposed outage 2024-01-20 through 2024-01-21 inclusive, earliest tied minimum, zero competing scheduled WOs. Replaces prior single target 2024-01-19 with two-day outage window. Dates are historical, anchored to sample per request; require operational revalidation before execution. Scheduling fields cannot be set with available tools; proposed dates recorded here only. Monthly DGA next due 2024-02-18.",
+        "status_date": "2026-09-30T23:24:08+00:00"
+      },
+      "status_code": 201,
+      "response": {
+        "ok": true,
+        "id": "wo:MAIN:1000051",
+        "rev": "3-7b892f7d5a8a4afbf6deba0e925fb27b"
+      },
+      "writes_attempted": 1,
+      "writes_succeeded": 1,
+      "records": [
+        {
+          "id": "wo:MAIN:1000051",
+          "action": "changed"
+        }
+      ]
+    }
+  ]
+}
