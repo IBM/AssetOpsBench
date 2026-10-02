@@ -418,6 +418,10 @@ def gate_gaps(channels: Dict[str, Any], impute: Optional[str]) -> Dict[str, np.n
     gaps = {ch: int(np.isnan(x).sum()) for ch, x in arrs.items()}
     if not any(gaps.values()):
         return arrs
+    empty = [ch for ch, x in arrs.items() if len(x) and gaps[ch] == len(x)]
+    if empty:
+        # _impute('interpolate') would turn an all-missing channel into zeros.
+        raise ValueError(f"channel(s) {empty} have no values at all; nothing to impute from")
     if impute is None:
         detail = ", ".join(f"{ch!r}: {n} of {len(arrs[ch])}" for ch, n in gaps.items() if n)
         raise ValueError(

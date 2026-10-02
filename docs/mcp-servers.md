@@ -260,8 +260,8 @@ the full output. The server supplies evidence; the agent makes the decisions.
 | `new_feature_version` | write | `feature_id`, `fields?`, `new_feature_id?` | Create a validated successor transform card and supersede the predecessor. |
 | `count_features` | read | — | Extractor / transform / total counts in the catalog. |
 | `describe_features` | read | `names` | kind + name + description for the named features (extractors or transforms). |
-| `extract_features` | read, cpu-centric | `dataset_path`, `extractors`, `target_columns`, `timestamp_column?`, `window?` | Apply the named scalar extractors to a series and return the raw feature values - no model. `window=None` -> one vector for the whole series; `window=W` -> a (windows x features) matrix over non-overlapping W-length tiles. |
-| `select_features` | read, cpu-centric | `dataset_path`, `channel`, `extractors`, `timestamp_column?`, `reference_feature?`, `cd_margin?` | Rank a candidate extractor set on one series by self-supervised one-step-ahead forecasting and return the shortlist that beats `reference_feature` by `cd_margin`. No labels needed. |
+| `extract_features` | read, cpu-centric | `dataset_path`, `extractors`, `target_columns`, `timestamp_column?`, `window?`, `impute?` | Apply the named scalar extractors to a series and return the raw feature values - no model. `window=None` -> one vector for the whole series; `window=W` -> a (windows x features) matrix over non-overlapping W-length tiles. A series with missing values is refused unless `impute` is `interpolate`, `drop` or `zero`; values an extractor cannot compute are `null`. |
+| `select_features` | read, cpu-centric | `dataset_path`, `channel`, `extractors`, `timestamp_column?`, `reference_feature?`, `cd_margin?`, `impute?` | Rank a candidate extractor set on one series by self-supervised one-step-ahead forecasting and return the shortlist that beats `reference_feature` by `cd_margin`. No labels needed. Refuses a series with missing values unless `impute` is set. |
 
 The extractor library backing `extract_features` / `select_features` is
 `reasoning.feature_selection.EXTRACTORS` (228 scalar extractors); pick names from

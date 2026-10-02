@@ -269,14 +269,9 @@ def check_gap_boundary(registry, channels, args):
         return [("extract_features, gapped", "FAIL",
                  (f"accepted a series with {int(np.isnan(gapped).sum())} gaps and returned "
                   f"mean={got:g}; gapped input must be refused unless impute is set"))], False
-    except TypeError:
-        pass  # an older signature; the refusal check below still runs
     except ValueError as exc:
         rows.append(("extract_features, gapped", "PASS",
                      f"refused: {' '.join(str(exc).split())[:70]}..."))
-
-    if not rows:
-        return [("extract_features, gapped", "FAIL", "no refusal and no impute argument")], False
 
     names = sorted(registry)
     filled = C._impute(pd.Series(gapped), "interpolate").to_numpy(dtype=float)
@@ -468,6 +463,25 @@ def check_full_selection(series, budget: float):
              f"(budget {budget:.0f}s)"))]
 
 
+def code_identity() -> str:
+    """Which code this run tested. In the runtime image, the commit it was built from
+    (/opt/aob/.aob-commit, written by build-runtime-image.sh); on a checkout, git HEAD
+    plus whether the tree is dirty. A smoke result is only evidence about the code it ran."""
+    baked = Path(".aob-commit")
+    if baked.is_file():
+        return f"image built from {baked.read_text(encoding='utf-8').strip()[:12]}"
+    import subprocess
+
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                               capture_output=True, text=True, check=True).stdout.strip()
+        return f"checkout at {head}" + (" with uncommitted changes" if dirty else "")
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown (no .aob-commit, not a git checkout)"
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -543,6 +557,7 @@ def main() -> int:
           f"{len(extractor_cards - {None})} extractor, {len(transforms)} transform)")
     print(f"registry : {len(registry)} extractors in feature_selection.EXTRACTORS")
     print(f"series   : {args.series.name}  channels={[c[0] for c in channels]}")
+    print(f"code     : {code_identity()}")
     print()
 
     failures = 0
