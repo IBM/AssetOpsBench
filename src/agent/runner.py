@@ -23,39 +23,45 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "vibration": "vibration-mcp-server",
 }
 
-# Env var that pins the LLM used inside the FMSR MCP server
-# (generate_failure_modes).  See :func:`mcp_server_env`.
-FMSR_MODEL_ENV = "FMSR_MODEL_ID"
+
+# LLM provider credentials and endpoints. No MCP server calls a model, so
+# mcp_server_env withholds all of them. Mirrors CREDENTIAL_ENV_VARS in
+# src/assetops_harbor/stirrup.py; a test there keeps the two in step.
+LLM_CREDENTIAL_ENV_VARS: tuple[str, ...] = (
+    "LITELLM_BASE_URL",
+    "LITELLM_API_KEY",
+    "TOKENROUTER_BASE_URL",
+    "TOKENROUTER_API_KEY",
+    "WATSONX_APIKEY",
+    "WATSONX_URL",
+    "WATSONX_PROJECT_ID",
+    "WATSONX_DEPLOYMENT_SPACE_ID",
+    "WATSONX_TOKEN",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_REGION",
+    "AWS_REGION_NAME",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "GEMINI_API_KEY",
+)
 
 
-def resolve_fmsr_model_id(agent_model_id: str | None) -> str | None:
-    """Return the model the FMSR server should use.
-
-    An explicit ``FMSR_MODEL_ID`` (shell or ``.env``) always wins; otherwise
-    the agent's own model id is used.  Empty strings count as unset.
-    """
-    explicit = (os.environ.get(FMSR_MODEL_ENV) or "").strip()
-    agent = agent_model_id.strip() if isinstance(agent_model_id, str) else ""
-    return explicit or agent or None
-
-
-def fmsr_env_overrides(agent_model_id: str | None) -> dict[str, str]:
-    """Env overrides that pin ``FMSR_MODEL_ID`` for spawned MCP servers.
-
-    The value is always set explicitly, even when it equals the agent's model
-    id, so the FMSR model is fixed and visible for every run.
-    """
-    fmsr_model = resolve_fmsr_model_id(agent_model_id)
-    return {FMSR_MODEL_ENV: fmsr_model} if fmsr_model else {}
-
-
-def mcp_server_env(agent_model_id: str | None) -> dict[str, str]:
-    """Full environment for MCP servers spawned via the MCP SDK stdio client.
+def mcp_server_env() -> dict[str, str]:
+    """Environment for MCP servers spawned via the MCP SDK stdio client.
 
     That client passes only HOME/PATH/SHELL/... to child processes unless
-    ``env`` is given, so the parent environment is forwarded explicitly.
+    ``env`` is given, so the parent environment is forwarded explicitly, minus
+    :data:`LLM_CREDENTIAL_ENV_VARS`.
+
+    Those are blanked rather than dropped. Every server calls ``load_dotenv()``,
+    which would refill a missing name from the repo's ``.env`` but never
+    overwrites one that is already set, even to an empty string.
     """
-    return {**os.environ, **fmsr_env_overrides(agent_model_id)}
+    return {**os.environ, **dict.fromkeys(LLM_CREDENTIAL_ENV_VARS, "")}
 
 
 class AgentRunner(ABC):

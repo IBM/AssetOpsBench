@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
+from servers.db_errors import DATA_UNAVAILABLE, db_failure_text
+
 load_dotenv()
 
 # Setup logging — default WARNING so stderr stays quiet when used as MCP server;
@@ -57,6 +59,26 @@ class CatalogResult(BaseModel):
 # --- Helper Functions ---
 
 
+def get_temp_filename() -> str:
+    tmpdir = tempfile.gettempdir()
+    tmppath = Path(tmpdir)
+    basepath = Path("cbmdir")
+    filename = str(uuid4())
+
+    tmpdir_path = tmppath / basepath
+    tmpdir_path.mkdir(parents=True, exist_ok=True)
+
+    filepath = tmpdir_path / (filename + ".json")
+    return str(filepath)
+
+
+def _missing_db_error() -> Optional[ErrorResult]:
+    """Return an error when the catalog database is absent or unreachable, so it
+    is not reported as a CouchDB error that names the database or host."""
+    if catalog_db is not None and catalog_db.check():
+        return None
+    return ErrorResult(error=DATA_UNAVAILABLE)
+
 def _clean_filter(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
@@ -72,8 +94,9 @@ def _find_catalog(
     fields: list[str],
     category: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
-    if catalog_db is None:
-        return ErrorResult(error="catalog database is not available")
+    missing = _missing_db_error()
+    if missing:
+        return missing
 
     query_value = _clean_filter(value)
     category_value = _clean_filter(category)
@@ -90,7 +113,7 @@ def _find_catalog(
         docs = res.get("docs", [])
     except Exception as e:
         logger.error("Error querying %s catalog: %s", catalog_type, e)
-        return ErrorResult(error=str(e))
+        return _missing_db_error() or ErrorResult(error=db_failure_text(e))
 
     query_parts = []
     if query_value is not None:

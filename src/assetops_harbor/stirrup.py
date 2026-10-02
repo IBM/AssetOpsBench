@@ -51,16 +51,12 @@ ROUTER_CREDENTIALS: dict[str, tuple[str, str]] = {
     "tokenrouter/": ("TOKENROUTER_BASE_URL", "TOKENROUTER_API_KEY"),
 }
 
-# Mirrors FMSR_MODEL_ENV in src/agent/runner.py, for the same reason.
-FMSR_MODEL_ENV = "FMSR_MODEL_ID"
-
-# Settings, not credentials, forwarded to the agent phase alongside them.
-SETTING_ENV_VARS: tuple[str, ...] = (FMSR_MODEL_ENV,)
-
 # Names the one env file _load_dotenv reads, in place of the nearest .env.
 ENV_FILE_ENV = "AOB_ENV_FILE"
 
 # Forwarded into the agent container, for the agent phase only, when set.
+# Mirrors LLM_CREDENTIAL_ENV_VARS in src/agent/runner.py, which withholds them
+# from the MCP servers; a test keeps the two in step.
 CREDENTIAL_ENV_VARS: tuple[str, ...] = (
     "LITELLM_BASE_URL",
     "LITELLM_API_KEY",
@@ -127,29 +123,19 @@ class StirrupAgent(BaseInstalledAgent):
         self._require_shared_workspace()
 
     def _require_router_credentials(self) -> None:
-        """Fail before Harbor builds anything if router credentials are missing.
-
-        Checks FMSR_MODEL_ID's router too, which may differ from the agent's.
-        """
-        models = {"--model-id": (self.model_name or "").strip()}
-        fmsr_model = (self._get_env(FMSR_MODEL_ENV) or "").strip()
-        if fmsr_model:
-            models[FMSR_MODEL_ENV] = fmsr_model
-
-        for label, model_id in models.items():
-            for prefix, (base_env, key_env) in ROUTER_CREDENTIALS.items():
-                if not model_id.startswith(prefix):
-                    continue
-                missing = [
-                    name for name in (base_env, key_env) if not self._get_env(name)
-                ]
-                if missing:
-                    raise ValueError(
-                        f"{' and '.join(missing)} must be set for the {prefix!r} "
-                        f"model prefix used by {label}. Export them, add them to "
-                        f".env in the directory you run harbor from, or pass them "
-                        f"per run with --ae {missing[0]}=... ."
-                    )
+        """Fail before Harbor builds anything if router credentials are missing."""
+        model_id = (self.model_name or "").strip()
+        for prefix, (base_env, key_env) in ROUTER_CREDENTIALS.items():
+            if not model_id.startswith(prefix):
+                continue
+            missing = [name for name in (base_env, key_env) if not self._get_env(name)]
+            if missing:
+                raise ValueError(
+                    f"{' and '.join(missing)} must be set for the {prefix!r} "
+                    f"model prefix used by --model-id. Export them, add them to "
+                    f".env in the directory you run harbor from, or pass them "
+                    f"per run with --ae {missing[0]}=... ."
+                )
 
     def _require_shared_workspace(self) -> None:
         """Require workspace_dir for the docker backend.
@@ -172,9 +158,9 @@ class StirrupAgent(BaseInstalledAgent):
         )
 
     def _credential_env(self) -> dict[str, str]:
-        """Credentials and settings to forward: --ae first, then the host env."""
+        """Credentials to forward: --ae first, then the host env."""
         found = {}
-        for name in (*CREDENTIAL_ENV_VARS, *SETTING_ENV_VARS):
+        for name in CREDENTIAL_ENV_VARS:
             value = self._get_env(name)
             if value:
                 found[name] = value

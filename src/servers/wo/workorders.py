@@ -22,6 +22,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
+from .couch import DatabaseUnavailable
 from .envelope import envelope, error, Timer
 
 OPEN_STATUSES = ("WAPPR", "APPR", "WMATL", "WSCH", "INPRG", "WPCOND")
@@ -71,6 +72,8 @@ async def get_failure_codes(db, code: Optional[str] = None) -> Dict[str, Any]:
                     fields=["code", "description"],
                     limit=FCC_QUERY_LIMIT,
                 )
+        except DatabaseUnavailable as exc:
+            return error(str(exc), "DATABASE_ERROR")
         except Exception as exc:
             logger.error("Failed to read the failure-code catalog: %s", exc)
             return error(

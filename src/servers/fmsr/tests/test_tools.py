@@ -2,9 +2,9 @@
 
 import pytest
 
-from servers.fmsr.main import mcp
+from servers.fmsr.main import _MISSING_DATABASE_ERROR, mcp
 
-from .conftest import call_tool, requires_failure_mode_db, requires_fmsr_llm
+from .conftest import call_tool
 
 
 class TestGetFailureModes:
@@ -52,7 +52,7 @@ class TestGetFailureModes:
 
         data = await call_tool(mcp, "get_failure_modes", {"asset_class": "pump"})
 
-        assert data == {"error": "database not connected"}
+        assert data == {"error": _MISSING_DATABASE_ERROR}
 
     @pytest.mark.anyio
     async def test_database_read_error_returns_error(self, broken_fm_db):
@@ -61,156 +61,6 @@ class TestGetFailureModes:
         assert data == {
             "error": "database lookup failed for asset_class 'pump': database read failed"
         }
-
-
-class TestGenerateFailureModes:
-    @pytest.mark.anyio
-    async def test_extends_failure_modes_from_db(
-        self, fake_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "Pump", "max_modes": 5},
-        )
-
-        assert data["asset_class"] == "pump"
-        assert data["known"] == ["seal leakage", "impeller wear"]
-        assert data["generated"] == ["bearing wear", "motor overheating"]
-        assert data["failure_modes"] == [
-            "seal leakage",
-            "impeller wear",
-            "bearing wear",
-            "motor overheating",
-        ]
-        assert data["source"].startswith("LLM:")
-        assert "nothing was persisted" in data["message"]
-        mock_failure_mode_generation.assert_called_once_with(
-            "pump", ["seal leakage", "impeller wear"], 5
-        )
-
-    @pytest.mark.anyio
-    async def test_generates_from_scratch_for_missing_db_record(
-        self, empty_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "compressor", "max_modes": 3},
-        )
-
-        assert data["asset_class"] == "compressor"
-        assert data["known"] == []
-        assert data["generated"] == [
-            "bearing wear",
-            "seal leakage",
-            "motor overheating",
-        ]
-        mock_failure_mode_generation.assert_called_once_with("compressor", [], 3)
-
-    @pytest.mark.anyio
-    async def test_database_read_error_returns_error(
-        self, broken_fm_db, mock_failure_mode_generation
-    ):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 3},
-        )
-
-        assert data == {
-            "error": "database lookup failed for asset_class 'pump': database read failed"
-        }
-        mock_failure_mode_generation.assert_not_called()
-
-    @pytest.mark.anyio
-    async def test_empty_asset_class_returns_error(self, mock_failure_mode_generation):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "", "max_modes": 3},
-        )
-
-        assert data == {"error": "asset_class is required"}
-
-    @pytest.mark.anyio
-    async def test_invalid_max_modes_returns_error(self, mock_failure_mode_generation):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 0},
-        )
-
-        assert data == {"error": "max_modes must be greater than 0"}
-
-    @pytest.mark.anyio
-    async def test_llm_unavailable_returns_error(self, no_llm):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {"asset_class": "pump", "max_modes": 3},
-        )
-
-        assert data["error"].startswith("LLM unavailable")
-
-    @pytest.mark.anyio
-    async def test_generates_without_the_catalog(self, monkeypatch):
-        """A missing failure_mode database must not stop generation.
-
-        The tool's contract is "a new or extended list": extended when modes are
-        stored, new when they are not. An uninitialised catalog is the from-scratch
-        case, not an error.
-        """
-        from servers.fmsr import main as fmsr
-
-        def _no_db(_asset_class):
-            raise RuntimeError("database not connected")
-
-        monkeypatch.setattr(fmsr, "_known_failure_modes", _no_db)
-        monkeypatch.setattr(fmsr, "_llm_available", True)
-        monkeypatch.setattr(
-            fmsr,
-            "_call_failure_mode_generation",
-            lambda key, known, n: ["Seal leakage", "Bearing wear"],
-        )
-
-        data = await call_tool(
-            fmsr.mcp, "generate_failure_modes", {"asset_class": "pump", "max_modes": 5}
-        )
-        assert "error" not in data, data
-        assert data["known"] == []
-        assert data["generated"] == ["Seal leakage", "Bearing wear"]
-        assert "catalog not initialised" in data["message"]
-
-    @pytest.mark.anyio
-    async def test_generates_when_db_handle_is_absent(
-        self, monkeypatch, mock_failure_mode_generation
-    ):
-        """fm_db unset is the other 'never initialised' signal."""
-        monkeypatch.setattr("servers.fmsr.main.fm_db", None)
-
-        data = await call_tool(
-            mcp, "generate_failure_modes", {"asset_class": "pump", "max_modes": 3}
-        )
-        assert "error" not in data, data
-        assert data["known"] == []
-        assert data["generated"]
-
-    @requires_fmsr_llm
-    @requires_failure_mode_db
-    @pytest.mark.anyio
-    async def test_integration(self):
-        data = await call_tool(
-            mcp,
-            "generate_failure_modes",
-            {
-                "asset_class": "pump",
-                "max_modes": 2,
-            },
-        )
-
-        assert "generated" in data
-        assert len(data["generated"]) <= 2
 
 
 class TestAddFailureModes:
@@ -314,7 +164,7 @@ class TestAddFailureModes:
             {"asset_class": "pump", "failure_modes": ["bearing wear"]},
         )
 
-        assert data == {"error": "database not connected"}
+        assert data == {"error": _MISSING_DATABASE_ERROR}
 
     @pytest.mark.anyio
     async def test_database_read_error_returns_error(self, broken_fm_db):
@@ -338,6 +188,12 @@ class TestToolRegistration:
             tool.name for tool in tools
         }
 
+    @pytest.mark.anyio
+    async def test_generate_tool_is_not_registered(self):
+        tools = await mcp.list_tools()
+
+        assert "generate_failure_modes" not in {tool.name for tool in tools}
+
 
 class TestMissingDatabaseMessage:
     @pytest.mark.anyio
@@ -345,6 +201,14 @@ class TestMissingDatabaseMessage:
         from couchdb3.exceptions import NotFoundError
 
         class MissingDatabase:
+            # couchdb3.Database is falsy and check() is False when the
+            # database does not exist.
+            def __bool__(self):
+                return False
+
+            def check(self):
+                return False
+
             def get(self, *args, **kwargs):
                 raise NotFoundError(
                     '{"error":"not_found","reason":"Database does not exist."}'
@@ -356,6 +220,22 @@ class TestMissingDatabaseMessage:
 
         data = await call_tool(mcp, "get_failure_modes", {"asset_class": "pump"})
 
-        assert "does not exist in this environment" in data["error"]
+        assert "does not exist or is unreachable" in data["error"]
         assert "failure_mode" not in data["error"]
         assert "no failure_mode record" not in data["error"]
+
+    @pytest.mark.anyio
+    async def test_unreachable_couchdb_hides_database_name_and_host(self, monkeypatch):
+        import couchdb3
+
+        monkeypatch.setattr(
+            "servers.fmsr.main.fm_db",
+            couchdb3.Database("secret_fm", url="http://127.0.0.1:9"),
+        )
+
+        for tool, args in [
+            ("get_failure_modes", {"asset_class": "pump"}),
+            ("add_failure_modes", {"asset_class": "pump", "failure_modes": ["x"]}),
+        ]:
+            data = await call_tool(mcp, tool, args)
+            assert data == {"error": _MISSING_DATABASE_ERROR}, tool
