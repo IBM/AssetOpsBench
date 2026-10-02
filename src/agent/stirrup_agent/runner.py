@@ -57,36 +57,33 @@ _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
 # stays out of the shared AGENT_SYSTEM_PROMPT: placeholders there would leak
 # literal braces into the four runners that import it without formatting.
 _FINISH_SYSTEM_PROMPT = """\
-Complete the task within {max_turns} steps. When you are done you must call the
-`{finish_tool_name}` tool as your final step, putting your complete response in
-its `answer` argument. Record any assumptions you had to make in `reason`.
+Use the tools provided to complete the task within {max_turns} steps, then submit your answer. When you are done you must call the `{finish_tool_name}` tool as your final
+step, passing your final answer. Record any assumptions you had to make in `reason`.
 Anything not submitted through `answer` is not graded.
 """
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
-- MCP tools and their definitions are authoritative for domain data and semantics.
-  Never use code to query backing services or bypass an available MCP tool.
-- Do not overuse code_exec. Answer directly from MCP results, domain knowledge,
-  and basic reasoning or arithmetic when sufficient. Use code_exec only for
-  necessary computation, data processing, workspace inspection, or validation.
-  Never use it for planning, comments, placeholders, or empty scripts.
-- Prefer one complete script that inspects, analyzes, and verifies. Do not repeat
-  equivalent experiments; correct failures directly.
-- Stay inside the execution workspace and use relative paths. Files you write
-  persist across code_exec calls, but shell state does not: every command runs
-  independently, with no working directory or environment variable carrying over
-  from one call to the next. When a step needs another directory, chain it into
-  the same command (e.g. `cd data && python run.py`).
-- For artifacts, inspect only the schema, counts, a small sample, or the specific
+- The `code_exec` tool runs shell commands in an isolated workspace and lets
+  you read, create, and edit files. Files you write persist across calls, but
+  shell state does not: each command runs in a fresh shell starting at the
+  workspace root, so no working directory or environment variable carries over.
+  Use paths relative to the workspace root, and when a step needs another
+  directory, chain it into the same command (e.g. `cd data && python run.py`).
+- The workspace is for computation over data you have already retrieved through
+  the tools. It does not hold the task's data, and nothing fetched from outside
+  it counts as evidence for the task.
+- Python and common data libraries are already installed. Check with
+  `python -c "import <pkg>"` before assuming a package is missing. Do not
+  install packages: what the task needs is present, and an install spends a
+  step you cannot get back.
+- For artifacts, inspect the schema, counts, a small sample, or the specific
   rows or fields needed, then process in place. If an artifact exceeds 200 KiB,
-  never print it in full; extract and process the relevant subset in bounded
-  batches. Avoid large record lists and verbose diagnostics. Reuse snapshots
-  unless domain state has changed.
+  avoid printing it in full; extract and process the relevant subset in bounded
+  batches. Avoid large record lists and verbose diagnostics.
 """
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace, and every command starts there.
-Host filesystem paths are not
-available inside the container. NumPy, pandas, and SciPy are installed; check
+Host filesystem paths are not available inside the container. NumPy, pandas, and SciPy are installed; check
 availability before using other packages.
 """
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
