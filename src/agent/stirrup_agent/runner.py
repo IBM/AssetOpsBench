@@ -57,8 +57,7 @@ _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
 - Answer directly from tool results, domain knowledge, and basic reasoning or
   arithmetic when sufficient. Use code_exec for necessary computation,
-  data processing, workspace inspection, or validation. Never use it for
-  planning, comments, placeholders, or empty scripts.
+  data processing, workspace inspection, or validation.
 - Prefer one complete script that inspects, analyzes, and verifies. Do not repeat
   equivalent experiments; correct failures directly.
 - Stay inside the execution workspace and use relative paths. Workspace state
