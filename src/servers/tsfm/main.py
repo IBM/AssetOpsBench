@@ -1048,6 +1048,7 @@ def extract_features(
     target_columns: List[str],
     timestamp_column: Optional[str] = None,
     window: Optional[int] = None,
+    impute: Optional[str] = None,
 ) -> Union[ExtractResult, ErrorResult]:
     """Compute scalar feature values from a series with the named extractors.
 
@@ -1065,12 +1066,15 @@ def extract_features(
         window: Windowing. `None` yields one feature vector for the whole series;
             an integer `W` yields a (windows x features) matrix over non-overlapping
             `W`-length tiles.
+        impute: How to handle missing values: `interpolate`, `drop` or `zero`. Leave unset
+            and a series with any missing value returns ErrorResult instead of features.
 
     Returns:
         ExtractResult: `columns` (the feature-column names), `features` (the value
-        matrix, one row per window), `n_windows`, `window`, and a `message`. Returns
-        ErrorResult for empty `target_columns`/`extractors`, an unknown extractor, or a
-        load failure.
+        matrix, one row per window; `null` where an extractor cannot compute a value),
+        `n_windows`, `window`, and a `message`. Returns ErrorResult for empty
+        `target_columns`/`extractors`, an unknown extractor, a load failure, or missing
+        values with no `impute`.
     """
     import numpy as np
 
@@ -1099,16 +1103,33 @@ def extract_features(
     else:
         channels = {str(c): np.asarray(obj[c], dtype=float) for c in obj.columns}
 
-    cols, F = composition.extract_features(channels, extractors, window=window)
+    try:
+        cols, F = composition.extract_features(
+            channels, extractors, window=window, impute=impute
+        )
+    except Exception as exc:
+        logger.error("extract_features failed: %s", exc)
+        return ErrorResult(error=str(exc))
+    blank = [c for j, c in enumerate(cols) if np.isnan(F[:, j]).any()]
+    message = (
+        f"extracted {len(cols)} feature column(s) over {F.shape[0]} window(s) "
+        f"from {len(channels)} channel(s)"
+        + (f" after impute='{impute}'" if impute else "")
+        + "."
+    )
+    if blank:
+        message += (
+            f" {len(blank)} column(s) have null values where the extractor could not compute"
+            f" one: {', '.join(blank[:8])}{', ...' if len(blank) > 8 else ''}."
+        )
     return ExtractResult(
         n_windows=int(F.shape[0]),
         window=window,
         columns=cols,
-        features=[[round(float(v), 6) for v in row] for row in F.tolist()],
-        message=(
-            f"extracted {len(cols)} feature column(s) over {F.shape[0]} window(s) "
-            f"from {len(channels)} channel(s)."
-        ),
+        features=[
+            [None if np.isnan(v) else round(float(v), 6) for v in row] for row in F.tolist()
+        ],
+        message=message,
     )
 
 
@@ -1120,6 +1141,7 @@ def select_features(
     timestamp_column: Optional[str] = None,
     reference_feature: str = "mean",
     cd_margin: float = 0.05,
+    impute: Optional[str] = None,
 ) -> Union[FeatureSelectionResult, ErrorResult]:
     """Rank candidate extractors on one series and return the shortlist worth keeping.
 
@@ -1140,12 +1162,14 @@ def select_features(
             Defaults to `mean`.
         cd_margin: The minimum margin over `reference_feature` required to keep a
             candidate. Defaults to 0.05.
+        impute: How to handle missing values: `interpolate`, `drop` or `zero`. Leave unset
+            and a series with any missing value returns ErrorResult instead of a ranking.
 
     Returns:
         FeatureSelectionResult: `selected` (the shortlist, names only), `lookback`,
         `reference`, `scorers`, and a `detail_file` pointer to the full scoring record.
-        Returns ErrorResult for a blank `dataset_path`/`channel`, empty `extractors`, or
-        an unknown extractor.
+        Returns ErrorResult for a blank `dataset_path`/`channel`, empty `extractors`, an
+        unknown extractor, or missing values with no `impute`.
     """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
@@ -1165,6 +1189,7 @@ def select_features(
     try:
         obj = refs.load_series(dataset_path, time_col=timestamp_column, channels=[channel])
         series = (obj.iloc[:, 0] if isinstance(obj, pd.DataFrame) else obj).to_numpy()
+        series = composition.gate_gaps({channel: series}, impute)[channel]
         names = list(
             dict.fromkeys(
                 list(extractors)
