@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from servers.db_errors import DATA_UNAVAILABLE
+
 try:
     import httpx
 except Exception:  # httpx optional at import time so the fake-backed tests still run
@@ -20,6 +22,13 @@ except Exception:  # httpx optional at import time so the fake-backed tests stil
 
 class CouchError(Exception):
     pass
+
+
+class DatabaseUnavailable(CouchError):
+    """The database does not exist or CouchDB is unreachable."""
+
+    def __init__(self) -> None:
+        super().__init__(DATA_UNAVAILABLE)
 
 
 class CouchClient:
@@ -55,34 +64,43 @@ class CouchClient:
         except ValueError:
             return
         if reason == "Database does not exist.":
-            raise CouchError(
-                "the data source does not exist in this environment; the "
-                "data is unavailable, do not retry with other arguments"
-            )
+            raise DatabaseUnavailable()
+
+    async def _request(self, method: str, path: str, **kwargs: Any) -> "httpx.Response":
+        """Send one request. An unreachable server and a missing database raise the
+        data-unavailable error; the URL (database name) never reaches the message."""
+        try:
+            r = await self._c.request(method, path, **kwargs)
+        except httpx.TransportError as exc:
+            raise DatabaseUnavailable() from exc
+        self._raise_if_missing_db(r)
+        return r
+
+    @staticmethod
+    def _raise_for_status(r: "httpx.Response") -> None:
+        if r.is_error:
+            raise CouchError(f"database request failed (HTTP {r.status_code})")
 
     # ---- document CRUD ----
     async def get(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        r = await self._c.get(f"/{self.db}/{doc_id}")
-        self._raise_if_missing_db(r)
+        r = await self._request("GET", f"/{self.db}/{doc_id}")
         if r.status_code == 404:
             return None
-        r.raise_for_status()
+        self._raise_for_status(r)
         return r.json()
 
     async def put(self, doc: Dict[str, Any]) -> Dict[str, Any]:
         if "_id" not in doc:
             raise CouchError("document must have _id")
-        r = await self._c.put(f"/{self.db}/{doc['_id']}", json=doc)
-        self._raise_if_missing_db(r)
+        r = await self._request("PUT", f"/{self.db}/{doc['_id']}", json=doc)
         if r.status_code == 409:
             raise CouchError(f"conflict updating {doc['_id']} (stale _rev)")
-        r.raise_for_status()
+        self._raise_for_status(r)
         return r.json()
 
     async def delete(self, doc_id: str, rev: str) -> Dict[str, Any]:
-        r = await self._c.delete(f"/{self.db}/{doc_id}", params={"rev": rev})
-        self._raise_if_missing_db(r)
-        r.raise_for_status()
+        r = await self._request("DELETE", f"/{self.db}/{doc_id}", params={"rev": rev})
+        self._raise_for_status(r)
         return r.json()
 
     # ---- queries ----
@@ -100,9 +118,8 @@ class CouchClient:
             body["fields"] = fields
         if sort:
             body["sort"] = sort
-        r = await self._c.post(f"/{self.db}/_find", json=body)
-        self._raise_if_missing_db(r)
-        r.raise_for_status()
+        r = await self._request("POST", f"/{self.db}/_find", json=body)
+        self._raise_for_status(r)
         return r.json().get("docs", [])
 
     async def view(self, ddoc: str, view: str, **params: Any) -> Dict[str, Any]:
@@ -113,9 +130,10 @@ class CouchClient:
             k: (_json.dumps(v) if k in ("key", "startkey", "endkey") else v)
             for k, v in params.items()
         }
-        r = await self._c.get(f"/{self.db}/_design/{ddoc}/_view/{view}", params=q)
-        self._raise_if_missing_db(r)
-        r.raise_for_status()
+        r = await self._request(
+            "GET", f"/{self.db}/_design/{ddoc}/_view/{view}", params=q
+        )
+        self._raise_for_status(r)
         return r.json()
 
     # ---- deterministic WO number allocation ----

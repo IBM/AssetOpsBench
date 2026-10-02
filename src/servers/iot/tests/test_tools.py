@@ -1,7 +1,11 @@
 """Tests for IoT MCP server tools."""
 
+from unittest.mock import patch
+
+import couchdb3
 import pytest
 
+from servers.db_errors import DATA_UNAVAILABLE
 from servers.iot.main import mcp
 from .conftest import call_tool, requires_couchdb, requires_iot_db
 
@@ -58,9 +62,15 @@ class TestSites:
         assert data["sites"] == ["MAIN", "NORTH"]
 
     @pytest.mark.anyio
-    async def test_falls_back_to_default_site(self, no_asset_db):
+    async def test_falls_back_to_default_site(self, mock_asset_db):
+        mock_asset_db.find.return_value = {"docs": []}
         data = await call_tool(mcp, "sites", {})
         assert data["sites"] == ["MAIN"]
+
+    @pytest.mark.anyio
+    async def test_missing_registry_reports_unavailable(self, no_asset_db):
+        data = await call_tool(mcp, "sites", {})
+        assert data["error"] == DATA_UNAVAILABLE
 
 
 class TestAssetIds:
@@ -1871,3 +1881,22 @@ class TestMissingDatabaseMessage:
 
         assert "does not exist or is unreachable" in data["error"]
         assert "unknown site" not in data["error"]
+
+    @pytest.mark.anyio
+    async def test_unreachable_couchdb_hides_database_name_and_host(self):
+        # A real client against a closed port: CouchDB is unreachable.
+        def unreachable(name):
+            return couchdb3.Database(name, url="http://127.0.0.1:9")
+
+        with (
+            patch("servers.iot.main.asset_db", unreachable("secret_asset")),
+            patch("servers.iot.main.iot_db", unreachable("secret_iot")),
+        ):
+            for tool, args in [
+                ("sites", {}),
+                ("asset_ids", {"site_name": "MAIN"}),
+                ("measured_sensors", {"site_name": "MAIN", "asset_id": "Chiller 6"}),
+                ("history", {"site_name": "MAIN", "asset_id": "Chiller 6"}),
+            ]:
+                data = await call_tool(mcp, tool, args)
+                assert data["error"] == DATA_UNAVAILABLE, tool

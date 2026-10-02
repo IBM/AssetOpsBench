@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
+from servers.db_errors import DATA_UNAVAILABLE, db_failure_text
+
 load_dotenv()
 
 _log_level = getattr(
@@ -89,10 +91,7 @@ def _is_missing_database(exc: Exception) -> bool:
     return "Database does not exist" in str(exc)
 
 
-_MISSING_DATABASE_ERROR = (
-    "the data source does not exist or is unreachable in this "
-    "environment; the data is unavailable, do not retry with other arguments"
-)
+_MISSING_DATABASE_ERROR = DATA_UNAVAILABLE
 
 
 def _is_not_found_error(exc: Exception) -> bool:
@@ -268,7 +267,7 @@ def get_failure_modes(asset_class: str) -> Union[FailureModesResult, ErrorResult
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("get_failure_modes failed: %s", exc)
-        return ErrorResult(error=str(exc))
+        return ErrorResult(error=db_failure_text(exc))
 
 
 def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
@@ -285,7 +284,8 @@ def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
             d = None
         else:
             raise RuntimeError(
-                f"database lookup failed for asset_class '{key}': {exc}"
+                f"database lookup failed for asset_class '{key}': "
+                f"{db_failure_text(exc)}"
             ) from exc
     try:
         if d is None:
@@ -298,7 +298,7 @@ def _find_failure_mode_doc(asset_class: str) -> Optional[dict]:
         if _is_missing_database(exc):
             raise RuntimeError(_MISSING_DATABASE_ERROR) from exc
         raise RuntimeError(
-            f"database lookup failed for asset_class '{key}': {exc}"
+            f"database lookup failed for asset_class '{key}': {db_failure_text(exc)}"
         ) from exc
 
 
@@ -367,7 +367,7 @@ def generate_failure_modes(
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("generate_failure_modes failed: %s", exc)
-        return ErrorResult(error=str(exc))
+        return ErrorResult(error=db_failure_text(exc))
 
 
 @mcp.tool(title="Add Failure Modes")
@@ -451,7 +451,7 @@ def add_failure_modes(
         )
     except Exception as exc:  # noqa: BLE001
         logger.error("add_failure_modes failed: %s", exc)
-        return ErrorResult(error=str(exc))
+        return ErrorResult(error=db_failure_text(exc))
 
 
 # generate_failure_mode_sensor_mapping is intentionally not registered. The

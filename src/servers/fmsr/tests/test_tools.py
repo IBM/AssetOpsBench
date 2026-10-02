@@ -323,3 +323,19 @@ class TestMissingDatabaseMessage:
         assert "does not exist or is unreachable" in data["error"]
         assert "failure_mode" not in data["error"]
         assert "no failure_mode record" not in data["error"]
+
+    @pytest.mark.anyio
+    async def test_unreachable_couchdb_hides_database_name_and_host(self, monkeypatch):
+        import couchdb3
+
+        monkeypatch.setattr(
+            "servers.fmsr.main.fm_db",
+            couchdb3.Database("secret_fm", url="http://127.0.0.1:9"),
+        )
+
+        for tool, args in [
+            ("get_failure_modes", {"asset_class": "pump"}),
+            ("add_failure_modes", {"asset_class": "pump", "failure_modes": ["x"]}),
+        ]:
+            data = await call_tool(mcp, tool, args)
+            assert data == {"error": _MISSING_DATABASE_ERROR}, tool

@@ -7,6 +7,7 @@ import couchdb3
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
+from servers.db_errors import DATA_UNAVAILABLE, db_failure_text
 from servers.iot.models import (
     AssetDetail,
     AssetSensorMatch,
@@ -150,12 +151,13 @@ def _missing_db_error(db: Any) -> Optional[ErrorResult]:
     missing database is not reported as an unknown key."""
     if db is not None and db.check():
         return None
-    return ErrorResult(
-        error=(
-            "the data source does not exist or is unreachable in this "
-            "environment; the data is unavailable, do not retry with other arguments"
-        )
-    )
+    return ErrorResult(error=DATA_UNAVAILABLE)
+
+
+def _db_error(db: Any, exc: Exception) -> ErrorResult:
+    """Return the error for a failed database call, without the URL or database
+    name that HTTP client exceptions carry."""
+    return _missing_db_error(db) or ErrorResult(error=db_failure_text(exc))
 
 
 def _is_known_site(site_name: str) -> bool:
@@ -195,14 +197,19 @@ def _installed_sensors(asset_id: str, site_name: Optional[str] = None) -> List[s
 
 
 @mcp.tool(title="List Sites")
-def sites() -> SitesResult:
+def sites() -> Union[SitesResult, ErrorResult]:
     """List sorted site identifiers available in the asset registry.
 
     Returns:
-        SitesResult: Distinct site identifiers, or `["MAIN"]` when none are
-        available.
+        SitesResult: Distinct site identifiers, or `["MAIN"]` when the registry
+        lists none.
     """
-    return SitesResult(sites=known_sites())
+    registry_sites = get_registry_sites()
+    if not registry_sites:
+        missing = _missing_db_error(asset_db)
+        if missing:
+            return missing
+    return SitesResult(sites=registry_sites or DEFAULT_SITES)
 
 
 @mcp.tool(title="List Asset IDs")
@@ -240,7 +247,7 @@ def asset_ids(site_name: str) -> Union[AssetsResult, ErrorResult]:
         )
     except Exception as e:
         logger.error(f"asset_ids failed: {e}")
-        return _missing_db_error(asset_db) or ErrorResult(error=str(e))
+        return _db_error(asset_db, e)
 
 
 @mcp.tool(title="Get Asset Detail")
@@ -316,7 +323,7 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
         )
     except Exception as e:
         logger.error(f"asset_detail failed: {e}")
-        return _missing_db_error(asset_db) or ErrorResult(error=str(e))
+        return _db_error(asset_db, e)
 
 
 @mcp.tool(title="List Measured Sensors")
@@ -408,7 +415,7 @@ def installed_sensors(
         )
     except Exception as e:
         logger.error(f"installed_sensors failed: {e}")
-        return _missing_db_error(asset_db) or ErrorResult(error=str(e))
+        return _db_error(asset_db, e)
 
 
 @mcp.tool(title="List Assets")
@@ -469,7 +476,7 @@ def assets(
         )
     except Exception as e:
         logger.error(f"assets failed: {e}")
-        return _missing_db_error(asset_db) or ErrorResult(error=str(e))
+        return _db_error(asset_db, e)
 
 
 @mcp.tool(title="Find Assets By Sensors")
