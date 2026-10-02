@@ -60,7 +60,7 @@ class Executor:
         self._server_paths = (
             DEFAULT_SERVER_PATHS if server_paths is None else server_paths
         )
-        self._server_env = mcp_server_env(getattr(llm, "model_id", None))
+        self._server_env = mcp_server_env()
 
     async def get_server_descriptions(self) -> dict[str, str]:
         """Query each registered MCP server and return formatted tool signatures."""

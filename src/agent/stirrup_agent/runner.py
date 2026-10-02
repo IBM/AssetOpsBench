@@ -234,7 +234,7 @@ class StirrupAgentRunner(AgentRunner):
         from stirrup.tools.mcp import MCPConfig
 
         servers: dict[str, dict] = {}
-        env = mcp_server_env(self._model_id)
+        env = mcp_server_env()
         for name, spec in self._server_paths.items():
             cmd_arg = str(spec)
             servers[name] = {
@@ -242,8 +242,7 @@ class StirrupAgentRunner(AgentRunner):
                 "args": ["run", "--directory", str(_REPO_ROOT), cmd_arg],
                 "cwd": str(_REPO_ROOT),
                 # Without it the MCP SDK passes only HOME/PATH/..., so servers
-                # would miss COUCHDB_URL and the rest. It also pins
-                # FMSR_MODEL_ID; see mcp_server_env.
+                # would miss COUCHDB_URL and the rest.
                 "env": env,
             }
         return MCPConfig.model_validate({"mcpServers": servers})

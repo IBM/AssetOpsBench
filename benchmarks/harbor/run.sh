@@ -216,9 +216,7 @@ profile_name="$(basename "$profile")"
 profile_slug="$(slug "${profile_name%.*}")"
 
 # Fail fast when a model cannot be served, rather than a job of failed trials.
-# The model's and FMSR_MODEL_ID's routers must answer GET /models without a 401
-# or 403. A model with no router prefix needs FMSR_MODEL_ID, since the FMSR
-# server accepts only router models.
+# The model's router must answer GET /models without a 401 or 403.
 check_model() {
   uv run --env-file "$env_file" python - "$1" <<'PY'
 import os
@@ -237,32 +235,25 @@ def router(model):
     return next((prefix for prefix in ROUTERS if model.startswith(prefix)), None)
 
 
-model = sys.argv[1]
-fmsr_model = os.environ.get("FMSR_MODEL_ID", "").strip()
-if fmsr_model and not router(fmsr_model):
-    sys.exit(f"FMSR_MODEL_ID={fmsr_model} needs a {' or '.join(ROUTERS)} prefix")
-if not fmsr_model and not router(model):
-    sys.exit(
-        f"{model} has no {' or '.join(ROUTERS)} prefix, so the FMSR server would "
-        "reject it; set FMSR_MODEL_ID to a router model"
-    )
+prefix = router(sys.argv[1])
+if prefix is None:
+    sys.exit(0)
 
-for prefix in dict.fromkeys(p for p in (router(model), router(fmsr_model)) if p):
-    base_var, key_var = ROUTERS[prefix]
-    base, key = os.environ.get(base_var, ""), os.environ.get(key_var, "")
-    missing = [name for name, value in ((base_var, base), (key_var, key)) if not value]
-    if missing:
-        sys.exit(f"{' and '.join(missing)} not set for {prefix} models")
-    request = urllib.request.Request(
-        base.rstrip("/") + "/models", headers={"Authorization": f"Bearer {key}"}
-    )
-    try:
-        urllib.request.urlopen(request, timeout=15)
-    except urllib.error.HTTPError as exc:
-        if exc.code in (401, 403):
-            sys.exit(f"{base_var} rejected {key_var} (HTTP {exc.code})")
-    except Exception as exc:
-        sys.exit(f"cannot reach {base_var} ({exc}); check the VPN or network")
+base_var, key_var = ROUTERS[prefix]
+base, key = os.environ.get(base_var, ""), os.environ.get(key_var, "")
+missing = [name for name, value in ((base_var, base), (key_var, key)) if not value]
+if missing:
+    sys.exit(f"{' and '.join(missing)} not set for {prefix} models")
+request = urllib.request.Request(
+    base.rstrip("/") + "/models", headers={"Authorization": f"Bearer {key}"}
+)
+try:
+    urllib.request.urlopen(request, timeout=15)
+except urllib.error.HTTPError as exc:
+    if exc.code in (401, 403):
+        sys.exit(f"{base_var} rejected {key_var} (HTTP {exc.code})")
+except Exception as exc:
+    sys.exit(f"cannot reach {base_var} ({exc}); check the VPN or network")
 PY
 }
 
