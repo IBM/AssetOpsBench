@@ -321,6 +321,18 @@ def list_features(
     """List the feature catalog: named extractors that reduce a series window to scalar values, and
     transforms that reshape a series.
 
+    The extractor catalog is broad - over two hundred cards - and spans several families:
+    distributional (`mean`, `std`, `var`, `skew`, `kurtosis`, `q05`..`q95`, `iqr`, `mad`);
+    waveform and vibration fault indicators (`rms`, `crest_factor`, `impulse_factor`,
+    `shape_factor`, `clearance_factor`, `form_factor`, `margin_factor`, `peak_to_peak`);
+    spectral (`spectral_entropy`, `spectral_centroid`, `spectral_flatness`, `spectral_rolloff`,
+    `dominant_freq`, `mean_psd`, `total_spectral_energy`, `zero_crossing_rate`); complexity and
+    autocorrelation (`approximate_entropy`, `perm_entropy`, `svd_entropy`, `hjorth_mobility`,
+    `hjorth_complexity`, `katz_fd`, `autocorr1`..`autocorr10`, `trend_strength`, `stability`,
+    `lumpiness`); and change or excursion counts (`mean_abs_change`, `longest_above_2std`,
+    `count_above_2std`, `flatline_fraction`, `num_peaks`, `num_zero_crossings`,
+    `outlier_segment_count`, `rate_of_change`).
+
     Args:
         kind: Optional `transform` or `extractor` filter; omit for both.
         status: Optional exact status filter; defaults to `active`.
@@ -350,6 +362,19 @@ def list_models(
     task_id: Optional[str] = None, domain: Optional[str] = None, status: str = "active"
 ) -> Union[ModelsResult, ErrorResult]:
     """List model cards in the catalog, optionally filtered by task / domain.
+
+    The catalog carries pretrained time-series foundation models alongside classical
+    baselines, detectors and clusterers. Forecasting holds the largest share and includes
+    IBM Granite (`granite-timeseries-ttm-r1`/`-r2` and the `ttm_*` context/horizon variants,
+    `granite-timeseries-patchtst`, `granite-timeseries-patchtsmixer`), Amazon Chronos
+    (`chronos-t5-tiny`..`-large`, `chronos-bolt-tiny`..`-base`), Google TimesFM
+    (`timesfm-1.0-200m`, `timesfm-2.0-500m-pytorch`, `timesfm-2.5-200m`), Salesforce Moirai
+    (`moirai-1.0-R`/`1.1-R`/`2.0-R` in small..large, plus `moirai-moe`), AutonLab MOMENT
+    (`MOMENT-1-small`..`-large`), Maple728 TimeMoE, Datadog Toto and NeoQuasar Kronos,
+    with `autoarima` and `naive_persistence` as classical baselines. Anomaly detection holds
+    `tspulse_ad` and `granite-timeseries-tspulse-r1`, the classical `hampel_ad`, `sublof` and
+    `pyod_iforest`, and the `akits_*` family. Clustering holds `tskmeans`, `tskmedoids`,
+    `tsdbscan`, `tskernelkmeans` and `ts_agglomerative`.
 
     Args:
         task_id: Optional known task id, e.g. `tsfm_forecasting`.
@@ -420,6 +445,10 @@ def find_models(
 
     For anomaly detection, use `task_id="tsfm_anomaly_detection"` and pass the selected
     `model_id` as the `run_recipe` estimator.
+
+    The pool it shortlists from carries pretrained foundation models (IBM Granite TTM and
+    TSPulse, Amazon Chronos, Google TimesFM, Salesforce Moirai, AutonLab MOMENT, TimeMoE,
+    Toto, Kronos) as well as classical baselines and detectors; `list_models` enumerates them.
 
     Cards lacking filtered fields are excluded from the shortlist.
 
@@ -1077,8 +1106,13 @@ def extract_features(
         dataset_path: File pointer to the input series. The evidence and data tools return one;
             a CSV written in the code workspace becomes one by converting its path with
             `workspace_host_path`.
-        extractors: Extractor names to apply. Discover valid names with
-            `list_features(kind="extractor")`; an unknown name returns ErrorResult.
+        extractors: Extractor names to apply. The catalog holds over two hundred, among them
+            `mean`, `std`, `var`, `skew`, `kurtosis`, `rms`, `crest_factor`, `impulse_factor`,
+            `shape_factor`, `clearance_factor`, `peak_to_peak`, `zero_crossing_rate`,
+            `spectral_entropy`, `spectral_centroid`, `dominant_freq`, `approximate_entropy`,
+            `hjorth_complexity`, `trend_strength`, `longest_above_2std`, `flatline_fraction`
+            and `outlier_segment_count`. `list_features(kind="extractor")` enumerates them all;
+            an unknown name returns ErrorResult.
         target_columns: The column(s) to extract from. Required; no default column is
             assumed. Each column yields its own `<column>.<extractor>` feature columns.
         timestamp_column: Optional name of the time column, used to order the series.
@@ -1145,8 +1179,10 @@ def select_features(
     signal.
 
     Narrows a large candidate set to the extractors worth computing for a given telemetry
-    channel. The
-    method is self-supervised one-step-ahead forecasting: slide a window over the series and
+    channel, which matters because the catalog holds over two hundred spanning distributional,
+    waveform and vibration-indicator, spectral, complexity and excursion-count families (see
+    `list_features`). The method is self-supervised one-step-ahead forecasting: slide a window
+    over the series and
     score each candidate by how well the window's features predict the next value (no labels
     needed), combining correlation, F-test, mutual information, and model importance by mean
     rank, then keep those that beat `reference_feature` by at least `cd_margin`.
@@ -1156,8 +1192,10 @@ def select_features(
             a CSV written in the code workspace becomes one by converting its path with
             `workspace_host_path`.
         channel: The column to analyze. Required; no default column is assumed.
-        extractors: Candidate extractor names to score. Discover valid names with
-            `list_features(kind="extractor")`; an unknown name returns ErrorResult.
+        extractors: Candidate extractor names to score, such as `rms`, `crest_factor`,
+            `kurtosis`, `spectral_entropy`, `dominant_freq` or `longest_above_2std`.
+            `list_features(kind="extractor")` enumerates every valid name; an unknown name
+            returns ErrorResult.
         timestamp_column: Optional name of the time column, used to order the series.
         reference_feature: The baseline extractor a candidate must beat to be kept.
             Defaults to `mean`.
