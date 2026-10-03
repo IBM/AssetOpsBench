@@ -88,9 +88,6 @@ Host filesystem paths are not available inside the container, and the code
 container runs on its own bridge with no route to the asset databases. NumPy,
 pandas, and SciPy are installed; check availability before using other
 packages.
-
-A file you write in the workspace becomes a tool input by translating its path
-with `workspace_host_path`.
 """
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
 The local execution workspace is a temporary directory, but commands run on the
