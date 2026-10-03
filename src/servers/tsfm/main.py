@@ -128,19 +128,19 @@ def _check_task(task_id: str) -> Optional[str]:
 
 @mcp.tool(title="List Tasks")
 def list_tasks() -> Union[TasksResult, ErrorResult]:
-    """List the standardized TSFM tasks available in the benchmark.
+    """List the standardized time-series tasks this server can run.
 
-This is a discovery tool: it returns the canonical task definitions, including each task's
-required inputs, output type, evaluation protocol, and supporting notes. Use it first when you
-need to understand what task families the TSFM server supports.
+    A discovery tool: it returns the canonical task definitions, including each task's
+    required inputs, output type, evaluation protocol, and supporting notes. The task ids it
+    returns are the values `find_models`, `list_models` and a recipe's `task` field expect.
 
-Args:
-    None
+    Args:
+        None
 
-Returns:
-    TasksResult: The task catalog, including task IDs, descriptions, required inputs, metrics,
-    and protocol metadata. ErrorResult if the task catalog cannot be loaded.
-"""
+    Returns:
+        TasksResult: The task catalog, including task IDs, descriptions, required inputs, metrics,
+        and protocol metadata. ErrorResult if the task catalog cannot be loaded.
+    """
     try:
         return TasksResult(tasks=task_spec.list_tasks())
     except Exception as exc:
@@ -159,18 +159,21 @@ def profile_series(
     timestamp_column: Optional[str] = None,
     channels: Optional[List[str]] = None,
 ) -> Union[ProfileResult, ErrorResult]:
-    """Profile a time-series dataset behind a file pointer.
+    """Profile sensor history or telemetry behind a file pointer.
 
-Returns factual evidence only; it does not predict, diagnose, or choose a model.
+    Reports measured evidence about the series - per-channel statistics, sampling cadence,
+    coverage, and where values shift - and assigns no labels.
 
-Args:
-    dataset_path: Dataset path or `file://` URI.
-    timestamp_column: Optional time column name.
-    channels: Optional numeric signal columns; omitted means infer usable numeric columns.
+    Args:
+        dataset_path: File pointer to the series. The evidence and data tools return one; a CSV
+            written in the code workspace becomes one by converting its path with
+            `workspace_host_path`.
+        timestamp_column: Optional time column name.
+        channels: Optional numeric signal columns; omitted means infer usable numeric columns.
 
-Returns:
-    ProfileResult: Counts, channels, temporal/statistical evidence, or ErrorResult.
-"""
+    Returns:
+        ProfileResult: Counts, channels, temporal/statistical evidence, or ErrorResult.
+    """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
@@ -191,20 +194,26 @@ def characterize_series(
     groups: Optional[dict] = None,
     group_rules: Optional[str] = None,
 ) -> Union[CharacterizeResult, ErrorResult]:
-    """Characterize the shape of a time-series dataset as structured evidence.
+    """Characterize an asset's telemetry as structured evidence, segmented into phases where its
+    behavior changes.
 
-Reports grouped-channel states and relationships; it does not assign fault labels.
+    Groups the sensor channels, reports each group's state within every phase and the relations
+    between groups, and returns each phase as an index span over the series. Assigns no fault
+    label.
 
-Args:
-    dataset_path: Dataset path or `file://` URI.
-    timestamp_column: Optional name of the time column.
-    channels: Optional numeric signal columns.
-    groups: Optional `{group_name: [channel_names]}` mapping.
-    group_rules: Optional grouping preset, such as `"vibration_temperature"`.
+    Args:
+        dataset_path: File pointer to the series. The evidence and data tools return one; a CSV
+            written in the code workspace becomes one by converting its path with
+            `workspace_host_path`.
+        timestamp_column: Optional name of the time column.
+        channels: Optional numeric signal columns.
+        groups: Optional `{group_name: [channel_names]}` mapping.
+        group_rules: Optional grouping preset, such as `"vibration_temperature"`.
 
-Returns:
-    CharacterizeResult: Summary, groups, phases, evidence file, or ErrorResult.
-"""
+    Returns:
+        CharacterizeResult: Summary, groups, phases (each carrying a `span` index range),
+        evidence file, or ErrorResult.
+    """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
@@ -237,17 +246,20 @@ def data_quality(
     dataset_path: str,
     timestamp_column: str = "timestamp",
 ) -> Union[DataQualityResult, ErrorResult]:
-    """Assess data quality for a time-series dataset and produce a cleaned file pointer.
+    """Assess data quality for a sensor-history file and produce a cleaned file pointer.
 
-Removes rows that fail TSFM cleaning rules and reports missing-value stats.
+    Drops rows that fail this server's cleaning rules and reports per-channel missing-value
+    statistics.
 
-Args:
-    dataset_path: Dataset path or `file://` URI.
-    timestamp_column: Timestamp column name.
+    Args:
+        dataset_path: File pointer to the series. The evidence and data tools return one; a CSV
+            written in the code workspace becomes one by converting its path with
+            `workspace_host_path`.
+        timestamp_column: Timestamp column name.
 
-Returns:
-    DataQualityResult: Cleaned file, row counts, NaN stats, or ErrorResult.
-"""
+    Returns:
+        DataQualityResult: Cleaned file, row counts, NaN stats, or ErrorResult.
+    """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
@@ -302,7 +314,8 @@ def list_features(
     kind: Optional[str] = None,
     status: Optional[str] = "active",
 ) -> Union[FeaturesResult, ErrorResult]:
-    """List feature catalog cards from the configured database.
+    """List the feature catalog: named extractors that reduce a series window to scalar values, and
+    transforms that reshape a series.
 
     Args:
         kind: Optional `transform` or `extractor` filter; omit for both.
@@ -398,8 +411,8 @@ def find_models(
     """Filter the model catalog for a task and return a ranked shortlist.
 
     Returns at most `top_k` cards (default 5) - this is a SHORTLIST tool. To enumerate every
-    card for a task (e.g. to build a leaderboard or map model ids to their params), use
-    `list_models`, which applies no `top_k` limit.
+    card for a task, or to map every model id to its params, use `list_models`, which applies
+    no `top_k` limit.
 
     For anomaly detection, use `task_id="tsfm_anomaly_detection"` and pass the selected
     `model_id` as the `run_recipe` estimator.
@@ -685,8 +698,9 @@ def register_finetuned(
     domain: str = "general",
 ) -> Union[CardResult, ErrorResult]:
     """Register a fine-tuned model as a card pointing at its checkpoint.
+
     `base_model_id` must already be in the catalog with `sktime_class`; the new card inherits
-    class/params, sets `params.model_path`, and records lineage.
+    class and params, sets `params.model_path`, and records lineage.
 
     Args:
         model_id: Id for the new fine-tuned card.
@@ -697,7 +711,8 @@ def register_finetuned(
         description: Fine-tune description.
         domain: Optional domain tag; defaults to `general`.
 
-    Returns: CardResult: Stored card, FLAT at top level, or ErrorResult.
+    Returns:
+        CardResult: Stored card, FLAT at top level, or ErrorResult.
     """
     for k, v in (
         ("model_id", model_id),
@@ -977,8 +992,8 @@ def hf_stats(
 def count_features() -> Union[FeatureCountResult, ErrorResult]:
     """Count the feature catalog cards by kind.
 
-    Use this for a quick sense of catalog size before browsing with `list_features()`
-    or `search_features()`.
+    A catalog-size summary over the extractor and transform cards. `list_features` and
+    `search_features` return the cards themselves.
 
     Returns:
         FeatureCountResult: The number of `extractor` cards, `transform` cards, and
@@ -995,11 +1010,10 @@ def count_features() -> Union[FeatureCountResult, ErrorResult]:
 
 @mcp.tool(title="Describe Features")
 def describe_features(names: List[str]) -> Union[DescribeFeaturesResult, ErrorResult]:
-    """Describe specific feature cards by name.
+    """Describe specific feature catalog cards by name.
 
-    Use this after `list_features()` or `search_features()` to get a compact record
-    for a chosen subset, without pulling each full card. Names that are not extractor
-    or transform cards are reported separately rather than raising.
+    Returns a compact record for a chosen subset rather than each full card. Names that are not
+    extractor or transform cards are reported separately rather than raising.
 
     Args:
         names: Feature ids to describe (extractors or transforms). Discover valid
@@ -1049,14 +1063,16 @@ def extract_features(
     timestamp_column: Optional[str] = None,
     window: Optional[int] = None,
 ) -> Union[ExtractResult, ErrorResult]:
-    """Compute scalar feature values from a series with the named extractors.
+    """Compute scalar feature values over a series with the named extractors, whole or per window.
 
-    Use this for raw feature extraction with no model attached, e.g. to inspect what a
-    set of extractors produces before feeding the values into `run_tabular_recipe`.
+    Turns sensor history into a numeric table: one row per window, one column per
+    `<column>.<extractor>`. The windowed form yields a value trajectory over time for each
+    feature; the unwindowed form yields one vector for the whole series.
 
     Args:
-        dataset_path: File pointer to the input series (as returned by the evidence
-            tools or `materialize_iot`).
+        dataset_path: File pointer to the input series. The evidence and data tools return one;
+            a CSV written in the code workspace becomes one by converting its path with
+            `workspace_host_path`.
         extractors: Extractor names to apply. Discover valid names with
             `list_features(kind="extractor")`; an unknown name returns ErrorResult.
         target_columns: The column(s) to extract from. Required; no default column is
@@ -1121,17 +1137,20 @@ def select_features(
     reference_feature: str = "mean",
     cd_margin: float = 0.05,
 ) -> Union[FeatureSelectionResult, ErrorResult]:
-    """Rank candidate extractors on one series and return the shortlist worth keeping.
+    """Rank candidate extractors on one sensor channel and return the shortlist that carries
+    signal.
 
-    Use this to narrow a large candidate set to the few extractors that carry signal for
-    a given series, before computing them with `extract_features()`. The method is
-    self-supervised one-step-ahead forecasting: slide a window over the series and score
-    each candidate by how well the window's features predict the next value (no labels
-    needed), combining correlation, F-test, mutual information, and model importance by
-    mean rank, then keep those that beat `reference_feature` by at least `cd_margin`.
+    Narrows a large candidate set to the extractors worth computing for a given telemetry
+    channel. The
+    method is self-supervised one-step-ahead forecasting: slide a window over the series and
+    score each candidate by how well the window's features predict the next value (no labels
+    needed), combining correlation, F-test, mutual information, and model importance by mean
+    rank, then keep those that beat `reference_feature` by at least `cd_margin`.
 
     Args:
-        dataset_path: File pointer to the input series.
+        dataset_path: File pointer to the input series. The evidence and data tools return one;
+            a CSV written in the code workspace becomes one by converting its path with
+            `workspace_host_path`.
         channel: The column to analyze. Required; no default column is assumed.
         extractors: Candidate extractor names to score. Discover valid names with
             `list_features(kind="extractor")`; an unknown name returns ErrorResult.
@@ -1197,9 +1216,11 @@ def search_features(
     tags: Optional[List[str]] = None,
     status: Optional[str] = "active",
 ) -> Union[FeaturesResult, ErrorResult]:
-    """Search feature catalog cards by id, name, description, or tags.
+    """Search the feature catalog - extractors and transforms - by id, name, description, or tags.
 
-    The match is literal and case-insensitive, not semantic retrieval.
+    The match is literal and case-insensitive, not semantic retrieval: a query that is not a
+    substring of a card's text will not match it. `list_features` enumerates the catalog without
+    a query.
 
     Args:
         text: Optional substring; empty means all cards allowed by filters.
@@ -1237,8 +1258,8 @@ def search_features(
 def get_feature(feature_id: str) -> Union[CardResult, ErrorResult]:
     """Return one feature catalog card by feature id.
 
-    Use this after `list_features()` or `search_features()` when the full card
-    is needed, including executable transform code and validity metadata.
+    The full card, including executable transform code and validity metadata, for an id
+    discovered with `list_features()` or `search_features()`.
 
     Args:
         feature_id: Exact feature id without the database `feature:` prefix, such
@@ -1446,14 +1467,13 @@ def get_feature_lineage(feature_id: str) -> Union[LineageResult, ErrorResult]:
 
 @mcp.tool(title="Recipe Template")
 def recipe_template() -> RecipeTemplateResult:
-    """Return the template for authoring a recipe for run_recipe / run_tabular_recipe.
+    """Return the recipe contract: the shape `run_recipe` and `run_tabular_recipe` require.
 
-    Read this before run_recipe. A recipe is the agent's decision surface: it names the model and
-    every choice around it, and the server executes exactly what it says. Static - it reads nothing
-    from the catalog. Pair it with find_models / describe_candidates to choose a `model_id`, and
-    resolve_model to preflight that the card loads. For anomaly detection, set
-    `recipe["task"] == "tsfm_anomaly_detection"` and provide a detector estimator; `run_recipe`
-    will route that recipe to the anomaly detector path.
+    A recipe names the model and every choice around it, and the server executes exactly what it
+    says. Static - it reads nothing from the catalog. A recipe whose
+    `recipe["task"] == "tsfm_anomaly_detection"` and which carries a detector estimator is routed
+    by `run_recipe` to the anomaly detector path. `find_models` / `describe_candidates` supply a
+    `model_id`; `resolve_model` reports whether that card loads.
 
     Returns:
         RecipeTemplateResult: `task_choices` (what recipe["task"] dispatches on), `estimator_spec`
@@ -1564,18 +1584,19 @@ def run_recipe(
 ) -> Union[RecipeResult, ErrorResult]:
     """Run a forecasting or anomaly-detection recipe on a target series from a file pointer.
 
-    For anomaly detection, first select a detector with
-    `find_models(task_id="tsfm_anomaly_detection")` or `search_models`; call `run_recipe` with
-    `recipe={"task": "tsfm_anomaly_detection", "estimator": {"model_id": "<model_id>"}}`.
-    The anomaly path returns dense labels, counts, indexed records, and a `results_file` pointer;
-    ground final segment/JSON answers in those outputs. Recipes without that task are forecasting
-    (transforms + single/ensemble + optional conformal intervals). Use `recipe_template()` for the
-    recipe contract. The result is also findable later via `list_runs()` / `get_run()` and
-    `list_results()` / `get_result()`.
+    The anomaly path returns a label for every observation, anomaly counts, indexed records
+    naming which positions were flagged, and a `results_file` pointer - so it reports both
+    whether a series contains anomalous behavior and where in the series it falls. Detectors are
+    discoverable with `find_models(task_id="tsfm_anomaly_detection")` or `search_models`, and are
+    run by passing `recipe={"task": "tsfm_anomaly_detection", "estimator": {"model_id":
+    "<model_id>"}}`. Recipes without that task are forecasting (transforms + single/ensemble +
+    optional conformal intervals). `recipe_template()` returns the recipe contract. The result is
+    also findable later via `list_runs()` / `get_run()` and `list_results()` / `get_result()`.
 
     Args:
-        dataset_path: File pointer to the input series (from the evidence tools or
-            `materialize_iot`).
+        dataset_path: File pointer to the input series. The evidence and data tools return one;
+            a CSV written in the code workspace becomes one by converting its path with
+            `workspace_host_path`.
         timestamp_column: Name of the time column used to order the series.
         target_columns: The column(s) to forecast or screen for anomalies. Must not be empty.
         recipe: The recipe dict: an `estimator` (a catalog `model_id`, or an inline
@@ -1672,13 +1693,17 @@ def run_tabular_recipe(
     label_column: Optional[str] = None,
     asset_id: str = "asset",
 ) -> Union[TabularResult, ErrorResult]:
-    """Run a series-to-tabular recipe: regression, classification, or clustering.
+    """Run a series-to-tabular recipe over feature values: regression, classification, or clustering.
 
-    Each row of the CSV file pointer is one instance; features are extracted (FeatureUnion)
-    and passed to the estimator. Omit `label_column` for unsupervised clustering.
+    The labelled counterpart to `run_recipe`. Each row of the CSV file pointer is one instance;
+    features are extracted (FeatureUnion) and passed to the estimator, so a per-window or
+    per-series label - a condition, a class, a value - can be predicted from the series itself.
+    Omit `label_column` for unsupervised clustering.
 
     Args:
-        dataset_path: File pointer to the tabular CSV (one instance per row).
+        dataset_path: File pointer to the tabular CSV (one instance per row). A CSV written in
+            the code workspace becomes a file pointer by converting its path with
+            `workspace_host_path`.
         recipe: The recipe dict naming the `estimator` and any feature blocks. See
             `recipe_template()`.
         label_column: Name of the target column for supervised tasks (regression /
@@ -1736,9 +1761,9 @@ def run_plan(
 ) -> Union[PlanResult, ErrorResult]:
     """Execute a plan: a DAG of recipes chained by file pointers.
 
-    A plan is a HuggingGPT-style task list where each step's output file pointer can feed
-    the next step's input, so multi-stage workflows (e.g. clean -> extract -> forecast)
-    run as one call. Individual steps are recorded like any other run.
+    Each step's output file pointer can feed the next step's input, so a multi-stage workflow
+    (for example clean -> extract -> forecast) runs as one call. Individual steps are recorded
+    like any other run.
 
     Args:
         plan_spec: The plan definition: the ordered steps and how their file pointers
@@ -1771,11 +1796,12 @@ def run_plan(
 
 @mcp.tool(title="Evaluate (GIFT-Eval)")
 def evaluate(recipe: dict, configs: List[dict]) -> Union[EvaluateResult, ErrorResult]:
-    """Evaluate a recipe GIFT-Eval style across several dataset configs.
+    """Evaluate a recipe across several dataset configs, GIFT-Eval style.
 
-    Scores the recipe with seasonal-naive-normalized MASE and CRPS on each config, then
-    reports the geometric mean across configs - a leaderboard-comparable summary of how a
-    recipe generalizes beyond a single series.
+    GIFT-Eval is the General Time Series Forecasting Model Evaluation protocol: score the recipe
+    with seasonal-naive-normalized MASE and CRPS on each config, then report the geometric mean
+    across configs - a summary of how a recipe generalizes beyond a single series, comparable
+    across recipes.
 
     Args:
         recipe: The recipe to evaluate (same shape as `run_recipe`; see `recipe_template()`).
