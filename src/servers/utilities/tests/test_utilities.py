@@ -147,3 +147,42 @@ class TestCatalogTools:
         assert fake_catalog_db.calls[-1]["selector"] == {
             "failure_mode": "Air inlet blockage"
         }
+
+    @pytest.mark.anyio
+    async def test_zero_result_names_a_filter_the_catalog_cannot_serve(self):
+        """A catalog whose `category` column was blank for every row keeps no
+        category key, because the CSV loader drops empty cells. Filtering on it
+        then returns 0 entries with a success message, which reads the same as a
+        category that simply is not catalogued. The aa_v1 run spent 220 calls
+        and one turn-cap failure on that ambiguity."""
+        utilities.catalog_db = FakeCatalogDB(
+            [
+                {"failure_mode": "Bearing Failure"},
+                {"failure_mode": "Stator Damage"},
+            ]
+        )
+
+        data = await call_tool(
+            mcp,
+            "get_failure_mode_catalog",
+            {"category": "Rotating equipment"},
+        )
+
+        assert data["total"] == 0
+        assert "`category`" in data["message"]
+        assert "cannot match" in data["message"]
+
+    @pytest.mark.anyio
+    async def test_zero_result_stays_quiet_when_the_filter_is_serviceable(
+        self, fake_catalog_db
+    ):
+        """A populated field that merely has no matching value must not be
+        reported as unserviceable."""
+        data = await call_tool(
+            mcp,
+            "get_failure_mode_catalog",
+            {"category": "no such category"},
+        )
+
+        assert data["total"] == 0
+        assert data["message"] == "found 0 failure_mode catalog entries"

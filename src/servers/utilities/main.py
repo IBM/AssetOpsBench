@@ -86,6 +86,24 @@ def _clean_filter(value: Optional[str]) -> Optional[str]:
     return value or None
 
 
+def _catalog_field_present(discriminator: str, name: str) -> bool:
+    """True when at least one doc in this catalog carries `name`.
+
+    The CSV loader drops empty cells rather than storing "", so a column that is
+    blank for every row leaves no key behind. Filtering on it then matches nothing
+    and is indistinguishable from a value that simply is not catalogued.
+    """
+    try:
+        res = catalog_db.find(
+            {discriminator: {"$exists": True}, name: {"$exists": True}},
+            fields=[name],
+            limit=1,
+        )
+        return bool(res.get("docs"))
+    except Exception:
+        return True
+
+
 def _find_catalog(
     *,
     catalog_type: str,
@@ -122,12 +140,29 @@ def _find_catalog(
         query_parts.append(f"category={category_value}")
     query = ", ".join(query_parts) if query_parts else None
 
+    message = f"found {len(docs)} {catalog_type} catalog entries"
+    if not docs and (query_value is not None or category_value is not None):
+        unserviceable = [
+            name
+            for name, applied in (
+                (field, query_value is not None),
+                ("category", category_value is not None),
+            )
+            if applied and not _catalog_field_present(field, name)
+        ]
+        if unserviceable:
+            message += (
+                f"; the loaded {catalog_type} catalog records no "
+                + ", ".join(f"`{name}`" for name in unserviceable)
+                + " value for any entry, so filtering on it cannot match"
+            )
+
     return CatalogResult(
         catalog_type=catalog_type,
         query=query,
         total=len(docs),
         entries=docs,
-        message=f"found {len(docs)} {catalog_type} catalog entries",
+        message=message,
     )
 
 
@@ -176,11 +211,13 @@ def get_failure_mode_catalog(
     failure_mode: Optional[str] = None,
     category: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
-    """Return cataloged failure modes by asset category.
+    """Return cataloged failure modes.
 
     Entries contain `category`, `failure_mode`, and `description`. Omit filters
     to list all cataloged failure modes, or pass failure_mode and/or category
-    for exact lookups.
+    for exact lookups. Whether entries are grouped by asset category depends on
+    the loaded catalog: when it records no category, the category filter matches
+    nothing and the result says so.
     """
     return _find_catalog(
         catalog_type="failure_mode",
