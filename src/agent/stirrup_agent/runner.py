@@ -73,17 +73,24 @@ Code execution:
   directory, chain it into the same command (e.g. `cd data && python run.py`).
 - Python and common data libraries are already installed. Check with
   `python -c "import <pkg>"` before assuming a package is missing. Do not
-  install packages: what the task needs is present, and an install spends a
-  step you cannot get back.
-- For artifacts, inspect the schema, counts, a small sample, or the specific
-  rows or fields needed, then process in place. If an artifact exceeds 200 KiB,
-  avoid printing it in full; extract and process the relevant subset in bounded
-  batches. Avoid large record lists and verbose diagnostics.
+  install packages: what the task needs is present.
+- A tool result too large to return inline is written to the workspace and
+  returned as a file path instead. For such a file, inspect the schema, counts,
+  a small sample, or the specific rows or fields needed, then process in place.
+  If it exceeds 200 KiB, avoid printing it in full; extract and process the
+  relevant subset in bounded batches. Avoid large record lists and verbose
+  diagnostics.
 """
+
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace, and every command starts there.
-Host filesystem paths are not available inside the container. NumPy, pandas, and SciPy are installed; check
-availability before using other packages.
+Host filesystem paths are not available inside the container, and the code
+container runs on its own bridge with no route to the asset databases. NumPy,
+pandas, and SciPy are installed; check availability before using other
+packages.
+
+A file you write in the workspace becomes a tool input by translating its path
+with `workspace_host_path`.
 """
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
 The local execution workspace is a temporary directory, but commands run on the
