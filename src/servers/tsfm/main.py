@@ -201,6 +201,10 @@ def characterize_series(
     between groups, and returns each phase as an index span over the series. Assigns no fault
     label.
 
+    When no change point is found, `phases` contains a single span covering the whole series.
+    That is the absence of a detected transition, not a finding that the series is uniform, and
+    not a span to report as an anomalous segment.
+
     Args:
         dataset_path: File pointer to the series. The evidence and data tools return one; a CSV
             written in the code workspace becomes one by converting its path with
@@ -1611,7 +1615,9 @@ def run_recipe(
         RecipeResult: `status`, `run_id`, the engine's full `results` payload, a `results_file`
         pointer, `training_regime`, `folds`, and either `backtest_score`/`metric` (forecasting)
         or `n_anomalies`/`n_observations` (anomaly). Carries `checkpoint_path` when the recipe
-        used `save_to`. Returns ErrorResult on empty inputs or a run failure.
+        used `save_to`. `n_anomalies` may be 0: the detector flagged nothing at its own
+        threshold, which is its output rather than a verdict on the asset. Returns ErrorResult
+        on empty inputs or a run failure.
     """
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
