@@ -342,10 +342,13 @@ class StirrupAgentRunner(AgentRunner):
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
 
             client = self._build_client()
+            # Built once and reused: the prompt is persisted with the run, so
+            # the recorded text must be the text the agent actually received.
+            system_prompt = self._build_system_prompt()
             agent = Agent(
                 client=client,
                 name="assetops",
-                system_prompt=self._build_system_prompt(),
+                system_prompt=system_prompt,
                 tools=self._build_tools(),
                 finish_tool=ASSETOPS_FINISH_TOOL,
                 max_turns=self._max_turns,
@@ -376,6 +379,7 @@ class StirrupAgentRunner(AgentRunner):
                 question=question,
                 answer=answer,
                 trajectory=trajectory,
+                system_prompt=system_prompt,
             )
             return AgentResult(question=question, answer=answer, trajectory=trajectory)
 
