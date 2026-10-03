@@ -1592,10 +1592,11 @@ def run_recipe(
     naming which positions were flagged, and a `results_file` pointer - so it reports both
     whether a series contains anomalous behavior and where in the series it falls. Detectors are
     discoverable with `find_models(task_id="tsfm_anomaly_detection")` or `search_models`, and are
-    run by passing `recipe={"task": "tsfm_anomaly_detection", "estimator": {"model_id":
-    "<model_id>"}}`. Recipes without that task are forecasting (transforms + single/ensemble +
-    optional conformal intervals). `recipe_template()` returns the recipe contract. The result is
-    also findable later via `list_runs()` / `get_run()` and `list_results()` / `get_result()`.
+    run by passing
+    `recipe={"task": "tsfm_anomaly_detection", "estimator": {"model_id": "<model_id>"}}`.
+    Recipes without that task are forecasting (transforms + single/ensemble + optional conformal
+    intervals). `recipe_template()` returns the recipe contract. The result is also findable
+    later via `list_runs()` / `get_run()` and `list_results()` / `get_result()`.
 
     Args:
         dataset_path: File pointer to the input series. The evidence and data tools return one;
