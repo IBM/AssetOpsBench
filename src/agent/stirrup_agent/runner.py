@@ -53,28 +53,41 @@ _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 _DEFAULT_CODE_IMAGE = os.environ.get("STIRRUP_CODE_IMAGE", "assetops-code")
 _WORKING_CONTEXT_BUDGET = 100_000
 _CONTEXT_SUMMARIZATION_CUTOFF = 0.75
+# Stirrup is the only runner using ASSETOPS_FINISH_TOOL, so the finish contract
+# stays out of the shared AGENT_SYSTEM_PROMPT: placeholders there would leak
+# literal braces into the four runners that import it without formatting.
+_FINISH_SYSTEM_PROMPT = """\
+Use the tools provided to complete the task within {max_turns} steps, then
+submit your answer. When you are done you must call the `{finish_tool_name}`
+tool as your final step, with your final answer in `answer`.
+
+You cannot interact with the user during the task.
+"""
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
-- MCP tools and their definitions are authoritative for domain data and semantics.
-  Never use code to query backing services or bypass an available MCP tool.
-- Do not overuse code_exec. Answer directly from MCP results, domain knowledge,
-  and basic reasoning or arithmetic when sufficient. Use code_exec only for
-  necessary computation, data processing, workspace inspection, or validation.
-  Never use it for planning, comments, placeholders, or empty scripts.
-- Prefer one complete script that inspects, analyzes, and verifies. Do not repeat
-  equivalent experiments; correct failures directly.
-- Stay inside the execution workspace and use relative paths. Workspace state
-  persists across code_exec calls.
-- For artifacts, inspect only the schema, counts, a small sample, or the specific
-  rows or fields needed, then process in place. If an artifact exceeds 200 KiB,
-  never print it in full; extract and process the relevant subset in bounded
-  batches. Avoid large record lists and verbose diagnostics. Reuse snapshots
-  unless domain state has changed.
+- The `code_exec` tool runs shell commands in an isolated workspace and lets
+  you read, create, and edit files. Files you write persist across calls, but
+  shell state does not: each command runs in a fresh shell starting at the
+  workspace root, so no working directory or environment variable carries over.
+  Use paths relative to the workspace root, and when a step needs another
+  directory, chain it into the same command (e.g. `cd data && python run.py`).
+- Python and common data libraries are already installed. Check with
+  `python -c "import <pkg>"` before assuming a package is missing. Do not
+  install packages: what the task needs is present.
+- A tool result too large to return inline is written to the workspace and
+  returned as a file path instead. For such a file, inspect the schema, counts,
+  a small sample, or the specific rows or fields needed, then process in place.
+  If it exceeds 200 KiB, avoid printing it in full; extract and process the
+  relevant subset in bounded batches. Avoid large record lists and verbose
+  diagnostics.
 """
+
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
-The Docker execution workspace is /workspace. Host filesystem paths are not
-available inside the container. NumPy, pandas, and SciPy are installed; check
-availability before using other packages.
+The Docker execution workspace is /workspace, and every command starts there.
+Host filesystem paths are not available inside the container, and the code
+container runs on its own bridge with no route to the asset databases. NumPy,
+pandas, and SciPy are installed; check availability before using other
+packages.
 """
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
 The local execution workspace is a temporary directory, but commands run on the
@@ -300,16 +313,26 @@ class StirrupAgentRunner(AgentRunner):
         ]
 
     def _build_system_prompt(self) -> str:
-        """Append code-execution guidance when the code track is enabled."""
+        """Shared prompt, the Stirrup finish contract, then code guidance.
+
+        The finish section is formatted here because max_turns and the finish
+        tool's own name are both in scope; neither is knowable in the shared
+        prompt module.
+        """
+        finish = _FINISH_SYSTEM_PROMPT.format(
+            max_turns=self._max_turns,
+            finish_tool_name=ASSETOPS_FINISH_TOOL.name,
+        )
+        base = f"{AGENT_SYSTEM_PROMPT}\n{finish}"
         if not self._code_enabled:
-            return AGENT_SYSTEM_PROMPT
+            return base
 
         backend_prompt = (
             _DOCKER_CODE_EXEC_SYSTEM_PROMPT
             if self._code_backend == "docker"
             else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
         )
-        return f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+        return f"{base}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
 
     # -- run ---------------------------------------------------------------
 
@@ -323,10 +346,13 @@ class StirrupAgentRunner(AgentRunner):
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
 
             client = self._build_client()
+            # Built once and reused: the prompt is persisted with the run, so
+            # the recorded text must be the text the agent actually received.
+            system_prompt = self._build_system_prompt()
             agent = Agent(
                 client=client,
                 name="assetops",
-                system_prompt=self._build_system_prompt(),
+                system_prompt=system_prompt,
                 tools=self._build_tools(),
                 finish_tool=ASSETOPS_FINISH_TOOL,
                 max_turns=self._max_turns,
@@ -357,6 +383,7 @@ class StirrupAgentRunner(AgentRunner):
                 question=question,
                 answer=answer,
                 trajectory=trajectory,
+                system_prompt=system_prompt,
             )
             return AgentResult(question=question, answer=answer, trajectory=trajectory)
 
