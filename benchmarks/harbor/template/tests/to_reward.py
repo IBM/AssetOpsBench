@@ -38,8 +38,15 @@ def main() -> int:
         else:
             # One task is one scenario, so there is exactly one result.
             score = results[0].get("score") or {}
+            details = score.get("details") or {}
             rewards["reward"] = float(score.get("score") or 0.0)
             rewards["passed"] = int(bool(score.get("passed")))
+            # The strict exact-match baseline, carried alongside the mode-aware
+            # reward so a run reports both without re-scoring.
+            rewards["exact_f1"] = float(details.get("exact_f1") or 0.0)
+            rewards["strict_passed"] = int(
+                (details.get("strict_exact_match_accuracy") or 0.0) == 1.0
+            )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(rewards), encoding="utf-8")

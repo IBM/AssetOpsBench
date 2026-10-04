@@ -235,23 +235,42 @@ def test_anomaly_segment_scores_exact_categorical_and_numeric_delta():
         "fault_type": "FC101",
     }
 
+    # Numeric leniency is opt-in: with nothing declared, an off-by-one row index
+    # is a mismatch and only the two categorical keys are satisfied.
     score = evaluate_static_json(gold, model)
     details = {item.key: item for item in score.details}
 
     assert score.strict_exact_match_accuracy == 0.0
     assert score.partial_exact_match_accuracy == 0.5
-    assert score.partial_match_accuracy == 1.0
-    assert score.partial_numeric_match_accuracy == 1.0
-    assert score.range_match_accuracy == 0.5
-    assert score.delta_1_match_accuracy == 1.0
+    assert score.satisfied_value_matches == 2
+    assert score.f1 == 0.5
+    assert score.all_keys_satisfied == 0.0
     assert details["answer.condition"].match_type == "exact"
     assert details["answer.fault_type"].match_type == "exact"
-    assert details["answer.start_point"].match_type == "partial_delta_1"
-    assert details["answer.start_point"].range_match is True
-    assert details["answer.start_point"].delta_1_match is True
-    assert details["answer.end_point"].match_type == "partial_delta_1"
-    assert details["answer.end_point"].range_match is False
-    assert details["answer.end_point"].delta_1_match is True
+    assert details["answer.start_point"].satisfied is False
+    assert details["answer.end_point"].satisfied is False
+
+    # Declaring the two row-index keys as measurements restores delta-1 credit.
+    declared = evaluate_static_json(
+        gold,
+        model,
+        evaluation_metadata={
+            "keys": {
+                "start_point": {"mode": "measure"},
+                "end_point": {"mode": "measure"},
+            }
+        },
+    )
+    declared_details = {item.key: item for item in declared.details}
+
+    assert declared.partial_match_accuracy == 1.0
+    assert declared.partial_numeric_match_accuracy == 1.0
+    assert declared.delta_1_match_accuracy == 1.0
+    assert declared.f1 == 1.0
+    assert declared.all_keys_satisfied == 1.0
+    assert declared_details["answer.start_point"].match_type == "partial_delta_1"
+    assert declared_details["answer.start_point"].range_match is True
+    assert declared_details["answer.end_point"].range_match is False
 
 
 def test_anomaly_segment_scores_numeric_range_match():
@@ -280,14 +299,26 @@ def test_anomaly_segment_scores_numeric_range_match():
     assert details["answer.end_point"].match_type == "partial_range"
 
 
-def test_count_only_delta_one_is_numeric_partial_match():
+def test_count_only_delta_one_is_not_credited_by_default():
     score = evaluate_static_json("34", "35")
 
     assert score.strict_exact_match_accuracy == 0.0
     assert score.partial_exact_match_accuracy == 0.0
+    assert score.partial_match_accuracy == 0.0
+    assert score.f1 == 0.0
+    assert score.details[0].satisfied is False
+
+
+def test_count_only_delta_one_is_credited_when_declared_a_measure():
+    score = evaluate_static_json(
+        "34", "35", evaluation_metadata={"keys": {"answer": {"mode": "measure"}}}
+    )
+
+    assert score.strict_exact_match_accuracy == 0.0
     assert score.partial_match_accuracy == 1.0
     assert score.partial_numeric_match_accuracy == 1.0
     assert score.delta_1_match_accuracy == 1.0
+    assert score.f1 == 1.0
     assert score.details[0].match_type == "partial_delta_1"
 
 
@@ -557,3 +588,152 @@ def test_static_json_scorer_uses_car_metadata_score():
     assert result.passed is True
     assert result.score == 1.0
     assert result.details["car_score"] == 1.0
+
+
+def test_identifiers_are_not_collapsed_to_their_numeric_suffix():
+    """COMP-01, FAN-01 and MOT-01 must not all normalize to 1."""
+    score = evaluate_static_json(
+        '["FAN-01","MOT-01","PMP-01"]',
+        '["CMP-01","FAN-01","PMP-01"]',
+    )
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.f1 < 1.0
+    assert score.satisfied_value_matches == 1
+
+
+def test_timestamp_within_declared_tolerance_is_satisfied():
+    metadata = {"keys": {"start_point": {"mode": "timestamp", "tolerance_s": 60}}}
+
+    score = evaluate_static_json(
+        {"start_point": "2026-01-04T11:20:00"},
+        {"start_point": "2026-01-04T11:21:00"},
+        evaluation_metadata=metadata,
+    )
+
+    assert score.f1 == 1.0
+    assert score.all_keys_satisfied == 1.0
+    assert score.exact_f1 == 0.0
+    assert score.details[0].match_type == "within_tolerance"
+
+
+def test_timestamp_tolerance_does_not_repair_a_malformed_separator():
+    metadata = {"keys": {"start_point": {"mode": "timestamp", "tolerance_s": 60}}}
+
+    score = evaluate_static_json(
+        {"start_point": "2026-01-04T11:20:00"},
+        {"start_point": "2026-01-04 11:20:00"},
+        evaluation_metadata=metadata,
+    )
+
+    assert score.f1 == 0.0
+    assert score.all_keys_satisfied == 0.0
+
+
+def test_timestamp_outside_tolerance_is_a_mismatch():
+    metadata = {"keys": {"start_point": {"mode": "timestamp", "tolerance_s": 60}}}
+
+    score = evaluate_static_json(
+        {"start_point": "2026-01-04T11:20:00"},
+        {"start_point": "2026-01-04T11:25:00"},
+        evaluation_metadata=metadata,
+    )
+
+    assert score.f1 == 0.0
+
+
+def test_set_contained_is_all_or_nothing_and_rejects_a_hedge():
+    gold = {
+        "top_5_key_sensors": [
+            "TP2", "TP3", "H1", "DV_pressure",
+            "Reservoirs", "Oil_temperature", "Motor_current",
+        ]
+    }
+    metadata = {"keys": {"top_5_key_sensors": {"mode": "set_contained", "n": 5}}}
+
+    contained = evaluate_static_json(
+        gold,
+        {"top_5_key_sensors": ["DV_pressure", "H1", "Motor_current", "Oil_temperature", "TP3"]},
+        evaluation_metadata=metadata,
+    )
+    assert contained.f1 == 1.0
+    assert contained.all_keys_satisfied == 1.0
+
+    partly_outside = evaluate_static_json(
+        gold,
+        {"top_5_key_sensors": ["COMP", "DV_eletric", "TP2", "Motor_current", "Reservoirs"]},
+        evaluation_metadata=metadata,
+    )
+    assert partly_outside.f1 == 0.0
+
+    # Answering all seven would be trivially contained; len == n forbids it.
+    hedged = evaluate_static_json(
+        gold, {"top_5_key_sensors": gold["top_5_key_sensors"]}, evaluation_metadata=metadata
+    )
+    assert hedged.f1 == 0.0
+
+    repeated = evaluate_static_json(
+        gold, {"top_5_key_sensors": ["TP2"] * 5}, evaluation_metadata=metadata
+    )
+    assert repeated.f1 == 0.0
+
+
+def test_set_match_ignores_order_and_honours_tolerance():
+    gold = {"start_timestamps": ["2020-04-18T00:00", "2020-05-29T23:30"]}
+    metadata = {"keys": {"start_timestamps": {"mode": "set_match", "tolerance_s": 610}}}
+
+    reordered = evaluate_static_json(
+        gold,
+        {"start_timestamps": ["2020-05-29T23:30", "2020-04-18T00:00"]},
+        evaluation_metadata=metadata,
+    )
+    assert reordered.f1 == 1.0
+    assert reordered.all_keys_satisfied == 1.0
+
+    wrong_length = evaluate_static_json(
+        gold, {"start_timestamps": ["2020-04-18T00:00"]}, evaluation_metadata=metadata
+    )
+    assert wrong_length.f1 == 0.0
+
+
+def test_set_match_on_paired_fields():
+    gold = {
+        "failures": [
+            {"start": "2020-04-18T00:00", "end": "2020-04-18T23:59"},
+            {"start": "2020-05-29T23:30", "end": "2020-05-30T06:00"},
+        ]
+    }
+    metadata = {
+        "keys": {
+            "failures": {
+                "mode": "set_match",
+                "match_on": ["start", "end"],
+                "tolerance_s": 610,
+            }
+        }
+    }
+
+    score = evaluate_static_json(
+        gold,
+        {
+            "failures": [
+                {"start": "2020-05-29T23:30", "end": "2020-05-30T06:00"},
+                {"start": "2020-04-18T00:00", "end": "2020-04-18T23:59"},
+            ]
+        },
+        evaluation_metadata=metadata,
+    )
+
+    assert score.f1 == 1.0
+    assert score.all_keys_satisfied == 1.0
+
+
+def test_scenario_without_metadata_is_scored_strictly():
+    gold = {"detected_label": "abnormal", "start_point": "2026-01-01T01:28:00"}
+
+    off_by_one = evaluate_static_json(
+        gold, {"detected_label": "abnormal", "start_point": "2026-01-01T01:29:00"}
+    )
+
+    assert off_by_one.f1 == 0.5
+    assert off_by_one.all_keys_satisfied == 0.0
