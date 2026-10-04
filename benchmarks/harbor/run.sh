@@ -5,7 +5,12 @@
 #
 #   bash benchmarks/harbor/run.sh -s SCENARIO_DIR -l LEADERBOARD_DIR \
 #     [-n N_CONCURRENT] [-p PROFILE] [-r RUNTIME_IMAGE] \
+#     [-k N_ATTEMPTS] [-t TEMPERATURE] [-u MAX_TURNS] \
 #     [-m "MODEL_ID REASONING_EFFORT"]...
+#
+# -k repeats every task that many times inside one job, which is what pass@k and
+# pass^k are computed from. -t sets the sampling temperature and -u the agent
+# turn budget; both are forwarded to stirrup-agent as agent kwargs.
 #
 # Needs Docker, `uv sync --extra harbor` and the runtime image, built with
 # scripts/build-runtime-image.sh or published and passed as -r (or
@@ -20,7 +25,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s -s SCENARIO_DIR -l LEADERBOARD_DIR [-n N_CONCURRENT] [-p PROFILE] [-r RUNTIME_IMAGE] [-m "MODEL_ID EFFORT"]...\n' "$0" >&2
+  printf 'Usage: %s -s SCENARIO_DIR -l LEADERBOARD_DIR [-n N_CONCURRENT] [-p PROFILE] [-r RUNTIME_IMAGE] [-k N_ATTEMPTS] [-t TEMPERATURE] [-u MAX_TURNS] [-m "MODEL_ID EFFORT"]...\n' "$0" >&2
 }
 
 scenario_dir="${SCENARIO_DIR:-}"
@@ -29,9 +34,12 @@ n_concurrent="${N_CONCURRENT:-4}"
 profile="${PROFILE:-}"
 env_file="${ENV_FILE:-}"
 runtime_image="${AOB_RUNTIME_IMAGE:-}"
+n_attempts="${N_ATTEMPTS:-}"
+temperature="${TEMPERATURE:-}"
+max_turns="${MAX_TURNS:-}"
 model_configs=()
 
-while getopts ':s:l:n:p:r:m:' option; do
+while getopts ':s:l:n:p:r:m:k:t:u:' option; do
   case "$option" in
     s) scenario_dir="$OPTARG" ;;
     l) leaderboard_dir="$OPTARG" ;;
@@ -39,6 +47,9 @@ while getopts ':s:l:n:p:r:m:' option; do
     p) profile="$OPTARG" ;;
     r) runtime_image="$OPTARG" ;;
     m) model_configs+=("$OPTARG") ;;
+    k) n_attempts="$OPTARG" ;;
+    t) temperature="$OPTARG" ;;
+    u) max_turns="$OPTARG" ;;
     :) printf 'Option -%s requires an argument.\n' "$OPTARG" >&2; usage; exit 2 ;;
     \?) printf 'Unknown option: -%s\n' "$OPTARG" >&2; usage; exit 2 ;;
   esac
@@ -46,6 +57,19 @@ done
 
 if [[ -z "$scenario_dir" || -z "$leaderboard_dir" ]]; then
   usage
+  exit 2
+fi
+
+for numeric in n_attempts:"$n_attempts" max_turns:"$max_turns"; do
+  name="${numeric%%:*}"
+  value="${numeric#*:}"
+  if [[ -n "$value" && ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+    printf '%s must be a positive integer, got %s\n' "$name" "$value" >&2
+    exit 2
+  fi
+done
+if [[ -n "$temperature" && ! "$temperature" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+  printf 'temperature must be a non-negative number, got %s\n' "$temperature" >&2
   exit 2
 fi
 
@@ -402,6 +426,21 @@ for model_config in "${model_configs[@]}"; do
     effort_args=(--ak "reasoning_effort=$reasoning_effort")
   fi
 
+  # Sampling and budget overrides reach stirrup-agent through agent kwargs.
+  sampling_args=()
+  if [[ -n "$temperature" ]]; then
+    sampling_args+=(--ak "temperature=$temperature")
+  fi
+  if [[ -n "$max_turns" ]]; then
+    sampling_args+=(--ak "max_turns=$max_turns")
+  fi
+
+  # Repeats live inside one job so Harbor keeps them under the same eval key.
+  attempt_args=()
+  if [[ -n "$n_attempts" ]]; then
+    attempt_args=(-k "$n_attempts")
+  fi
+
   # harbor run exits 0 when trials fail; non-zero means the job itself could not
   # run, e.g. a rejected config or missing credentials.
   if ! AOB_CODE_TAR="$code_tar" uv run --env-file "$env_file" harbor run -y \
@@ -413,6 +452,8 @@ for model_config in "${model_configs[@]}"; do
     --ak allow_docker_backend=true \
     --ak workspace_dir=/workspace-share \
     ${effort_args[@]+"${effort_args[@]}"} \
+    ${sampling_args[@]+"${sampling_args[@]}"} \
+    ${attempt_args[@]+"${attempt_args[@]}"} \
     --extra-docker-compose benchmarks/harbor/overlays/private-data.yaml \
     --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
     --n-concurrent "$n_concurrent" \
