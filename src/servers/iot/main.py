@@ -286,6 +286,13 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
                 "installdate",
                 "vintage",
                 "sensors",
+                "sampling_rate_hz",
+                "shaft_speed_hz",
+                "n_rolling_elements",
+                "ball_diameter_m",
+                "pitch_diameter_m",
+                "contact_angle_deg",
+                "structural_resonance_hz",
             ],
             limit=1,
         )
@@ -308,6 +315,13 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
         if location:
             parts.append(f" at {location}")
         parts.append(f" with {n_installed_sensors} installed sensors.")
+
+        extra = {k: v for k, v in doc.items() if k not in
+                 {"assetnum", "description", "assettype", "status",
+                  "location", "installdate", "vintage", "sensors"}}
+        if extra:
+            parts.append(" Registry also records "
+                         + ", ".join(f"{k}={v}" for k, v in extra.items()) + ".")
 
         return AssetDetail(
             site_name=site_name,
