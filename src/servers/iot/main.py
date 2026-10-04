@@ -287,6 +287,8 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
                 "installdate",
                 "vintage",
                 "sensors",
+                "pinion_teeth",
+                "gear_teeth",
                 "sampling_rate_hz",
                 "shaft_speed_hz",
                 "n_rolling_elements",
