@@ -629,7 +629,12 @@ def _conformal_ad(
         raise ValueError("conformal AD needs an 'estimator' (a forecaster card)")
     card = spec
     if spec.get("model_id") and store is not None:
-        card = model_store_get(store, spec["model_id"]) or spec
+        card = model_store_get(store, spec["model_id"])
+        if not card:
+            raise ValueError(
+                f"model '{spec['model_id']}' not in catalog; discover valid ids with "
+                "find_models or list_models"
+            )
     merged = {
         **card,
         "params": {**(card.get("params") or {}), **(spec.get("params") or {})},
@@ -716,7 +721,12 @@ def run_anomaly(
         raise ValueError("anomaly recipe needs an 'estimator' (a detector card)")
     card = spec
     if spec.get("model_id") and store is not None:
-        card = model_store_get(store, spec["model_id"]) or spec
+        card = model_store_get(store, spec["model_id"])
+        if not card:
+            raise ValueError(
+                f"model '{spec['model_id']}' not in catalog; discover valid ids with "
+                "find_models(task_id='tsfm_anomaly_detection')"
+            )
     merged = {
         **card,
         "params": {**(card.get("params") or {}), **(spec.get("params") or {})},
