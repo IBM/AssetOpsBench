@@ -59,6 +59,7 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
         "mode_term_coverage",
         "mode_optional_term_coverage",
         "car_score",
+        "mode_spec_matches_gold",
     ]
 
     score_values: dict[str, list[float]] = {name: [] for name in metric_names}
@@ -152,6 +153,9 @@ def _aggregate_score_summary(results: list[ScenarioResult]) -> dict[str, Any]:
             score_values["mode_optional_term_coverage"]
         ),
         "car_score_avg": _avg(score_values["car_score"]),
+        # Below 1.0 means a groundtruth_eval.json declares a mode its gold
+        # answer does not use: a scenario defect, not a model result.
+        "mode_spec_matches_gold_avg": _avg(score_values["mode_spec_matches_gold"]),
         "missing_keys_total": missing_keys_total,
         "extra_keys_total": extra_keys_total,
         "detail_entries_total": detail_entries_total,

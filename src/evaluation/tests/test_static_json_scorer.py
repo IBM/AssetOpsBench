@@ -468,7 +468,7 @@ def test_car_optional_terms_do_not_inflate_similarity():
     assert score.mode_optional_term_coverage == 1.0
 
 
-def test_car_metadata_passes_when_any_required_term_matches():
+def test_car_term_coverage_is_fractional_across_concepts():
     score = evaluate_static_json(
         {"abstain": "Cannot determine because date or time is missing."},
         {"abstain": "Cannot determine this from the available date fields."},
@@ -478,14 +478,20 @@ def test_car_metadata_passes_when_any_required_term_matches():
         },
     )
 
-    assert score.strict_exact_match_accuracy == 1.0
+    assert score.strict_exact_match_accuracy == 0.0
     assert score.car_score == 0.7333333333333333
     assert score.mode_key_match == 1.0
     assert score.mode_matched_terms == ["date"]
     assert score.mode_term_coverage == 1 / 3
 
 
-def test_car_metadata_fails_when_required_term_is_missing():
+def test_car_missing_required_term_fails_but_keeps_partial_credit():
+    """Pass needs the mode and every concept; car_score still grades the rest.
+
+    The mode alone cannot be the criterion: a constant generic abstain would
+    pass 30 of the 50 CAR scenarios.  Concept-level any_of matching is what
+    keeps this gate from punishing paraphrase.
+    """
     score = evaluate_static_json(
         {"clarification": "Which asset do you mean by 'the main unit'?"},
         {"clarification": "Which asset should I analyze?"},
@@ -502,6 +508,11 @@ def test_car_metadata_fails_when_required_term_is_missing():
 
 
 def test_car_metadata_fails_when_mode_key_is_wrong_even_with_required_term():
+    """Terms are evidence for the chosen mode, so a wrong mode scores zero.
+
+    Reading them out of the value of the wrong key credited wrong-mode answers
+    with 0.4 for echoing the question.
+    """
     score = evaluate_static_json(
         {"clarification": "Which asset do you mean by 'the main unit'?"},
         {"response": "The main unit appears to be PMP42144."},
@@ -512,9 +523,98 @@ def test_car_metadata_fails_when_mode_key_is_wrong_even_with_required_term():
     )
 
     assert score.strict_exact_match_accuracy == 0.0
-    assert score.car_score == 0.4
+    assert score.car_score == 0.0
     assert score.mode_key_match == 0.0
+    assert score.mode_term_coverage == 0.0
+
+
+def test_car_any_of_accepts_a_paraphrase_of_the_question_wording():
+    """A concept is covered by any declared surface form.
+
+    Five models correctly abstained on scenario 191 and all five were failed by
+    the literal phrase 'save the most', which none of them used.
+    """
+    score = evaluate_static_json(
+        {"abstain": "Cannot identify the asset whose repair would 'save the most'."},
+        {"abstain": "A cost-savings ranking cannot be produced from this data."},
+        evaluation_metadata={
+            "mode": "abstain",
+            "required_terms": [
+                {
+                    "concept": "save the most",
+                    "any_of": ["save the most", "savings", "cost reduction"],
+                }
+            ],
+        },
+    )
+
+    assert score.car_score == 1.0
     assert score.mode_term_coverage == 1.0
+    assert score.mode_matched_terms == ["save the most"]
+
+
+def test_car_any_of_normalizes_the_term_as_well_as_the_text():
+    """A hyphen in the curated term must not cause a spurious miss."""
+    score = evaluate_static_json(
+        {"abstain": "Cannot compute a month-by-month trend."},
+        {"abstain": "A month by month trend cannot be computed."},
+        evaluation_metadata={
+            "mode": "abstain",
+            "required_terms": [
+                {"concept": "month by month", "any_of": ["month-by-month", "monthly"]}
+            ],
+        },
+    )
+
+    assert score.mode_term_coverage == 1.0
+    assert score.car_score == 1.0
+
+
+def test_car_sidecar_mode_cannot_override_the_gold_key():
+    """A wrong 'mode' in the sidecar must not redefine the scenario.
+
+    An earlier version preferred the sidecar, so a one-word typo in it scored
+    every answer against the wrong mode and nothing surfaced the error.
+    """
+    score = evaluate_static_json(
+        {"abstain": "Cannot compute mean time to repair: no timestamps."},
+        {"abstain": "MTTR cannot be computed without timestamps."},
+        evaluation_metadata={
+            "mode": "response",
+            "required_terms": [{"concept": "mttr", "any_of": ["mttr"]}],
+        },
+    )
+
+    assert score.mode_key_match == 1.0
+    assert score.all_keys_satisfied == 1.0
+    assert score.mode_spec_matches_gold == 0.0
+
+
+def test_car_reports_no_optional_coverage_when_none_declared():
+    """None, not 0.0, so the report average is not dragged down."""
+    score = evaluate_static_json(
+        {"abstain": "Cannot compute mean time to repair: no timestamps."},
+        {"abstain": "MTTR cannot be computed without timestamps."},
+        evaluation_metadata={"mode": "abstain", "required_terms": ["mttr"]},
+    )
+
+    assert score.mode_optional_term_coverage is None
+    assert score.exact_f1 == 1.0
+
+
+def test_car_malformed_any_of_entry_is_ignored():
+    """A non-string surface form must not become a term."""
+    score = evaluate_static_json(
+        {"abstain": "Cannot compute this: no cost field."},
+        {"abstain": "There is no cost field."},
+        evaluation_metadata={
+            "mode": "abstain",
+            "required_terms": [{"concept": "cost", "any_of": [{"bad": 1}, "cost"]}],
+        },
+    )
+
+    assert score.mode_term_coverage == 1.0
+    assert score.car_score == 1.0
 
 
 def test_count_only_exact_match():
