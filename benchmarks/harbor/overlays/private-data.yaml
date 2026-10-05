@@ -1,0 +1,27 @@
+# Opt-in overlay that mounts a private suite's shared/ data into `main`, read-only.
+#
+#   export AOB_PRIVATE_DIR=<path-to>/AssetOpsBenchScenarioGeneration/scenarios_data
+#   harbor run -p benchmarks/harbor/datasets/assetopsbench-mini \
+#     --extra-docker-compose benchmarks/harbor/overlays/private-data.yaml ...
+#
+# Generate the tasks with --scenario-root "$AOB_PRIVATE_DIR": the healthcheck
+# then loads each scenario from /opt/suite/scenarios_data, where its manifest's
+# shared/... paths resolve against this mount. The agent keeps the repo copy.
+#
+# Only shared/ is mounted: every scenario_<id>/ beside it holds that scenario's
+# answers, and `main` is the agent's container. Changes to shared/ apply on the
+# next run; a changed manifest.json needs the tasks regenerated.
+#
+# `:?` names the variable when AOB_PRIVATE_DIR is unset, and
+# create_host_path: false fails the trial on a wrong path instead of mounting an
+# empty directory that loads every collection empty. Use an absolute path:
+# Compose resolves a relative one against the task's environment/ directory.
+services:
+  main:
+    volumes:
+      - type: bind
+        source: ${AOB_PRIVATE_DIR:?set AOB_PRIVATE_DIR to the private suite's scenarios_data directory}/shared
+        target: /opt/suite/scenarios_data/shared
+        read_only: true
+        bind:
+          create_host_path: false

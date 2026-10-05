@@ -47,27 +47,23 @@ Telemetry windows are half-open ISO 8601 ranges. `history` supports cursor-based
 ## utilities — Utilities
 
 **Path:** `src/servers/utilities/main.py`
-**Requires:** CouchDB for the catalog lookup tools (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `CATALOG_DBNAME`); `json_reader` and the time tools do not need external services.
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `CATALOG_DBNAME`)
 
 | Tool                   | Category | Arguments   | Description                                            |
 | ---------------------- | -------- | ----------- | ------------------------------------------------------ |
-| `json_reader`          | read     | `file_name` | Read and parse a JSON file from disk                   |
 | `get_sensor_catalog`   | read     | `sensor?`   | List sensor catalog entries, or fetch an exact sensor  |
 | `get_asset_catalog`    | read     | `asset?`, `category?` | List asset catalog entries, optionally filtered by asset or category |
 | `get_failure_mode_catalog` | read | `failure_mode?`, `category?` | List failure-mode catalog entries, optionally filtered by failure mode or category |
-| `current_date_time`    | read     | —           | Return the current UTC date and time as JSON           |
-| `current_time_english` | read     | —           | Return the current UTC time as a human-readable string |
 
 ## fmsr — Failure Mode and Sensor Relations
 
 **Path:** `src/servers/fmsr/main.py`
-**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `FAILURE_MODE_DBNAME`) for stored modes; LLM credentials for `generate_failure_modes`.
+**Requires:** CouchDB (`COUCHDB_URL`, `COUCHDB_USERNAME`, `COUCHDB_PASSWORD`, `FAILURE_MODE_DBNAME`).
 **Failure-mode data:** `src/couchdb/scenarios_data/shared/fmea/failure_modes_sample.json` loaded into the `failure_mode` database collection by default.
 
 | Tool                              | Category      | Arguments                                | Description                                                                                                                                             |
 | --------------------------------- | ------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_failure_modes`               | read          | `asset_class`                            | Return known failure modes for an asset class from the database. Returns `asset_class`, `failure_modes`, `exhaustive`, and `source`.                    |
-| `generate_failure_modes`          | read, LLM-use | `asset_class`, `max_modes?`              | Generate or extend a failure-mode list without writing the database. |
 | `add_failure_modes`               | write         | `asset_class`, `failure_modes`, `exhaustive?`, `source?` | Persist failure modes for an asset class. |
 
 ## wo — Work Order

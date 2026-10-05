@@ -23,6 +23,7 @@ Design choices:
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import logging
 import os
@@ -43,12 +44,17 @@ def persist_trajectory(
     question: str,
     answer: str,
     trajectory: Any,
+    system_prompt: str | None = None,
 ) -> Path | None:
     """Write a per-run evaluation record when ``AGENT_TRAJECTORY_DIR`` is set.
 
     Reads ``run_id`` / ``scenario_id`` from the same contextvars used by
     :func:`agent_run_span`, so CLI-level wiring doesn't have to touch the
     runner's public signature.
+
+    ``system_prompt`` is the prompt as actually assembled and sent, which the
+    source commit alone does not identify: it varies with ``max_turns`` and the
+    code backend. Runners that do not pass it leave both prompt fields ``None``.
 
     Returns the output path, or ``None`` when persistence is disabled.
     """
@@ -75,6 +81,12 @@ def persist_trajectory(
         "model": model,
         "question": question,
         "answer": answer,
+        "system_prompt": system_prompt,
+        "system_prompt_sha256": (
+            hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:12]
+            if system_prompt is not None
+            else None
+        ),
         "trajectory": _serialize_trajectory(trajectory),
     }
     try:

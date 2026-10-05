@@ -1,9 +1,5 @@
 """Tests for Utilities MCP server tools."""
 
-import json
-import os
-import tempfile
-
 import pytest
 from servers.db_errors import DATA_UNAVAILABLE
 from servers.utilities import main as utilities
@@ -62,103 +58,6 @@ def fake_catalog_db(monkeypatch):
     )
     monkeypatch.setattr(utilities, "catalog_db", fake)
     return fake
-
-
-# ---------------------------------------------------------------------------
-# current_date_time
-# ---------------------------------------------------------------------------
-
-
-class TestCurrentDateTime:
-    @pytest.mark.anyio
-    async def test_response_structure(self):
-        data = await call_tool(mcp, "current_date_time", {})
-        assert "currentDateTime" in data
-        assert "currentDateTimeDescription" in data
-
-    @pytest.mark.anyio
-    async def test_description_format(self):
-        data = await call_tool(mcp, "current_date_time", {})
-        desc = data["currentDateTimeDescription"]
-        assert "Today's date is" in desc
-        assert "time is" in desc
-
-    @pytest.mark.anyio
-    async def test_iso_format(self):
-        data = await call_tool(mcp, "current_date_time", {})
-        # Should contain a T separator (ISO 8601)
-        assert "T" in data["currentDateTime"]
-
-
-# ---------------------------------------------------------------------------
-# current_time_english
-# ---------------------------------------------------------------------------
-
-
-class TestCurrentTimeEnglish:
-    @pytest.mark.anyio
-    async def test_response_structure(self):
-        data = await call_tool(mcp, "current_time_english", {})
-        assert "english" in data
-        assert "iso" in data
-
-    @pytest.mark.anyio
-    async def test_english_is_readable(self):
-        data = await call_tool(mcp, "current_time_english", {})
-        # pendulum's to_datetime_string returns "YYYY-MM-DD HH:MM:SS"
-        parts = data["english"].split(" ")
-        assert len(parts) == 2  # date + time
-
-
-# ---------------------------------------------------------------------------
-# json_reader
-# ---------------------------------------------------------------------------
-
-
-class TestJsonReader:
-    @pytest.mark.anyio
-    async def test_reads_valid_json(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump({"test": "data"}, tmp)
-            tmp_name = tmp.name
-
-        try:
-            data = await call_tool(mcp, "json_reader", {"file_name": tmp_name})
-            assert data == {"test": "data"}
-        finally:
-            os.remove(tmp_name)
-
-    @pytest.mark.anyio
-    async def test_reads_nested_json(self):
-        payload = {"a": [1, 2, 3], "b": {"nested": True}}
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(payload, tmp)
-            tmp_name = tmp.name
-
-        try:
-            data = await call_tool(mcp, "json_reader", {"file_name": tmp_name})
-            assert data == payload
-        finally:
-            os.remove(tmp_name)
-
-    @pytest.mark.anyio
-    async def test_nonexistent_file(self):
-        data = await call_tool(
-            mcp, "json_reader", {"file_name": "/tmp/does_not_exist_12345.json"}
-        )
-        assert "error" in data
-
-    @pytest.mark.anyio
-    async def test_invalid_json_content(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            tmp.write("not valid json {{{")
-            tmp_name = tmp.name
-
-        try:
-            data = await call_tool(mcp, "json_reader", {"file_name": tmp_name})
-            assert "error" in data
-        finally:
-            os.remove(tmp_name)
 
 
 # ---------------------------------------------------------------------------
@@ -248,3 +147,42 @@ class TestCatalogTools:
         assert fake_catalog_db.calls[-1]["selector"] == {
             "failure_mode": "Air inlet blockage"
         }
+
+    @pytest.mark.anyio
+    async def test_zero_result_names_a_filter_the_catalog_cannot_serve(self):
+        """A catalog whose `category` column was blank for every row keeps no
+        category key, because the CSV loader drops empty cells. Filtering on it
+        then returns 0 entries with a success message, which reads the same as a
+        category that simply is not catalogued. The aa_v1 run spent 220 calls
+        and one turn-cap failure on that ambiguity."""
+        utilities.catalog_db = FakeCatalogDB(
+            [
+                {"failure_mode": "Bearing Failure"},
+                {"failure_mode": "Stator Damage"},
+            ]
+        )
+
+        data = await call_tool(
+            mcp,
+            "get_failure_mode_catalog",
+            {"category": "Rotating equipment"},
+        )
+
+        assert data["total"] == 0
+        assert "`category`" in data["message"]
+        assert "cannot match" in data["message"]
+
+    @pytest.mark.anyio
+    async def test_zero_result_stays_quiet_when_the_filter_is_serviceable(
+        self, fake_catalog_db
+    ):
+        """A populated field that merely has no matching value must not be
+        reported as unserviceable."""
+        data = await call_tool(
+            mcp,
+            "get_failure_mode_catalog",
+            {"category": "no such category"},
+        )
+
+        assert data["total"] == 0
+        assert data["message"] == "found 0 failure_mode catalog entries"
