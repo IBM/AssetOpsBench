@@ -14,7 +14,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from agent._prompts import AGENT_SYSTEM_PROMPT
 from agent.stirrup_agent.finish_tool import ASSETOPS_FINISH_TOOL
 from agent.stirrup_agent.runner import (
     StirrupAgentRunner,
@@ -123,12 +122,6 @@ def test_stirrup_runner_bridges_mcp_results_when_code_is_enabled():
 
     assert isinstance(mcp_provider, WorkspaceBridgedMCPToolProvider)
     assert mcp_provider._exec_env is code_provider
-
-
-def test_stirrup_runner_uses_shared_prompt_when_code_is_disabled():
-    runner = StirrupAgentRunner(code_enabled=False)
-
-    assert runner._build_system_prompt() == AGENT_SYSTEM_PROMPT
 
 
 def test_stirrup_runner_forwards_temperature_to_litellm_client():

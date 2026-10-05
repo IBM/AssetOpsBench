@@ -300,6 +300,16 @@ class StirrupAgent(BaseInstalledAgent):
                     "scenario_id": record.get("scenario_id"),
                     "code_enabled": self.code_enabled,
                     "code_backend": self.code_backend,
+                    # Identifies the prompt without carrying its ~3 KB into
+                    # every trajectory: the full text is in the run record
+                    # written beside this file. Both are None for a run
+                    # recorded before the prompt was persisted.
+                    "system_prompt_sha256": record.get("system_prompt_sha256"),
+                    "system_prompt_chars": (
+                        len(record["system_prompt"])
+                        if isinstance(record.get("system_prompt"), str)
+                        else None
+                    ),
                 },
             ),
             steps=steps,
