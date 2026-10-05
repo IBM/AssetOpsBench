@@ -73,7 +73,12 @@ def test_mcp_guidance_advertises_anomaly_run_recipe_path():
     assert "For anomaly detection" in run_recipe_doc
     assert "tsfm_anomaly_detection" in run_recipe_doc
     assert "\"estimator\": {\"model_id\": \"<model_id>\"}" in run_recipe_doc
-    assert "ground final segment/JSON answers" in run_recipe_doc
+    # The docstring used to end with "ground final segment/JSON answers in those outputs".
+    # That told the model what to base its answer on, which is the class of instruction the
+    # AA methodology objects to, so it was retired. What the anomaly path RETURNS is still
+    # pinned here; what the model should do with it is left to the model.
+    assert "label for every observation" in run_recipe_doc
+    assert "indexed records" in run_recipe_doc
 
 
 # ---- run_recipe: a real fit + backtest ----
@@ -227,6 +232,19 @@ def test_unknown_model_id_in_a_recipe_errors():
                             "timestamp_column": "timestamp", "target_columns": ["value"],
                             "recipe": {"estimator": {"model_id": "no_such_card"}, "fh": [1]}})
     assert "error" in r and "not in catalog" in r["error"]
+
+
+def test_unknown_model_id_on_the_anomaly_path_errors():
+    """The anomaly path used to fall back to the raw spec on a catalog miss, so an unknown
+    model_id surfaced as "card '<id>' has no sktime_class" - which reads as a broken catalog
+    card rather than a bad id. It now matches the forecasting path."""
+    r = call("run_recipe", {"dataset_path": _series(asset="ghost"),
+                            "timestamp_column": "timestamp", "target_columns": ["value"],
+                            "recipe": {"task": "tsfm_anomaly_detection",
+                                       "estimator": {"model_id": "no_such_detector"}}})
+    assert "error" in r
+    assert "not in catalog" in r["error"]
+    assert "has no sktime_class" not in r["error"]
 
 
 def test_ensemble_with_conformal_example_runs():

@@ -255,7 +255,8 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
     """Return registry details for one asset.
 
     Includes identity, description, type, status, location, installation date,
-    vintage, and installed-sensor count. Use `installed_sensors()` for names.
+    vintage, and installed-sensor count. Use `installed_sensors()` for names. The message also reports any further registry fields the site records for
+    this asset. 
 
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
@@ -286,6 +287,15 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
                 "installdate",
                 "vintage",
                 "sensors",
+                "pinion_teeth",
+                "gear_teeth",
+                "sampling_rate_hz",
+                "shaft_speed_hz",
+                "n_rolling_elements",
+                "ball_diameter_m",
+                "pitch_diameter_m",
+                "contact_angle_deg",
+                "structural_resonance_hz",
             ],
             limit=1,
         )
@@ -308,6 +318,13 @@ def asset_detail(site_name: str, asset_id: str) -> Union[AssetDetail, ErrorResul
         if location:
             parts.append(f" at {location}")
         parts.append(f" with {n_installed_sensors} installed sensors.")
+
+        extra = {k: v for k, v in doc.items() if k not in
+                 {"assetnum", "description", "assettype", "status",
+                  "location", "installdate", "vintage", "sensors"}}
+        if extra:
+            parts.append(" Registry also records "
+                         + ", ".join(f"{k}={v}" for k, v in extra.items()) + ".")
 
         return AssetDetail(
             site_name=site_name,
