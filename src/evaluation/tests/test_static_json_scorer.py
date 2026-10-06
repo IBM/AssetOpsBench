@@ -2,6 +2,7 @@ from evaluation.scorers.static_json import (
     evaluate_static_json,
     evaluate_static_json_batch,
     flatten_answer,
+    normalize_value,
     parse_structured_answer,
 )
 
@@ -557,3 +558,34 @@ def test_static_json_scorer_uses_car_metadata_score():
     assert result.passed is True
     assert result.score == 1.0
     assert result.details["car_score"] == 1.0
+
+
+def test_identifier_with_a_separator_is_not_read_as_a_count():
+    """An asset id is a label, not a number.
+
+    ``FAN-01`` used to reach ``_extract_count_from_text``, whose lookbehind
+    excluded letters and digits but not the hyphen, so the whole id parsed as
+    the integer 1. Every ``XXX-01`` asset then normalised to the same value and
+    any list of them matched any other.
+    """
+    assert normalize_value("FAN-01") == "fan-01"
+    assert normalize_value("MOT-01") == "mot-01"
+    assert normalize_value("RC-1") == "rc-1"
+    assert normalize_value("GEN-01") == "gen-01"
+
+
+def test_distinct_asset_lists_do_not_match():
+    gold = '["FAN-01", "MOT-01", "PMP-01"]'
+    model = '["CMP-01", "FAN-01", "PMP-01"]'
+
+    score = evaluate_static_json(gold, model)
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.exact_value_matches == 1
+
+
+def test_count_rescue_still_reads_a_number_out_of_prose():
+    """The fix must not break the path it guards."""
+    assert parse_structured_answer("The answer is 10.") == 10
+    assert parse_structured_answer("10") == 10
+    assert normalize_value("PMP42144") == "pmp42144"
