@@ -220,7 +220,7 @@ def _extract_count_from_text(content: str) -> int | float | None:
         return float(stripped)
 
     numbers = re.findall(
-        r"(?<![A-Za-z0-9_])-?\d+(?:\.\d+)?(?![A-Za-z0-9_])",
+        r"(?<![A-Za-z0-9_\-])-?\d+(?:\.\d+)?(?![A-Za-z0-9_\-])",
         stripped,
     )
     if len(numbers) == 1:
