@@ -166,32 +166,10 @@ matrix in `run.sh` uses both.
 | `STIRRUP_CODE_IMAGE` | `assetops-code` | Code sandbox image |
 | `DOCKER_HOST` | SDK default | Set only for a non-standard socket — find yours with `docker context inspect --format '{{.Endpoints.docker.Host}}'` |
 | `ASSETOPS_SHARED_DIR` | `/tmp/assetops_shared` | Directory shared between `code_exec` and the host-side MCP servers |
-| `FMSR_MODEL_ID` | a `watsonx/*` model | Override to run the fmsr `generate_*` tools through another gateway |
 
 Per-database names (`IOT_DBNAME`, `WO_DBNAME`, `CATALOG_DBNAME`, …) default to
 values matching the bundled compose file; see
 [INSTRUCTIONS.md](../INSTRUCTIONS.md) for the full list.
-
-### WatsonX — needed more often than it looks
-
-`run.sh` itself never uses WatsonX. But the `fmsr` server's `generate_*` tools
-default to `watsonx/meta-llama/llama-3-3-70b-instruct`, and when the
-credentials are absent the server does not fail loudly — it logs
-`LLM unavailable (generate_* tools disabled)` at startup and every later call
-returns:
-
-```json
-{"error": "LLM unavailable"}
-```
-
-The `lite` profile includes fmsr scenarios (902, 904, 905, 906, …), so those
-run with a tool quietly missing and score badly for a reason that never appears
-as an error. Either set `WATSONX_APIKEY` / `WATSONX_PROJECT_ID`, or point that
-server at a gateway you already have:
-
-```bash
-FMSR_MODEL_ID=litellm_proxy/aws/claude-opus-5
-```
 
 ### Genuinely not needed
 
@@ -374,6 +352,5 @@ authentication, the Docker daemon and sandbox image, `uv`, and that
 | `IoT records database not connected` | CouchDB unreachable or credentials wrong |
 | TSFM: file not found for a path `code_exec` just wrote | `code_exec` runs in a container; MCP servers run on the host. They share no filesystem — use `ASSETOPS_SHARED_DIR` |
 | `... is not shared with the code sandbox` at startup | `ASSETOPS_SHARED_DIR` is outside the set of paths your Docker VM shares; move it under `/Users/$USER` |
-| fmsr scenarios score badly; tools return `LLM unavailable` | WatsonX credentials absent and `FMSR_MODEL_ID` not overridden |
 | Workspace directory empty after a run | `--preserve-workspaces` not set |
 | Re-run does nothing | `--skip-existing` plus existing trajectory files |

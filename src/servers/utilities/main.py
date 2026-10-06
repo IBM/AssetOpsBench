@@ -1,14 +1,8 @@
-import json
 import logging
 import os
-import tempfile
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional, Union
-from uuid import uuid4
 
 import couchdb3
-import pendulum
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -46,21 +40,8 @@ except Exception as e:
 
 mcp = FastMCP(
     "utilities",
-    instructions=(
-        "General utilities: read JSON files, get current date/time, and query "
-        "asset, sensor, and failure-mode catalog data."
-    ),
+    instructions="Query asset, sensor, and failure-mode catalog data.",
 )
-
-
-class DateTimeResult(BaseModel):
-    currentDateTime: str
-    currentDateTimeDescription: str
-
-
-class TimeEnglishResult(BaseModel):
-    english: str
-    iso: str
 
 
 class ErrorResult(BaseModel):
@@ -98,12 +79,29 @@ def _missing_db_error() -> Optional[ErrorResult]:
         return None
     return ErrorResult(error=DATA_UNAVAILABLE)
 
-
 def _clean_filter(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     value = value.strip()
     return value or None
+
+
+def _catalog_field_present(discriminator: str, name: str) -> bool:
+    """True when at least one doc in this catalog carries `name`.
+
+    The CSV loader drops empty cells rather than storing "", so a column that is
+    blank for every row leaves no key behind. Filtering on it then matches nothing
+    and is indistinguishable from a value that simply is not catalogued.
+    """
+    try:
+        res = catalog_db.find(
+            {discriminator: {"$exists": True}, name: {"$exists": True}},
+            fields=[name],
+            limit=1,
+        )
+        return bool(res.get("docs"))
+    except Exception:
+        return True
 
 
 def _find_catalog(
@@ -142,28 +140,30 @@ def _find_catalog(
         query_parts.append(f"category={category_value}")
     query = ", ".join(query_parts) if query_parts else None
 
+    message = f"found {len(docs)} {catalog_type} catalog entries"
+    if not docs and (query_value is not None or category_value is not None):
+        unserviceable = [
+            name
+            for name, applied in (
+                (field, query_value is not None),
+                ("category", category_value is not None),
+            )
+            if applied and not _catalog_field_present(field, name)
+        ]
+        if unserviceable:
+            message += (
+                f"; the loaded {catalog_type} catalog records no "
+                + ", ".join(f"`{name}`" for name in unserviceable)
+                + " value for any entry, so filtering on it cannot match"
+            )
+
     return CatalogResult(
         catalog_type=catalog_type,
         query=query,
         total=len(docs),
         entries=docs,
-        message=f"found {len(docs)} {catalog_type} catalog entries",
+        message=message,
     )
-
-
-# --- JSON Tools ---
-
-
-@mcp.tool(title="Read JSON File")
-def json_reader(file_name: str) -> str:
-    """Reads a JSON file, parses its content, and returns the parsed data."""
-    try:
-        with open(file_name, "r") as fp:
-            contents = json.load(fp)
-        return json.dumps(contents)
-    except Exception as e:
-        logger.error(f"Error reading JSON file {file_name}: {e}")
-        return json.dumps({"error": str(e)})
 
 
 # --- Catalog Tools ---
@@ -211,11 +211,13 @@ def get_failure_mode_catalog(
     failure_mode: Optional[str] = None,
     category: Optional[str] = None,
 ) -> Union[CatalogResult, ErrorResult]:
-    """Return cataloged failure modes by asset category.
+    """Return cataloged failure modes.
 
     Entries contain `category`, `failure_mode`, and `description`. Omit filters
     to list all cataloged failure modes, or pass failure_mode and/or category
-    for exact lookups.
+    for exact lookups. Whether entries are grouped by asset category depends on
+    the loaded catalog: when it records no category, the category filter matches
+    nothing and the result says so.
     """
     return _find_catalog(
         catalog_type="failure_mode",
@@ -224,37 +226,6 @@ def get_failure_mode_catalog(
         category=category,
         fields=["category", "failure_mode", "description"],
     )
-
-
-# --- Time Tools ---
-
-
-@mcp.tool(title="Get Current Date and Time")
-def current_date_time() -> DateTimeResult:
-    """Provides the current date time as a JSON object."""
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat().replace("+00:00", "Z")
-
-    date_part = now_iso.split("T")[0]
-    time_part = now_iso.split("T")[1].split(".")[0]
-
-    description = f"Today's date is {date_part} and time is {time_part}."
-
-    return DateTimeResult(
-        currentDateTime=now_iso, currentDateTimeDescription=description
-    )
-
-
-@mcp.tool(title="Get Current Time in English")
-def current_time_english() -> TimeEnglishResult:
-    """Returns the current time in English text."""
-    now = datetime.now(timezone.utc)
-    now_iso = now.isoformat().replace("+00:00", "Z")
-
-    dt = pendulum.parse(now_iso)
-    eng = dt.to_datetime_string()
-
-    return TimeEnglishResult(english=eng, iso=now_iso)
 
 
 def main():

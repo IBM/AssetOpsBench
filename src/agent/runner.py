@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -21,6 +22,46 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "wo": "wo-mcp-server",
     "vibration": "vibration-mcp-server",
 }
+
+
+# LLM provider credentials and endpoints. No MCP server calls a model, so
+# mcp_server_env withholds all of them. Mirrors CREDENTIAL_ENV_VARS in
+# src/assetops_harbor/stirrup.py; a test there keeps the two in step.
+LLM_CREDENTIAL_ENV_VARS: tuple[str, ...] = (
+    "LITELLM_BASE_URL",
+    "LITELLM_API_KEY",
+    "TOKENROUTER_BASE_URL",
+    "TOKENROUTER_API_KEY",
+    "WATSONX_APIKEY",
+    "WATSONX_URL",
+    "WATSONX_PROJECT_ID",
+    "WATSONX_DEPLOYMENT_SPACE_ID",
+    "WATSONX_TOKEN",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_REGION",
+    "AWS_REGION_NAME",
+    "AWS_BEARER_TOKEN_BEDROCK",
+    "GEMINI_API_KEY",
+)
+
+
+def mcp_server_env() -> dict[str, str]:
+    """Environment for MCP servers spawned via the MCP SDK stdio client.
+
+    That client passes only HOME/PATH/SHELL/... to child processes unless
+    ``env`` is given, so the parent environment is forwarded explicitly, minus
+    :data:`LLM_CREDENTIAL_ENV_VARS`.
+
+    Those are blanked rather than dropped. Every server calls ``load_dotenv()``,
+    which would refill a missing name from the repo's ``.env`` but never
+    overwrites one that is already set, even to an empty string.
+    """
+    return {**os.environ, **dict.fromkeys(LLM_CREDENTIAL_ENV_VARS, "")}
 
 
 class AgentRunner(ABC):

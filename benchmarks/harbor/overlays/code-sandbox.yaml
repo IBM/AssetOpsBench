@@ -1,0 +1,76 @@
+# Opt-in overlay for the code track: runs agent-written code in a per-trial
+# Docker-in-Docker daemon, away from CouchDB. See benchmarks/harbor/CODE-SANDBOX.md.
+#
+#   harbor run -p benchmarks/harbor/datasets/assetopsbench-open \
+#     --agent assetops_harbor.stirrup:StirrupAgent \
+#     --model tokenrouter/MiniMax-M3 \
+#     --extra-docker-compose benchmarks/harbor/overlays/code-sandbox.yaml \
+#     --ak code_enabled=true --ak code_backend=docker --ak allow_docker_backend=true \
+#     --ak workspace_dir=/workspace-share
+#
+# Stirrup's Docker backend honours DOCKER_HOST, so code containers are created
+# inside `dind`, on its own bridge, with no DNS entry for `couchdb` and no
+# environment. The shared /workspace-share volume makes the workspace path
+# Stirrup bind-mounts resolve to the same files in `main` and in dind.
+#
+# The code image reaches each (empty) daemon from AOB_CODE_TAR, loaded by
+# code-image-loader, or is pulled as AOB_CODE_IMAGE when no tar is given.
+services:
+  main:
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+      STIRRUP_CODE_IMAGE: ${AOB_CODE_IMAGE:-assetops-code:dev}
+    volumes:
+      - code-workspace:/workspace-share
+    depends_on:
+      dind:
+        condition: service_healthy
+      code-image-loader:
+        condition: service_completed_successfully
+
+  # Loads AOB_CODE_TAR into this trial's daemon. Exits 0 without a tar, and
+  # Stirrup then pulls AOB_CODE_IMAGE.
+  code-image-loader:
+    image: docker:28-cli
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+      STIRRUP_CODE_IMAGE: ${AOB_CODE_IMAGE:-assetops-code:dev}
+    volumes:
+      - ${AOB_CODE_TAR:-/dev/null}:/image.tar:ro
+    command:
+      - sh
+      - -c
+      - |
+        if [ -s /image.tar ]; then
+          docker load -i /image.tar
+        else
+          echo "no AOB_CODE_TAR; the daemon will pull $$STIRRUP_CODE_IMAGE instead"
+        fi
+    depends_on:
+      dind:
+        condition: service_healthy
+
+  dind:
+    image: docker:28-dind
+    # Required by dockerd, and refused by most Harbor cloud providers.
+    privileged: true
+    environment:
+      # Plain tcp on 2375, exposed only inside the trial's network.
+      DOCKER_TLS_CERTDIR: ""
+    expose:
+      - "2375"
+    volumes:
+      # Both volumes are per trial: Compose namespaces them per project.
+      - dind-storage:/var/lib/docker
+      # Same volume and mount point as in `main`.
+      - code-workspace:/workspace-share
+    healthcheck:
+      test: ["CMD", "docker", "-H", "tcp://localhost:2375", "info"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+
+volumes:
+  dind-storage:
+  code-workspace:
