@@ -328,7 +328,7 @@ def test_mode_clarification_fails_when_mode_key_is_wrong():
     assert score.extra_keys == ["answer.response"]
 
 
-def test_mode_abstain_requires_lately_dataset_date_time_terms():
+def test_mode_abstain_reports_lately_dataset_date_time_terms():
     score = evaluate_static_json(
         {
             "abstain": (
@@ -396,95 +396,50 @@ def test_mode_requires_exactly_one_top_level_key():
     assert score.extra_keys == ["answer.clarification", "answer.response"]
 
 
-def test_car_metadata_passes_on_mode_and_required_terms_only():
-    score = evaluate_static_json(
-        {"clarification": "Which asset do you mean by 'the main unit'?"},
-        {"clarification": "Which unit are you referring to as the main unit?"},
-        evaluation_metadata={
-            "mode": "clarification",
-            "required_terms": ["main unit"],
-            "optional_terms": ["asset"],
-        },
-    )
-
-    assert score.strict_exact_match_accuracy == 1.0
-    assert score.car_score == 1.0
-    assert score.mode_key_match == 1.0
-    assert score.mode_required_terms == ["main unit"]
-    assert score.mode_matched_terms == ["main unit"]
-    assert score.mode_optional_terms == ["asset"]
-    assert score.mode_matched_optional_terms == []
-    assert score.mode_optional_term_coverage == 0.0
-
-
-def test_car_optional_terms_do_not_inflate_similarity():
-    score = evaluate_static_json(
-        {"clarification": "Which asset do you mean by 'the main unit'?"},
-        {
-            "clarification": (
-                "Which asset do you mean by the main unit? Please provide the "
-                "asset tag."
-            )
-        },
-        evaluation_metadata={
-            "mode": "clarification",
-            "required_terms": ["main unit"],
-            "optional_terms": ["asset", "asset tag"],
-        },
-    )
-
-    assert score.strict_exact_match_accuracy == 1.0
-    assert score.partial_similarity_score == 1.0
-    assert score.mode_optional_term_coverage == 1.0
-
-
-def test_car_metadata_passes_when_any_required_term_matches():
-    score = evaluate_static_json(
-        {"abstain": "Cannot determine because date or time is missing."},
-        {"abstain": "Cannot determine this from the available date fields."},
-        evaluation_metadata={
-            "mode": "abstain",
-            "required_terms": ["lately", "date", "time"],
-        },
-    )
-
-    assert score.strict_exact_match_accuracy == 1.0
-    assert score.car_score == 0.7333333333333333
-    assert score.mode_key_match == 1.0
-    assert score.mode_matched_terms == ["date"]
-    assert score.mode_term_coverage == 1 / 3
-
-
-def test_car_metadata_fails_when_required_term_is_missing():
+def test_mode_passes_on_key_alone_when_terms_are_missing():
     score = evaluate_static_json(
         {"clarification": "Which asset do you mean by 'the main unit'?"},
         {"clarification": "Which asset should I analyze?"},
-        evaluation_metadata={
-            "mode": "clarification",
-            "required_terms": ["main unit"],
-        },
     )
 
-    assert score.strict_exact_match_accuracy == 0.0
-    assert score.car_score == 0.6
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.f1 == 1.0
     assert score.mode_key_match == 1.0
+    assert score.mode_required_terms == ["main unit"]
+    assert score.mode_matched_terms == []
     assert score.mode_term_coverage == 0.0
 
 
-def test_car_metadata_fails_when_mode_key_is_wrong_even_with_required_term():
+def test_mode_fails_on_wrong_key_even_when_terms_match():
     score = evaluate_static_json(
         {"clarification": "Which asset do you mean by 'the main unit'?"},
         {"response": "The main unit appears to be PMP42144."},
-        evaluation_metadata={
-            "mode": "clarification",
-            "required_terms": ["main unit"],
-        },
     )
 
     assert score.strict_exact_match_accuracy == 0.0
-    assert score.car_score == 0.4
+    assert score.f1 == 0.0
     assert score.mode_key_match == 0.0
-    assert score.mode_term_coverage == 1.0
+
+
+def test_mode_key_is_case_insensitive():
+    score = evaluate_static_json(
+        {"abstain": "Cannot determine because date or time is missing."},
+        '{"Abstain": "Not enough information."}',
+    )
+
+    assert score.strict_exact_match_accuracy == 1.0
+    assert score.mode_key_match == 1.0
+
+
+def test_mode_fails_when_answer_is_not_an_object():
+    score = evaluate_static_json(
+        {"abstain": "Cannot determine because date or time is missing."},
+        "I cannot answer this question.",
+    )
+
+    assert score.strict_exact_match_accuracy == 0.0
+    assert score.mode_key_match == 0.0
+    assert score.mode_exactly_one_key == 0.0
 
 
 def test_count_only_exact_match():
@@ -534,30 +489,24 @@ def test_static_json_scorer_wrapper_exact_match():
     assert result.details["strict_exact_match_accuracy"] == 1.0
 
 
-def test_static_json_scorer_uses_car_metadata_score():
+def test_static_json_scorer_scores_car_on_mode_key_only():
     scenario = Scenario.from_raw(
         {
             "id": "151",
             "text": "Clarify main unit.",
             "expected_answer": '{"clarification": "Which asset do you mean by the main unit?"}',
-            "evaluation_metadata": {
-                "mode": "clarification",
-                "required_terms": ["main unit"],
-            },
             "scoring_method": "static_json",
         }
     )
 
     scorer = StaticJsonScorer()
-    result = scorer(
-        scenario,
-        '{"clarification": "Which asset is the main unit?"}',
-        "",
-    )
+    right_key = scorer(scenario, '{"clarification": "Which pump?"}', "")
+    wrong_key = scorer(scenario, '{"response": "The main unit is PMP42144."}', "")
 
-    assert result.passed is True
-    assert result.score == 1.0
-    assert result.details["car_score"] == 1.0
+    assert right_key.passed is True
+    assert right_key.score == 1.0
+    assert wrong_key.passed is False
+    assert wrong_key.score == 0.0
 
 
 def test_identifier_with_a_separator_is_not_read_as_a_count():

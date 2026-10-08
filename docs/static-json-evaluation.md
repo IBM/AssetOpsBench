@@ -98,11 +98,11 @@ The evaluator then joins trajectories and ground truth by scenario id.
 
 ### Optional evaluation metadata
 
-Scenario folders may also include `groundtruth_eval.json`. This file provides
-scorer-specific metadata while keeping the canonical answer in `groundtruth.txt`.
-It is currently used by clarification-abstain-response (CAR) scenarios, where
-the exact wording can vary but the response mode and key domain terms must be
-correct.
+Scenario folders may also include `groundtruth_eval.json`, which carries
+scorer-specific metadata alongside the canonical answer in `groundtruth.txt`.
+Clarification-abstain-response (CAR) scenarios ship one, but the `static_json`
+scorer does not read it: a CAR answer is scored on its top-level mode key, and
+the expected mode is the single key of `groundtruth.txt`.
 
 Example `groundtruth.txt`:
 
@@ -111,30 +111,6 @@ Example `groundtruth.txt`:
   "clarification": "Which asset do you mean by 'the main unit'?"
 }
 ```
-
-Example `groundtruth_eval.json`:
-
-```json
-{
-  "mode": "clarification",
-  "required_terms": ["main unit"],
-  "optional_terms": ["asset"],
-  "must_have_exactly_one_mode_key": true
-}
-```
-
-Supported CAR metadata fields:
-
-| Field                            | Meaning                                                                 |
-| -------------------------------- | ----------------------------------------------------------------------- |
-| `mode`                           | Expected top-level key: `response`, `clarification`, or `abstain`       |
-| `required_terms`                 | Terms that indicate the model addressed the required ambiguity or fact  |
-| `optional_terms`                 | Informative terms reported for analysis, but not required for passing   |
-| `must_have_exactly_one_mode_key` | Whether the model must return exactly one top-level CAR mode key        |
-
-If `groundtruth_eval.json` is absent, the scorer derives CAR metadata from
-`groundtruth.txt` for one-key answers using `response`, `clarification`, or
-`abstain`.
 
 ---
 
@@ -248,9 +224,9 @@ The scorer marks a scenario as passed only when the structured answer is a stric
 
 ### CAR metrics and pass criteria
 
-For CAR scenarios, the scorer evaluates the answer as a mode-selection task plus
-required-term coverage. The model answer should be a single JSON object using
-exactly one of these top-level keys:
+For CAR scenarios, the scorer evaluates only the mode the model chose. The
+model answer should be a single JSON object using exactly one of these
+top-level keys:
 
 ```text
 response | clarification | abstain
@@ -258,32 +234,21 @@ response | clarification | abstain
 
 A CAR scenario passes when:
 
-1. the model returns exactly one top-level CAR mode key,
-2. that key matches the expected `mode`, and
-3. at least one `required_terms` entry appears in the model answer value.
+1. the model returns a JSON object with exactly one top-level key, and
+2. that key matches the expected mode (case-insensitive).
 
-The CAR soft score is reported as:
-
-```text
-car_score = 0.6 * mode_key_match + 0.4 * mode_term_coverage
-```
-
-where `mode_term_coverage` is the fraction of required terms found in the answer
-value. Optional terms are reported for diagnostics and do not affect pass/fail.
+The value under the key is not scored. `score`, `f1` and
+`strict_exact_match_accuracy` are all 1.0 on a pass and 0.0 otherwise.
 
 Additional CAR report fields:
 
-| Metric                              | Meaning                                                            |
-| ----------------------------------- | ------------------------------------------------------------------ |
-| `mode_key_match`                    | 1.0 when the returned mode key matches the expected mode           |
-| `mode_exactly_one_key`              | 1.0 when the answer has exactly one top-level key                  |
-| `mode_required_terms`               | Required terms used for this scenario                              |
-| `mode_matched_terms`                | Required terms found in the model answer                           |
-| `mode_term_coverage`                | Fraction of required terms found                                   |
-| `mode_optional_terms`               | Optional diagnostic terms                                          |
-| `mode_matched_optional_terms`       | Optional diagnostic terms found                                    |
-| `mode_optional_term_coverage`       | Fraction of optional terms found, or null if none were configured  |
-| `car_score`                         | Weighted CAR soft score                                            |
+| Metric                 | Meaning                                                              |
+| ---------------------- | -------------------------------------------------------------------- |
+| `mode_key_match`       | 1.0 when the returned mode key matches the expected mode             |
+| `mode_exactly_one_key` | 1.0 when the answer has exactly one top-level key                    |
+| `mode_required_terms`  | Diagnostic terms extracted from the gold answer value                |
+| `mode_matched_terms`   | Diagnostic terms found in the model answer value                     |
+| `mode_term_coverage`   | Fraction of diagnostic terms found; reported only, does not affect pass or score |
 
 ---
 
