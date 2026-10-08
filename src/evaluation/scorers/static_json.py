@@ -505,13 +505,11 @@ def _dedupe_terms(terms: list[str]) -> list[str]:
 
 
 def _extract_required_mode_terms(value: Any) -> list[str]:
-    """Extract lightweight required terms for mode-selection scenarios.
+    """Extract lightweight diagnostic terms for mode-selection scenarios.
 
-    The mode scenarios are not exact-string tasks: answers can be phrased
-    differently as long as they choose the correct mode and mention the
-    important ambiguity/evidence. We therefore extract only high-signal terms:
-    quoted phrases, asset/fault identifiers, yes/no stance, and a small
-    domain-term allowlist.
+    The terms are reported alongside the CAR score but do not affect it. We
+    extract only high-signal terms: quoted phrases, asset/fault identifiers,
+    yes/no stance, and a small domain-term allowlist.
     """
     text = str(value)
     terms: list[str] = []
@@ -549,6 +547,13 @@ def _is_mode_gold_answer(value: Any) -> bool:
 
 
 def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
+    """Score a CAR answer on its top-level mode key alone.
+
+    The answer passes when it is a single-key object whose key is the gold
+    mode (``response``, ``clarification`` or ``abstain``). The value under
+    the key does not affect pass or score; required-term coverage is still
+    reported in the ``mode_*`` fields for analysis.
+    """
     gold = parse_structured_answer(gold_answer)
     model = parse_structured_answer(model_answer)
 
@@ -562,6 +567,8 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
     model_value = next(iter(model.values())) if model_is_dict and model_exactly_one_key else ""
 
     key_match = model_exactly_one_key and model_key == gold_key
+
+    # Diagnostics only: which gold terms the answer value mentions.
     required_terms = _extract_required_mode_terms(gold_value)
     model_text = _normalize_text_for_terms(model_value)
     matched_terms = [
@@ -583,20 +590,6 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
         )
     ]
 
-    for term in required_terms:
-        matched = term in matched_terms
-        details.append(
-            KeyComparison(
-                key=f"answer.required_term.{term}",
-                gold_value=term,
-                model_value=term if matched else "MISSING",
-                exact=matched,
-                match_type="term_present" if matched else "term_missing",
-                similarity=1.0 if matched else 0.0,
-                accepted=matched,
-            )
-        )
-
     missing_keys = [] if key_match else [f"answer.{gold_key}"]
     extra_keys = []
     if model_is_dict:
@@ -608,36 +601,24 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
     else:
         extra_keys = ["answer"] if model is not None else []
 
-    total_gold_keys = 1 + len(required_terms)
-    total_model_keys = 1 + len(required_terms) + len(extra_keys)
-    exact_matches = (1 if key_match else 0) + len(matched_terms)
-
-    precision = exact_matches / total_model_keys if total_model_keys else 0.0
-    recall = exact_matches / total_gold_keys if total_gold_keys else 0.0
-    f1 = (
-        2 * precision * recall / (precision + recall)
-        if precision + recall > 0
-        else 0.0
-    )
-    strict_exact = 1.0 if key_match and term_coverage == 1.0 and not extra_keys else 0.0
+    key_score = 1.0 if key_match else 0.0
 
     return StaticJsonScore(
-        partial_match_accuracy=recall,
-        partial_exact_match_accuracy=recall,
-        strict_exact_match_accuracy=strict_exact,
-        partial_similarity_score=sum(item.similarity for item in details)
-        / total_gold_keys,
+        partial_match_accuracy=key_score,
+        partial_exact_match_accuracy=key_score,
+        strict_exact_match_accuracy=key_score,
+        partial_similarity_score=details[0].similarity,
         partial_numeric_match_accuracy=0.0,
         range_match_accuracy=0.0,
         delta_1_match_accuracy=0.0,
-        precision=precision,
-        recall=recall,
-        f1=f1,
-        total_gold_keys=total_gold_keys,
-        total_model_keys=total_model_keys,
+        precision=key_score,
+        recall=key_score,
+        f1=key_score,
+        total_gold_keys=1,
+        total_model_keys=len(model_keys) if model_is_dict else len(extra_keys),
         matched_keys=1 if key_match else 0,
-        accepted_value_matches=exact_matches,
-        exact_value_matches=exact_matches,
+        accepted_value_matches=1 if key_match else 0,
+        exact_value_matches=1 if key_match else 0,
         numeric_gold_keys=0,
         numeric_value_matches=0,
         range_eligible_keys=0,
@@ -647,7 +628,7 @@ def _evaluate_mode_json(gold_answer: Any, model_answer: Any) -> StaticJsonScore:
         missing_keys=missing_keys,
         extra_keys=extra_keys,
         details=details,
-        mode_key_match=1.0 if key_match else 0.0,
+        mode_key_match=key_score,
         mode_exactly_one_key=1.0 if model_exactly_one_key else 0.0,
         mode_required_terms=required_terms,
         mode_matched_terms=matched_terms,
