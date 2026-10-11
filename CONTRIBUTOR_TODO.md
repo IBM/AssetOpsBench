@@ -518,9 +518,9 @@ Notes: Submitted 2026-10-11. PR #628 is open, mergeable, not draft, with three c
 
 ## Contribution 2 — Packaging cleanup
 
-- [ ] Re-check latest `pyproject.toml`.
-- [ ] Verify duplicate/placeholder issues still exist.
-- [ ] Search for competing PRs.
+- [x] Re-check latest `pyproject.toml`.
+- [x] Verify duplicate/placeholder issues still exist.
+- [x] Search for competing PRs.
 - [ ] Create focused branch.
 - [ ] Make minimal metadata/dependency cleanup.
 - [ ] Run `uv lock` only if required.
@@ -531,10 +531,10 @@ Notes: Submitted 2026-10-11. PR #628 is open, mergeable, not draft, with three c
 - [ ] Record PR URL here.
 - [ ] Address review.
 
-Status: NOT STARTED  
-Branch:  
-PR:  
-Notes:  
+Status: INVESTIGATED; PATCH NOT STARTED (PR #628 AWAITING REVIEW)  
+Branch: Not created  
+PR: Not opened  
+Notes: Verified against upstream main 7137628005ef46dcf2231e5c31949ce1f23c6837 on 2026-10-11. pyproject.toml still has placeholder description "Add your description here", exact duplicate scipy>=1.10.0, and sktime>=0.30 plus sktime>=1.0.1 (effective floor is 1.0.1). Searched current open PRs; no targeted packaging-cleanup PR found, while PR #331 touches Ruff dev dependencies and #606 updates a security dependency, so do not modify those areas. Need inspect uv.lock and validate lock behavior before any change; keep PR narrowly scoped and separate from #628.  
 
 ## Contribution 3 — PR CI
 
