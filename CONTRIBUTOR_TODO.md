@@ -505,17 +505,16 @@ git commit -s -m "..."
 - [x] Run documented commands.
 - [x] Commit with DCO sign-off.
 - [x] Push branch.
-- [ ] Open PR (403 GitHub integration permission; requires manual submission).
-- [ ] Record PR URL here.
+- [x] Open PR (#628; submitted manually).
+- [x] Record PR URL here.
 - [ ] Address review.
 - [ ] Record merge status.
 
-Status: PUBLISHED IN FORK; UPSTREAM PR REQUIRES MANUAL SUBMISSION  
+Status: PR OPEN — AWAITING MAINTAINER REVIEW / WORKFLOW APPROVAL  
 Branch: docs/fix-contributor-test-instructions  
 Commit SHA: 8dae067cbca4bcca46ff6a910623e32d5fba9ef9  
-PR: Not opened (GitHub connector returned 403: Resource not accessible by integration).  
-PR compare: https://github.com/IBM/AssetOpsBench/compare/main...yousseffaouzi:docs/fix-contributor-test-instructions?expand=1  
-Notes: Based on upstream main 7137628005ef46dcf2231e5c31949ce1f23c6837. Three documentation files changed; no benchmark behavior or dependency changes. uv sync --frozen passed. Focused tests (src/llm/tests and src/servers/utilities/tests) 33 passed against the published branch; git diff --check passed. Full service-free selection selected 707 tests but terminated with exit 137. Ruff reports 1210 existing check findings and 84 files needing formatting; pre-existing unrelated work, not changed. Existing PR #331 separately covers the Ruff dev dependency. DCO sign-off matches GitHub commit author. Next: use PR compare link to open the upstream PR and record its URL; respond to reviewer feedback.  
+PR: https://github.com/IBM/AssetOpsBench/pull/628  
+Notes: Submitted 2026-10-11. PR #628 is open, mergeable, not draft, with three changed documentation files and no reviews or comments yet. DCO check passed. Secret Scan workflow run https://github.com/IBM/AssetOpsBench/actions/runs/38161582691 reports action_required and no jobs; likely needs maintainer approval (not a confirmed security failure). Existing validation: uv sync --frozen passed, 33 focused tests passed, git diff --check passed. Full service-free test selection did not finish (exit 137, 707 selected). Ruff found 1,210 pre-existing lint findings and 84 formatting violations. PR #331 separately handles the Ruff development dependency. Next: await security workflow approval and review feedback, address only actionable requests, and record eventual merge status.  
 
 ## Contribution 2 — Packaging cleanup
 
