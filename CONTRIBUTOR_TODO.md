@@ -504,16 +504,18 @@ git commit -s -m "..."
 - [x] Implement minimal fix.
 - [x] Run documented commands.
 - [x] Commit with DCO sign-off.
-- [ ] Push branch.
-- [ ] Open PR.
+- [x] Push branch.
+- [ ] Open PR (403 GitHub integration permission; requires manual submission).
 - [ ] Record PR URL here.
 - [ ] Address review.
 - [ ] Record merge status.
 
-Status: FIX PREPARED; PUBLISHING IN PROGRESS  
+Status: PUBLISHED IN FORK; UPSTREAM PR REQUIRES MANUAL SUBMISSION  
 Branch: docs/fix-contributor-test-instructions  
-PR: Not opened yet  
-Notes: Verified upstream main 7137628005ef46dcf2231e5c31949ce1f23c6837. Documentation-only patch for CONTRIBUTING.md and both PR templates; no benchmark behavior changes. Existing Ruff dependency PR #331 must not be duplicated. uv sync --frozen passed; 33 focused tests passed. Full service-free command selected 707 tests but was terminated (exit 137); record this limitation in PR. Local DCO commit e4c02cec6512fe49ec16cd451ddfeddd5c66c0f3 was prepared prior to publishing. Next: push focused branch to fork and open upstream PR.  
+Commit SHA: 8dae067cbca4bcca46ff6a910623e32d5fba9ef9  
+PR: Not opened (GitHub connector returned 403: Resource not accessible by integration).  
+PR compare: https://github.com/IBM/AssetOpsBench/compare/main...yousseffaouzi:docs/fix-contributor-test-instructions?expand=1  
+Notes: Based on upstream main 7137628005ef46dcf2231e5c31949ce1f23c6837. Three documentation files changed; no benchmark behavior or dependency changes. uv sync --frozen passed. Focused tests (src/llm/tests and src/servers/utilities/tests) 33 passed against the published branch; git diff --check passed. Full service-free selection selected 707 tests but terminated with exit 137. Ruff reports 1210 existing check findings and 84 files needing formatting; pre-existing unrelated work, not changed. Existing PR #331 separately covers the Ruff dev dependency. DCO sign-off matches GitHub commit author. Next: use PR compare link to open the upstream PR and record its URL; respond to reviewer feedback.  
 
 ## Contribution 2 — Packaging cleanup
 
