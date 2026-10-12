@@ -507,14 +507,15 @@ git commit -s -m "..."
 - [x] Push branch.
 - [x] Open PR (#628; submitted manually).
 - [x] Record PR URL here.
-- [ ] Address review.
-- [ ] Record merge status.
+- [x] Address review (two approvals, no changes requested).
+- [x] Record merge status.
 
-Status: PR OPEN — AWAITING MAINTAINER REVIEW / WORKFLOW APPROVAL  
+Status: MERGED — CONTRIBUTION 1 COMPLETED  
 Branch: docs/fix-contributor-test-instructions  
-Commit SHA: 8dae067cbca4bcca46ff6a910623e32d5fba9ef9  
+Original commit SHA: 8dae067cbca4bcca46ff6a910623e32d5fba9ef9  
+Upstream merge commit: 6665eab8ce210eb15852f0d33ede1e24dd1a08fc  
 PR: https://github.com/IBM/AssetOpsBench/pull/628  
-Notes: Submitted 2026-10-11. PR #628 is open, mergeable, not draft, with three changed documentation files and no reviews or comments yet. DCO check passed. Secret Scan workflow run https://github.com/IBM/AssetOpsBench/actions/runs/38161582691 reports action_required and no jobs; likely needs maintainer approval (not a confirmed security failure). Existing validation: uv sync --frozen passed, 33 focused tests passed, git diff --check passed. Full service-free test selection did not finish (exit 137, 707 selected). Ruff found 1,210 pre-existing lint findings and 84 formatting violations. PR #331 separately handles the Ruff development dependency. Next: await security workflow approval and review feedback, address only actionable requests, and record eventual merge status.  
+Notes: Merged October 11, 2026, at 21:31:05 UTC by DhavalRepo18 after two APPROVED reviews, with no requested code changes. Three contributor documentation files incorporated in upstream main. DCO, TruffleHog and Gitleaks checks succeeded. Original local tests: 33 focused tests passed; broader service-free command was interrupted with exit 137 in the available environment. No further work required for this PR. Contribution 2 packaging preflight is investigated separately; create a new focused branch only when ready to implement.  
 
 ## Contribution 2 — Packaging cleanup
 
