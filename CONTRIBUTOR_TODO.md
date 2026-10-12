@@ -532,10 +532,10 @@ Notes: Merged October 11, 2026, at 21:31:05 UTC by DhavalRepo18 after two APPROV
 - [ ] Record PR URL here.
 - [ ] Address review.
 
-Status: IMPLEMENTED AND PUSHED TO PERSONAL FORK — UPSTREAM PR PENDING  
+Status: IMPLEMENTED AND PUSHED — UPSTREAM PR REQUIRES MANUAL SUBMISSION (403 CONNECTOR PERMISSION)  
 Branch: chore/clean-project-metadata  
 Commit SHA: a88959d5b558c63f00fef3e3a773af021e4f10e9  
-PR: Not yet opened  
+PR: Not opened. Submit at https://github.com/IBM/AssetOpsBench/compare/main...yousseffaouzi:chore/clean-project-metadata?expand=1 (connector 403).  
 Notes: Base upstream main 6665eab8ce210eb15852f0d33ede1e24dd1a08fc. pyproject.toml only: replace placeholder description with purpose grounded in README; remove duplicate scipy>=1.10.0; combine sktime minimums into effective >=1.0.1. Changed 1 file / 6 lines (2 insertions, 4 deletions). uv lock --check and uv lock both passed with 284 packages and no uv.lock changes; uv sync --frozen passed. Focused src/llm/tests + src/servers/utilities/tests: 33 passed. TSFM test selection was attempted but exceeded runner execution time and is not claimed passing. Repo-wide non-integration suite not rerun because prior run was killed (exit 137). git diff --check passed. No competing PR specifically covering metadata/duplicates; existing #331 handles Ruff dependency. No other dependencies changed. Next: open PR, then monitor review.  
 ## Contribution 3 — PR CI
 
