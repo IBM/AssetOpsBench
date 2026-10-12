@@ -1,0 +1,141 @@
+{
+  "_comment": "CouchDB document types for the robot inspection MCP server (12 Layer 1 tools). All documents live in the iot DB alongside timestamped IoT sensor readings. None contain an asset_id field, so existing IoT server queries ({asset_id: {$exists: true}}) are unaffected.",
+
+  "documents": {
+
+    "asset_robot_profile": {
+      "doc_type": "asset_robot_profile",
+      "_id_pattern": "profile:{normalized_asset_id}",
+      "_id_examples": ["profile:chiller_6", "profile:motor_01"],
+      "description": "Per-asset physical layout and panel state. Seeded by seed_robot_profiles.py. Scenario-specific state (e.g. panel_stuck=true for R001) is loaded by the eval harness via the shared robot JSON files.",
+      "fields": {
+        "physical_location": {
+          "type": "object or null",
+          "schema": {"x": "float (m)", "y": "float (m)", "z": "float (m)", "room_id": "string"},
+          "default": null,
+          "purpose": "Facility floor-plan coordinates used by navigate_to() as the GraphNav navigation target. Null until floor-plan data is collected for the asset."
+        },
+        "gauge_path": {
+          "type": "string or null",
+          "default": null,
+          "purpose": "File path or URL of the physical gauge image captured by capture_image(). Null until field data has been collected. When non-null and panel_stuck=false, the VLM perception agent can read the gauge value from this image."
+        },
+        "gauge_range": {
+          "type": "array [low, high]",
+          "default": [0, 100],
+          "purpose": "Physical measurement range of the gauge (e.g. [0, 400] for a 0–400 bar pressure gauge). Included in the vlm_hint string returned by capture_image() so the VLM agent knows the scale."
+        },
+        "gauge_description": {
+          "type": "string",
+          "default": "",
+          "purpose": "Plain English description of the gauge and its units (e.g. 'Compressor outlet pressure gauge, analog dial, 0–400 bar'). Included in the vlm_hint string returned by capture_image()."
+        },
+        "panel_stuck": {
+          "type": "bool",
+          "default": false,
+          "purpose": "True when the physical inspection panel cannot be opened by the robot arm. open_panel() returns access_granted=false and capture_image() returns occlusion_flag=true when panel_stuck=true. Represents a physical kinematic failure (panel seized, corroded, or obstructed) that requires human maintenance escalation."
+        }
+      }
+    },
+
+    "robot_state": {
+      "doc_type": "robot_state",
+      "_id_pattern": "robot_state:{robot_id}",
+      "_id_example": "robot_state:spot_1",
+      "description": "Per-robot battery, pose, power and stance state. Robot-level, not asset-level. Seeded by seed_robot_profiles.py. power_state and stance_state added to support the 6 motion tools (power_on, power_off, stand, sit, dock, undock).",
+      "fields": {
+        "battery_charge_pct": {
+          "type": "float",
+          "range": [0.0, 100.0],
+          "default": 85.0,
+          "purpose": "Current battery charge percentage. get_battery() reads this. When battery_charge_pct < battery_low_threshold, get_battery() returns low_battery=true and the agent must abort the inspection and return to the charging dock immediately."
+        },
+        "battery_low_threshold": {
+          "type": "float",
+          "default": 20.0,
+          "purpose": "Threshold percentage below which the mission must be aborted. get_battery() computes low_battery = (battery_charge_pct < battery_low_threshold)."
+        },
+        "battery_estimated_runtime_s": {
+          "type": "float",
+          "default": 5400.0,
+          "purpose": "Estimated remaining runtime in seconds. Informational — included in the get_battery() message to help the agent judge whether the battery will last the inspection."
+        },
+        "at_charge_station": {
+          "type": "bool",
+          "default": false,
+          "purpose": "True if the robot is currently docked at a charging station. Included in the get_battery() response for context."
+        },
+        "pose": {
+          "type": "object",
+          "schema": {"x": "float (m)", "y": "float (m)", "theta": "float (rad, yaw from east)", "frame": "string — always 'map'"},
+          "default": {"x": 0.0, "y": 0.0, "theta": 0.0, "frame": "map"},
+          "purpose": "Current robot pose in the facility map frame. get_pose() reads this. The agent should call get_pose() after navigate_to() to confirm the robot arrived at the intended location."
+        },
+        "localization_ok": {
+          "type": "bool",
+          "default": true,
+          "purpose": "False when the robot cannot localise itself in the facility map (e.g. map data stale, fiducial missing, encoder drift too large). When false, get_pose() returns localization_ok=false and the agent must abort the inspection and raise a work order for robot remapping — taking a gauge reading from an unverified position risks reading the wrong asset."
+        },
+        "pose_drift_m": {
+          "type": "float",
+          "default": 0.0,
+          "purpose": "Estimated pose error in metres. get_pose() issues a warning when drift > 0.5 m. When localization_ok=false this field typically exceeds 0.5 m (e.g. 1.8 m in the localisation failure scenario)."
+        },
+        "fault_state": {
+          "type": "string or null",
+          "values": [null, "ESTOP_CUT", "COMMS_LOST", "JOINT_FAULT", "BATTERY_CRITICAL"],
+          "default": null,
+          "purpose": "Active robot fault, if any. Null means nominal. get_pose() surfaces this in the response. A non-null fault_state requires human intervention before the mission can continue."
+        },
+        "power_state": {
+          "type": "string",
+          "values": ["POWERED_ON", "POWERED_OFF"],
+          "default": "POWERED_ON",
+          "purpose": "Motor power state. power_on() and power_off() read this field. Maps to bosdyn.client.power.PowerClient.power_on_motors() / power_off_motors() in the real Spot SDK. The robot must be POWERED_ON before stand(), sit(), navigate_to(), or open_panel() can succeed."
+        },
+        "stance_state": {
+          "type": "string",
+          "values": ["STANDING", "SITTING"],
+          "default": "STANDING",
+          "purpose": "Robot stance. stand() and sit() read this field. Maps to bosdyn.client.robot_command.RobotCommandBuilder.synchro_stand_command() / synchro_sit_command(). The robot must be SITTING before power_off() is allowed. Call sit() before dock() at mission end."
+        }
+      }
+    },
+
+    "waypoints": {
+      "doc_type": "waypoints",
+      "_id": "waypoints",
+      "description": "Singleton document mapping assets to Spot GraphNav waypoint IDs. list_waypoints() returns the waypoints array. The agent must call list_waypoints() before navigate_to() to confirm the target waypoint exists and is active.",
+      "fields": {
+        "waypoints": {
+          "type": "array of objects",
+          "item_schema": {
+            "waypoint_id": "string — Spot GraphNav waypoint UUID or short name",
+            "waypoint_name": "string — human-readable name shown in the Spot app",
+            "asset_id": "string or null — normalized asset ID this waypoint serves (null for the dock)",
+            "location_description": "string — plain English location for logging",
+            "x": "float (m)", "y": "float (m)",
+            "active": "bool — false if the waypoint has been deleted or the plant reconfigured since last mapping. When false, navigate_to() for that asset must not be called — the agent must escalate and raise a work order for waypoint remapping."
+          },
+          "purpose": "Authoritative list of inspection waypoints loaded from the Spot GraphNav map. list_waypoints() filters by asset_id when provided. A missing or inactive waypoint for the target asset represents a plant reconfiguration event that requires human re-mapping of the facility."
+        }
+      }
+    }
+
+  },
+
+  "isolation_guarantee": "No robot document contains an asset_id field. IoT server queries {asset_id: {$exists: true}} cannot match any robot document.",
+
+  "indexes": [
+    {
+      "name": "idx_robot_state_by_robot",
+      "fields": ["doc_type", "robot_id"],
+      "purpose": "get_battery() and get_pose() lookup by robot_id"
+    },
+    {
+      "name": "idx_waypoints_singleton",
+      "fields": ["doc_type"],
+      "purpose": "list_waypoints() fetch of the singleton waypoints document"
+    }
+  ]
+}
