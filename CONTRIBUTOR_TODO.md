@@ -528,15 +528,16 @@ Notes: Merged October 11, 2026, at 21:31:05 UTC by DhavalRepo18 after two APPROV
 - [x] Run tests.
 - [x] Commit with DCO sign-off.
 - [x] Push branch.
-- [ ] Open PR.
-- [ ] Record PR URL here.
+- [x] Open PR (#629).
+- [x] Record PR URL here.
 - [ ] Address review.
 
-Status: IMPLEMENTED AND PUSHED — UPSTREAM PR REQUIRES MANUAL SUBMISSION (403 CONNECTOR PERMISSION)  
+Status: PR OPEN — AWAITING MAINTAINER REVIEW  
 Branch: chore/clean-project-metadata  
 Commit SHA: a88959d5b558c63f00fef3e3a773af021e4f10e9  
-PR: Not opened. Submit at https://github.com/IBM/AssetOpsBench/compare/main...yousseffaouzi:chore/clean-project-metadata?expand=1 (connector 403).  
-Notes: Base upstream main 6665eab8ce210eb15852f0d33ede1e24dd1a08fc. pyproject.toml only: replace placeholder description with purpose grounded in README; remove duplicate scipy>=1.10.0; combine sktime minimums into effective >=1.0.1. Changed 1 file / 6 lines (2 insertions, 4 deletions). uv lock --check and uv lock both passed with 284 packages and no uv.lock changes; uv sync --frozen passed. Focused src/llm/tests + src/servers/utilities/tests: 33 passed. TSFM test selection was attempted but exceeded runner execution time and is not claimed passing. Repo-wide non-integration suite not rerun because prior run was killed (exit 137). git diff --check passed. No competing PR specifically covering metadata/duplicates; existing #331 handles Ruff dependency. No other dependencies changed. Next: open PR, then monitor review.  
+PR: https://github.com/IBM/AssetOpsBench/pull/629  
+Notes: Opened October 12, 2026 against upstream main 6665eab8ce210eb15852f0d33ede1e24dd1a08fc; mergeable, non-draft. Diff confirmed: only pyproject.toml, two additions and four deletions, replacing placeholder description, dropping the duplicate SciPy requirement, and retaining effective sktime>=1.0.1. GitHub DCO, Gitleaks, TruffleHog all passed; no reviews, requested changes, or comments at last check. Local validations: uv lock --check and uv lock passed (284 packages), uv.lock unchanged; uv sync --frozen passed; 33 focused unit tests passed; git diff --check passed. TSFM test selection exceeded runner time limit; full suite pass not claimed. Next: review feedback and record merge outcome when available.  
+
 ## Contribution 3 — PR CI
 
 - [ ] Inspect current workflows.
