@@ -530,13 +530,14 @@ Notes: Merged October 11, 2026, at 21:31:05 UTC by DhavalRepo18 after two APPROV
 - [x] Push branch.
 - [x] Open PR (#629).
 - [x] Record PR URL here.
-- [ ] Address review.
+- [x] Address review (approved; no changes requested).
 
-Status: PR OPEN — AWAITING MAINTAINER REVIEW  
+Status: MERGED — CONTRIBUTION 2 COMPLETED  
 Branch: chore/clean-project-metadata  
-Commit SHA: a88959d5b558c63f00fef3e3a773af021e4f10e9  
+Original commit: a88959d5b558c63f00fef3e3a773af021e4f10e9  
+Upstream merge commit: e844f6468c6c68b328022e7ca8e31da140842cc7  
 PR: https://github.com/IBM/AssetOpsBench/pull/629  
-Notes: Opened October 12, 2026 against upstream main 6665eab8ce210eb15852f0d33ede1e24dd1a08fc; mergeable, non-draft. Diff confirmed: only pyproject.toml, two additions and four deletions, replacing placeholder description, dropping the duplicate SciPy requirement, and retaining effective sktime>=1.0.1. GitHub DCO, Gitleaks, TruffleHog all passed; no reviews, requested changes, or comments at last check. Local validations: uv lock --check and uv lock passed (284 packages), uv.lock unchanged; uv sync --frozen passed; 33 focused unit tests passed; git diff --check passed. TSFM test selection exceeded runner time limit; full suite pass not claimed. Next: review feedback and record merge outcome when available.  
+Notes: Approved by DhavalRepo18 on October 13, 2026 at 02:10:29 UTC, merged by DhavalRepo18 at 02:10:37 UTC without requested changes. One file (pyproject.toml), 2 additions and 4 deletions: description update, remove duplicate scipy, retain effective sktime>=1.0.1. DCO, Gitleaks and TruffleHog all passed on the PR commit. Prior local uv lock --check, uv lock (284 packages), uv sync --frozen, git diff --check, and 33 focused unit tests all passed. The TSFM test selection was not completed (runner timeout). No uv.lock changes were required. Fork main synchronized to upstream merge commit. No further action needed on this PR; Contribution 3 can be assessed separately.  
 
 ## Contribution 3 — PR CI
 
