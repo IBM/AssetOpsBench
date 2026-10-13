@@ -544,19 +544,19 @@ Notes: Approved by DhavalRepo18 on October 13, 2026 at 02:10:29 UTC, merged by D
 - [x] Inspect current workflows.
 - [x] Search CI-related issues/PRs.
 - [x] Draft minimal CI proposal.
-- [ ] Open issue/discussion if needed.
+- [x] Open issue/discussion if needed.
 - [ ] Get maintainer direction.
 - [ ] Implement only after confirming scope.
 - [ ] Run workflow-equivalent commands locally.
 - [ ] Open focused PR.
 - [ ] Record PR URL here.
 
-Status: PROPOSAL PREPARED — AWAITING UPSTREAM ISSUE AND MAINTAINER DIRECTION  
-Issue/Discussion: Not yet opened. GitHub integration returned 403 on IBM issue creation; submit manually at https://github.com/IBM/AssetOpsBench/issues/new/choose  
+Status: UPSTREAM ISSUE OPEN — AWAITING MAINTAINER DIRECTION  
+Issue/Discussion: https://github.com/IBM/AssetOpsBench/issues/632 (open, submitted 2026-10-13 by yousseffaouzi; 0 comments at last check)  
 Proposal: https://github.com/yousseffaouzi/AssetOpsBench/blob/contrib/assetopsbench-roadmap/docs/CONTRIBUTION3_PR_CI_PROPOSAL.md  
-Branch: Not created (intentional — roadmap requires direction before implementation)  
+Branch: Not created — intentionally waiting for approved scope  
 PR: Not opened  
-Notes: On 2026-10-13, confirmed three workflows on IBM main e844f6468c6c68b328022e7ca8e31da140842cc7: secret scanning on PRs, CouchDB data-file guard on relevant paths, and stale issues on schedule. No general Python PR test gate. CI issue/PR searches found no dedicated active Python smoke-test workflow proposal. Draft focuses on opt-in Python smoke + uv lock consistency, constrained by IBM-approved actions and heavy ML dependency cost. Previous 33 tests passed locally for src/llm/tests and src/servers/utilities/tests; not a CI run. No workflow code or CI branch created. Next: post the proposal as an upstream issue and wait for maintainer feedback before implementing.  
+Notes: #632 proposes a small read-only PR CI workflow using uv lock --check and targeted Python smoke tests, compatible with IBM's permitted GitHub Actions. Existing three workflows were audited and duplicate PR/issue searches checked. Maintainer has not yet replied as of the 2026-10-13 check. Wait for maintainer guidance on required-vs-informational status, dependency install cost, and allowed setup methods before implementation; no CI code has been changed.  
 ## Contribution 4 — FMEA Lite scenarios (#582)
 
 - [ ] Read current #582.
