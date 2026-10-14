@@ -292,6 +292,15 @@ We are expanding **AssetOpsBench** to cover a broader range of industrial challe
 
 Model API access for AssetOpsBench 2.0 is enabled by [TokenRouter](https://tokenrouter.com) (PaleBlueDot AI), a unified API platform providing access to leading AI models through a single API endpoint.
 
+For local benchmark runs, the OpenAI-compatible backend can also route a
+`beatapi/<model-id>` model through [BeatAPI](https://docs.beatapi.io/text-api).
+Set `BEATAPI_API_KEY` and `BEATAPI_BASE_URL=https://api.beatapi.io/v1`, then
+choose a model ID returned by `GET /v1/models` for your account. For example,
+`direct-llm-agent --model-id beatapi/gpt-5.6-sol "Summarize this alert"`
+uses the existing Chat Completions backend. The prefix selects the endpoint;
+it is not sent as part of the model ID. This optional adapter does not imply
+IBM endorsement, model equivalence, or a benchmark result.
+
 ---
 
 ## Contributors
