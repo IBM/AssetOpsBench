@@ -370,7 +370,7 @@ Choose five representative FMEA scenarios based on documented suite design, not 
 
 Add/adjust tests if the suite loader has profile validation.
 
-Suggested PR title:
+Suggested PR title
 
 ```text
 feat(benchmark): add FMEA scenarios to lite profile
@@ -545,18 +545,22 @@ Notes: Approved by DhavalRepo18 on October 13, 2026 at 02:10:29 UTC, merged by D
 - [x] Search CI-related issues/PRs.
 - [x] Draft minimal CI proposal.
 - [x] Open issue/discussion if needed.
-- [ ] Get maintainer direction.
-- [ ] Implement only after confirming scope.
-- [ ] Run workflow-equivalent commands locally.
-- [ ] Open focused PR.
-- [ ] Record PR URL here.
+- [x] Get maintainer direction (`Try one`, 2026-10-14).
+- [x] Implement focused first version in fork only.
+- [x] Validate workflow in fork Actions.
+- [ ] Open focused upstream PR (connector attempt blocked by 403; use authenticated GitHub surface).
+- [x] Record branch/SHA/validation here.
 
-Status: UPSTREAM ISSUE OPEN — AWAITING MAINTAINER DIRECTION  
-Issue/Discussion: https://github.com/IBM/AssetOpsBench/issues/632 (open, submitted 2026-10-13 by yousseffaouzi; 0 comments at last check)  
-Proposal: https://github.com/yousseffaouzi/AssetOpsBench/blob/contrib/assetopsbench-roadmap/docs/CONTRIBUTION3_PR_CI_PROPOSAL.md  
-Branch: Not created — intentionally waiting for approved scope  
-PR: Not opened  
-Notes: #632 proposes a small read-only PR CI workflow using uv lock --check and targeted Python smoke tests, compatible with IBM's permitted GitHub Actions. Existing three workflows were audited and duplicate PR/issue searches checked. Maintainer has not yet replied as of the 2026-10-13 check. Wait for maintainer guidance on required-vs-informational status, dependency install cost, and allowed setup methods before implementation; no CI code has been changed.  
+Status: IMPLEMENTED AND FORK-VALIDATED — UPSTREAM PR NOT YET CREATED  
+Issue/Discussion: https://github.com/IBM/AssetOpsBench/issues/632 (open; assigned to yousseffaouzi)  
+Proposal/status: https://github.com/yousseffaouzi/AssetOpsBench/blob/contrib/assetopsbench-roadmap/docs/CONTRIBUTION3_PR_CI_PROPOSAL.md  
+Branch: `ci/add-python-smoke-workflow`  
+Implementation commit: `cd7b97da1affed26a1694708d59df23141eaebc0`  
+Fork validation PR: https://github.com/yousseffaouzi/AssetOpsBench/pull/3 (draft, validation only)  
+Fork workflow run: `38656000694` — SUCCESS  
+Upstream PR: Not created; connected integration returned HTTP 403 `Resource not accessible by integration`.  
+Notes: Preflight on 2026-10-15 verified upstream and fork main still aligned at `e844f6468c6c68b328022e7ca8e31da140842cc7`, only the three known upstream workflows were present, and no competing open Python smoke-workflow PR was found. The implementation adds only `.github/workflows/python-smoke.yml` (65 lines), with `permissions: contents: read`, path filters, PR concurrency cancellation, 10-minute timeout, `actions/checkout@v7`, official shell-installed uv, `uv lock --check`, frozen-lock constraints, and only the direct dependencies needed by the targeted service-independent tests. Fork Actions confirmed checkout, uv install, lock check, constrained dependency install, and `.venv/bin/python -m pytest src/llm/tests src/servers/utilities/tests -q` all succeeded. Local preparation parsed the YAML and verified required uv CLI flags, but the local shell could not resolve GitHub/PyPI hosts, so no local pytest pass is claimed. No benchmark scoring/data, external services, credentials, TSFM-heavy suites, Ruff changes, branch-protection changes, or mandatory-gate changes were made. Next: open a draft upstream PR from the fork branch using an authenticated GitHub surface with permission, link it as `Related to #632` rather than `Fixes`, and observe IBM Actions-policy behavior before any further change.  
+
 ## Contribution 4 — FMEA Lite scenarios (#582)
 
 - [ ] Read current #582.
