@@ -23,9 +23,10 @@ def _install_fake_openai(monkeypatch, captured: dict):
         )
 
     class OpenAI:
-        def __init__(self, base_url=None, api_key=None):
+        def __init__(self, base_url=None, api_key=None, **kwargs):
             captured["base_url"] = base_url
             captured["api_key"] = api_key
+            captured.update(kwargs)
             self.chat = types.SimpleNamespace(
                 completions=types.SimpleNamespace(create=create)
             )
@@ -37,12 +38,14 @@ def _install_fake_openai(monkeypatch, captured: dict):
 
 def test_is_openai_compat():
     assert is_openai_compat("tokenrouter/MiniMax-M3")
+    assert is_openai_compat("atlascloud/openai/gpt-5.4")
     assert not is_openai_compat("litellm_proxy/aws/claude-opus-4-6")
     assert not is_openai_compat("watsonx/meta-llama/llama-3-3-70b-instruct")
 
 
 def test_make_backend_dispatch():
     assert isinstance(make_backend("tokenrouter/MiniMax-M3"), OpenAICompatBackend)
+    assert isinstance(make_backend("atlascloud/openai/gpt-5.4"), OpenAICompatBackend)
     assert isinstance(make_backend("litellm_proxy/aws/claude-opus-4-6"), LiteLLMBackend)
     assert isinstance(make_backend("watsonx/meta-llama/x"), LiteLLMBackend)
 
@@ -63,8 +66,26 @@ def test_tokenrouter_strips_prefix_and_routes(monkeypatch):
     assert captured["model"] == "MiniMax-M3"  # bare name, prefix stripped
     assert captured["base_url"] == "https://api.tokenrouter.com/v1"
     assert captured["api_key"] == "tr-key"
+    assert "max_retries" not in captured
     assert result.text == "hi"
     assert (result.input_tokens, result.output_tokens) == (3, 2)
+
+
+def test_atlascloud_uses_default_endpoint_without_sdk_retries(monkeypatch):
+    captured: dict = {}
+    _install_fake_openai(monkeypatch, captured)
+    monkeypatch.setenv("ATLASCLOUD_API_KEY", "atlas-key")  # pragma: allowlist secret
+    monkeypatch.delenv("ATLASCLOUD_API_BASE", raising=False)
+
+    result = make_backend(
+        "atlascloud/dots-studio/dots-3-note-prev-free"
+    ).generate_with_usage("hello")
+
+    assert captured["model"] == "dots-studio/dots-3-note-prev-free"
+    assert captured["base_url"] == "https://api.atlascloud.ai/v1"
+    assert captured["api_key"] == "atlas-key"  # pragma: allowlist secret
+    assert captured["max_retries"] == 0
+    assert result.text == "hi"
 
 
 def test_model_id_property_keeps_full_string():

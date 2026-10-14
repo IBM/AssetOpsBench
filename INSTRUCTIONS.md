@@ -126,6 +126,13 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 | `TOKENROUTER_API_KEY`  | _(tokenrouter/* models)_ | TokenRouter API key                                                 |
 | `TOKENROUTER_BASE_URL` | _(tokenrouter/* models)_ | TokenRouter base URL, e.g. `https://api.tokenrouter.com/v1`         |
 
+**Atlas Cloud** — OpenAI-compatible gateway for the direct LLM baseline, selected by the `atlascloud/` prefix
+
+| Variable              | Default                         | Description                                      |
+| --------------------- | ------------------------------- | ------------------------------------------------ |
+| `ATLASCLOUD_API_KEY`  | _(atlascloud/* models)_          | Atlas Cloud API key                              |
+| `ATLASCLOUD_API_BASE` | `https://api.atlascloud.ai/v1` | Atlas Cloud API base URL (optional)              |
+
 **OpenCode direct providers** — `opencode-agent` with direct provider routes
 
 | Variable            | Default                    | Description                                      |
@@ -315,6 +322,11 @@ uv run opencode-agent \
 
 # Direct model-only baseline, no MCP tools
 uv run direct-llm-agent --model-id litellm_proxy/Azure/gpt-5-mini-2025-08-07 \
+  'Return only JSON: {"test": 1}'
+
+# Direct model-only baseline through Atlas Cloud
+ATLASCLOUD_API_KEY=... uv run direct-llm-agent \
+  --model-id atlascloud/openai/gpt-5.4 \
   'Return only JSON: {"test": 1}'
 ```
 
