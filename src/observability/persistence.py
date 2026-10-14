@@ -43,12 +43,19 @@ def persist_trajectory(
     question: str,
     answer: str,
     trajectory: Any,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
 ) -> Path | None:
     """Write a per-run evaluation record when ``AGENT_TRAJECTORY_DIR`` is set.
 
     Reads ``run_id`` / ``scenario_id`` from the same contextvars used by
     :func:`agent_run_span`, so CLI-level wiring doesn't have to touch the
     runner's public signature.
+
+    ``tokens_in`` / ``tokens_out`` are for runners (like plan-execute) whose
+    trajectory shape has no per-turn token fields of its own, so the totals
+    have to be threaded through separately. Omitted when ``None`` so callers
+    that don't pass them keep the record's existing shape.
 
     Returns the output path, or ``None`` when persistence is disabled.
     """
@@ -77,6 +84,10 @@ def persist_trajectory(
         "answer": answer,
         "trajectory": _serialize_trajectory(trajectory),
     }
+    if tokens_in is not None:
+        record["tokens_in"] = tokens_in
+    if tokens_out is not None:
+        record["tokens_out"] = tokens_out
     try:
         out_path.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
     except OSError:
