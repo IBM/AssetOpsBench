@@ -182,7 +182,7 @@ class ExtractResult(BaseModel):
     n_windows: int
     window: Optional[int]
     columns: List[str]                 # feature columns: '<channel>.<extractor>' (or '<extractor>')
-    features: List[List[float]]        # n_windows rows x columns (whole-series => 1 row)
+    features: List[List[Optional[float]]]  # n_windows rows x columns; None where uncomputable
     message: str
 
 class FeatureNamesResult(BaseModel):

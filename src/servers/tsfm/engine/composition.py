@@ -396,15 +396,95 @@ def _tile(x, window: Optional[int]) -> np.ndarray:
     return x[: n * window].reshape(n, window) if n else x[None, :]
 
 
+IMPUTE_CHOICES = ("interpolate", "drop", "zero")
+
+
+def gate_gaps(channels: Dict[str, Any], impute: Optional[str]) -> Dict[str, np.ndarray]:
+    """Refuse gapped input unless the caller names how to fill it.
+
+    Feature values are not computed on data with missing points by default. The forecast
+    path makes the same demand (recipe['impute']); this applies it to feature extraction.
+
+    With `impute` set, every channel is cleaned with the same `_impute` the forecast path
+    uses. 'drop' removes a row from every channel when any channel is missing it, so the
+    channels stay aligned in time. Without `impute`, any NaN or inf raises ValueError that
+    names the count per channel and the three choices.
+    """
+    arrs = {ch: np.asarray(x, dtype=float) for ch, x in channels.items()}
+    if impute is not None and impute not in IMPUTE_CHOICES:
+        raise ValueError(f"unknown impute {impute!r}; use one of {', '.join(IMPUTE_CHOICES)}")
+    # inf is as unusable as NaN; treat both as missing.
+    arrs = {ch: np.where(np.isfinite(x), x, np.nan) for ch, x in arrs.items()}
+    gaps = {ch: int(np.isnan(x).sum()) for ch, x in arrs.items()}
+    if not any(gaps.values()):
+        return arrs
+    empty = [ch for ch, x in arrs.items() if len(x) and gaps[ch] == len(x)]
+    if empty:
+        # _impute('interpolate') would turn an all-missing channel into zeros.
+        raise ValueError(f"channel(s) {empty} have no values at all; nothing to impute from")
+    if impute is None:
+        detail = ", ".join(f"{ch!r}: {n} of {len(arrs[ch])}" for ch, n in gaps.items() if n)
+        raise ValueError(
+            f"series has missing values ({detail}); features are not computed on gapped data. "
+            "Set impute to 'interpolate' (fills gaps, keeps time spacing, which lag, slope and "
+            "spectral extractors need), 'drop' (removes the rows), or 'zero' (fills with 0.0)."
+        )
+    if impute == "drop":
+        keep = ~np.any(np.isnan(np.column_stack(list(arrs.values()))), axis=1)
+        out = {ch: x[keep] for ch, x in arrs.items()}
+    else:
+        out = {ch: _impute(pd.Series(x), impute).to_numpy(dtype=float) for ch, x in arrs.items()}
+    if any(len(x) == 0 for x in out.values()):
+        raise ValueError("no points left after impute='drop'")
+    return out
+
+
+def gate_gap_rows(X, y, impute: Optional[str]):
+    """The tabular counterpart of `gate_gaps`: X is instances x time points.
+
+    Refuses missing values unless `impute` is set. 'drop' removes the instances (and their
+    labels) that have any; 'interpolate' and 'zero' fill each instance on its own row.
+    """
+    X = np.asarray(X, dtype=float)
+    X = np.where(np.isfinite(X), X, np.nan)
+    bad = np.isnan(X).any(axis=1)
+    if not bad.any():
+        return X, y
+    if impute is None:
+        raise ValueError(
+            f"{int(bad.sum())} of {len(X)} instance(s) have missing values; features are not "
+            "computed on gapped data. Set recipe['impute'] to 'interpolate', 'drop' (removes "
+            "those instances), or 'zero'."
+        )
+    if impute == "drop":
+        keep = ~bad
+        if not keep.any():
+            raise ValueError("no instances left after impute='drop'")
+        return X[keep], (None if y is None else np.asarray(y)[keep])
+    empty = int(np.isnan(X).all(axis=1).sum())
+    if empty:
+        raise ValueError(f"{empty} instance(s) have no values at all; use impute='drop'")
+    rows = [gate_gaps({"row": r}, impute)["row"] for r in X]
+    return np.vstack(rows), y
+
+
 def extract_features(
-    channels: Dict[str, Any], extractor_names, window: Optional[int] = None
+    channels: Dict[str, Any],
+    extractor_names,
+    window: Optional[int] = None,
+    impute: Optional[str] = None,
 ):
     """Apply named FLOps extractors to each channel's windows.
     channels: {column_name -> 1D array}. Returns (columns, matrix) where matrix is
     n_windows x (n_channels * n_extractors); column names are '<channel>.<extractor>' when
-    multivariate, else just '<extractor>'. Whole-series => one row."""
+    multivariate, else just '<extractor>'. Whole-series => one row.
+
+    Gapped input raises unless `impute` is given (see `gate_gaps`). A value an extractor
+    still cannot compute (a constant window has no skew) stays NaN in the matrix; it is
+    never replaced by 0.0, because 0.0 is a measurement and NaN is not."""
     from ..reasoning import feature_selection as FS
 
+    channels = gate_gaps(channels, impute)
     multi = len(channels) > 1
     per = {ch: _tile(x, window) for ch, x in channels.items()}
     nw = min((W.shape[0] for W in per.values()), default=0)
@@ -415,8 +495,8 @@ def extract_features(
             fn = FS.EXTRACTORS[name]
             data.append([float(fn(W[i])) for i in range(nw)])
             cols.append(f"{ch}.{name}" if multi else name)
-    F = np.nan_to_num(np.column_stack(data)) if data else np.zeros((nw, 0))
-    return cols, F
+    F = np.column_stack(data) if data else np.zeros((nw, 0))
+    return cols, np.where(np.isfinite(F), F, np.nan)
 
 
 def _lib_features(X, subset=None):

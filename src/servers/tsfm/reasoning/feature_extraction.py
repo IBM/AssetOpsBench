@@ -950,10 +950,10 @@ def flux_percentile_ratio_mid20(x, ignore_nan=True):
         x = remove_nan_single_dimensional_array(x)
     if len(x) < 1:
         return float(np.nan)
-    per_60 = np.percentile(x, 60, interpolation="nearest")
-    per_40 = np.percentile(x, 40, interpolation="nearest")
-    per_95 = np.percentile(x, 95, interpolation="nearest")
-    per_5 = np.percentile(x, 5, interpolation="nearest")
+    per_60 = np.percentile(x, 60, method="nearest")
+    per_40 = np.percentile(x, 40, method="nearest")
+    per_95 = np.percentile(x, 95, method="nearest")
+    per_5 = np.percentile(x, 5, method="nearest")
     return (per_60 - per_40) / (per_95 - per_5)
 
 
@@ -971,10 +971,10 @@ def flux_percentile_ratio_mid35(x, ignore_nan=True):
         x = remove_nan_single_dimensional_array(x)
     if len(x) < 1:
         return float(np.nan)
-    per_675 = np.percentile(x, 67.5, interpolation="nearest")
-    per_325 = np.percentile(x, 32.5, interpolation="nearest")
-    per_95 = np.percentile(x, 95, interpolation="nearest")
-    per_5 = np.percentile(x, 5, interpolation="nearest")
+    per_675 = np.percentile(x, 67.5, method="nearest")
+    per_325 = np.percentile(x, 32.5, method="nearest")
+    per_95 = np.percentile(x, 95, method="nearest")
+    per_5 = np.percentile(x, 5, method="nearest")
     return (per_675 - per_325) / (per_95 - per_5)
 
 
@@ -992,10 +992,10 @@ def flux_percentile_ratio_mid50(x, ignore_nan=True):
         x = remove_nan_single_dimensional_array(x)
     if len(x) < 1:
         return float(np.nan)
-    per_25 = np.percentile(x, 25, interpolation="nearest")
-    per_75 = np.percentile(x, 75, interpolation="nearest")
-    per_95 = np.percentile(x, 95, interpolation="nearest")
-    per_5 = np.percentile(x, 5, interpolation="nearest")
+    per_25 = np.percentile(x, 25, method="nearest")
+    per_75 = np.percentile(x, 75, method="nearest")
+    per_95 = np.percentile(x, 95, method="nearest")
+    per_5 = np.percentile(x, 5, method="nearest")
     return (per_75 - per_25) / (per_95 - per_5)
 
 
@@ -1013,10 +1013,10 @@ def flux_percentile_ratio_mid65(x, ignore_nan=True):
         x = remove_nan_single_dimensional_array(x)
     if len(x) < 1:
         return float(np.nan)
-    per_175 = np.percentile(x, 17.5, interpolation="nearest")
-    per_825 = np.percentile(x, 82.5, interpolation="nearest")
-    per_95 = np.percentile(x, 95, interpolation="nearest")
-    per_5 = np.percentile(x, 5, interpolation="nearest")
+    per_175 = np.percentile(x, 17.5, method="nearest")
+    per_825 = np.percentile(x, 82.5, method="nearest")
+    per_95 = np.percentile(x, 95, method="nearest")
+    per_5 = np.percentile(x, 5, method="nearest")
     return (per_825 - per_175) / (per_95 - per_5)
 
 
@@ -1034,10 +1034,10 @@ def flux_percentile_ratio_mid80(x, ignore_nan=True):
         x = remove_nan_single_dimensional_array(x)
     if len(x) < 1:
         return float(np.nan)
-    per_10 = np.percentile(x, 10, interpolation="nearest")
-    per_90 = np.percentile(x, 90, interpolation="nearest")
-    per_95 = np.percentile(x, 95, interpolation="nearest")
-    per_5 = np.percentile(x, 5, interpolation="nearest")
+    per_10 = np.percentile(x, 10, method="nearest")
+    per_90 = np.percentile(x, 90, method="nearest")
+    per_95 = np.percentile(x, 95, method="nearest")
+    per_5 = np.percentile(x, 5, method="nearest")
     return (per_90 - per_10) / (per_95 - per_5)
 
 
@@ -1056,8 +1056,8 @@ def percent_difference_flux_percentile(x, ignore_nan=True):
     if len(x) < 1:
         return float(np.nan)
     median_data = np.median(x)
-    per_95 = np.percentile(x, 95, interpolation="nearest")
-    per_5 = np.percentile(x, 5, interpolation="nearest")
+    per_95 = np.percentile(x, 95, method="nearest")
+    per_5 = np.percentile(x, 5, method="nearest")
     return (per_95 - per_5) / median_data
 
 
