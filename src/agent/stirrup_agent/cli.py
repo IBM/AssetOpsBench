@@ -126,6 +126,26 @@ examples:
             "Supported with docker/local backends."
         ),
     )
+    parser.add_argument(
+        "--skills-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Skill collection to mount into the code-execution workspace. "
+            "Point at the directory holding repo-skills/ and repo-skills-router/."
+        ),
+    )
+    parser.add_argument(
+        "--k-level",
+        choices=("k0", "k1", "k1-recovery"),
+        default="k0",
+        help=(
+            "Operating-knowledge level. k0 mounts nothing (unaided baseline), "
+            "k1 mounts the collection, k1-recovery mounts it but instructs the "
+            "agent to attempt the task unaided first."
+        ),
+    )
     return parser
 
 
@@ -138,6 +158,8 @@ async def _run(args: argparse.Namespace) -> None:
         code_backend=args.code_backend,
         workspace_dir=args.workspace_dir,
         preserve_workspace=args.preserve_workspace,
+        skills_dir=args.skills_dir,
+        k_level=args.k_level,
         max_turns=args.max_turns,
         temperature=args.temperature,
         reasoning_effort=args.reasoning_effort,
