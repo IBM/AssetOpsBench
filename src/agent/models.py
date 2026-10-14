@@ -49,6 +49,12 @@ class Trajectory:
 
     turns: list[TurnRecord] = field(default_factory=list)
     started_at: str | None = None
+    metrics: dict = field(default_factory=dict)
+    """Per-run accounting the runner computed for this trajectory: token totals,
+    peak context, tool counts, topology.  Persisted with the trajectory (the
+    writer serialises this dataclass wholesale), so a sweep is analysable from
+    the run files alone rather than only through a tracing backend.  Runners
+    that compute nothing leave it empty."""
     """ISO-8601 UTC timestamp of when ``run()`` began, for replay
     alignment with the corresponding trace.  Populated by the runner."""
 
