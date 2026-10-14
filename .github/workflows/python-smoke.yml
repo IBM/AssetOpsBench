@@ -1,0 +1,65 @@
+name: Python Smoke
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.python-version'
+      - '.github/workflows/python-smoke.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-smoke-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Service-free Python smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      UV_PYTHON: '3.12'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        shell: bash
+        run: |
+          set -euo pipefail
+          UV_DIR="${RUNNER_TEMP}/uv-bin"
+          curl -LsSf https://astral.sh/uv/0.13.1/install.sh \
+            | env UV_UNMANAGED_INSTALL="${UV_DIR}" sh
+          echo "${UV_DIR}" >> "${GITHUB_PATH}"
+          "${UV_DIR}/uv" --version
+
+      - name: Check dependency lock
+        run: uv lock --check
+
+      - name: Install smoke-test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12
+          uv export --frozen --no-emit-project \
+            --output-file "${RUNNER_TEMP}/constraints.txt"
+          uv pip install \
+            --python .venv/bin/python \
+            --constraint "${RUNNER_TEMP}/constraints.txt" \
+            pytest \
+            anyio \
+            pytest-anyio \
+            couchdb3 \
+            'mcp[cli]' \
+            pendulum \
+            python-dotenv \
+            pydantic
+
+      - name: Run smoke tests
+        run: .venv/bin/python -m pytest src/llm/tests src/servers/utilities/tests -q
