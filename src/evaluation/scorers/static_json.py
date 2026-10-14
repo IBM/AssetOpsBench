@@ -209,6 +209,16 @@ def _parse_json_or_python(content: str) -> Any:
     return _PARSE_MISSING
 
 
+# Wording that may surround a bare count without making the answer something
+# other than a count. Anything else left over means the number was part of a
+# phrase -- most importantly, part of a name.
+_COUNT_WORDS = re.compile(
+    r"\b(?:the|a|an|final|answer|count|result|total|is|are|there|of|"
+    r"assets?|items?|records?|rows?|entries)\b",
+    flags=re.IGNORECASE,
+)
+
+
 def _extract_count_from_text(content: str) -> int | float | None:
     """Extract a count when the answer is count-only or nearly count-only."""
     stripped = content.strip()
@@ -225,7 +235,24 @@ def _extract_count_from_text(content: str) -> int | float | None:
     )
     if len(numbers) == 1:
         number = numbers[0]
-        return float(number) if "." in number else int(number)
+        # A digit inside a name is not a count.
+        #
+        # This function is documented as accepting answers that are "count-only
+        # or nearly count-only", but a single number anywhere in the text
+        # satisfied that test. So "Chiller 6" parsed as 6 -- and so did
+        # "Boiler 6", making two differently-named assets compare equal on a
+        # digit that happened to be inside a name.
+        #
+        # Require the residue, once the number and the usual count wording are
+        # removed, to contain no remaining words: that is what "nearly
+        # count-only" means. "The count is 6" still parses; "Chiller 6" no
+        # longer does.
+        residue = re.sub(
+            r"(?<![A-Za-z0-9_])-?\d+(?:\.\d+)?(?![A-Za-z0-9_])", " ", stripped
+        )
+        residue = _COUNT_WORDS.sub(" ", residue)
+        if not re.search(r"[A-Za-z0-9]", residue):
+            return float(number) if "." in number else int(number)
 
     return None
 
