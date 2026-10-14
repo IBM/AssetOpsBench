@@ -14,7 +14,7 @@ agent runners).  The bare model name is sent to the endpoint::
 
 from __future__ import annotations
 
-from .base import LLMBackend, LLMResult
+from .base import LLMBackend, LLMResult, resolve_max_tokens, result_from_response
 from .routers import is_openai_compat, resolve_model, resolve_router_creds
 
 __all__ = ["OpenAICompatBackend", "is_openai_compat"]
@@ -41,15 +41,13 @@ class OpenAICompatBackend(LLMBackend):
 
         creds = resolve_router_creds(self._model_id)  # strict: clear error if unset
         client = OpenAI(base_url=creds.base_url, api_key=creds.api_key)
+        max_tokens = resolve_max_tokens()
         response = client.chat.completions.create(
             model=self._model_name,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            max_tokens=2048,
+            max_tokens=max_tokens,
         )
-        usage = getattr(response, "usage", None)
-        return LLMResult(
-            text=response.choices[0].message.content,
-            input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
-            output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+        return result_from_response(
+            response, model=self._model_id, max_tokens=max_tokens
         )

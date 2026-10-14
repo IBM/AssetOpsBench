@@ -1,11 +1,12 @@
 """LLM backend for AssetOpsBench MCP."""
 
-from .base import LLMBackend, LLMResult
+from .base import EmptyCompletionError, LLMBackend, LLMResult
 from .litellm import LiteLLMBackend
 from .openai_compat import OpenAICompatBackend
 from .routers import is_openai_compat
 
 __all__ = [
+    "EmptyCompletionError",
     "LLMBackend",
     "LLMResult",
     "LiteLLMBackend",
