@@ -272,7 +272,7 @@ def data_quality(
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     try:
-        df = pd.read_csv(refs._path(dataset_path))
+        df = refs.read_frame(dataset_path)
         nan = _dq._df_nan_stats(df)
         out = _dq._efficient_nan_removal(df)
         cleaned = out["df_filter"]
@@ -1769,7 +1769,7 @@ def run_tabular_recipe(
     if bad:
         return ErrorResult(error=bad)
     try:
-        df = pd.read_csv(refs._path(dataset_path))
+        df = refs.read_frame(dataset_path)
         y = None
         if label_column:
             if label_column not in df.columns:

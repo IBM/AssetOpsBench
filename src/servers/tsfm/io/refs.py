@@ -49,6 +49,48 @@ def _path(ref: str) -> str:
     return p
 
 
+def open_data(ref: str):
+    """Open a file pointer for reading, verified AFTER opening.
+
+    _path() checks the path, but the file could be swapped between that check and the open
+    (e.g. a parent folder replaced by a symlink), and a FIFO passes the check and then blocks
+    the reader forever. So: open without blocking, require a regular file, and check where the
+    OPENED file really lives. Callers read from the returned handle, never re-open the path.
+    """
+    import stat
+
+    p = _path(ref)
+    fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError(f"file pointer is not a regular file: {ref}")
+        real = os.path.realpath(_fd_path(fd))
+        if not any(real == r or real.startswith(r + os.sep) for r in _data_roots()):
+            raise ValueError(f"file pointer is outside the allowed data directories: {ref}")
+        return os.fdopen(fd, "rb")
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def read_frame(ref: str) -> pd.DataFrame:
+    """Read a CSV / Parquet file pointer through open_data()."""
+    with open_data(ref) as fh:
+        if ref.endswith((".parquet", ".pq")):
+            return pd.read_parquet(fh)
+        return pd.read_csv(fh)
+
+
+def _fd_path(fd: int) -> str:
+    """Path of an open file descriptor: /proc on Linux, F_GETPATH on macOS."""
+    proc = f"/proc/self/fd/{fd}"
+    if os.path.exists(proc):
+        return os.readlink(proc)
+    import fcntl
+
+    return fcntl.fcntl(fd, fcntl.F_GETPATH, b"\0" * 1024).rstrip(b"\0").decode()
+
+
 def _safe_name(name) -> str:
     """Output file stem; plan step ids are agent-supplied, so strip path characters."""
     return re.sub(r"[^A-Za-z0-9_.-]", "_", str(name)).lstrip(".") or "result"
@@ -80,8 +122,7 @@ def load_series(
     Column selection: `channels` picks a subset (multivariate); `value_col` picks the single
     value column (univariate). If neither is given, every numeric column is kept.
     """
-    p = _path(data_ref)
-    df = pd.read_parquet(p) if p.endswith((".parquet", ".pq")) else pd.read_csv(p)
+    df = read_frame(data_ref)
 
     # locate the time column (explicit name wins; else auto-detect by common names)
     if time_col is None:

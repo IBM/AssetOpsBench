@@ -203,3 +203,110 @@ def test_agent_checkpoint_folder_is_allowed_and_repo_code_is_not():
             raise AssertionError(f"{p} accepted")
         except ValueError:
             pass
+
+
+# PR #633 review ----------------------------------------------------------------------------
+import pandas as pd
+
+from ..substrate import resolver as R
+
+
+def _tab_panel(numeric_label=False):
+    rng = np.random.RandomState(0)
+    X = rng.randn(30, 16)
+    df = pd.DataFrame(X, columns=[f"f{i}" for i in range(16)])
+    df["label"] = X.mean(axis=1) if numeric_label else [0, 1] * 15
+    p = os.path.join(refs._ensure_workdir(), f"tab_{uuid.uuid4().hex[:6]}.csv")
+    df.to_csv(p, index=False)
+    return p
+
+
+def test_forecasting_transforms_still_run():
+    r = _forecast({"estimator": {"sktime_class": "sktime.forecasting.naive.NaiveForecaster"},
+                   "transforms": [
+                       {"sktime_class": "sktime.transformations.series.detrend.Detrender"},
+                       {"sktime_class": "sktime.transformations.series.adapt.TabularToSeriesAdaptor",
+                        "params": {"transformer": {
+                            "_target_": "sklearn.preprocessing.StandardScaler"}}}],
+                   "fh": [1, 2, 3]})
+    assert r.get("status") == "success", r
+
+
+def test_tabular_regression_still_runs():
+    r = _call("run_tabular_recipe", {"dataset_path": _tab_panel(numeric_label=True),
+              "label_column": "label",
+              "recipe": {"task": "tsfm_regression",
+                         "estimator": {"sktime_class": "sklearn.ensemble.RandomForestRegressor",
+                                       "params": {"n_estimators": 10}}}})
+    assert r.get("status") == "success", r
+
+
+def test_tabular_sktime_transform_still_runs():
+    r = _call("run_tabular_recipe", {"dataset_path": _tab_panel(), "label_column": "label",
+              "recipe": {"task": "tsfm_classification",
+                         "estimator": {"sktime_class": "sklearn.ensemble.RandomForestClassifier",
+                                       "params": {"n_estimators": 10}},
+                         "transforms": [{"sktime_class":
+                             "sktime.transformations.series.summarize.SummaryTransformer"}]}})
+    assert r.get("status") == "success", r
+
+
+def test_fifo_is_refused_without_blocking():
+    import threading
+
+    fifo = os.path.join(refs._ensure_workdir(), f"pipe_{uuid.uuid4().hex[:6]}.csv")
+    os.mkfifo(fifo)
+    out = {}
+    t = threading.Thread(target=lambda: out.update(
+        r=_call("data_quality", {"dataset_path": fifo})), daemon=True)
+    try:
+        t.start()
+        t.join(10)
+        assert not t.is_alive(), "reading a FIFO blocked the server"
+        assert "not a regular file" in out["r"].get("error", ""), out
+    finally:
+        os.unlink(fifo)
+
+
+def test_open_file_is_verified_after_open(monkeypatch):
+    # Simulate the race: the path check passes, but what gets opened lives outside the roots.
+    outside = os.path.join(tempfile.mkdtemp(), "secret.csv")
+    with open(outside, "w") as fh:
+        fh.write("timestamp,value\n2020-01-01,1\n")
+    monkeypatch.setenv("TSFM_DATA_ROOTS", refs._ensure_workdir())
+    monkeypatch.setattr(refs, "_path", lambda ref: outside)
+    try:
+        refs.open_data("whatever.csv")
+        raise AssertionError("opened a file outside the roots")
+    except ValueError as exc:
+        assert "outside the allowed data directories" in str(exc)
+
+
+def test_training_args_output_dir_is_forced_under_workdir():
+    ta = R._safe_training_args({"output_dir": "/etc/evil", "num_train_epochs": 1,
+                                "report_to": ["wandb"]})
+    assert os.path.realpath(ta["output_dir"]).startswith(os.path.realpath(refs.WORKDIR))
+    assert ta["report_to"] == "none" and ta["num_train_epochs"] == 1
+    for key in ("logging_dir", "resume_from_checkpoint", "deepspeed", "push_to_hub",
+                "hub_model_id"):
+        try:
+            R._safe_training_args({key: "/etc/x"})
+            raise AssertionError(f"{key} accepted")
+        except ValueError:
+            pass
+
+
+def test_training_args_are_sanitized_on_every_resolve():
+    built = {}
+
+    class _Spy:
+        def __init__(self, training_args=None):
+            built["ta"] = training_args
+
+    real = R._import_target
+    R._import_target = lambda path: _Spy
+    try:
+        R.resolve({"sktime_class": "x", "params": {"training_args": {"output_dir": "/etc/x"}}})
+    finally:
+        R._import_target = real
+    assert os.path.realpath(built["ta"]["output_dir"]).startswith(os.path.realpath(refs.WORKDIR))
