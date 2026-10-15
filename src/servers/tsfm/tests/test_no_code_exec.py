@@ -109,6 +109,49 @@ def test_allowlisted_estimator_still_runs():
     assert r.get("status") == "success", r
 
 
+def test_every_allowed_class_imports():
+    from ..substrate.resolver import ALLOWED_CLASSES, _import_target
+
+    for path in ALLOWED_CLASSES:
+        assert isinstance(_import_target(path), type), path
+
+
+def test_forecast_transforms_still_run():
+    r = _forecast({
+        "estimator": {"sktime_class": "sktime.forecasting.naive.NaiveForecaster",
+                      "params": {"strategy": "drift"}},
+        "transforms": [
+            {"sktime_class": "sktime.transformations.series.adapt.TabularToSeriesAdaptor",
+             "params": {"transformer": {"_target_": "sklearn.preprocessing.StandardScaler"}}},
+            {"sktime_class": "sktime.transformations.series.exponent.ExponentTransformer",
+             "params": {"power": 0.5}},
+            {"sktime_class": "sktime.transformations.series.detrend.Detrender",
+             "params": {"forecaster": {
+                 "_target_": "sktime.forecasting.trend.PolynomialTrendForecaster",
+                 "params": {"degree": 1}}}},
+        ],
+        "fh": [1, 2, 3]})
+    assert r.get("status") == "success", r
+
+
+def test_tabular_transform_and_regression_still_run():
+    import pandas as pd
+
+    rng = np.random.RandomState(0)
+    X = rng.randn(30, 24) + np.repeat(np.arange(3), 10)[:, None]
+    df = pd.DataFrame(X, columns=[f"f{i}" for i in range(24)])
+    df["rul"] = np.repeat([30.0, 20.0, 10.0], 10) + rng.rand(30)
+    path = os.path.join(refs._ensure_workdir(), "noexec_rul.csv")
+    df.to_csv(path, index=False)
+    r = _call("run_tabular_recipe", {"dataset_path": path, "label_column": "rul", "recipe": {
+        "task": "tsfm_regression",
+        "transforms": [{"sktime_class": "sktime.transformations.panel.catch22.Catch22"}],
+        "estimator": {"sktime_class": "sklearn.ensemble.RandomForestRegressor",
+                      "params": {"n_estimators": 10}}}})
+    assert r.get("status") == "success", r
+    assert r["metric"] == "r2" and isinstance(r["cv_score"], float), r
+
+
 # File pointers: the read-back channel ------------------------------------------------------
 def test_file_pointer_outside_data_roots_is_refused():
     for p in ("/proc/self/environ", "file:///etc/passwd", "/etc/hostname",
