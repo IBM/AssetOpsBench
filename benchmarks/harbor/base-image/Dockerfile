@@ -62,13 +62,13 @@ COPY pyproject.toml uv.lock ./
 # The uv cache is a cache mount, kept out of the image (it duplicated the venv)
 # and reused when uv.lock changes, so only new wheels download.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --group otel --extra tsfm --no-install-project
+    uv sync --frozen --no-dev --group otel --extra tsfm --extra eval --no-install-project
 
 # Repo, including src/couchdb/scenarios_data/shared, pulled once rather than
 # copied into every task context. Everything above survives a source edit.
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --group otel --extra tsfm
+    uv sync --frozen --no-dev --group otel --extra tsfm --extra eval
 
 # The environment is final. Every process in a trial starts through `uv run`
 # (healthcheck, agent, MCP servers, verifier), and `uv run` otherwise syncs the
