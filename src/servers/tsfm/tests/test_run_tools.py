@@ -95,6 +95,20 @@ def test_run_recipe_fits_and_backtests():
     assert r["results"] == json.load(open(refs._path(r["results_file"])))
 
 
+def test_run_recipe_returns_the_full_horizon_with_timestamps():
+    r = call("run_recipe", {"dataset_path": _series(), "timestamp_column": "timestamp",
+                            "target_columns": ["value"],
+                            "recipe": {"estimator": {"sktime_class": NAIVE,
+                                                     "params": {"strategy": "drift"}},
+                                       "fh": list(range(1, 31))}})
+    res = r["results"]
+    assert len(res["forecast"]) == 30 and res["forecast"][:5] == res["forecast_head"]
+    # materialize_iot is hourly from 2020-01-01, 200 rows: step 1 lands at hour 200
+    assert len(res["forecast_timestamps"]) == 30
+    assert res["forecast_timestamps"][0] == str(pd.Timestamp("2020-01-01") + pd.Timedelta(hours=200))
+    assert res["forecast_timestamps"][-1] == str(pd.Timestamp("2020-01-01") + pd.Timedelta(hours=229))
+
+
 def test_run_recipe_validates_the_recipe():
     ref = _series()
     assert "non-empty object" in call("run_recipe", {"dataset_path": ref,

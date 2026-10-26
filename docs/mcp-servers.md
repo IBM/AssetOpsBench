@@ -290,8 +290,9 @@ compiles it, backtests it, produces a forecast or anomaly output, and persists a
 **How a run's output reaches the agent.** Every execution returns a `results_file` - a `file://`
 pointer to a JSON document in `TSFM_WORKDIR` (default `/tmp/tsfm_work`, override with the env var)
 holding the full payload (forecast head, prediction intervals, or anomaly labels). The tool response
-carries the pointer plus the headline numbers (`backtest_score`, `folds`, `n_anomalies`); the agent
-opens the pointer only when it needs the detail. The same run is persisted three ways: the response
+carries the pointer plus the headline numbers (`backtest_score`, `folds`, `n_anomalies`). A forecast
+also returns its full horizon in `results`: every step (`forecast`), the timestamp of each step
+(`forecast_timestamps`) and the full prediction-interval table, as the anomaly path returns every label. The same run is persisted three ways: the response
 pointer, a **run record** in `tsfm_runs` (read by `list_runs` / `get_run`), and a **typed result**
 in the task's result collection - `forecast_result`, `anomaly_result`, ... - read by `list_results`
 / `get_result`, so a later agent can find a run by `task_type` + `asset_id` without knowing its
