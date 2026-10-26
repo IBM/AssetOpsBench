@@ -1598,6 +1598,20 @@ def recipe_template() -> RecipeTemplateResult:
     )
 
 
+def _slim_forecast(res: dict) -> dict:
+    """Copy of a forecasting result for the tool response: the full `forecast` list is dropped (it
+    lives in the results file) and the interval table is cut to its first three rows."""
+    out = {k: v for k, v in res.items() if k != "forecast"}
+    pi = out.get("prediction_interval")
+    if isinstance(pi, dict) and "error" not in pi:
+        out["prediction_interval"] = {
+            col: dict(list(rows.items())[:3]) if isinstance(rows, dict) else rows
+            for col, rows in pi.items()
+        }
+    out["forecast_steps"] = len(res.get("forecast") or [])
+    return out
+
+
 def _index_result(task_type, *, asset_id, results_file, model_id=None,
                   summary=None, metrics=None, scenario_id=None):
     """Record a produced result in its typed collection so list_results / get_result can find it.
@@ -1699,7 +1713,11 @@ def run_recipe(
                 message=f"Anomaly run complete ({res['training_regime']}): "
                 f"{res['n_anomalies']}/{res['n_observations']} flagged. Labels at {results_file}.",
             )
-        results_file = refs.write_json(res, name="recipe_run")  # forecasting path
+        # forecasting path: the file carries the full horizon and the full interval table; the tool
+        # response stays small (first five steps, first three interval rows) so it does not flood the
+        # agent's context. Read `results_file` for every step.
+        results_file = refs.write_json(res, name="recipe_run")
+        res = _slim_forecast(res)
         _index_result(
             "tsfm_forecasting", asset_id=asset_id, results_file=results_file,
             model_id=(recipe.get("estimator") or {}).get("model_id"),

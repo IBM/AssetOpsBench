@@ -319,7 +319,7 @@ def run_recipe(
             else 0.9
         )
         try:
-            pi = fc.predict_interval(coverage=cov).round(4).head(3)
+            pi = fc.predict_interval(coverage=cov).round(4)
             # sktime returns MultiIndex columns, so to_dict() would key by TUPLES - which json
             # cannot serialise, and every result here is written to a JSON file pointer.
             pi.columns = [
@@ -367,6 +367,9 @@ def run_recipe(
         "block_audit": block_audit,
         "per_member_score": per_member,
         "forecast_head": forecast[:5],
+        # the whole horizon: a time-to-alarm or crossing question needs every step, not the first five.
+        # main.run_recipe writes it to the results file and keeps it out of the tool response.
+        "forecast": forecast,
         "prediction_interval": intervals,
         "checkpoint_path": checkpoint_path,
         "parent_run_id": parent_run_id,
