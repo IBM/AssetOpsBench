@@ -12,6 +12,7 @@ never weights.
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import os
@@ -1599,9 +1600,12 @@ def recipe_template() -> RecipeTemplateResult:
 
 
 def _slim_forecast(res: dict) -> dict:
-    """Copy of a forecasting result for the tool response: the full `forecast` list is dropped (it
-    lives in the results file) and the interval table is cut to its first three rows."""
-    out = {k: v for k, v in res.items() if k != "forecast"}
+    """Copy of a forecasting result for the tool response: the full `forecast` and
+    `forecast_timestamps` lists are dropped (they live in the results file, read with
+    `read_result`) and the interval table is cut to its first three rows."""
+    out = {k: v for k, v in res.items() if k not in ("forecast", "forecast_timestamps")}
+    if res.get("forecast_timestamps"):
+        out["forecast_timestamps_head"] = res["forecast_timestamps"][:5]
     pi = out.get("prediction_interval")
     if isinstance(pi, dict) and "error" not in pi:
         out["prediction_interval"] = {
@@ -1610,6 +1614,24 @@ def _slim_forecast(res: dict) -> dict:
         }
     out["forecast_steps"] = len(res.get("forecast") or [])
     return out
+
+
+def _forecast_timestamps(dataset_path, timestamp_column, target_columns, recipe):
+    """Wall-clock time of each forecast step: the last observed timestamp plus `fh` steps of the
+    series' median sampling interval. The engine forecasts on a position axis, so without this
+    the caller has to rebuild the dates. None when the file has no parseable time column."""
+    try:
+        idx = refs.load_series(
+            dataset_path, time_col=timestamp_column, channels=target_columns, time_index=True
+        ).index
+        if not isinstance(idx, pd.DatetimeIndex) or len(idx) < 2:
+            return None
+        step = pd.Series(idx).diff().median()
+        fh = recipe.get("fh") or [1, 2, 3, 4, 5]
+        fh = fh if isinstance(fh, (list, tuple)) else range(1, int(fh) + 1)
+        return [str(idx.max() + int(h) * step) for h in fh]
+    except Exception:
+        return None
 
 
 def _index_result(task_type, *, asset_id, results_file, model_id=None,
@@ -1715,7 +1737,10 @@ def run_recipe(
             )
         # forecasting path: the file carries the full horizon and the full interval table; the tool
         # response stays small (first five steps, first three interval rows) so it does not flood the
-        # agent's context. Read `results_file` for every step.
+        # agent's context. Read every step with read_result(results_file, field="forecast").
+        stamps = _forecast_timestamps(dataset_path, timestamp_column, target_columns, recipe)
+        if stamps:
+            res["forecast_timestamps"] = stamps
         results_file = refs.write_json(res, name="recipe_run")
         res = _slim_forecast(res)
         _index_result(
@@ -1744,7 +1769,9 @@ def run_recipe(
             folds=res.get("folds"),
             training_regime=res["training_regime"],
             message=f"Recipe run complete ({res['training_regime']}, "
-            f"{res.get('folds')} fold(s)). Record at {results_file}.{saved}",
+            f"{res.get('folds')} fold(s)). Record at {results_file}. The response shows the "
+            f"first {len(res.get('forecast_head') or [])} of {res.get('forecast_steps')} forecast "
+            f"steps; read them all with read_result(results_file, field='forecast').{saved}",
             **extra,
         )
     except Exception as exc:
@@ -1920,6 +1947,85 @@ def get_result(task_type: str, result_id: str) -> Union[ResultRecord, ErrorResul
     """
     rec = results.get_result(_STORE, task_type, result_id)
     return ResultRecord(**rec) if rec else ErrorResult(error="not found")
+
+
+@mcp.tool(title="Read Result File")
+def read_result(
+    results_file: str, field: Optional[str] = None, offset: int = 0, limit: int = 200
+) -> Union[ResultRecord, ErrorResult]:
+    """Read the contents of a results file written by run_recipe, run_plan or evaluate.
+
+    Tool responses carry only the head of long outputs (the first forecast steps, the first
+    interval rows); the results file holds all of it. Without `field`, returns the file's table
+    of contents: every top-level key with its type, plus the length of lists and tables or the
+    value of short fields. With `field`, returns that field; a list, or each column of a table,
+    is cut to `limit` items starting at `offset`, so a long horizon can be paged. A CSV file
+    returns rows `offset` to `offset + limit`.
+
+    Args:
+        results_file: The `results_file` pointer a tool returned (`file://...`). Only files in
+            this server's working directory can be read.
+        field: Optional top-level key to read, e.g. `forecast`, `forecast_timestamps` or
+            `prediction_interval`. Omit it for the table of contents.
+        offset: First item to return when paging a list, table or CSV. Default 0.
+        limit: Most items to return, from 1 to 1000. Default 200.
+
+    Returns:
+        ResultRecord: `results_file` plus either `fields` (the table of contents) or `field`,
+        `value`, `offset`, `returned` and `total`. Returns ErrorResult for a pointer outside the
+        working directory, a missing file, or an unknown field.
+    """
+    try:
+        p = refs._path(results_file)
+    except ValueError as exc:
+        return ErrorResult(error=str(exc))
+    root = os.path.realpath(refs.WORKDIR)
+    if not p.startswith(root + os.sep):
+        return ErrorResult(error=f"read_result reads only files in the TSFM working directory ({root})")
+    if not os.path.isfile(p):
+        return ErrorResult(error=f"no such results file: {results_file}")
+    offset, limit = max(int(offset), 0), min(max(int(limit), 1), 1000)
+    try:
+        if p.endswith(".csv"):
+            df = pd.read_csv(p)
+            part = df.iloc[offset: offset + limit]
+            return ResultRecord(results_file=results_file, columns=list(df.columns),
+                                rows=json.loads(part.to_json(orient="records")),
+                                offset=offset, returned=len(part), total=len(df))
+        with open(p) as fh:
+            obj = json.load(fh)
+    except Exception as exc:
+        return ErrorResult(error=f"could not read {results_file}: {exc}")
+    if not isinstance(obj, dict):
+        obj = {"value": obj}
+    if field is None:
+        toc = {}
+        for k, v in obj.items():
+            entry = {"type": type(v).__name__}
+            if isinstance(v, (list, dict)):
+                entry["length"] = len(v)
+            else:
+                entry["value"] = v if not isinstance(v, str) or len(v) <= 200 else v[:200] + "..."
+            toc[k] = entry
+        return ResultRecord(results_file=results_file, fields=toc)
+    if field not in obj:
+        return ErrorResult(error=f"unknown field '{field}'; fields: {list(obj)}")
+    v = obj[field]
+    if isinstance(v, list):
+        value, total = v[offset: offset + limit], len(v)
+        returned = len(value)
+    elif isinstance(v, dict) and v and all(isinstance(c, dict) for c in v.values()):
+        # a column table such as prediction_interval: page every column together
+        value = {col: dict(list(rows.items())[offset: offset + limit]) for col, rows in v.items()}
+        total = max(len(c) for c in v.values())
+        returned = max(len(c) for c in value.values())
+    elif isinstance(v, dict):
+        value, total = dict(list(v.items())[offset: offset + limit]), len(v)
+        returned = len(value)
+    else:
+        value, total, returned = v, 1, 1
+    return ResultRecord(results_file=results_file, field=field, value=value, offset=offset,
+                        returned=returned, total=total)
 
 
 @mcp.tool(title="List Results")

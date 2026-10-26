@@ -286,12 +286,16 @@ compiles it, backtests it, produces a forecast or anomaly output, and persists a
 | `get_run` | read | `run_id` | One run record: its recipe config and outcome. |
 | `list_results` | read | `task_type`, `asset_id?`, `scenario_id?` | List persisted results for a task type. |
 | `get_result` | read | `task_type`, `result_id` | One persisted result — the record a run produced and stored. |
+| `read_result` | read | `results_file`, `field?`, `offset?`, `limit?` | Contents of a results file in `TSFM_WORKDIR`: a table of contents without `field`, else that field, paged (`offset`/`limit`, at most 1000 items). |
 
 **How a run's output reaches the agent.** Every execution returns a `results_file` - a `file://`
 pointer to a JSON document in `TSFM_WORKDIR` (default `/tmp/tsfm_work`, override with the env var)
 holding the full payload (forecast head, prediction intervals, or anomaly labels). The tool response
-carries the pointer plus the headline numbers (`backtest_score`, `folds`, `n_anomalies`); the agent
-opens the pointer only when it needs the detail. The same run is persisted three ways: the response
+carries the pointer plus the headline numbers (`backtest_score`, `folds`, `n_anomalies`) and, for a
+forecast, the first five steps, their timestamps and `forecast_steps`; the file holds every step
+(`forecast`, `forecast_timestamps`) and the full interval table. The agent reads the file only when it
+needs the detail: over MCP with `read_result`, or, on the code track, from the copy the Stirrup
+bridge places under `mcp_results/` (named in `results_workspace_files`). The same run is persisted three ways: the response
 pointer, a **run record** in `tsfm_runs` (read by `list_runs` / `get_run`), and a **typed result**
 in the task's result collection - `forecast_result`, `anomaly_result`, ... - read by `list_results`
 / `get_result`, so a later agent can find a run by `task_type` + `asset_id` without knowing its

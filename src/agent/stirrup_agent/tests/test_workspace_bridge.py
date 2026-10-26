@@ -43,12 +43,14 @@ def _provider(
     exec_env: _FakeExecEnvironment,
     *,
     threshold: int = 32,
+    result_file_roots: tuple[str, ...] = (),
 ) -> WorkspaceBridgedMCPToolProvider:
     config = MCPConfig.model_validate({"mcpServers": {}})
     return WorkspaceBridgedMCPToolProvider(
         config=config,
         exec_env=exec_env,  # type: ignore[arg-type]
         persist_threshold_bytes=threshold,
+        result_file_roots=result_file_roots,
     )
 
 
@@ -247,3 +249,74 @@ async def test_mutation_calls_are_never_cached() -> None:
     await tool.executor(_Params())
 
     assert calls == ["wo__update_workorder", "wo__update_workorder"]
+
+
+@pytest.mark.anyio
+async def test_results_file_is_copied_into_the_workspace(tmp_path) -> None:
+    exec_env = _FakeExecEnvironment()
+    provider = _provider(exec_env, threshold=10_000, result_file_roots=(str(tmp_path),))
+    payload = tmp_path / "recipe_run_ab12.json"
+    payload.write_text(json.dumps({"forecast": list(range(504))}))
+    ref = f"file://{payload}"
+    content = json.dumps({"status": "success", "results_file": ref})
+    tool = provider._wrap_tool(_tool("tsfm__run_recipe", content, []))
+
+    out = json.loads((await tool.executor(_Params())).content)
+
+    assert out["results_file"] == ref
+    dest = out["results_workspace_files"][ref]
+    assert dest == "mcp_results/recipe_run_ab12.json"
+    assert exec_env.files[dest] == payload.read_bytes()
+    assert "code_exec" in out["results_workspace_note"]
+
+
+@pytest.mark.anyio
+async def test_nested_plan_results_files_are_copied(tmp_path) -> None:
+    exec_env = _FakeExecEnvironment()
+    provider = _provider(exec_env, threshold=10_000, result_file_roots=(str(tmp_path),))
+    a, b = tmp_path / "step_a.json", tmp_path / "step_b.json"
+    a.write_text("{}")
+    b.write_text("[]")
+    content = json.dumps({"steps": [{"results_file": str(a)}, {"results_file": str(b)}]})
+    tool = provider._wrap_tool(_tool("tsfm__run_plan", content, []))
+
+    out = json.loads((await tool.executor(_Params())).content)
+
+    assert set(out["results_workspace_files"].values()) == {
+        "mcp_results/step_a.json",
+        "mcp_results/step_b.json",
+    }
+
+
+@pytest.mark.anyio
+async def test_results_file_outside_the_roots_is_not_copied(tmp_path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    secret = tmp_path / "secret.json"
+    secret.write_text("{}")
+    (work / "link.json").symlink_to(secret)
+    exec_env = _FakeExecEnvironment()
+    provider = _provider(exec_env, threshold=10_000, result_file_roots=(str(work),))
+    content = json.dumps(
+        {"results_file": str(secret), "other": {"results_file": str(work / "link.json")}}
+    )
+    tool = provider._wrap_tool(_tool("tsfm__run_recipe", content, []))
+
+    result = await tool.executor(_Params())
+
+    assert result.content == content
+    assert exec_env.files == {}
+
+
+@pytest.mark.anyio
+async def test_failed_results_file_copy_keeps_the_response(tmp_path) -> None:
+    exec_env = _FakeExecEnvironment(fail_writes=True)
+    provider = _provider(exec_env, threshold=10_000, result_file_roots=(str(tmp_path),))
+    payload = tmp_path / "recipe_run_cd34.json"
+    payload.write_text("{}")
+    content = json.dumps({"results_file": str(payload)})
+    tool = provider._wrap_tool(_tool("tsfm__run_recipe", content, []))
+
+    result = await tool.executor(_Params())
+
+    assert result.content == content

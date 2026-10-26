@@ -92,7 +92,44 @@ def test_run_recipe_fits_and_backtests():
     assert r["run_id"].startswith("run:")
     assert r["metric"] and isinstance(r["backtest_score"], (int, float))
     assert r["results_file"].startswith("file://")
-    assert r["results"] == json.load(open(refs._path(r["results_file"])))
+    full = json.load(open(refs._path(r["results_file"])))
+    # the file holds the whole horizon; the response carries its head and a step count
+    assert full["forecast"][:5] == r["results"]["forecast_head"]
+    assert "forecast" not in r["results"] and r["results"]["forecast_steps"] == 5
+
+
+def test_read_result_pages_the_full_forecast():
+    r = call("run_recipe", {"dataset_path": _series(), "timestamp_column": "timestamp",
+                            "target_columns": ["value"],
+                            "recipe": {"estimator": {"sktime_class": NAIVE,
+                                                     "params": {"strategy": "drift"}},
+                                       "fh": list(range(1, 31))}})
+    assert r["results"]["forecast_steps"] == 30 and len(r["results"]["forecast_head"]) == 5
+    assert "read_result" in r["message"]
+    toc = call("read_result", {"results_file": r["results_file"]})
+    assert toc["fields"]["forecast"]["length"] == 30
+    page = call("read_result", {"results_file": r["results_file"], "field": "forecast",
+                                "offset": 10, "limit": 10})
+    full = json.load(open(refs._path(r["results_file"])))
+    assert page["value"] == full["forecast"][10:20]
+    assert (page["returned"], page["total"]) == (10, 30)
+    # materialize_iot is hourly from 2020-01-01, 200 rows: step 1 lands at hour 200
+    ts = call("read_result", {"results_file": r["results_file"],
+                              "field": "forecast_timestamps", "limit": 1})
+    assert ts["value"] == [str(pd.Timestamp("2020-01-01") + pd.Timedelta(hours=200))]
+    assert r["results"]["forecast_timestamps_head"][0] == ts["value"][0]
+
+
+def test_read_result_stays_in_the_workdir(tmp_path):
+    outside = tmp_path / "other.json"
+    outside.write_text("{}")
+    assert "error" in call("read_result", {"results_file": f"file://{outside}"})
+    assert "error" in call("read_result", {"results_file": "/etc/passwd"})
+    r = call("run_recipe", {"dataset_path": _series(), "timestamp_column": "timestamp",
+                            "target_columns": ["value"],
+                            "recipe": {"estimator": {"sktime_class": NAIVE}, "fh": [1, 2]}})
+    assert "unknown field" in call("read_result", {"results_file": r["results_file"],
+                                                   "field": "nope"})["error"]
 
 
 def test_run_recipe_validates_the_recipe():

@@ -4,6 +4,11 @@ The LLM should not have to copy a large MCP response into ``code_exec`` just to
 analyze it. This provider wraps Stirrup's MCP tools so oversized text results
 are written to the existing code-execution environment and replaced in the
 conversation with a compact, cacheable artifact handle.
+
+It also copies the files MCP servers point at. A server such as TSFM writes its full
+output to a results file on this host and returns a ``results_file`` pointer; agent code
+runs in a separate sandbox that cannot open that path, so the bridge copies the file into
+the workspace and adds the copy's path to the response.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -24,6 +30,15 @@ _log = logging.getLogger(__name__)
 
 DEFAULT_PERSIST_THRESHOLD_BYTES = 100 * 1024
 _ARTIFACT_DIRECTORY = "mcp_results"
+# where MCP servers write the results files their pointers name (TSFM: TSFM_WORKDIR)
+_DEFAULT_RESULT_FILE_ROOTS = (os.environ.get("TSFM_WORKDIR", "/tmp/tsfm_work"),)
+_MAX_RESULT_FILE_BYTES = 50 * 1024 * 1024
+_MAX_RESULT_FILES_PER_CALL = 20
+_RESULT_FILES_NOTE = (
+    "results_workspace_files maps each results_file pointer to a copy in the code "
+    "workspace. Open that relative path in code_exec for the full payload; the pointer "
+    "itself is a host path the sandbox cannot read."
+)
 _MUTATING_TOOLS = {
     "fmsr__add_failure_modes",
     "tsfm__deprecate_feature",
@@ -86,6 +101,21 @@ def _query_key(tool_name: str, arguments: dict[str, Any]) -> str:
     return hashlib.sha256(f"{tool_name}:{normalized}".encode()).hexdigest()
 
 
+def _result_file_pointers(obj: Any, depth: int = 0):
+    """Every ``results_file`` string in a tool response, including nested plan steps."""
+    if depth > 4:
+        return
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "results_file" and isinstance(value, str):
+                yield value
+            else:
+                yield from _result_file_pointers(value, depth + 1)
+    elif isinstance(obj, list):
+        for value in obj:
+            yield from _result_file_pointers(value, depth + 1)
+
+
 def _artifact_extension(content: str) -> str:
     try:
         json.loads(content)
@@ -116,6 +146,7 @@ class WorkspaceBridgedMCPToolProvider(MCPToolProvider):
         *,
         exec_env: CodeExecToolProvider,
         persist_threshold_bytes: int = DEFAULT_PERSIST_THRESHOLD_BYTES,
+        result_file_roots: tuple[str, ...] | None = None,
     ) -> None:
         if persist_threshold_bytes <= 0:
             raise ValueError("persist_threshold_bytes must be positive")
@@ -123,6 +154,47 @@ class WorkspaceBridgedMCPToolProvider(MCPToolProvider):
         self._exec_env = exec_env
         self._persist_threshold_bytes = persist_threshold_bytes
         self._artifacts: dict[str, MCPResultArtifact] = {}
+        roots = (
+            _DEFAULT_RESULT_FILE_ROOTS if result_file_roots is None else result_file_roots
+        )
+        self._result_file_roots = tuple(os.path.realpath(str(r)) for r in roots if r)
+
+    async def _copy_result_files(self, content: str) -> str:
+        """Copy each results file a response points at into the code workspace.
+
+        Only files under the result-file roots are copied (realpath, so a symlink cannot
+        reach outside them), each up to 50 MiB and at most 20 per call. Returns the
+        response with ``results_workspace_files`` added, or unchanged when nothing was
+        copied. A failed copy is logged and skipped; the response still goes through.
+        """
+        try:
+            obj = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            return content
+        if not isinstance(obj, dict):
+            return content
+        copied: dict[str, str] = {}
+        for ref in dict.fromkeys(_result_file_pointers(obj)):
+            if len(copied) >= _MAX_RESULT_FILES_PER_CALL:
+                break
+            path = os.path.realpath(ref[7:] if ref.startswith("file://") else ref)
+            if not any(path.startswith(root + os.sep) for root in self._result_file_roots):
+                continue
+            try:
+                if os.path.getsize(path) > _MAX_RESULT_FILE_BYTES:
+                    continue
+                with open(path, "rb") as fh:
+                    data = fh.read()
+                dest = f"{_ARTIFACT_DIRECTORY}/{os.path.basename(path)}"
+                await self._exec_env.write_file_bytes(dest, data)
+                copied[ref] = dest
+            except Exception:
+                _log.warning("Failed to copy results file %s", ref, exc_info=True)
+        if not copied:
+            return content
+        obj["results_workspace_files"] = copied
+        obj["results_workspace_note"] = _RESULT_FILES_NOTE
+        return json.dumps(obj, ensure_ascii=False)
 
     async def _artifact_is_intact(self, artifact: MCPResultArtifact) -> bool:
         try:
@@ -165,6 +237,14 @@ class WorkspaceBridgedMCPToolProvider(MCPToolProvider):
 
             if not result.success or not isinstance(result.content, str):
                 return result
+
+            content = await self._copy_result_files(result.content)
+            if content is not result.content:
+                result = ToolResult(
+                    content=content,
+                    success=result.success,
+                    metadata=result.metadata,
+                )
 
             payload = result.content.encode("utf-8")
             if len(payload) <= self._persist_threshold_bytes:

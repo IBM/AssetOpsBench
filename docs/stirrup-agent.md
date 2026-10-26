@@ -236,6 +236,14 @@ Artifacts are content-addressed, so a refreshed response does not overwrite an
 earlier snapshot. Smaller responses remain inline, and persistence failures
 safely fall back to the original inline MCP result.
 
+Results files are bridged the same way. A server that writes its full output to
+a file and returns a `results_file` pointer (TSFM's `run_recipe`, `run_plan`,
+`evaluate`, `get_result`) names a host path the Docker sandbox cannot open. When
+the pointer is under `TSFM_WORKDIR` (default `/tmp/tsfm_work`), the bridge copies
+the file to `mcp_results/<file name>` and adds `results_workspace_files`, a map
+from each pointer to its workspace path, to the response. Files over 50 MiB and
+pointers outside that directory are left alone.
+
 For example:
 
 ```bash
@@ -359,7 +367,7 @@ uv run stirrup-agent --no-code --run-id stirrup-smoke --scenario-id 101 \
 | ------- | ----------- |
 | `docker.errors.DockerException: Error while fetching server API version ... FileNotFoundError` | SDK can't find the daemon socket. `export DOCKER_HOST=unix://<path from 'docker context inspect | grep Host'>`. |
 | Docker connects but `code_exec` hits `ModuleNotFoundError` | Sandbox image lacks the library; build/point `STIRRUP_CODE_IMAGE` at `assetops-code` (or an image with the stack). |
-| Agent code cannot open a server-returned dataset or result file pointer in Docker | Those host-side pointers are separate from automatically bridged `mcp_results/` snapshots. Use an MCP tool that consumes the pointer, or use `--code-backend local` when direct host-file access is required. |
+| Agent code cannot open a server-returned dataset or result file pointer in Docker | Pointers are host paths. TSFM results files under `TSFM_WORKDIR` are copied to `mcp_results/` (see `results_workspace_files` in the response); for other pointers use an MCP tool that consumes the pointer, or use `--code-backend local` when direct host-file access is required. |
 | `uv sync` fails to resolve | A pin (e.g. `litellm==...`) clashing with Stirrup's range; relax to a compatible range. |
 | `stirrup` import errors | `stirrup[mcp,litellm,docker]` not installed; re-run `uv sync`. |
 | A server missing from the tool list | Its subprocess failed to start (missing CouchDB creds for `iot`/`wo`/`vibration`, or model load for `tsfm`). |
