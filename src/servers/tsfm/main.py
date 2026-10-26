@@ -1598,6 +1598,24 @@ def recipe_template() -> RecipeTemplateResult:
     )
 
 
+def _forecast_timestamps(dataset_path, timestamp_column, target_columns, recipe):
+    """Wall-clock time of each forecast step: the last observed timestamp plus `fh` steps of the
+    series' median sampling interval. The engine forecasts on a position axis, so without this
+    the caller has to rebuild the dates. None when the file has no parseable time column."""
+    try:
+        idx = refs.load_series(
+            dataset_path, time_col=timestamp_column, channels=target_columns, time_index=True
+        ).index
+        if not isinstance(idx, pd.DatetimeIndex) or len(idx) < 2:
+            return None
+        step = pd.Series(idx).diff().median()
+        fh = recipe.get("fh") or [1, 2, 3, 4, 5]
+        fh = fh if isinstance(fh, (list, tuple)) else range(1, int(fh) + 1)
+        return [str(idx.max() + int(h) * step) for h in fh]
+    except Exception:
+        return None
+
+
 def _index_result(task_type, *, asset_id, results_file, model_id=None,
                   summary=None, metrics=None, scenario_id=None):
     """Record a produced result in its typed collection so list_results / get_result can find it.
@@ -1699,7 +1717,12 @@ def run_recipe(
                 message=f"Anomaly run complete ({res['training_regime']}): "
                 f"{res['n_anomalies']}/{res['n_observations']} flagged. Labels at {results_file}.",
             )
-        results_file = refs.write_json(res, name="recipe_run")  # forecasting path
+        # forecasting path: the full horizon (`forecast`), its timestamps and the full interval table
+        # come back in `results` and in the results file, as the anomaly path returns every label
+        stamps = _forecast_timestamps(dataset_path, timestamp_column, target_columns, recipe)
+        if stamps:
+            res["forecast_timestamps"] = stamps
+        results_file = refs.write_json(res, name="recipe_run")
         _index_result(
             "tsfm_forecasting", asset_id=asset_id, results_file=results_file,
             model_id=(recipe.get("estimator") or {}).get("model_id"),
