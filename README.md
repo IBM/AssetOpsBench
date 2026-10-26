@@ -205,6 +205,7 @@ Example: MetaAgent leaderboard
 
 - [**ReActXen IoT Agent**](https://github.com/IBM/ReActXen/blob/main/docs/tutorial/ReActXen_IoT_Agent_EMNLP_2025.pdf) (EMNLP 2025)
 - [**FailureSensorIQ**](https://github.com/IBM/FailureSensorIQ) (NeurIPS 2025)
+- [**DiagnosticIQ dataset creation**](./docs/dataset-creation.md) — build DiagnosticIQ and its Pro, Pert and Verbose variants from rule documents
 - [**AssetOpsBench Lab**](https://ibm.github.io/AssetOpsBench/aaaiwebsite/) (AAAI 2026)
 - [**SPIRAL**](https://github.com/IBM/SPIRAL) (AAAI 2026)
 - [**AssetOpsBench Technical Material**](https://github.com/IBM/AssetOpsBench/blob/main/docs/tutorial/AssetOpsBench_Technical_Material.pdf)
