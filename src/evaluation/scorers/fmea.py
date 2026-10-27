@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from functools import lru_cache
 from typing import Any
 
 from ..models import Scenario, ScorerResult
@@ -16,6 +17,15 @@ _REQUIRED_CATALOG_TOOLS = {
 }
 _DOMAIN_PREFIXES = ("fmsr__", "iot__", "tsfm__", "vibration__", "wo__")
 _DEFAULT_F1_PASS_THRESHOLD = 0.80
+
+# Failure-location generation (asset_locations family). Matching follows SSEE
+# (Lynch et al., AAAI-25): embed both sets, keep pairs at or above a cosine
+# threshold, assign greedily one-to-one. Encoder and 0.8 threshold follow
+# arXiv 2509.17834. The encoder is preloaded into the Harbor base image
+# (base-image/models.txt) and otherwise downloads on first use.
+_DEFAULT_ENCODER = "sentence-transformers/msmarco-MiniLM-L-6-v3"
+_DEFAULT_MATCH_THRESHOLD = 0.8
+_DEFAULT_MAX_LOCATIONS = 30
 
 
 def _strict_json_object(answer: str) -> tuple[dict[str, Any] | None, list[str]]:
@@ -155,6 +165,134 @@ def _score_asset_modes(
     return dimensions, details, semantic_exact
 
 
+class _EncoderUnavailable(RuntimeError):
+    """The sentence encoder could not be imported, downloaded or run."""
+
+
+@lru_cache(maxsize=2)
+def _load_encoder(name: str) -> Any:
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(name)
+
+
+def _similarity(left: list[str], right: list[str], encoder: str) -> list[list[float]]:
+    """Cosine similarity matrix, rows for ``left`` and columns for ``right``."""
+    if not left or not right:
+        return [[0.0] * len(right) for _ in left]
+    model = _load_encoder(encoder)
+    a = model.encode(left, normalize_embeddings=True, convert_to_numpy=True)
+    b = model.encode(right, normalize_embeddings=True, convert_to_numpy=True)
+    return (a @ b.T).tolist()
+
+
+def _ssee_assign(sim: list[list[float]], threshold: float) -> dict[int, int]:
+    """SSEE greedy one-to-one assignment of rows to columns.
+
+    Each row keeps its columns at or above ``threshold``, best first. Rows are
+    visited in order of their best similarity, and each takes its most similar
+    column that no earlier row has taken.
+    """
+    ranked = []
+    for row, scores in enumerate(sim):
+        cands = sorted(
+            ((value, col) for col, value in enumerate(scores) if value >= threshold),
+            reverse=True,
+        )
+        if cands:
+            ranked.append((cands[0][0], row, cands))
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    taken: set[int] = set()
+    assignment: dict[int, int] = {}
+    for _, row, cands in ranked:
+        for _, col in cands:
+            if col not in taken:
+                taken.add(col)
+                assignment[row] = col
+                break
+    return assignment
+
+
+def _number(meta: dict[str, Any], key: str, default: float, *, lo: float, hi: float) -> float | None:
+    value = meta.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if lo <= value <= hi else None
+
+
+def _f1(precision: float, recall: float) -> float:
+    return 2.0 * precision * recall / (precision + recall) if precision + recall else 0.0
+
+
+def _score_asset_locations(
+    gold: dict[str, Any], model: dict[str, Any], meta: dict[str, Any]
+) -> tuple[dict[str, float], dict[str, Any], bool]:
+    """SSEE precision and recall over failure-location names, with a length cap."""
+    threshold = _number(meta, "match_threshold", _DEFAULT_MATCH_THRESHOLD, lo=0.0, hi=1.0)
+    cap = _number(meta, "max_locations", _DEFAULT_MAX_LOCATIONS, lo=1, hi=10_000)
+    if threshold is None or cap is None or int(cap) != cap:
+        raise ValueError("match_threshold must be in [0, 1] and max_locations a positive integer")
+    cap = int(cap)
+    encoder = str(meta.get("encoder") or _DEFAULT_ENCODER)
+
+    gold_raw, model_raw = gold.get("failure_locations"), model.get("failure_locations")
+    gold_names = list(gold_raw) if isinstance(gold_raw, dict) else []
+    returned = list(model_raw) if isinstance(model_raw, dict) else []
+    model_names = returned[:cap]
+
+    try:
+        sim = _similarity(gold_names, model_names, encoder)
+    except Exception as exc:  # import, download (network/proxy) or inference failure
+        raise _EncoderUnavailable(f"{encoder}: {exc!r}") from exc
+    by_gold = _ssee_assign(sim, threshold)
+    transposed = [list(col) for col in zip(*sim)] if sim and model_names else [[] for _ in model_names]
+    by_model = _ssee_assign(transposed, threshold)
+
+    recall = len(by_gold) / len(gold_names) if gold_names else 1.0
+    precision = len(by_model) / len(model_names) if model_names else float(not gold_names)
+
+    # Same metric with the prompt's seed locations removed from both sets, so
+    # restating the seeds earns no credit.
+    seeds = {str(name).strip().casefold() for name in meta.get("seed_locations") or []}
+    seed_gold = {i for i, name in enumerate(gold_names) if name.strip().casefold() in seeds}
+    seed_model = {by_gold[i] for i in seed_gold if i in by_gold}
+    novel_hits = sum(1 for i, j in by_gold.items() if i not in seed_gold)
+    novel_gold = len(gold_names) - len(seed_gold)
+    novel_model = len(model_names) - len(seed_model)
+    novel_recall = novel_hits / novel_gold if novel_gold else 1.0
+    novel_precision = novel_hits / novel_model if novel_model else float(not novel_gold)
+
+    asset_match = (
+        isinstance(model.get("asset"), str)
+        and isinstance(gold.get("asset"), str)
+        and model["asset"].strip().casefold() == gold["asset"].strip().casefold()
+    )
+    # Gold locations carry no descriptions, so grounding mirrors precision.
+    dimensions = {"coverage": recall, "precision": precision, "grounding": precision}
+    details = {
+        "asset_match": asset_match,
+        "encoder": encoder,
+        "match_threshold": threshold,
+        "max_locations": cap,
+        "returned_count": len(returned),
+        "over_cap": len(returned) > cap,
+        "scored_locations": model_names,
+        "matches": sorted(
+            (gold_names[i], model_names[j], round(sim[i][j], 4)) for i, j in by_gold.items()
+        ),
+        "missing_locations": sorted(gold_names[i] for i in range(len(gold_names)) if i not in by_gold),
+        "extra_locations": sorted(model_names[j] for j in range(len(model_names)) if j not in by_model),
+        "seed_locations": sorted(gold_names[i] for i in seed_gold),
+        "novel_recall": novel_recall,
+        "novel_precision": novel_precision,
+        "novel_f1": _f1(novel_precision, novel_recall),
+    }
+    exact = asset_match and len(by_gold) == len(gold_names) == len(model_names)
+    return dimensions, details, exact
+
+
 def _score_analytics(
     gold: dict[str, Any], model: dict[str, Any]
 ) -> tuple[dict[str, float], dict[str, Any], bool]:
@@ -211,7 +349,31 @@ def fmea_score(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerR
         set(gold) == {"asset", "failure_modes"}
         and isinstance(gold.get("failure_modes"), dict)
     )
-    if is_asset_modes:
+    is_asset_locations = tag == "asset_locations" or (
+        set(gold) == {"asset", "failure_locations"}
+        and isinstance(gold.get("failure_locations"), dict)
+    )
+    if is_asset_locations:
+        try:
+            dimensions, content_details, semantic_exact = _score_asset_locations(gold, model, meta)
+        except ValueError as exc:
+            return ScorerResult(
+                scorer="fmea",
+                passed=False,
+                score=0.0,
+                rationale=f"scenario_meta.json: {exc}.",
+                details={"error": "invalid_scenario_meta"},
+            )
+        except _EncoderUnavailable as exc:
+            return ScorerResult(
+                scorer="fmea",
+                passed=False,
+                score=0.0,
+                rationale=f"Location encoder unavailable: {exc}.",
+                details={"error": "encoder_unavailable"},
+            )
+        scoring_family = "asset_locations"
+    elif is_asset_modes:
         dimensions, content_details, semantic_exact = _score_asset_modes(gold, model)
         scoring_family = "asset_modes"
     else:
