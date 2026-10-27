@@ -72,6 +72,31 @@ Or jump in instantly:
 
 ---
 
+## Interactive Dashboard
+
+The repository-backed [`dashboard/`](./dashboard/) site reads scenario definitions and seeded data from the repository at request time. It can execute the real Plan-Execute, Claude, OpenAI, and Deep agent runners over the project's MCP servers, display their returned trajectories/tool outputs, and call the repository's `LLMJudgeScorer`. Run results and saved history include an interactive evidence-linked replay of the scenario, recorded agent notes, tool inputs and exact returned outputs, final answer, and evaluation. The replay preserves the recorded sequence and does not imply that an agent relied on a particular tool result. The data cards are derived from checked-in sample manifests and files; they are not a live plant feed. The linked Engineering Lab provides policy-filtered MCP workbenches, runner comparison, bounded local benchmark-profile batches, evaluation summaries, and persisted run history.
+
+### Run locally
+
+Install the project dependencies and configure one of the repository-supported model providers plus any needed CouchDB/MCP services. The server reads `.env` at the repository root; keep credentials server-side and never commit them. For example, the selected model and its provider credentials must be configured as described in [INSTRUCTIONS.md](./INSTRUCTIONS.md) and the `src/llm/` backend documentation.
+
+```bash
+uv sync
+uv run python dashboard/server.py
+```
+
+Then open <http://localhost:8000>. Without model credentials, you can still browse repository scenarios, local sample data, and dynamically discovered MCP tool definitions, but live model runs and LLM-As-Judge scoring report the missing configuration. Live runs use actual model/MCP services and may incur provider costs. The dashboard forces `AOB_READONLY=1` for spawned WO and FMSR MCP servers; WO write tools and persistent FMSR edits are also excluded from the Engineering Lab tool policy.
+
+### Dashboard architecture and deployment
+
+- `dashboard/server.py` reads scenario files, scenario manifests, seeded telemetry/FMEA/work-order/asset records, discovers tools from repository MCP servers, and exposes the localhost JSON API. It instantiates repository agent runners and the `LLMJudgeScorer`.
+- `dashboard/index.html`, `dashboard/engineering.html`, the shared `dashboard/styles.css` and `dashboard/replay.js`, and the two page-specific JavaScript files provide the responsive dashboard and linked Engineering Lab. Tool responses and agent results come from repository calls, not synthesized browser fixtures.
+- Data summaries are re-read from checked-in files for each API request. Agent runners persist trajectories under `traces/dashboard/`; the Engineering Lab reads these records as local run history. `AGENT_TRAJECTORY_DIR` can override this location, but history is only exposed for directories under the repository's `traces/` folder.
+- Benchmark profile definitions are read from the repository YAML files. The dashboard batch endpoint runs at most 20 profile scenarios whose definitions are available in the local checkout and does not reset/load CouchDB. Remaining profile IDs are reported as skipped. The repository's full benchmark CLI has data-reset behavior and is intentionally not launched by this dashboard.
+- [`.github/workflows/deploy-dashboard.yml`](./.github/workflows/deploy-dashboard.yml) publishes both static pages to GitHub Pages on pushes to `main` and on manual dispatch. GitHub Pages cannot run the Python API or MCP servers, so Pages provides only the static preview and reports that its repository API is unavailable. For full functionality, run the dashboard server in the same trusted environment as the repository and its data services. The API is unauthenticated and must not be exposed to the public internet.
+
+---
+
 ## What is AssetOpsBench?
 
 AssetOpsBench is a **unified framework for developing, orchestrating, and evaluating domain-specific AI agents** in industrial asset operations and maintenance. It provides reproducible scenarios, agent tooling, and evaluation pipelines for multi-step workflows in simulated industrial environments.

@@ -370,7 +370,6 @@ def generate_failure_modes(
         return ErrorResult(error=db_failure_text(exc))
 
 
-@mcp.tool(title="Add Failure Modes")
 def add_failure_modes(
     asset_class: str,
     failure_modes: List[str],
@@ -452,6 +451,11 @@ def add_failure_modes(
     except Exception as exc:  # noqa: BLE001
         logger.error("add_failure_modes failed: %s", exc)
         return ErrorResult(error=db_failure_text(exc))
+
+
+# Dashboard-launched runs inherit AOB_READONLY=1 and must not expose write tools.
+if os.environ.get("AOB_READONLY") != "1":
+    mcp.tool(title="Add Failure Modes")(add_failure_modes)
 
 
 # generate_failure_mode_sensor_mapping is intentionally not registered. The
