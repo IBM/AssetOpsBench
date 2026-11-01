@@ -82,15 +82,13 @@ def test_non_integer_or_unknown_codes_rejected(value):
     )["valid"]
 
 
-@pytest.mark.parametrize("mode", ["missing", "extra", "unexpected_field"])
+@pytest.mark.parametrize("mode", ["missing", "extra"])
 def test_exact_answer_coverage(mode):
     answer = json.loads(json.dumps(GOLD))
     if mode == "missing":
         answer["predictions"].pop("fictional-observation-0")
     elif mode == "extra":
         answer["predictions"]["fictional-extra"] = CODES[0]
-    else:
-        answer["explanation"] = "unsolicited"
     assert not evaluate(answer)["valid"]
 
 
@@ -105,11 +103,6 @@ def test_exact_answer_coverage(mode):
         {"macro_f1_threshold": -0.2},
         {"macro_f1_threshold": 1.2},
         {"macro_f1_threshold": float("nan")},
-        {"max_sensor_channels": True},
-        {"max_sensor_channels": 0},
-        {"max_sensor_channels": 2.5},
-        {"require_program": "true"},
-        {"require_model_id": 1},
     ],
 )
 def test_invalid_configuration_raises_harness_error(override):
@@ -122,45 +115,20 @@ def test_invalid_gold_is_not_a_submission_failure():
         grade('{"predictions":{}}', json.dumps(GOLD), META)
 
 
-def constrained_answer():
-    return {
-        **GOLD,
-        "selected_sensors": ["CHANNEL-OMEGA"],
-        "selected_features": ["CHANNEL-OMEGA__mean"],
-        "model_id": "fictional-estimator",
-        "program": 'print("fictional")',
-    }
-
-
-def test_optional_declarations_are_validated_without_execution():
-    answer = constrained_answer()
-    result = evaluate(
-        answer, max_sensor_channels=2, require_model_id=True, require_program=True
-    )
-    assert result["passed"]
-
-
 @pytest.mark.parametrize(
-    "field,value",
+    "extra",
     [
-        ("selected_sensors", ["CHANNEL-OMEGA", "CHANNEL-OMEGA"]),
-        ("selected_sensors", ["CHANNEL-OMEGA", "CHANNEL-SIGMA", "CHANNEL-TAU"]),
-        ("selected_sensors", []),
-        ("selected_sensors", [None]),
-        ("selected_features", ["CHANNEL-SIGMA__mean"]),
-        ("selected_features", ["CHANNEL-OMEGA__mean", "CHANNEL-OMEGA__mean"]),
-        ("selected_features", []),
-        ("model_id", ""),
-        ("program", ""),
-        ("program", None),
+        {"selected_sensors": ["FICTIONAL-X", "FICTIONAL-Y"]},
+        {"selected_features": ["UNRELATED__value"]},
+        {"program": "not executable"},
+        {"program": None},
+        {"model_id": ""},
+        {"explanation": "ignored"},
     ],
 )
-def test_invalid_declarations_rejected(field, value):
-    answer = constrained_answer()
-    answer[field] = value
-    assert not evaluate(
-        answer, max_sensor_channels=2, require_model_id=True, require_program=True
-    )["valid"]
+def test_extra_submission_fields_do_not_affect_classification(extra):
+    result = evaluate({**GOLD, **extra})
+    assert result["valid"] and result["passed"] and result["score"] == 1.0
 
 
 def test_duplicate_episode_keys_rejected():
