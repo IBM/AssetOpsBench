@@ -1,6 +1,6 @@
 """Deterministic numerical-only RUL scoring, configured by private scenario metadata.
 
-Select aob_wo_rul_numeric_v1 and provide relative_tolerance in
+Select rul_numeric_v1 and provide relative_tolerance in
 scenario_meta.json. Agent JSON supplies remaining_cycles;
 other fields are diagnostic. No dataset, fixed tolerance or policy file is bundled.
 """
@@ -104,14 +104,14 @@ def rul_score(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerRe
         metrics = score(metadata, json.loads(answer), gold, settings=settings)
     except (ValueError, TypeError, KeyError) as error:
         return ScorerResult(
-            scorer="aob_wo_rul_numeric_v1",
+            scorer="rul_numeric_v1",
             passed=False,
             score=0.0,
             rationale=str(error),
             details=dict(valid_prediction=False, **configuration),
         )
     return ScorerResult(
-        scorer="aob_wo_rul_numeric_v1",
+        scorer="rul_numeric_v1",
         passed=metrics["numerical_pass"],
         score=float(metrics["numerical_pass"]),
         rationale=(
@@ -123,4 +123,4 @@ def rul_score(scenario: Scenario, answer: str, trajectory_text: str) -> ScorerRe
 
 
 def install():
-    register("aob_wo_rul_numeric_v1", rul_score)
+    register("rul_numeric_v1", rul_score)

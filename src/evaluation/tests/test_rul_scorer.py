@@ -14,7 +14,7 @@ def scenario(**meta):
         id="rul-test",
         text="Estimate remaining cycles.",
         expected_answer=json.dumps({"remaining_cycles": 100}),
-        scoring_method="aob_wo_rul_numeric_v1",
+        scoring_method="rul_numeric_v1",
         evaluation_metadata={
             "scenario_meta": {
                 "relative_tolerance": 0.1,
@@ -25,7 +25,7 @@ def scenario(**meta):
 
 
 def test_registered():
-    assert scorers.get("aob_wo_rul_numeric_v1") is rul_score
+    assert scorers.get("rul_numeric_v1") is rul_score
 
 
 @pytest.mark.parametrize(
@@ -110,5 +110,5 @@ def test_native_evaluator_dispatches_without_wrapper_or_policy_file():
         answer='{"remaining_cycles":108}',
     )
     result = Evaluator()._score_one(scenario(), trajectory)
-    assert result.score.scorer == "aob_wo_rul_numeric_v1"
+    assert result.score.scorer == "rul_numeric_v1"
     assert result.score.passed
