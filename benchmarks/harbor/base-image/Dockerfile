@@ -41,7 +41,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_LINK_MODE=copy \
     AOB_HOME=/opt/aob \
     HF_HOME=/opt/hf \
-    HF_HUB_DISABLE_PROGRESS_BARS=1
+    HF_HUB_DISABLE_PROGRESS_BARS=1 \
+    MPLBACKEND=Agg
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash ca-certificates curl git jq \
@@ -57,18 +58,22 @@ COPY --from=models /opt/hf /opt/hf
 # Lockfile first so dependency layers survive source edits.
 COPY pyproject.toml uv.lock ./
 # --group otel: the task sets OTEL_TRACES_FILE, whose exporter needs it.
+# --group scientific: the same scientific stack as the isolated code image;
+# Harbor's default local code backend runs in this runtime's environment.
 # --no-dev: the dev group is pytest and the Jupyter stack, which nothing in a
 # trial imports.
 # The uv cache is a cache mount, kept out of the image (it duplicated the venv)
 # and reused when uv.lock changes, so only new wheels download.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --group otel --extra tsfm --no-install-project
+    uv sync --frozen --no-dev --group otel --group scientific --extra tsfm --no-install-project
 
 # Repo, including src/couchdb/scenarios_data/shared, pulled once rather than
 # copied into every task context. Everything above survives a source edit.
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --group otel --extra tsfm
+    uv sync --frozen --no-dev --group otel --group scientific --extra tsfm
+
+RUN .venv/bin/python src/agent/stirrup_agent/smoke_scientific.py
 
 # The environment is final. Every process in a trial starts through `uv run`
 # (healthcheck, agent, MCP servers, verifier), and `uv run` otherwise syncs the

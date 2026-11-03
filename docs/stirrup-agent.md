@@ -141,23 +141,23 @@ on separate leaderboard tracks.
 
 Backends (`--code-backend`):
 
-| Backend  | Isolation | Host file access                | When to use                                       |
-| -------- | --------- | ------------------------------- | ------------------------------------------------- |
-| `docker` | full      | none (container filesystem)     | unattended runs; the default                      |
-| `local`  | none      | reads host paths directly       | development / trusted inputs; fastest, no Docker  |
+| Backend | Execution environment | Filesystem access | When to use |
+| --- | --- | --- | --- |
+| `docker` | Separate code container | Container filesystem and mounted workspace | Standalone default; unattended runs |
+| `local` | Same environment as the agent process | Host for standalone runs; task container for Harbor | Development, or Harbor's existing container isolation |
 
-> `local` runs model-authored code on your host with your permissions. Use it for
-> inputs you control; prefer `docker` for unattended or untrusted runs.
+> In a standalone run, `local` runs model-authored code in your host environment
+> with your permissions. Harbor uses `local` inside its task container by default;
+> the Docker backend creates a separate code container.
 
-When code execution is enabled, the runner appends backend-specific guidance to
-the shared agent prompt. It directs the model to answer directly when domain
-knowledge, MCP results, or basic reasoning are sufficient; reserve `code_exec`
-for necessary computation, data processing, workspace inspection, or validation;
-and never use it for planning, comments, placeholders, or empty scripts. When
-code is needed, the prompt prefers one bounded inspect/analyze/verify script and
-small outputs. Docker runs identify `/workspace` and the installed NumPy, pandas,
-and SciPy packages; local runs warn that commands execute with the current user's
-host permissions. `--no-code` keeps the shared prompt unchanged.
+When code execution is enabled, the runner appends code and backend guidance to
+the shared agent prompt. The common section describes persistent files, fresh
+shells, installed scientific libraries, import checks, no package installation
+and bounded inspection of large tool-produced artifacts. Docker runs identify
+`/workspace`. Local runs describe the agent process's environment,
+including Harbor's task container. The prompt does not prescribe a model,
+feature recipe or acceptance threshold.
+`--no-code` omits these code-specific sections and keeps the shared prompt.
 
 ---
 
@@ -179,22 +179,48 @@ Rancher Desktop must use the **dockerd (moby)** engine, not containerd.
 
 ### 2. Sandbox image with the scientific stack
 
-The default image name is `assetops-code`. Build it once from the bundled
-Dockerfile, which adds NumPy, pandas, and SciPy to `python:3.12-slim`:
+The default image name is `assetops-code`. The standard sandbox and Harbor runtime
+images install the same locked `scientific` dependency group:
+
+| Library | Python import | Purpose |
+| --- | --- | --- |
+| NumPy | `numpy` | Numerical arrays |
+| pandas | `pandas` | Tabular and time-indexed data |
+| SciPy | `scipy` | Scientific algorithms and signal processing |
+| scikit-learn | `sklearn` | Machine learning and metrics |
+| statsmodels | `statsmodels` | Statistical models and time-series analysis |
+| Matplotlib | `matplotlib` | Headless plots |
+| seaborn | `seaborn` | Statistical visualization |
+| joblib | `joblib` | Model persistence and computation helpers |
+| threadpoolctl | `threadpoolctl` | Numerical thread control |
+| PyWavelets | `pywt` | Wavelet transforms |
+
+Stirrup's Docker provider uses the image supplied by the caller; it does not
+install scientific packages into that image. Its
+[Slack integration image](https://github.com/ArtificialAnalysis/Stirrup/blob/main/src/stirrup/integrations/slack/Dockerfile)
+explicitly installs NumPy, pandas, SciPy, scikit-learn, Matplotlib and seaborn.
+AssetOpsBench includes those libraries and adds statistical forecasting,
+wavelets and model-persistence helpers using its own lockfile.
+
+The `scientific` group in `pyproject.toml` and its versions in `uv.lock` are the
+source of truth. The sandbox installs their generated export,
+`src/agent/stirrup_agent/requirements-scientific.txt`, rather than resolving a
+second set of versions. Check that the export matches the lockfile before
+building:
 
 ```bash
-docker build -f src/agent/stirrup_agent/Dockerfile.code -t assetops-code .
+python3 scripts/export_scientific_requirements.py --check
+docker build -f src/agent/stirrup_agent/Dockerfile.code \
+  -t assetops-code src/agent/stirrup_agent
+docker run --rm --network none assetops-code python /opt/aob/smoke_scientific.py
 ```
 
-Set `STIRRUP_CODE_IMAGE` only when using a different tag.
-
-`Dockerfile.code`:
-
-```dockerfile
-FROM python:3.12-slim
-RUN pip install --no-cache-dir \
-    "numpy>=1.24" "pandas>=2.0" "scipy>=1.10"
-```
+The build context is `src/agent/stirrup_agent`, matching Harbor's build command
+and making the exported requirements available to `COPY`. Standard images set
+`MPLBACKEND=Agg` so plotting requires no display server. Set `STIRRUP_CODE_IMAGE`
+only when using a different tag; a custom image must provide the required stack.
+For a standalone local environment, include the group when launching the agent:
+`uv run --group scientific stirrup-agent --code-backend local ...`.
 
 ### 3. Run
 
@@ -335,7 +361,7 @@ uv run stirrup-agent --no-code --show-trajectory \
   "What sites are available?"
 
 # 4. local code track (no Docker)
-uv run stirrup-agent --code-backend local --show-trajectory \
+uv run --group scientific stirrup-agent --code-backend local --show-trajectory \
   --model-id watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 \
   "Compute the factorial of 12 using python"
 
