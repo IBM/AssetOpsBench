@@ -26,11 +26,11 @@ their names start with `diagnosticiq_`. Each notebook reads from and writes to
 
 | Paper name | Notebook | Reads | Writes | V3.1 release folder |
 | --- | --- | --- | --- | --- |
-| DiagnosticIQ | `diagnosticiq_simple_dataset_creation.ipynb` | `extracted/` artifacts | `DiagnosticIQ` | `DiagnosticIQV3.1` |
+| DiagnosticIQ | `diagnosticiq_simple_dataset_creation.ipynb` | `extracted/` artifacts | `DiagnosticIQ`, `extracted/equipment_info/asset_descriptions.json` | `DiagnosticIQV3.1` |
 | DiagnosticIQ Pro | `diagnosticiq_complex_dataset_creation.ipynb` | `DiagnosticIQ` | `DiagnosticIQPro` | `DiagnosticIQProV3.1` |
 | DiagnosticIQ Pert | `diagnosticiq_simple_perteval_simple_dataset_creation.ipynb` | `DiagnosticIQPro` | `DiagnosticIQPert` | `DiagnosticIQPertV3.1` |
 | DiagnosticIQ Verbose | `diagnosticiq_verbose_dataset_creation.ipynb` | `DiagnosticIQ`, `verbose/` | `DiagnosticIQVerbose` | `DiagnosticIQVerbV3.1` |
-| Test rules | `diagnosticiq_simple_test_dataset_creation.ipynb` | `test_datasets/`, `DiagnosticIQ` | `test_datasets/datasets/DiagnosticIQTest` | — |
+| Test rules | `diagnosticiq_simple_test_dataset_creation.ipynb` | `test_datasets/`, `extracted/equipment_info/asset_descriptions.json` | `test_datasets/datasets/DiagnosticIQTest` | — |
 
 DiagnosticIQ Aug and DiagnosticIQ Rationale are not produced by this code.
 
@@ -99,6 +99,25 @@ The variants are then derived from DiagnosticIQ:
   into `verbose/condition_verberlizer_examples.txt`, and those examples
   prompt `mistralai/mistral-large` on watsonx.ai to paraphrase the rest.
 - **Test rules** run the DiagnosticIQ pipeline on a small hand-written rule set.
+  They take their asset descriptions from
+  `extracted/equipment_info/asset_descriptions.json`, the descriptions
+  `diagnosticiq_simple_dataset_creation.ipynb` passed to question creation. To
+  use the descriptions of an existing DiagnosticIQ dataset instead, such as the
+  V3.1 release, write the file from its metadata:
+
+  ```python
+  from dataset_utils.paths import get_dataset_dir
+  from dataset_utils.utils import file_handle
+
+  metadata = file_handle.load_json("/path/to/DiagnosticIQV3.1/metadata.json")
+  file_handle.save_json(
+      metadata["asset_descriptions"],
+      get_dataset_dir() / "extracted" / "equipment_info" / "asset_descriptions.json",
+  )
+  ```
+
+  `notebook/diagnosticiq_example_test_rules.ipynb` walks through this pipeline
+  end to end and compares the result with a reference dataset.
 
 Question formatting is applied wherever a notebook writes or changes the
 fields the question text is built from: DiagnosticIQ and Test rules after
@@ -163,7 +182,8 @@ $ASSETOPSBENCH_DATASET_DIR/
 │   ├── observations.rules.json
 │   ├── TreeStruct.pkl
 │   └── equipment_info/
-│       └── gre_desc.json
+│       ├── gre_desc.json
+│       └── asset_descriptions.json        descriptions used in the questions
 ├── datasets/                              generated datasets
 ├── test_datasets/
 │   ├── rule_logic_test2.json
