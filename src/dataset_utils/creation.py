@@ -101,7 +101,9 @@ def create_question(
             oinfo["question"] = config.question_condition_template.format(
                 asset_type=info["asset"],
                 asset_description=asset_description.get(info["asset"], "#*#*#"),
-                conditions="\n".join(list(map(lambda x: "- " + x, cinfo))),
+                conditions="\n".join(
+                    list(map(lambda x: "- " + x, cinfo["non-temporal"]))
+                ),
                 question_prompt=oinfo["question_prompt"],
             )
 

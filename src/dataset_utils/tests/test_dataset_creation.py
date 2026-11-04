@@ -85,6 +85,9 @@ def test_create_save_and_load_dataset(tmp_path):
         == len(question["correct"])
         for question in dataset["questions"]
     )
+    for question in dataset["questions"]:
+        conditions = "\n".join("- " + c for c in question["condition_description"])
+        assert f"## Conditions:\n{conditions}\n" in question["question"]
 
     save_dataset(dataset, "smoke", str(tmp_path))
     loaded = load_dataset(str(tmp_path / "smoke"))
