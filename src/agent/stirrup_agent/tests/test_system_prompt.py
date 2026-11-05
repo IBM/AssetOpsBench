@@ -72,6 +72,46 @@ def test_local_backend_adds_code_and_local_sections():
     assert "/workspace" not in prompt
 
 
+@pytest.mark.parametrize("code_backend", ["docker", "local"])
+def test_code_backends_keep_short_library_and_installation_guidance(
+    code_backend: str,
+):
+    prompt = StirrupAgentRunner(
+        code_enabled=True, code_backend=code_backend
+    )._build_system_prompt()
+
+    assert "Python and common data libraries are already installed:" in prompt
+    for module in (
+        "numpy", "pandas", "scipy", "sklearn", "statsmodels", "matplotlib",
+        "seaborn", "joblib", "threadpoolctl", "pywt",
+    ):
+        assert f"`{module}`" in prompt
+    assert '`python -c "import <pkg>"`' in prompt
+    assert "Do not install packages" in " ".join(prompt.split())
+
+
+def test_tools_only_prompt_has_no_code_capability_or_installation_claims():
+    prompt = StirrupAgentRunner(code_enabled=False)._build_system_prompt()
+
+    assert "Python and common data libraries" not in prompt
+    assert "scikit-learn" not in prompt
+    assert "install packages" not in prompt
+
+
+def test_backend_guidance_does_not_claim_network_isolation_or_host_execution():
+    docker = StirrupAgentRunner(
+        code_enabled=True, code_backend="docker"
+    )._build_system_prompt()
+    local = StirrupAgentRunner(
+        code_enabled=True, code_backend="local"
+    )._build_system_prompt()
+
+    assert "no route to the asset databases" not in docker
+    assert "same environment as the agent process" in local
+    assert "task container in Harbor" in local
+    assert "commands run on the\nhost" not in local
+
+
 def test_sections_appear_in_order():
     runner = StirrupAgentRunner(code_enabled=True, code_backend="docker")
 

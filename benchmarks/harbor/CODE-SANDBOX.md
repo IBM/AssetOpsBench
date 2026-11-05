@@ -53,9 +53,26 @@ docker save assetops-code:dev -o ~/assetops-code.tar
 export AOB_CODE_TAR=~/assetops-code.tar
 ```
 
-Rebuild and save again whenever `Dockerfile.code` changes. To pull from a
-registry instead, push the image and set `AOB_CODE_IMAGE` to its reference,
-leaving `AOB_CODE_TAR` unset.
+Rebuild and save again whenever `Dockerfile.code` or its generated
+`requirements-scientific.txt` changes. The standard runtime and sandbox images
+use the same locked `scientific` dependency group: NumPy, pandas, SciPy,
+scikit-learn, statsmodels, Matplotlib, seaborn, joblib, threadpoolctl and
+PyWavelets. This supports numerical analysis, machine learning, statistical
+modeling and headless plots without runtime package installation. The standard
+images use Matplotlib's `Agg` backend.
+
+Check that the sandbox export matches `uv.lock` before building:
+
+```bash
+python3 scripts/export_scientific_requirements.py --check
+```
+
+The code guidance describes workspace behavior, installed libraries and import
+checks without prescribing a scenario solution. Harbor's default `local` backend executes
+inside the task container. Custom images may have a different stack.
+
+To pull from a registry instead, push the image and set `AOB_CODE_IMAGE` to its
+reference, leaving `AOB_CODE_TAR` unset.
 
 **2. Generate the tasks.**
 

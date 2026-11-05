@@ -137,7 +137,7 @@ See [MCP Servers](#mcp-servers) for available tools and [docs/mcp-servers.md](do
 
 | Variable             | Default            | Description                                                                |
 | -------------------- | ------------------ | -------------------------------------------------------------------------- |
-| `STIRRUP_CODE_IMAGE` | `assetops-code`    | Docker image for the Stirrup code sandbox; build the bundled image for NumPy, pandas, and SciPy |
+| `STIRRUP_CODE_IMAGE` | `assetops-code`    | Docker image for the Stirrup code sandbox; build the bundled image for the locked scientific stack, including scikit-learn, statsmodels and headless plotting (see [Stirrup agent](docs/stirrup-agent.md)) |
 | `DOCKER_HOST`        | *(SDK default)*    | Daemon socket if non-default (e.g. Rancher: `unix:///<home>/.rd/docker.sock`) |
 
 ---

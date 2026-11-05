@@ -1,3 +1,12 @@
 FROM python:3.12-slim
-RUN pip install --no-cache-dir \
-    "numpy>=1.24" "pandas>=2.0" "scipy>=1.10"
+
+ENV MPLBACKEND=Agg
+
+# Generated from the scientific dependency group in the repository's uv.lock.
+# The build context is src/agent/stirrup_agent (also used by harbor/run.sh).
+COPY requirements-scientific.txt /tmp/requirements-scientific.txt
+RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements-scientific.txt \
+    && pip check
+
+COPY smoke_scientific.py /opt/aob/smoke_scientific.py
+RUN python /opt/aob/smoke_scientific.py

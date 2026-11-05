@@ -65,15 +65,18 @@ You cannot interact with the user during the task.
 """
 _CODE_EXEC_SYSTEM_PROMPT = """\
 Code execution:
-- The `code_exec` tool runs shell commands in an isolated workspace and lets
+- The `code_exec` tool runs shell commands in a dedicated workspace and lets
   you read, create, and edit files. Files you write persist across calls, but
   shell state does not: each command runs in a fresh shell starting at the
   workspace root, so no working directory or environment variable carries over.
   Use paths relative to the workspace root, and when a step needs another
   directory, chain it into the same command (e.g. `cd data && python run.py`).
-- Python and common data libraries are already installed. Check with
-  `python -c "import <pkg>"` before assuming a package is missing. Do not
-  install packages: what the task needs is present.
+- Python and common data libraries are already installed: NumPy (`numpy`),
+  pandas (`pandas`), SciPy (`scipy`), scikit-learn (`sklearn`),
+  statsmodels (`statsmodels`), Matplotlib (`matplotlib`), seaborn (`seaborn`),
+  joblib (`joblib`), threadpoolctl (`threadpoolctl`), and PyWavelets (`pywt`).
+  Check with `python -c "import <pkg>"` before assuming a package is missing.
+  Do not install packages: what the task needs is present.
 - A tool result too large to return inline is written to the workspace and
   returned as a file path instead. For such a file, inspect the schema, counts,
   a small sample, or the specific rows or fields needed, then process in place.
@@ -84,15 +87,13 @@ Code execution:
 
 _DOCKER_CODE_EXEC_SYSTEM_PROMPT = """\
 The Docker execution workspace is /workspace, and every command starts there.
-Host filesystem paths are not available inside the container, and the code
-container runs on its own bridge with no route to the asset databases. NumPy,
-pandas, and SciPy are installed; check availability before using other
-packages.
+Host filesystem paths are not available inside the container.
 """
 _LOCAL_CODE_EXEC_SYSTEM_PROMPT = """\
-The local execution workspace is a temporary directory, but commands run on the
-host with the current user's permissions. Keep all reads and writes inside the
-workspace and use relative paths.
+The local execution workspace is a temporary directory. Commands run in the
+same environment as the agent process, with that process's permissions: the
+task container in Harbor, or the host environment for a standalone local run.
+Keep all reads and writes inside the workspace and use relative paths.
 """
 
 
