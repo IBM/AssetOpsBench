@@ -138,12 +138,23 @@ def stats_block(repo, views, clones, refs, paths, today, weeks):
         f"| Unique cloners (daily, summed) | {tot(clones, 'uniques'):,} | {recent(clones, 'uniques'):,} |",
         "",
     ]
+    dates = {dt.date.fromisoformat(r["date"]) for r in views}
+    missing = []
+    if dates:
+        day = min(dates)
+        while day <= max(dates):
+            if day not in dates:
+                missing.append(day.isoformat())
+            day += dt.timedelta(days=1)
+    if missing:
+        out += ["Missing archived dates: " + ", ".join(missing) + ". "
+                "Archived totals and weekly charts include only recorded days; missing days are not zero traffic.", ""]
     if wv:
         out += ["### Weekly views", "",
                 mermaid("Views per week", [w[0] for w in wv], [w[1] for w in wv], "Views"), ""]
     if wc:
-        out += ["### Weekly unique cloners", "",
-                mermaid("Unique cloners per week", [w[0] for w in wc], [w[2] for w in wc],
+        out += ["### Weekly unique cloners (daily, summed)", "",
+                mermaid("Unique cloners per week (daily, summed)", [w[0] for w in wc], [w[2] for w in wc],
                         "Cloners", "line"), "",
                 "### Weekly clones", "",
                 mermaid("Clones per week", [w[0] for w in wc], [w[1] for w in wc], "Clones"), ""]
