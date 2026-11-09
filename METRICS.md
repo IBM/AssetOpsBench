@@ -42,3 +42,7 @@ To refresh the visuals, edit the source SVGs and this file, update the saved met
 ## Citation discovery snapshot
 
 See the [Google Scholar audit](CITATION_AUDIT.md) for dated record-level counts and deduplication limits. These raw counts are excluded from the headline metrics because versions overlap and some indexed citing items are not papers.
+
+## Community model releases highlighted in the README
+
+The headline **“2 released community model artifacts”** counts two inspected repositories: the [FailureSensorIQ Qwen3-4B LoRA adapter](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and [ASTRIS MiniLM-L6 reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker). Both provide training-provenance descriptions and released weight artifacts. This counts the selected examples, not every model trained on the family, model variants, unique adopters, or independently reproduced results. Reviewed November 9, 2026; revisions are saved in [research-use-evidence.json](assets/research-use-evidence.json).

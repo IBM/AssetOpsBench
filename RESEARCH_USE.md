@@ -60,6 +60,9 @@ Additional extensions and named project roles are documented in the [university-
 
 ## External citations and comparison with related work
 
+**IndustryBench is included in this research reach.** Its [Section 2](https://arxiv.org/html/2605.10267v1#S2) identifies AOB as an industrial-operations agent benchmark and distinguishes it from IndustryBench's own procurement-QA setting. This is a verified citation and positioning comparison; its experiments do not establish AOB dataset reuse.
+
+
 | Research | People | Verified connection |
 | :--- | :--- | :--- |
 | [Intent-Driven Network Management with Multi-Agent LLMs: The Confucius Framework](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf), SIGCOMM 2025 | Zhaodong Wang and colleagues, including **Soudeh Ghorbani** and **Minlan Yu**; paper affiliations include Meta, Johns Hopkins, Harvard, and Stony Brook | Related-work discussion names AssetOpsBench; reference 40 cites its paper. This establishes a research citation, not that Meta or these universities deployed or evaluated on AOB. |
@@ -118,3 +121,5 @@ This is a verified selection, not a census of company mentions. Commercial summa
 For broader research reach, **Christian Holz** co-authored TraceBench, **Dacheng Tao** co-authored FORGE, and **Minlan Yu / Soudeh Ghorbani** co-authored Confucius. Full-text checks establish related-work citations, not experiments on this family's data. Enrico Zio's survey remains a citation lead with publisher metadata verified but full citation context unavailable; it is not promoted as dataset use. See the [audit dispositions](CITATION_AUDIT.md#disposition-of-the-original-20-leads).
 
 Source revisions for the released models and selected integrations are preserved in [research-use-evidence.json](assets/research-use-evidence.json).
+
+**Amazon-affiliated research:** [Failing Agents Leave Traces](https://aclanthology.org/2026.realm-1.56/) by Muthaheera Yasmeena Belgur Shamiullah cites **Trajel**, while analyzing its own telemetry collection. **NPCI AI Research Team:** [FiMI Banking](https://arxiv.org/html/2609.03960v1) cites **Evoflux** (reference 28). These extend the related research's citation reach; neither establishes company reuse of AOB datasets. See the [profile-based follow-up](CITATION_AUDIT.md#profile-based-citation-follow-up--november-9-2026) for evidence and remaining leads.

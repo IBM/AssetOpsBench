@@ -22,6 +22,19 @@ Industrial intelligence begins with a practical question: **can an AI agent turn
 
 AssetOpsBench brings that question into a reproducible environment. It connects sensor observations, failure knowledge, time-series analysis, and maintenance workflows so researchers and practitioners can build agents, inspect their decisions, and evaluate their performance. The research benchmark includes **141 expert-curated scenarios**, with **99 single-agent tasks and 42 tasks requiring multiple agents**. [Read the benchmark study →](https://arxiv.org/abs/2506.03828)
 
+## Open data. New models. Independent research.
+
+**Train smaller models. Build new agents. Test ideas others can reproduce.**
+
+| Impact | Built on the benchmark family |
+| :--- | :--- |
+| **2 released community model artifacts** | A [FailureSensorIQ LoRA adapter](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and an [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker) document training on family data and release weights. |
+| **Company-built extensions and agents** | **Samyama / VaidhyaMegha** released an [AOB-derived knowledge graph](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg); **GyanData’s Smart Maintenance Crew** [won the AOB challenge](https://ikdd.acm.org/cods-2025/awards.php). |
+| **A testbed for independent researchers** | **Ilia Shumailov** and **Christian Schroeder de Witt** co-authored [multi-CaMeL’s AOB utility evaluation](https://arxiv.org/abs/2610.05640). **Moharram Challenger** co-authored [Industrial-Instruction’s FailureSensorIQ experiments](https://arxiv.org/abs/2608.22817). |
+| **Transfer across domains** | **Good Start Labs’ Alex Duffy** [reports improved AOB performance after Diplomacy fine-tuning](https://every.to/playtesting/we-trained-an-ai-on-a-board-game-it-became-a-better-customer-support-agent-299b5938-09dd-4881-803f-aea21f0d461f); no AOB-specific improvement percentage is supplied. |
+
+**Research reach:** Cited in [IndustryBench](https://arxiv.org/html/2605.10267v1#S2), [Confucius](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf) (Minlan Yu and Soudeh Ghorbani), and [FORGE](https://aclanthology.org/2026.findings-emnlp.888/) (Dacheng Tao). These are citations, separate from dataset reuse. [More stories, source evidence, and study limits →](RESEARCH_USE.md)
+
 > **In the community:** Discussed by [LG AI Research](https://www.lgresearch.ai/blog/view?seq=633), featured in the [Codabench 2025 newsletter](https://docs.codabench.org/v1.24/Newsletters_Archive/CodaLab-in-2025/) and [The AI Report on KDnuggets](https://ai-report.kdnuggets.com/p/gemini-reads-your-mind-now), with discussions spanning [ACL Birds of a Feather](https://luma.com/jxdjefmv), [NeurIPS](https://neurips.cc/virtual/2025/loc/san-diego/social/129335), and [AAAI evaluation science](https://bench-to-evidence.github.io/).
 
 ## One ecosystem. Many ways to contribute.
@@ -106,20 +119,7 @@ The team has [announced NeurIPS 2026 acceptance for DiagnosticIQ and PHMForge](h
 
 ## Research impact: datasets in use
 
-**From released data to new models, tools, and experiments.** Researchers and developers use the family to study industrial reasoning, train smaller models, test security and robustness, and build new evaluation systems.
-
-| Use | Examples and evidence |
-| :--- | :--- |
-| **Transfer after fine-tuning** | **Good Start Labs’ Alex Duffy** [reports improved AOB performance](https://every.to/playtesting/we-trained-an-ai-on-a-board-game-it-became-a-better-customer-support-agent-299b5938-09dd-4881-803f-aea21f0d461f) after Diplomacy training; no AOB-specific percentage is provided. |
-| **Competition-built agents** | **GyanData’s Smart Maintenance Crew** won the challenge: [organizer awards](https://ikdd.acm.org/cods-2025/awards.php) and [company announcement](https://www.linkedin.com/posts/gyandata-pvt-ltd_enterpriseai-agenticsystems-aiengineering-activity-7410203928124026880-RBfF). |
-| **Secure multi-agent systems** | [Multi-CaMeL](https://arxiv.org/abs/2610.05640), with **Ilia Shumailov** (AI Sequrity Company) and **Christian Schroeder de Witt** (Oxford), evaluates agent utility on AOB. Its attack-success tests use another benchmark. |
-| **A new industrial data layer** | **VaidhyaMegha / Samyama's Madhulatha Mandarapu and Sandeep Kunkunuru** [build and evaluate a graph extension](https://arxiv.org/abs/2605.26874) over AOB scenarios, with [released code](https://github.com/samyama-ai/assetops-kg) and a [derived graph dataset](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg). |
-| **Fine-tuning and retrieval** | [Damarla and Zhu](https://arxiv.org/abs/2607.24824) and [Industrial-Instruction](https://arxiv.org/abs/2608.22817), co-authored by **Moharram Challenger**, evaluate on FailureSensorIQ. Community releases include a [Qwen3-4B LoRA adapter](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and an [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker) trained on selected AOB examples. |
-| **Community robustness experiments** | Or4k2!'s [Kaggle notebook](https://www.kaggle.com/code/orecord/lost-in-the-middle-benchmark) uses FailureSensorIQ for position/distractor experiments; **Siddharth Srinivasan's** [local-model study](https://www.industrialmindandcode.ai/blog/small-language-models-fault-diagnosis.html) examines accuracy and output usability. |
-| **Multi-agent industrial reasoning** | [Gong, Qiao and colleagues](https://doi.org/10.1016/j.jii.2025.101012) evaluate a modular multi-agent framework on FailureSensorIQ. **Sadamori Kojaku's** [teams4industry project](https://github.com/skojaku/teams4industry/blob/main/libs/teams/teams/benchmarks/__init__.py) provides a single-answer dataset adapter. |
-| **Downstream tools and benchmarks** | [FedProC](https://fedproc.readthedocs.io/en/latest/datasets/) integrates AOB telemetry; [Faraday Industrial Benchmark](https://github.com/Faraday-Cage-AI/faraday-industrial-benchmark/blob/main/third_party/manifest.json) preserves an attributed AOB snapshot; a [community PHMForge adapter](https://github.com/zyqzyq007/phmforge-research-adapter) supports partial research adaptations. |
-
-See the [research-use register](RESEARCH_USE.md) for study versions, affiliations, connected versus external work, and limits of each claim. Released artifacts and publisher-reported experiments are verified here; downstream training and evaluations were not rerun. Citations and company discussion are recorded in the [citation audit](CITATION_AUDIT.md) and [coverage inventory](COVERAGE_AND_EVENTS.md).
+Explore the [reuse stories and released artifacts](RESEARCH_USE.md), [academic extensions](docs/university-projects.md), and [citation audit](CITATION_AUDIT.md). The register distinguishes external experiments, connected research, company reports, and citations, with versions and evidence for each claim.
 
 ## Research portfolio
 

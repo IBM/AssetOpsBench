@@ -101,6 +101,22 @@ The final pass searched all six family names plus the `assetops` alias across Hu
 
 The four original unresolved full-text leads remain unresolved. Crossref confirms the titles/DOIs for the world-model and PHM-survey records, but metadata does not establish their experiments. No access restrictions were bypassed. The search is broad and reproducible in scope, not a claim to have found every use on the internet.
 
+## Profile-based citation follow-up — November 9, 2026
+
+The [supplied Google Scholar profile](https://scholar.google.com/citations?hl=en&user=c06_VJAAAAAJ&view_op=list_works&sortby=pubdate) was expanded to 100 publication rows. Family-related citation trails were checked for Trajel (five listed citing records), Evoflux (four), CodeReAct (eight), and the first ten of eleven SPIRAL records. These are discovery records, not additional unique family citations: the profile includes unrelated research, shared-author work, and duplicate publication versions. Profile-wide citation totals are not AssetOpsBench impact metrics.
+
+| Primary source checked | What the evidence supports |
+| :--- | :--- |
+| [IndustryBench](https://arxiv.org/html/2605.10267v1#S2) | Section 2 cites AOB as related work. Its procurement-QA experiments use IndustryBench's own data; now highlighted near the top of the README as research reach. |
+| [Failing Agents Leave Traces](https://aclanthology.org/2026.realm-1.56/) | Amazon-affiliated author Muthaheera Yasmeena Belgur Shamiullah cites Trajel in related work and limitations. Its own telemetry study does not establish reuse of Trajel traces or AOB tasks. |
+| [FiMI Banking](https://arxiv.org/html/2609.03960v1) | NPCI AI Research Team cites Evoflux (reference 28). A method citation, not an AOB dataset experiment. |
+| [DeMTS](https://arxiv.org/html/2608.14632v1) | Shirui Pan and collaborators cite Trajel in the introduction; no Trajel dataset experiment established. |
+| [Uncertainty Quantification for LLM Agents](https://arxiv.org/html/2609.07395v1) | Section 8.1.1/Table 17 discusses Trajel for failure attribution; citation rather than verified trace reuse. |
+| [Inherit-MAS](https://arxiv.org/html/2610.02396v1) | Cites Evoflux; experiments use WorkBench and HotpotQA, not AOB. |
+| [AdvPlan-Bench](https://arxiv.org/html/2608.00832v1) and [Learning Compositional Meta-Routing](https://arxiv.org/html/2608.00106v1) | Cite SPIRAL as planning-related work; their own task collections do not establish AOB data reuse. |
+
+Further leads remain unpromoted: TrustTrajectory encountered browser verification; two SSRN records (Vigilance Unbundling and Dependency-Complete Tool Discovery) lack verified full-text context. ToolForge metadata was checked, but not its citation context. The semantic-collapse industrial-agent paper's publisher preview describes a separate Green Button benchmark; its exact CodeReAct citation context remains unverified. The latest Cost-Awareness revision and the remaining SPIRAL citing record still need checking. No new dataset-reuse claim is inferred from these leads.
+
 ## Refresh procedure
 
 Open each canonical publication and its preprint record; export or record the citing works; deduplicate by DOI, arXiv ID, and title. Check primary full text for the resource name, methods, tables, and bibliography. Record author overlap before calling use external. Count distinct works separately from distinct citing organizations. Keep coverage, citations, experiments, and extensions as separate measures. Record retrieval date and source whenever publishing a count.
