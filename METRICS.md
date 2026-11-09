@@ -38,3 +38,7 @@ The diagram uses a layered ecosystem layout inspired by the supplied AutoGen ref
 These are useful future metrics, but should be added only when their sources and definitions can be maintained alongside the headline strip.
 
 To refresh the visuals, edit the source SVGs and this file, update the saved metric snapshot, and export the SVGs to PNG. The assets are static and do not fetch network data automatically.
+
+## Citation discovery snapshot
+
+See the [Google Scholar audit](CITATION_AUDIT.md) for dated record-level counts and deduplication limits. These raw counts are excluded from the headline metrics because versions overlap and some indexed citing items are not papers.

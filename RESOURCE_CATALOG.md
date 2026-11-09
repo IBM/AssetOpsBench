@@ -84,3 +84,7 @@ Update the catalog when a resource is released, accepted, moved, or retired. Ver
 ## Companion benchmark versioning
 
 DiagnosticIQ and PHMForge have dedicated entries in the overview. Link their papers, datasets, and comparisons through stable IDs. PHMForge’s current dataset card documents 99 scenarios, overlap with AssetOpsBench, and known issues; its older 75-scenario description is a different release. Do not count overlapping scenarios twice. DiagnosticIQ’s current paper is verified; its separate public dataset/code location remains an unresolved lead in the coverage inventory.
+
+## Research-use and citation records
+
+Track impact for each benchmark family, using the [research-use register](RESEARCH_USE.md). Record `resource_id`, `citing_work`, `authors`, `author_overlap`, `study_version`, `evidence_location`, and `relationship`: `evaluated_on`, `extended`, `cited`, `discussed`, or `prospective_use`. An external article about AOB does not establish experimental reuse of FailureSensorIQ or another family member. Include a bibliographic index and retrieval date before publishing any citation count.

@@ -22,7 +22,7 @@ Industrial intelligence begins with a practical question: **can an AI agent turn
 
 AssetOpsBench brings that question into a reproducible environment. It connects sensor observations, failure knowledge, time-series analysis, and maintenance workflows so researchers and practitioners can build agents, inspect their decisions, and evaluate their performance. The research benchmark includes **141 expert-curated scenarios**, with **99 single-agent tasks and 42 tasks requiring multiple agents**. [Read the benchmark study →](https://arxiv.org/abs/2506.03828)
 
-> **In the community:** Featured in the [Codabench 2025 newsletter](https://docs.codabench.org/v1.24/Newsletters_Archive/CodaLab-in-2025/) and [The AI Report on KDnuggets](https://ai-report.kdnuggets.com/p/gemini-reads-your-mind-now), with discussions spanning [ACL Birds of a Feather](https://luma.com/jxdjefmv), [NeurIPS](https://neurips.cc/virtual/2025/loc/san-diego/social/129335), and [AAAI evaluation science](https://bench-to-evidence.github.io/).
+> **In the community:** Discussed by [LG AI Research](https://www.lgresearch.ai/blog/view?seq=633), featured in the [Codabench 2025 newsletter](https://docs.codabench.org/v1.24/Newsletters_Archive/CodaLab-in-2025/) and [The AI Report on KDnuggets](https://ai-report.kdnuggets.com/p/gemini-reads-your-mind-now), with discussions spanning [ACL Birds of a Feather](https://luma.com/jxdjefmv), [NeurIPS](https://neurips.cc/virtual/2025/loc/san-diego/social/129335), and [AAAI evaluation science](https://bench-to-evidence.github.io/).
 
 ## One ecosystem. Many ways to contribute.
 
@@ -103,6 +103,23 @@ The team has [announced NeurIPS 2026 acceptance for DiagnosticIQ and PHMForge](h
 **Use the version that matches your experiment.** Dataset repositories evolve: the Hugging Face scenario viewer showed 152 rows when reviewed, while the benchmark paper reports 141 curated scenarios. Record the dataset revision, configuration, and code commit when reporting results. [Dataset viewer →](https://huggingface.co/datasets/ibm-research/AssetOpsBench)
 
 <a id="publications"></a>
+
+## Research impact: datasets in use
+
+**A shared testbed for new research questions.** The family supports work on secure multi-agent systems, industrial reasoning, retrieval, and efficient tool use. The examples below distinguish experiments on our resources from citations and research discussion.
+
+| Study or organization | People | How the work is used |
+| :--- | :--- | :--- |
+| [Multi-CaMeL](https://arxiv.org/abs/2610.05640) | James Peters-Gill, Avi Semler, Henning Bartsch, **Ilia Shumailov**, **Christian Schroeder de Witt** | **External experimental use:** evaluates agent task utility on AssetOpsBench while studying security mechanisms. Attack-success measurements use a separate benchmark. |
+| [Multi-agent sensor-failure reasoning](https://doi.org/10.1016/j.jii.2025.101012) | Wei Gong, Shuang Qiao and colleagues | **External dataset reuse:** evaluates a modular multi-agent reasoning framework on FailureSensorIQ. |
+| [Industrial-Instruction](https://arxiv.org/abs/2608.22817) | Parsa Bakhtiari, Moharram Challenger and colleagues | **External dataset reuse:** tests industrial fine-tuning and perturbation robustness on FailureSensorIQ. |
+| [Retrieval and fine-tuning study](https://arxiv.org/abs/2607.24824) | **Seshu Kumar Damarla; Xiuli Zhu** | **External dataset reuse:** uses FailureSensorIQ to compare retrieval, prompting, QLoRA fine-tuning, and robustness. |
+| [Agentics](https://arxiv.org/abs/2508.15610) | Alfio Gliozzo and colleagues | **Reuse with shared authorship:** evaluates structured prompting on FailureSensorIQ. |
+| [Confucius](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf) | Zhaodong Wang and colleagues, including **Soudeh Ghorbani** and **Minlan Yu** | **Citation:** discusses AssetOpsBench as related work in multi-agent network management. |
+| [CoffeeBench](https://arxiv.org/abs/2610.19291) | Lucas H. McCabe, Sarah Lukens, **H. Howie Huang** | **Citations and comparison:** discusses AssetOpsBench, FailureSensorIQ, PHMForge, and DiagnosticIQ while introducing a separate diagnostics environment. |
+| [LG AI Research's AEGIS blog](https://www.lgresearch.ai/blog/view?seq=633) | **Dongmin Kim** | **Industry discussion:** highlights AOB and its AAAI demo; considers the benchmark for future AEGIS evaluation. |
+
+See the [research-use register](RESEARCH_USE.md) and [Google Scholar audit](CITATION_AUDIT.md) for evidence across **all six benchmark families**, author relationships, study versions, and the specific claims each source supports. These examples demonstrate research utility and reach; citations and prospective interest are kept distinct from completed experiments.
 
 ## Research portfolio
 
@@ -264,6 +281,7 @@ AssetOpsBench is appearing in benchmarking communities, newsletters, external di
 
 | Source | What it contributes |
 | :--- | :--- |
+| [LG AI Research: AEGIS](https://www.lgresearch.ai/blog/view?seq=633) | Dongmin Kim’s March 18, 2026 research blog discusses AOB and its live demonstration, and considers future evaluation on the benchmark |
 | [Sharan Harsoor on Medium](https://medium.com/@sharanharsoor/ai-learned-to-write-code-it-never-learned-to-hold-a-wrench-a87fb68f3552) | An October 14, 2026 article focused on AssetOpsBench, industrial tool orchestration, and the distinction between benchmark evidence and deployment claims |
 | [Siarhei Krupenich on Medium](https://medium.com/@siarhei.krupenich/putting-assetopsbench-to-the-test-an-ai-agent-adventure-74ab67121e72) | An August 19, 2025 introductory article about the framework and its industrial-agent motivation |
 | [HysenLabs](https://hysenlabs.com/projects/ibm-assetopsbench) | An external review of MCP tools, orchestration, documentation, and adoption considerations |
@@ -274,13 +292,13 @@ AssetOpsBench is appearing in benchmarking communities, newsletters, external di
 
 These are attributed perspectives, not validation of every claim they contain. Read each review against the release and evaluation protocol it discusses.
 
-### Researchers and practitioners building on AOB
+### Academic collaborators and extension contributors
 
-The ecosystem includes named contributions across academic and industrial groups: **Kaoutar El Maghraoui** documents Columbia's HPML projects; **Chand Sahil Mansuri and Sadamori Kojaku** are listed on the Binghamton coordination project; and **Priyam Dalmia, Chin-Teng Lin, and Fred Chang** are listed on the exploratory UTS naval-maintenance project. **Yusuke Ozaki** co-authors SPIN, **Amit Sheth** co-authors IndustryAssetEQA, and **Deborah L. McGuinness** co-authors DiagnosticIQ. See the [named contribution records](docs/university-projects.md#named-contributions-and-evidence) for the specific work and source supporting each attribution.
+For named course mentors, project participants, and benchmark co-authors, see the [contribution records](docs/university-projects.md#named-contributions-and-evidence). External research use and citations are documented separately in the [research-use register](RESEARCH_USE.md).
 
 ### Education and practitioner perspectives
 
-[Kaoutar El Maghraoui’s account of industrial mentorship in Columbia’s HPML course](https://kaoutarelmaghraoui.com/blog/hpml-industrial-mentorship-arxiv/) describes how AssetOpsBench supplied open research problems for student teams. This is a collaborator’s account of the educational work. Separately, [EQUA’s autonomy guide](https://equa.work/resources/grading-the-autonomy-claim) and [work-order data guide](https://equa.work/resources/work-order-history-what-it-can-do) cite AssetOpsBench in practitioner discussions of maintenance AI evidence.
+[Kaoutar El Maghraoui’s account of industrial mentorship in Columbia’s HPML course](https://kaoutarelmaghraoui.com/blog/hpml-industrial-mentorship-arxiv/) describes how AssetOpsBench supplied open research problems for student teams. This is a collaborator’s account of the educational work. Company discussion also includes **LG AI Research, EQUA AI, and Lancartech**, alongside external reviews such as HysenLabs. These are coverage records, not adoption claims. Separately, [EQUA’s autonomy guide](https://equa.work/resources/grading-the-autonomy-claim) and [work-order data guide](https://equa.work/resources/work-order-history-what-it-can-do) cite AssetOpsBench in practitioner discussions of maintenance AI evidence.
 
 ### Project news
 

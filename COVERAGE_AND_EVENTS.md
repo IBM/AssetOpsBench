@@ -21,6 +21,7 @@ Dates below follow publisher records or event metadata where available. “Not e
 
 | Date | Source | What the source discusses |
 | :--- | :--- | :--- |
+| March 18, 2026 | [LG AI Research: AEGIS, an industry anomaly detection system evolving alongside field experts](https://www.lgresearch.ai/blog/view?seq=633) | Industry research blog by Dongmin Kim with a dedicated AOB section and discussion of AssetOpsBench-Live at AAAI. Says LG is considering future evaluation; no completed AEGIS-on-AOB experiment is reported. The [Korean edition](https://www.lgresearch.ai/blog/view?seq=632) is the same article. |
 | October 14, 2026 | [Sharan Harsoor: AI Learned to Write Code. It Never Learned to Hold a Wrench.](https://medium.com/@sharanharsoor/ai-learned-to-write-code-it-never-learned-to-hold-a-wrench-a87fb68f3552) | External Medium article with AssetOpsBench as its central topic, discussing tool orchestration and benchmark interpretation. Distinct from Krupenich’s article; no independent experimental replication established here. |
 | August 19, 2025 | [Siarhei Krupenich: Putting AssetOpsBench to the Test: An AI Agent Adventure](https://medium.com/@siarhei.krupenich/putting-assetopsbench-to-the-test-an-ai-agent-adventure-74ab67121e72) | External introductory commentary on industrial agents and benchmarking. The article's title alone is not evidence of an independently reproduced experiment; use official instructions for setup. |
 | November 4, 2026 | [Lancartech: A Retrospective on Testing Industrial Asset Agents](https://lancartech.co.id/en/blog/assetopsbench-ibm-retrospektif-evaluasi-agent-industri) | External retrospective based on IBM's earlier blog, discussing false completion, debugging, and limits of score transfer. |
@@ -78,6 +79,12 @@ Dates below follow publisher records or event metadata where available. “Not e
 | **Kaggle AssetOps leaderboard** | [Benchmark page](https://www.kaggle.com/benchmarks/ibm-research/asset-ops-bench) describes FailureSensorIQ MCQA scope. Do not imply it is a comprehensive execution leaderboard for all ecosystem tasks. |
 | **DiagnosticIQ leaderboard** | [Paper](https://arxiv.org/abs/2605.08614), including variant scores and rule-level statistical interpretation. No standalone live leaderboard URL verified in this audit. |
 | **PHMForge comparisons** | [Paper](https://arxiv.org/abs/2604.01532), [dataset](https://huggingface.co/datasets/ibm-research/PHMForge). The paper reports a public leaderboard; its standalone service was not independently verified here. |
+
+## Papers that cite, reuse, or extend the dataset family
+
+The [research-use register](RESEARCH_USE.md) records external experiments (multi-CaMeL on AssetOpsBench; Damarla and Zhu on FailureSensorIQ), reuse with shared authorship (Agentics), external citations (Confucius and CoffeeBench), and evidence for each of the six benchmark families. It separates citation from experimental use and from prospective interest such as LG's blog.
+
+Additional indexed coverage of multi-CaMeL mentions AOB as the utility benchmark: [TokenPost](https://www.tokenpost.com/news/technology/35140) and [EconoTimes](https://econotimes.com/Multi-CaMeL-Records-0-Attack-Success-in-AI-Agent-Benchmark-1757470). These are reports about a downstream study, not new AOB experiments; verify numerical claims in the original paper.
 
 ## Named extension contributors and research collaborators
 
@@ -151,3 +158,7 @@ This is a broad public-source audit, not a guarantee of every mention on the int
 ### Follow-up search notes
 
 The follow-up specifically searched Medium for AssetOpsBench, Asset Ops Bench, AOB with industrial-agent context, and related phrases; two substantial Medium articles were verified: Krupenich (August 19, 2025) and Harsoor (October 14, 2026). Additional results largely repeated these or syndicated first-party material. The current GitHub Pages homepage is the AAAI 2027 lab; do not confuse it with the previous AAAI 2026 lab link or the separate AAAI-27 Bridge.
+
+## Company mentions and citation discovery
+
+The [research-use register](RESEARCH_USE.md#company-and-industry-coverage) groups LG AI Research, EQUA AI, Lancartech, and HysenLabs by the evidence each publishes. The [Scholar audit](CITATION_AUDIT.md) records split citation records and additional research leads. Company-affiliated authors, public-document corpora, syndicated coverage, and product adoption are distinct relationships.
