@@ -13,11 +13,18 @@ Reviewed November 9, 2026. This register connects the industrial AI benchmark fa
 
 These examples establish use in research. Their findings do not establish production readiness or endorsement of the benchmark's entire methodology.
 
+## Company-reported experiments and competition work
+
+| Organization / people | Documented use | Qualification |
+| :--- | :--- | :--- |
+| **Good Start Labs — Alex Duffy** | His February 3, 2026 [first-person Every article](https://every.to/playtesting/we-trained-an-ai-on-a-board-game-it-became-a-better-customer-support-agent-299b5938-09dd-4881-803f-aea21f0d461f), linked from the [company research page](https://goodstartlabs.com/research), reports evaluating a Diplomacy-fine-tuned Qwen3-235B on AOB | Qualitative improvement claim; no AOB-specific score, protocol, or uncertainty provided. The article's “over 10 percent” figure applies to other games, not AOB. This establishes reported evaluation, not training on AOB. |
+| **GyanData — Smart Maintenance Crew** | [Company announcement](https://www.linkedin.com/posts/gyandata-pvt-ltd_enterpriseai-agenticsystems-aiengineering-activity-7410203928124026880-RBfF) reports its challenge win; the [organizer awards page](https://ikdd.acm.org/cods-2025/awards.php) independently names the matching winning team | Team members: Sai Singireddy, Yasaswini Singanapalli, Shashank T, K. Vamsi Krishna, G. Aditya Ramesh, Soma Prasad. Competition use; not production-readiness evidence. |
+
 ## Models, notebooks, and software built on the releases
 
 | Downstream work | Resource and use | Evidence and limits |
 | :--- | :--- | :--- |
-| **VaidhyaMegha / Samyama — Madhulatha Mandarapu and Sandeep Kunkunuru** | **AssetOpsBench extension and experiments:** adds a typed graph layer and graph-native scenarios | [Paper](https://arxiv.org/html/2605.26874v1), [implementation](https://github.com/samyama-ai/assetops-kg). The paper identifies VaidhyaMegha Private Limited and samyama.ai. Its adapted scenario set and graph-specific tasks are its own setup; results are not a replacement for the canonical leaderboard. |
+| **VaidhyaMegha / Samyama — Madhulatha Mandarapu and Sandeep Kunkunuru** | **AssetOpsBench extension and experiments:** adds a typed graph layer and graph-native scenarios | [Paper](https://arxiv.org/html/2605.26874v1), [implementation](https://github.com/samyama-ai/assetops-kg). The paper identifies VaidhyaMegha Private Limited and samyama.ai. A [derived graph dataset](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg) explicitly attributes AOB; its card describes equipment, sensors, work orders, and events. Its adapted scenario set and graph-specific tasks are its own setup; results are not a replacement for the canonical leaderboard. |
 | **predictive-maintenance Qwen3-4B LoRA adapter** | **FailureSensorIQ-derived IJCAI data used for training** | [Model card and released weights](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora). The card reports training on 1,242 labeled validation questions. It explicitly says the adapter has no external held-out score; the cited Kaggle score belongs to another, non-fine-tuned system. Revision `0cbd270d2c71129165e7da98f3adafd825e2ef48` includes adapter weights and configuration. |
 | **ASTRIS MiniLM-L6 reranker — DestinyOtto** | **Selected AOB examples used to fine-tune retrieval ranking**, including FailureSensorIQ-style QA, failure mapping, rules, PHM, and asset scenarios | [Model card, weights, and base-versus-fine-tuned metric artifacts](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker). Revision `7008d3ad0de4dc0eb986ad2fe9ebb73ddb7dfa1d` includes weights and comparison files. Training and evaluation are publisher-reported, not independently reproduced here. The example inference ID differs from the repository ID; follow the actual released files. |
 | **Or4k2! / orecord — Lost-in-the-Middle-Benchmark** | **FailureSensorIQ reuse in a Kaggle robustness experiment:** question position, distractor noise, and optional paraphrasing | [Public notebook](https://www.kaggle.com/code/orecord/lost-in-the-middle-benchmark), version 14, inspected November 9. Section 3 explicitly loads `ibm-research/failuresensoriq`. Saved outputs show 462/600 evaluation jobs and an inconclusive positional effect; describe the experiment, not a definitive performance claim. |
@@ -68,7 +75,7 @@ This is a concrete industry-research mention and statement of interest. The post
 
 | Family member | Verified downstream evidence in this audit |
 | :--- | :--- |
-| **AssetOpsBench** | multi-CaMeL experiments; Samyama graph extension; ASTRIS training; FedProC telemetry integration; Faraday snapshot; connected small-model and orchestration extensions; LG discussion. |
+| **AssetOpsBench** | Good Start Labs reported transfer evaluation; GyanData competition agents; multi-CaMeL experiments; Samyama graph extension and derived dataset; ASTRIS training; FedProC telemetry integration; Faraday snapshot; connected small-model and orchestration extensions; LG discussion. |
 | **FailureSensorIQ** | External multi-agent reasoning, Industrial-Instruction, and retrieval/fine-tuning experiments; LoRA adapter; Kaggle robustness notebook; local-model blog experiment; ASTRIS training; teams4industry adapter; Agentics/ReasonLab connected experiments. |
 | **DiagnosticIQ** | CoffeeBench citation; [R2A-Sales design note](https://github.com/qinyh10300/R2A-Sales-Benchmark/blob/main/docs/RULE_TO_ACTION_GAP_CN.md) references its rule-to-action framing without establishing dataset reuse. [Author-maintained code](https://github.com/DevinDeSilva/DiagnosticIQ) was located. No separate external experiment verified. |
 | **PHMForge** | Community research adapter with explicit partial scope; Faraday design-lineage acknowledgement; CoffeeBench and ADMITBench discussion. The [instructor account](https://kaoutarelmaghraoui.com/blog/hpml-industrial-mentorship-arxiv/) also documents its educational/research origin; that is project-connected evidence. |
@@ -85,6 +92,8 @@ Use **evaluated on** for documented experiments, **extended** for new artifacts 
 
 | Publisher or affiliation | Evidence | What can be said |
 | :--- | :--- | :--- |
+| **Good Start Labs** | [Alex Duffy’s experiment report](https://every.to/playtesting/we-trained-an-ai-on-a-board-game-it-became-a-better-customer-support-agent-299b5938-09dd-4881-803f-aea21f0d461f) | Company-reported evaluation on AOB after game training; quantitative AOB results not supplied. |
+| **GyanData** | [Organizer award](https://ikdd.acm.org/cods-2025/awards.php) and [company post](https://www.linkedin.com/posts/gyandata-pvt-ltd_enterpriseai-agenticsystems-aiengineering-activity-7410203928124026880-RBfF) | Verified winning team and company-reported competition participation. |
 | **VaidhyaMegha / Samyama** | [Graph extension](https://arxiv.org/html/2605.26874v1) | Company-affiliated authors built and evaluated an AOB extension. |
 | **AI Sequrity Company** | [multi-CaMeL author block and Section V-A](https://arxiv.org/html/2610.05640v1#S5.SS1) | Ilia Shumailov is a co-author of a study using AOB for utility evaluation. Paper-level experimental use; no corporate deployment claim. |
 | **Refiant, Inc.** | [ADMITBench, Section 3.2](https://arxiv.org/html/2608.03866v1#S3.SS2) | Yash Misra and Siddharth Gutta are Refiant-affiliated co-authors; cites AOB and PHMForge while describing its own framework. |
@@ -97,6 +106,10 @@ Use **evaluated on** for documented experiments, **extended** for new artifacts 
 | **Meta and LMI Consulting affiliations** | Confucius and CoffeeBench papers above | Author affiliations on citing research, not company adoption announcements. |
 
 This is a verified selection, not a census of company mentions. Commercial summaries and directory listings belong in the [coverage inventory](COVERAGE_AND_EVENTS.md); none of these records alone establishes a customer relationship, partnership, or deployment. The [citation audit](CITATION_AUDIT.md) preserves Scholar records and follow-up leads without inflating the README.
+
+## Additional company-affiliated research citations
+
+**Siemens AG and Artiquare GmbH:** David Kube and Asaad Almutareb are respectively affiliated in [Foundation-Model-Based Agents in Industrial Automation](https://arxiv.org/html/2605.02592v1); Section 4.1 cites AOB in its review corpus. **Huawei Technologies:** the author block of [Empowering Real-World](https://arxiv.org/html/2510.17491v1) identifies Huawei collaborators; its evaluation discussion cites AOB (reference 159). These establish inclusion in industrial-agent research reviews, not company experiments on AOB.
 
 ## Researchers: document the contribution, not just the name
 

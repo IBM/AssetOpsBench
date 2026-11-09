@@ -77,6 +77,30 @@ An additional search for exact Hugging Face dataset IDs in Python code located *
 | [arifOS bridge](https://github.com/ariffazil/A2B/blob/main/docs/ASSETOPSBENCH_BRIDGE.md) | Design note describes a bridge but lists full AOB integration as future work | Not promoted as completed benchmark use |
 | [AlphaEval catalog](https://github.com/GAIR-NLP/AlphaEval/blob/main/BENCHMARKS.md) | Lists AOB in a benchmark comparison table | Catalog inclusion, not a run or dataset derivative |
 
+## Final search pass — November 9, 2026
+
+The final pass searched all six family names plus the `assetops` alias across Hugging Face **models, datasets, and Spaces** (21 public API searches), and checked model dataset tags for the three public IBM datasets. Discovery searches are name/tag-based, not a full-text census of every Hub repository. Author-excluded Scholar searches were reviewed across all four pages of roughly 35 AOB matches and both pages of 13 FailureSensorIQ matches. Author filtering is only a discovery heuristic; overlap and actual reuse were checked separately.
+
+| New source | Verified disposition |
+| :--- | :--- |
+| [Good Start Labs / Every article](https://every.to/playtesting/we-trained-an-ai-on-a-board-game-it-became-a-better-customer-support-agent-299b5938-09dd-4881-803f-aea21f0d461f) | First-person AOB evaluation report after Diplomacy fine-tuning, corroborated as the company's work by its [research index](https://goodstartlabs.com/research). No AOB numeric lift or reproducible protocol disclosed; not an AOB training-data claim. |
+| [GyanData company post](https://www.linkedin.com/posts/gyandata-pvt-ltd_enterpriseai-agenticsystems-aiengineering-activity-7410203928124026880-RBfF) | Competition-use claim with team identity cross-checked against [organizer awards](https://ikdd.acm.org/cods-2025/awards.php); company product-readiness language is not adopted. |
+| [VaidhyaMegha/assetops-kg](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg) | Derived graph dataset with explicit AOB source attribution; revision `a3611fb500675d8cc569dfbf6461d5234d5afe70`. Samyama's later paper lists FailureSensorIQ evaluation as future work, so no completed FSIQ experiment is inferred. |
+| [Transformer scenario dataset](https://huggingface.co/datasets/rohithkanathur/assetopsbench-transformer-scenarios-dataset) | 50 released extension scenarios; connected Columbia project already listed in the university directory. Revision `e3a0664ca455eb58be5fc5f3298bb06691cbb9bf`. Do not count it as an additional independent research group. |
+| zhansingsong/AssetOpsBench; MAOhih/AssetOpsBench | Cards reproduce AOB descriptions/configurations without documenting a new study; no independent experiment claimed. |
+| [cc4718/FailureSensorIQ Space](https://huggingface.co/spaces/cc4718/FailureSensorIQ) | Paper-linked leaderboard implementation; card alone does not establish an external user or new experiment. |
+| [Authentic but Not Neutral](https://aclanthology.org/2026.realm-1.8.pdf) — Xiaoxuan Li, Bangbang Liu, Ying Zhao, Shanghai AI Laboratory | Appendix E.4/Table 14 uses published AOB-Live trace-cost summary statistics. It explicitly says those traces are not linked to the outcomes needed for rank analysis. This is secondary evidence use, not raw-dataset re-evaluation. |
+| [Foundation-Model-Based Agents in Industrial Automation](https://arxiv.org/html/2605.02592v1) | Section 4.1/reference includes AOB; Siemens AG/Artiquare affiliations verified. Survey corpus inclusion, not an AOB experiment. |
+| [Empowering Real-World](https://arxiv.org/html/2510.17491v1) | Evaluation discussion/reference 159 cites AOB; Huawei author affiliations verified. Survey citation, not corporate deployment. |
+| [DynaContext](https://arxiv.org/html/2608.22014v1) | AOB-Live related-work citation; extraction experiments use separate component benchmarks. |
+| [Task-Aware Harness Provisioning](https://arxiv.org/html/2608.17433v1) | AOB/competition-retrospective discussion; experiments use its own constructed infrastructure tasks. |
+| [Relay-Bench](https://arxiv.org/html/2607.18438v1) | Cites AOB Stirrup-agent documentation; no AOB dataset experiment established. |
+| [Large-scale factor analysis](https://arxiv.org/html/2609.36515v1) | FailureSensorIQ reference verified; exact inclusion of its scores in the analysis was not established from that reference alone. |
+| Carbon-m1 / Generating Stable Materials search matches | Search results resolve to a multi-paper IBM conference page that also contains FailureSensorIQ. Co-location is insufficient evidence of citation or reuse; excluded. |
+| CertiGATE (SSRN 7529119); learned work-order dispatching (SSRN 7095162) | Scholar discovery leads; primary pages returned access denial. No dataset-use claim promoted. |
+
+The four original unresolved full-text leads remain unresolved. Crossref confirms the titles/DOIs for the world-model and PHM-survey records, but metadata does not establish their experiments. No access restrictions were bypassed. The search is broad and reproducible in scope, not a claim to have found every use on the internet.
+
 ## Refresh procedure
 
 Open each canonical publication and its preprint record; export or record the citing works; deduplicate by DOI, arXiv ID, and title. Check primary full text for the resource name, methods, tables, and bibliography. Record author overlap before calling use external. Count distinct works separately from distinct citing organizations. Keep coverage, citations, experiments, and extensions as separate measures. Record retrieval date and source whenever publishing a count.

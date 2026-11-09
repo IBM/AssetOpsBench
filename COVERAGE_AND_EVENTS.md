@@ -179,3 +179,15 @@ The [research-use register](RESEARCH_USE.md) now prioritizes experiments and der
 The team hosted [IJCAI 2026 Industrial Automation Challenge Track 1 on Kaggle](https://www.kaggle.com/competitions/industrial-automation-challenge-track-1/). The page identifies the organizing team and links its AOB branch. Its dated instructions require submitted inference code and describe separate hidden evaluation. Public Kaggle ranks should not be equated with the organizers' final hidden-test ranking.
 
 Or4k2!'s [Lost-in-the-Middle-Benchmark](https://www.kaggle.com/code/orecord/lost-in-the-middle-benchmark), version 14, directly loads the [FailureSensorIQ Kaggle dataset](https://www.kaggle.com/datasets/ibm-research/failuresensoriq). It studies position and distractor effects, with partial saved outputs. This is a community reuse example, separate from the official [FailureSensorIQ-scope leaderboard](https://www.kaggle.com/benchmarks/ibm-research/asset-ops-bench).
+
+## Final search-pass additions — November 9, 2026
+
+| Source | Evidence category |
+| :--- | :--- |
+| [Good Start Labs / Alex Duffy on Every](https://every.to/playtesting/we-trained-an-ai-on-a-board-game-it-became-a-better-customer-support-agent-299b5938-09dd-4881-803f-aea21f0d461f) | First-person report of AOB transfer evaluation; linked from the company's research page. No AOB improvement percentage supplied. |
+| [GyanData announcement](https://www.linkedin.com/posts/gyandata-pvt-ltd_enterpriseai-agenticsystems-aiengineering-activity-7410203928124026880-RBfF) and [CODS awards](https://ikdd.acm.org/cods-2025/awards.php) | Company-reported participation; organizer independently confirms the matching Smart Maintenance Crew winners. |
+| [VaidhyaMegha graph dataset](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg) | Public derivative with explicit AOB attribution, beyond a paper or promotional mention. |
+| [Siemens/Artiquare-affiliated industrial-agent review](https://arxiv.org/html/2605.02592v1) and [Huawei-affiliated survey](https://arxiv.org/html/2510.17491v1) | Scholarly citations with verified affiliations; no company deployment or benchmark-run claim. |
+| [Authentic but Not Neutral](https://aclanthology.org/2026.realm-1.8/) | External evaluation-science discussion uses published AOB-Live cost statistics; not an AOB agent run. |
+
+Company or individual reposts of a study are not separate experiments. Use of Qwen models does not establish Alibaba's use of AOB; references to Arcee's use of a Diplomacy environment do not establish an Arcee AOB evaluation.
