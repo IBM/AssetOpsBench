@@ -93,7 +93,7 @@ The team has [announced NeurIPS 2026 acceptance for DiagnosticIQ and PHMForge](h
 | Resource | Research focus | Access |
 | :--- | :--- | :--- |
 | **AssetOpsBench** | Task-oriented evaluation of industrial agents; the paper describes a 141-scenario benchmark | [Dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) · [Paper](https://arxiv.org/abs/2506.03828) |
-| **DiagnosticIQ** | Rule-to-action maintenance recommendation, with targeted robustness variants | [Paper and benchmark specification](https://arxiv.org/abs/2605.08614) |
+| **DiagnosticIQ** | Rule-to-action maintenance recommendation, with targeted robustness variants | [Paper and benchmark specification](https://arxiv.org/abs/2605.08614) · [Author-maintained code](https://github.com/DevinDeSilva/DiagnosticIQ) |
 | **PHMForge** | Industrial prognostics and health management; 99 scenarios in the current dataset card | [Dataset](https://huggingface.co/datasets/ibm-research/PHMForge) · [Paper](https://arxiv.org/abs/2604.01532) |
 | **FailureSensorIQ** | Sensor–failure reasoning: 8,296 multiple-choice questions across 10 industrial asset types | [Dataset](https://huggingface.co/datasets/ibm-research/FailureSensorIQ) · [Code and evaluation](https://github.com/IBM/FailureSensorIQ) |
 | **IoTBench / ReActXen** | Natural-language industrial data access: 400+ tasks across five industrial sites, described in the associated paper | [Paper](https://aclanthology.org/2025.emnlp-industry.24/) · [Repository](https://github.com/IBM/ReActXen) |
@@ -106,20 +106,18 @@ The team has [announced NeurIPS 2026 acceptance for DiagnosticIQ and PHMForge](h
 
 ## Research impact: datasets in use
 
-**A shared testbed for new research questions.** The family supports work on secure multi-agent systems, industrial reasoning, retrieval, and efficient tool use. The examples below distinguish experiments on our resources from citations and research discussion.
+**From released data to new models, tools, and experiments.** Researchers and developers use the family to study industrial reasoning, train smaller models, test security and robustness, and build new evaluation systems.
 
-| Study or organization | People | How the work is used |
-| :--- | :--- | :--- |
-| [Multi-CaMeL](https://arxiv.org/abs/2610.05640) | James Peters-Gill, Avi Semler, Henning Bartsch, **Ilia Shumailov**, **Christian Schroeder de Witt** | **External experimental use:** evaluates agent task utility on AssetOpsBench while studying security mechanisms. Attack-success measurements use a separate benchmark. |
-| [Multi-agent sensor-failure reasoning](https://doi.org/10.1016/j.jii.2025.101012) | Wei Gong, Shuang Qiao and colleagues | **External dataset reuse:** evaluates a modular multi-agent reasoning framework on FailureSensorIQ. |
-| [Industrial-Instruction](https://arxiv.org/abs/2608.22817) | Parsa Bakhtiari, Moharram Challenger and colleagues | **External dataset reuse:** tests industrial fine-tuning and perturbation robustness on FailureSensorIQ. |
-| [Retrieval and fine-tuning study](https://arxiv.org/abs/2607.24824) | **Seshu Kumar Damarla; Xiuli Zhu** | **External dataset reuse:** uses FailureSensorIQ to compare retrieval, prompting, QLoRA fine-tuning, and robustness. |
-| [Agentics](https://arxiv.org/abs/2508.15610) | Alfio Gliozzo and colleagues | **Reuse with shared authorship:** evaluates structured prompting on FailureSensorIQ. |
-| [Confucius](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf) | Zhaodong Wang and colleagues, including **Soudeh Ghorbani** and **Minlan Yu** | **Citation:** discusses AssetOpsBench as related work in multi-agent network management. |
-| [CoffeeBench](https://arxiv.org/abs/2610.19291) | Lucas H. McCabe, Sarah Lukens, **H. Howie Huang** | **Citations and comparison:** discusses AssetOpsBench, FailureSensorIQ, PHMForge, and DiagnosticIQ while introducing a separate diagnostics environment. |
-| [LG AI Research's AEGIS blog](https://www.lgresearch.ai/blog/view?seq=633) | **Dongmin Kim** | **Industry discussion:** highlights AOB and its AAAI demo; considers the benchmark for future AEGIS evaluation. |
+| Use | Examples and evidence |
+| :--- | :--- |
+| **Secure multi-agent systems** | [Multi-CaMeL](https://arxiv.org/abs/2610.05640), with **Ilia Shumailov** (AI Sequrity Company) and **Christian Schroeder de Witt** (Oxford), evaluates agent utility on AOB. Its attack-success tests use another benchmark. |
+| **A new industrial data layer** | **VaidhyaMegha / Samyama's Madhulatha Mandarapu and Sandeep Kunkunuru** [build and evaluate a graph extension](https://arxiv.org/abs/2605.26874) over AOB scenarios, with [released code](https://github.com/samyama-ai/assetops-kg). |
+| **Fine-tuning and retrieval** | [Damarla and Zhu](https://arxiv.org/abs/2607.24824) and [Industrial-Instruction](https://arxiv.org/abs/2608.22817), co-authored by **Moharram Challenger**, evaluate on FailureSensorIQ. Community releases include a [Qwen3-4B LoRA adapter](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and an [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker) trained on selected AOB examples. |
+| **Community robustness experiments** | Or4k2!'s [Kaggle notebook](https://www.kaggle.com/code/orecord/lost-in-the-middle-benchmark) uses FailureSensorIQ for position/distractor experiments; **Siddharth Srinivasan's** [local-model study](https://www.industrialmindandcode.ai/blog/small-language-models-fault-diagnosis.html) examines accuracy and output usability. |
+| **Multi-agent industrial reasoning** | [Gong, Qiao and colleagues](https://doi.org/10.1016/j.jii.2025.101012) evaluate a modular multi-agent framework on FailureSensorIQ. **Sadamori Kojaku's** [teams4industry project](https://github.com/skojaku/teams4industry/blob/main/libs/teams/teams/benchmarks/__init__.py) provides a single-answer dataset adapter. |
+| **Downstream tools and benchmarks** | [FedProC](https://fedproc.readthedocs.io/en/latest/datasets/) integrates AOB telemetry; [Faraday Industrial Benchmark](https://github.com/Faraday-Cage-AI/faraday-industrial-benchmark/blob/main/third_party/manifest.json) preserves an attributed AOB snapshot; a [community PHMForge adapter](https://github.com/zyqzyq007/phmforge-research-adapter) supports partial research adaptations. |
 
-See the [research-use register](RESEARCH_USE.md) and [Google Scholar audit](CITATION_AUDIT.md) for evidence across **all six benchmark families**, author relationships, study versions, and the specific claims each source supports. These examples demonstrate research utility and reach; citations and prospective interest are kept distinct from completed experiments.
+See the [research-use register](RESEARCH_USE.md) for study versions, affiliations, connected versus external work, and limits of each claim. Released artifacts and publisher-reported experiments are verified here; downstream training and evaluations were not rerun. Citations and company discussion are recorded in the [citation audit](CITATION_AUDIT.md) and [coverage inventory](COVERAGE_AND_EVENTS.md).
 
 ## Research portfolio
 
@@ -191,7 +189,7 @@ The official schedule listed a **November 13, 2025 submission deadline** and **D
 
 ### IJCAI 2026 · Industrial Automation Challenge
 
-The challenge explores physics-grounded industrial reasoning. Track 1 evaluates internal model reasoning in a closed-book setting, with maintenance and failure-analysis questions. Its listed submission window was **June 15–August 18, 2026**. [Challenge hub](https://sites.google.com/view/ai-industrial-challenge-ijcai/home) · [Track 1](https://www.kaggle.com/competitions/industrial-automation-challenge-track-1/) · [IJCAI competition directory](https://2026.ijcai.org/competitions/)
+Hosted on **Kaggle** by the organizing team, the challenge explores physics-grounded industrial reasoning. Track 1 evaluates internal model reasoning in a closed-book setting, with maintenance and failure-analysis questions. Its listed submission window was **June 15–August 18, 2026**. [Challenge hub](https://sites.google.com/view/ai-industrial-challenge-ijcai/home) · [Track 1](https://www.kaggle.com/competitions/industrial-automation-challenge-track-1/) · [IJCAI competition directory](https://2026.ijcai.org/competitions/)
 
 ### Competition research
 

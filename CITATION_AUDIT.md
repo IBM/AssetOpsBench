@@ -11,6 +11,9 @@ Reviewed November 9, 2026 using Google Scholar's “Cited by” lists and primar
 | FailureSensorIQ | 17 | [Citing records](https://scholar.google.com/scholar?cites=16528683271765767035&hl=en) |
 | PHMForge, current title | 1 | [Citing records](https://scholar.google.com/scholar?cites=14992453025155493477&hl=en) |
 | PHMForge, earlier title | 3 | [Citing records](https://scholar.google.com/scholar?cites=9384586252328081340&hl=en) |
+| DiagnosticIQ | 1 | [Citing records](https://scholar.google.com/scholar?cites=9591820185078742697&hl=en); CoffeeBench |
+| IndustryAssetEQA | 1 | [Citing records](https://scholar.google.com/scholar?cites=5941950652704872380&hl=en); embodied-VQA survey |
+| ReAct Meets Industrial IoT / IoTBench | 8 | [Citing records](https://scholar.google.com/scholar?cites=7720376694480592636&hl=en); includes duplicate AOB versions and connected papers |
 
 **Do not add these numbers.** Versions overlap, one citing work can reference several family members, and the PHMForge current-title record includes a project-connected mentorship blog. FailureSensorIQ's list also contains multiple versions of individual studies. No aggregate citation badge is proposed from these raw counts.
 
@@ -23,34 +26,56 @@ The [research-use register](RESEARCH_USE.md) supplies people, author relationshi
 - External citations: **Confucius** and **CoffeeBench**. A citing author's employer is not evidence of company deployment.
 - Company discussion: **LG AI Research**, **EQUA AI**, and **Lancartech**; external editorial review from **HysenLabs**. LG's stated evaluation interest remains prospective.
 
-## Additional citing-work leads
+## Disposition of the original 20 leads
 
-The following appeared in Scholar's citation lists. Discovery does not by itself establish experimental use, independence, or endorsement. These remain follow-up leads unless the evidence register above explicitly verifies their relationship. Names below are bibliographic authors, not testimonials.
+Full text was inspected for **16 of the 20 original leads**. Four remain limited by inaccessible full text or unresolved primary records. “Citation” below means a verified reference/discussion; it does not imply dataset reuse.
 
-| Citing work | Family record where discovered | Primary record / follow-up |
+| Original lead | Disposition after primary-source review | Evidence location |
 | :--- | :--- | :--- |
-| AI-Augmented SOC: A Survey of LLMs and Agents for Security Automation | AssetOpsBench | [Publisher](https://www.mdpi.com/2624-800X/5/4/95) |
-| TraceBench — Tommaso Bendinelli, Artur Dox, Christian Holz | AssetOpsBench | [Preprint](https://arxiv.org/abs/2608.27182); abstract describes its own simulation benchmark |
-| Capable but unreliable | AssetOpsBench | [Preprint](https://arxiv.org/abs/2602.19008) |
-| IndustryBench | AssetOpsBench | [Preprint](https://arxiv.org/abs/2605.10267) |
-| ADMITBench — Yash Misra, Javal Vyas, Siddharth Gutta, Mehmet Mercangöz | AssetOpsBench; PHMForge keyword discovery | [Preprint](https://arxiv.org/abs/2608.03866); abstract describes a separate advisory-evaluation framework |
-| Evidence-Driven Reasoning for Industrial Maintenance Using Heterogeneous Data | AssetOpsBench | [ACL paper](https://aclanthology.org/2026.acl-industry.50/); check overlap with benchmark authors |
-| Forecast Workflow Bench | AssetOpsBench | [Preprint](https://arxiv.org/abs/2609.27385) |
-| Text-Informed Training Data Filtering for Enhanced Virtual Flow Meter Performance | AssetOpsBench | [Preprint](https://arxiv.org/abs/2610.19860) |
-| FacProcessTwin | AssetOpsBench | [Preprint](https://arxiv.org/abs/2606.17666) |
-| Imagine Before You Act | AssetOpsBench | [ACM record](https://doi.org/10.1145/3841560.3841567) |
-| Hard-CAD | AssetOpsBench proceedings | [Publisher](https://www.sciencedirect.com/science/article/pii/S0097849326002979) |
-| Large Language Models in Industry 5.0 — Multi-Case Experiences from the AIMS5.0 Project | AssetOpsBench proceedings | [Repository](https://real.mtak.hu/249438/); verify named companies and the actual AOB reference before claiming industry use |
-| BTS-AgentBench — J. Y. Kim | AssetOpsBench proceedings | [Preprint](https://arxiv.org/abs/2608.27334) |
-| Multi-Agent AI System for Preventive Maintenance Plan Optimization — R. K. Patel | AssetOpsBench | [TUM thesis](https://mediatum.ub.tum.de/1865598) |
-| FORGE: Fine-grained multimodal evaluation for manufacturing quality assurance | FailureSensorIQ | Findings of ACL 2026; verify final proceedings record and citation context |
-| Comprehensive benchmark of large language models for construction engineering and management | FailureSensorIQ | Automation in Construction, 2026; verify experiment scope |
-| Simplicity Paradox | FailureSensorIQ | [Preprint](https://arxiv.org/abs/2607.14109); check author overlap |
-| From Question Answering to Task Completion: A Survey on Agent System and Harness Design | PHMForge earlier title | [Preprint](https://arxiv.org/abs/2606.20683) |
-| Prognostics and Health Management in the Era of Foundation Models — T. Han, X. Wang, H. Meng, E. Zio | PHMForge earlier title | [IEEE record](https://ieeexplore.ieee.org/document/11715714); citation discovery, not a verified PHMForge experiment |
-| A Study on Locally Runnable Large Language Models for Bearing Fault Diagnosis — M. H. Shawon, P. Kumar | PHMForge earlier title | [Publisher](https://www.mdpi.com/2079-3197/14/9/220); inspect the reference and experiment separately |
+| AI-Augmented SOC | **Survey citation** of AOB; no new AOB experiment | [Sections 3.4/4 and reference 53](https://www.mdpi.com/2624-800X/5/4/95) |
+| TraceBench — Tommaso Bendinelli, Artur Dox, Christian Holz | **Related-work citation**; experiments use its physical simulators | [Section 2.1](https://arxiv.org/html/2608.27182v1#S2.SS1) |
+| Capable but Unreliable | **Related-work citation**; experiments use Toolathlon | [Section 2 and Section 3.1](https://arxiv.org/html/2602.19008v1#S2). Its description of AOB's tool count is not adopted as a fact here. |
+| IndustryBench | **Related-work citation**; its procurement-QA dataset is separate | [Section 2](https://arxiv.org/html/2605.10267v1#S2) |
+| ADMITBench — Yash Misra, Javal Vyas, Siddharth Gutta, Mehmet Mercangöz | **Cites AOB and PHMForge**; separate action-admissibility framework | [Section 3.2](https://arxiv.org/html/2608.03866v1#S3.SS2); affiliations identify Refiant and Imperial College London |
+| Evidence-Driven Reasoning for Industrial Maintenance | **Connected citation**, not independent reuse; shares AOB authors | [ACL paper](https://aclanthology.org/2026.acl-industry.50.pdf), Section 2 and references; IBM/Imperial affiliations. Reports its own CMMS case studies. |
+| Forecast Workflow Bench | **Related-work citation**; separate decision-focused forecast benchmark | [Section 2 and reference 14](https://arxiv.org/html/2609.27385v1#S2) |
+| Text-Informed Training Data Filtering | **Citation by company-affiliated authors**, not AOB execution | [Introduction/reference 11](https://arxiv.org/html/2610.19860v1); Solution Seeker AS affiliations; experiments use generated flow-meter data |
+| FacProcessTwin | **Related-work citation**; independent manufacturing case study | [Section II/reference 15](https://arxiv.org/html/2606.17666v1#S2); Swinburne authors |
+| Imagine Before You Act | **Unresolved full text**; no reuse claim added | [ACM DOI lead](https://doi.org/10.1145/3841560.3841567); primary page unavailable and focused title search did not resolve an accessible manuscript |
+| Hard-CAD | **Unresolved full text**; no reuse claim added | [Publisher lead](https://www.sciencedirect.com/science/article/pii/S0097849326002979); publisher returned access denial |
+| AIMS5.0 multi-case experiences | **Industry research citation**, not AOB experiment | [PDF](https://real.mtak.hu/249438/1/AIMS_SpecIss_ICJ_2026_1_6.pdf), printed p.138/reference 58; company affiliations on p.135 |
+| BTS-AgentBench — J. Y. Kim | **Cites both AOB and ReAct Meets Industrial IoT**; own telemetry corpus | [Section 2 and comparison appendix](https://arxiv.org/html/2608.27334v1#S2) |
+| TUM preventive-maintenance thesis — Ruchit Kumar Patel | **Methodological use:** evaluation design explicitly responds to AOB/PHMForge findings; no dataset reuse established | [Thesis](https://mediatum.ub.tum.de/1865598), Section 2.7.2 (printed pp.21–22), references 83–84; TUM supervisors Felix Dietrich and Vladyslav Fediukov |
+| FORGE | **FailureSensorIQ comparison and citation**, not reuse in its experiments | [Final EMNLP Findings paper](https://aclanthology.org/2026.findings-emnlp.888.pdf), Table 1/Section 2/references. Includes **Dacheng Tao**. Earlier audit incorrectly called the venue Findings of ACL; corrected to **Findings of EMNLP 2026**. |
+| CemEval construction-engineering benchmark | **Publisher abstract verified; full reference/experiment context unresolved** | [Publisher](https://www.sciencedirect.com/science/article/pii/S0926580526003420). Abstract describes its own regulatory dataset; do not infer FailureSensorIQ reuse from Scholar alone. |
+| Simplicity Paradox | **Connected experimental reuse** of FailureSensorIQ; not independent | [v1 Section 3.1/Appendix D](https://arxiv.org/html/2607.14109v1#S3.SS1); Inder Preet, Shuxin Lin, Dhaval Patel. [Current v2 title is ReasonLab](https://arxiv.org/abs/2607.14109); one work. |
+| From Question Answering to Task Completion | **PHMForge survey citation**, not new benchmark execution | [Section 6.1/reference 183](https://arxiv.org/html/2606.20683v1) |
+| PHM foundation-model survey — Te Han, Xiao Wang, Huixing Meng, Enrico Zio | **Publisher metadata verified; full PHMForge citation context unresolved** | [IEEE author/abstract record](https://ieeexplore.ieee.org/abstract/document/11715714/authors), DOI 10.1109/TII.2026.3732729. No claim that Zio ran PHMForge. |
+| Locally Runnable LLMs for Bearing Fault Diagnosis — M. H. Shawon, P. Kumar | **Methodological influence and discussion** of PHMForge; experiments use Paderborn, CWRU, HUST | [Section 2.4/reference 4](https://www.mdpi.com/2079-3197/14/9/220). Its reported PHMForge comparison uses different tasks and is not a controlled head-to-head result. |
 
-This table omits obvious original-family papers and several low-confidence/non-paper results. It is not a complete bibliography. DiagnosticIQ, IoTBench/ReActXen, and IndustryAssetEQA are included in the six-family evidence register, but this audit does not report a complete Scholar citation count for those releases.
+## New reuse found beyond citation indexes
+
+The [research-use register](RESEARCH_USE.md#models-notebooks-and-software-built-on-the-releases) records the evidence and limitations for the Samyama graph extension, two released fine-tuned models (the FailureSensorIQ LoRA adapter and ASTRIS reranker), Or4k2!'s Kaggle notebook, Siddharth Srinivasan's local-model blog experiment, FedProC telemetry loaders, Faraday's attributed AOB snapshot, and the community PHMForge research adapter.
+
+The connected-work section adds Sadamori Kojaku's **teams4industry** adapter, **ReasonLab**, and **Exgentic** packaging. An implemented loader establishes integration; missing logs or a stub that raises `BenchmarkNotRunnable` do not establish completed evaluation.
+
+Public GitHub code searches inspected the first 100 matching files for AOB and FailureSensorIQ, plus PHMForge and DiagnosticIQ matches. Searches also covered Scholar citing lists for all six families, publisher full text, Kaggle, model/dataset cards, public Hugging Face API searches, blogs, and company sites. These are bounded discovery searches, not exhaustive counts of adoption.
+
+An additional search for exact Hugging Face dataset IDs in Python code located **MutaGenAI**, **thesis-memory-optimization**, **Multiagents-three-modes**, and **SelfGrowthGraphRag**. Their loaders were inspected; task changes, fallback data, custom scorers, and missing output artifacts are recorded in the [additional experiment table](RESEARCH_USE.md#additional-implemented-experiments). Code presence is kept distinct from a verified run. Account names and personal projects are not attributed to employers.
+
+## Other dispositions and exclusions
+
+| Source | What was established | Reporting decision |
+| :--- | :--- | :--- |
+| [IndustryAssetEQA embodied-VQA survey](https://www.mdpi.com/2673-2688/7/9/367) | Section 5.7/reference 91 discusses IndustryAssetEQA | Verified external citation; no new dataset experiment |
+| [R2A-Sales](https://github.com/qinyh10300/R2A-Sales-Benchmark/blob/main/docs/RULE_TO_ACTION_GAP_CN.md) | Section 9.1 acknowledges DiagnosticIQ's rule-to-action framing | Conceptual reference; no DiagnosticIQ data reuse established |
+| [Cymatix's AOB assessment](https://github.com/mbachaud/Cymatix-Context/blob/main/docs/benchmarks/2026-07-13-assetopsbench-eval-verdict.md) | Describes cloning AOB and analyzing a 152-scenario snapshot, then declining a planned evaluation | Dataset inspection and critical technical discussion, not a completed benchmark run or endorsement; its technical judgments are the author's |
+| [Faraday design lineage](https://github.com/Faraday-Cage-AI/faraday-industrial-benchmark/blob/main/docs/design-lineage.md) | Credits AOB and PHMForge; manifest verifies copied AOB snapshot | Artifact reuse verified; native Faraday results must remain separate |
+| [yushengli/PHMForge](https://huggingface.co/datasets/yushengli/PHMForge) | Card explicitly identifies itself as a mirror of the canonical IBM dataset | Mirror is not an independent adopter or experiment |
+| DeveloperMindset123/PHMForge_Scenarios | API search locates the repository; card access is restricted | No dataset-use claim from inaccessible material |
+| [Qwen3.5 PTL AssetOps model](https://huggingface.co/davidfregoli/qwen3.5-4b-ptl-assetops) | Card describes its own AssetOps API and training, but does not establish IBM AOB provenance | Similar naming is insufficient; excluded from verified family reuse |
+| [arifOS bridge](https://github.com/ariffazil/A2B/blob/main/docs/ASSETOPSBENCH_BRIDGE.md) | Design note describes a bridge but lists full AOB integration as future work | Not promoted as completed benchmark use |
+| [AlphaEval catalog](https://github.com/GAIR-NLP/AlphaEval/blob/main/BENCHMARKS.md) | Lists AOB in a benchmark comparison table | Catalog inclusion, not a run or dataset derivative |
 
 ## Refresh procedure
 

@@ -162,3 +162,20 @@ The follow-up specifically searched Medium for AssetOpsBench, Asset Ops Bench, A
 ## Company mentions and citation discovery
 
 The [research-use register](RESEARCH_USE.md#company-and-industry-coverage) groups LG AI Research, EQUA AI, Lancartech, and HysenLabs by the evidence each publishes. The [Scholar audit](CITATION_AUDIT.md) records split citation records and additional research leads. Company-affiliated authors, public-document corpora, syndicated coverage, and product adoption are distinct relationships.
+
+## Reuse and industry evidence from the deeper audit
+
+The [research-use register](RESEARCH_USE.md) now prioritizes experiments and derivative artifacts over mentions:
+
+- **Samyama / VaidhyaMegha:** a graph layer evaluated on AOB, with released implementation.
+- **AI Sequrity Company affiliation:** Ilia Shumailov co-authored multi-CaMeL, which measures agent utility on AOB.
+- **Faraday Industrial Benchmark:** its [attribution manifest](https://github.com/Faraday-Cage-AI/faraday-industrial-benchmark/blob/main/third_party/manifest.json) preserves an upstream AOB snapshot; its [commercial results page](https://faradaycompute.com/faraday-industrial-benchmark) describes a separate native benchmark. This documents reuse by another industrial-benchmark project without relabeling its native results as AOB results.
+- **Model training:** public FailureSensorIQ LoRA and ASTRIS reranker releases document use of family data and ship weights.
+- **Community experiments:** a FailureSensorIQ Kaggle notebook, a local-small-model blog report, prompt-evolution code, and model-routing code provide direct technical-use evidence.
+- **Industry citations:** Refiant, Solution Seeker, and authors from Infineon, Signify, Statwolf, and AITIA are verified in citing papers. These remain citations, not claims of company execution or deployment.
+
+### Kaggle: hosted challenge and community reuse
+
+The team hosted [IJCAI 2026 Industrial Automation Challenge Track 1 on Kaggle](https://www.kaggle.com/competitions/industrial-automation-challenge-track-1/). The page identifies the organizing team and links its AOB branch. Its dated instructions require submitted inference code and describe separate hidden evaluation. Public Kaggle ranks should not be equated with the organizers' final hidden-test ranking.
+
+Or4k2!'s [Lost-in-the-Middle-Benchmark](https://www.kaggle.com/code/orecord/lost-in-the-middle-benchmark), version 14, directly loads the [FailureSensorIQ Kaggle dataset](https://www.kaggle.com/datasets/ibm-research/failuresensoriq). It studies position and distractor effects, with partial saved outputs. This is a community reuse example, separate from the official [FailureSensorIQ-scope leaderboard](https://www.kaggle.com/benchmarks/ibm-research/asset-ops-bench).
