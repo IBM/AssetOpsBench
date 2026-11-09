@@ -21,9 +21,11 @@ Dates below follow publisher records or event metadata where available. “Not e
 
 | Date | Source | What the source discusses |
 | :--- | :--- | :--- |
+| October 14, 2026 | [Sharan Harsoor: AI Learned to Write Code. It Never Learned to Hold a Wrench.](https://medium.com/@sharanharsoor/ai-learned-to-write-code-it-never-learned-to-hold-a-wrench-a87fb68f3552) | External Medium article with AssetOpsBench as its central topic, discussing tool orchestration and benchmark interpretation. Distinct from Krupenich’s article; no independent experimental replication established here. |
 | August 19, 2025 | [Siarhei Krupenich: Putting AssetOpsBench to the Test: An AI Agent Adventure](https://medium.com/@siarhei.krupenich/putting-assetopsbench-to-the-test-an-ai-agent-adventure-74ab67121e72) | External introductory commentary on industrial agents and benchmarking. The article's title alone is not evidence of an independently reproduced experiment; use official instructions for setup. |
 | November 4, 2026 | [Lancartech: A Retrospective on Testing Industrial Asset Agents](https://lancartech.co.id/en/blog/assetopsbench-ibm-retrospektif-evaluasi-agent-industri) | External retrospective based on IBM's earlier blog, discussing false completion, debugging, and limits of score transfer. |
 | October 6, 2026 review label | [HysenLabs: AssetOpsBench review](https://hysenlabs.com/projects/ibm-assetopsbench) | External editorial analysis of MCP servers, orchestration, documentation, and adoption. Page also carries other synchronization/update dates. |
+| Not established | [Joshua Berkowitz: Industrial Agents Meet a Real-World Benchmark](https://joshuaberkowitz.us/blog/github-repos-8/assetopsbench-industrial-agents-meet-a-real-world-benchmark-1039) | A second AOB-focused article by this author, discussing orchestration, trajectories, and repository structure. Older paths may describe a prior release. |
 | Not established | [Joshua Berkowitz: AssetOpsBench Sets New Standards for AI in Industrial Asset Management](https://joshuaberkowitz.us/blog/news-1/assetopsbench-sets-new-standards-for-ai-in-industrial-asset-management-670) | External commentary on scenarios, orchestration, and reliability; no independent test is established by this inventory. |
 | September 7, 2026 | [EQUA: Grading the Autonomy Claim](https://equa.work/resources/grading-the-autonomy-claim) | Commercial practitioner perspective citing AssetOpsBench in a maintenance-AI evidence discussion. |
 | September 7, 2026 | [EQUA: What Your Work Order History Can and Cannot Do](https://equa.work/resources/work-order-history-what-it-can-do) | Commercial practitioner guide citing the benchmark as an example of open evaluation. |
@@ -46,6 +48,7 @@ Dates below follow publisher records or event metadata where available. “Not e
 
 | Date | Event / contribution | Public evidence and qualification |
 | :--- | :--- | :--- |
+| AAAI 2027 · Session details pending | **A Hands-on Lab on Agentic Scientific Discovery for Time Series with the Model Context Protocol** | [Project site](https://ibm.github.io/AssetOpsBench/) and [USC preprint record](https://scholarcommons.sc.edu/aii_fac_pub/643/). TSM-MCP-Kit lab with five sprints. The website says it is based on the submitted proposal; date, venue, and registration are pending. Separate from the AAAI-27 Bridge. |
 | February 16–17, 2027 · Upcoming | **AAAI-27 Bridge: From Agent Benchmarks to Deployment Evidence** · Montréal | [Program](https://bench-to-evidence.github.io/). Industrial-maintenance case uses AssetOpsBench. Audits and protocol are planned outputs. |
 | NeurIPS 2026 · Acceptance announced | **DiagnosticIQ and PHMForge** | [Author announcement](https://www.linkedin.com/posts/devinyasithdesilva_github-ibmassetopsbench-assetopsbench-activity-7509303817298124800-nDY8); [PHMForge dataset card](https://huggingface.co/datasets/ibm-research/PHMForge) identifies Evaluations & Datasets. Session dates not established here. |
 | August 11, 2026 | **KDD hands-on tutorial: Building Reliable Industrial Agents with MCP** · Jeju | [Official program](https://kdd2026.kdd.org/tutorials/) and [tutorial page](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/). Tutorial page lists 1:30–4:30 PM. |
@@ -75,6 +78,20 @@ Dates below follow publisher records or event metadata where available. “Not e
 | **Kaggle AssetOps leaderboard** | [Benchmark page](https://www.kaggle.com/benchmarks/ibm-research/asset-ops-bench) describes FailureSensorIQ MCQA scope. Do not imply it is a comprehensive execution leaderboard for all ecosystem tasks. |
 | **DiagnosticIQ leaderboard** | [Paper](https://arxiv.org/abs/2605.08614), including variant scores and rule-level statistical interpretation. No standalone live leaderboard URL verified in this audit. |
 | **PHMForge comparisons** | [Paper](https://arxiv.org/abs/2604.01532), [dataset](https://huggingface.co/datasets/ibm-research/PHMForge). The paper reports a public leaderboard; its standalone service was not independently verified here. |
+
+## Named extension contributors and research collaborators
+
+The [named contribution records](docs/university-projects.md#named-contributions-and-evidence) connect each person to the supporting source:
+
+- Kaoutar El Maghraoui: documented course mentorship and co-authorship of PHMForge / the implementation-study synthesis.
+- Chand Sahil Mansuri and Sadamori Kojaku: the Binghamton coordination project, as listed in the upstream project directory.
+- Priyam Dalmia, Chin-Teng Lin, and Fred Chang: an exploratory UTS project, with digital-twin extensions described as future work.
+- Yusuke Ozaki: SPIN co-author, with a paper and implementation repository.
+- Chathurangi Shyalika and Amit Sheth: IndustryAssetEQA co-authors, with a released AssetOpsBench branch.
+- Devin Yasith De Silva and Deborah L. McGuinness: DiagnosticIQ co-authors; this is authorship evidence, not a separate downstream-use claim.
+- Madhulatha Mandarapu and Sandeep Kunkunuru: knowledge-graph layer study and public extension repository.
+
+Roles are stated as documented. Names or academic affiliations alone do not establish endorsement, independent replication, or production adoption.
 
 ## Community accounts
 
@@ -114,6 +131,9 @@ These establish discoverability and distribution, not independent validation. Se
 
 ## Further research mentions and unresolved leads
 
+- **Commercial commentary:** [n1n.ai's January 22, 2026 AOB article](https://explore.n1n.ai/blog/assetopsbench-evaluating-ai-agents-industrial-reality-2026-01-22) is directly about the benchmark and credits IBM's Hugging Face blog. Its performance table and several capability claims were not corroborated against the primary study, so retain it as a coverage mention rather than a source of benchmark results.
+- **Further syndication:** [SyncAI's January 21, 2026 page](https://syncai.news/article/assetopsbench-bridging-the-gap-between-ai-agent-benchmarks-and-industrial-realit-b3e552) labels the source as Hugging Face Blog. Count it as distribution of that article, not independent reporting.
+- **Workflow-optimization summary:** [AIgest's AOB caching article](https://aigest.dev/news/evaluating-temporal-semantic-caching-and-workflow-optimization-in-agentic-plan-e) summarizes the associated paper. Use the original paper for quantitative claims.
 - **Conference-paper citation:** [The Confucius Framework](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf) mentions AssetOpsBench as related work. A citation is a research mention, not a deployment or collaboration claim.
 - **Audio:** [IMDb lists a Daily Huggingface Papers episode about the CODS retrospective](https://www.imdb.com/title/tt43425595/). The listing was found; recording provenance and a playable publisher feed were not verified.
 - **Video:** the repository links an [overview](https://www.youtube.com/watch?v=kXmBDMrKFjs) and an [AssetOpsBench-Live demo](https://www.youtube.com/watch?v=JcKlS5v5fGY). These links were discovered, but YouTube metadata was unavailable, so creator attribution and upload dates remain unverified.
@@ -127,3 +147,7 @@ These establish discoverability and distribution, not independent validation. Se
 The search covered exact project names and variants with news, media, newsletter, leaderboard, competition, conference, seminar, workshop, BoF, Birds of a Feather, meetup, podcast, and video terms. It followed primary project links, university/event listings, publisher records, newsletter archives, and external reviews. Searches also checked named outlets including MarkTechPost, VentureBeat, InfoQ, and The New Stack; no direct article was verified for those outlets in this pass.
 
 This is a broad public-source audit, not a guarantee of every mention on the internet. Search engines omit pages, social content may require login, and deleted or private events cannot be reconstructed reliably. Unknown dates and unresolved leads are retained explicitly. Update the inventory as new evidence becomes available; keep the README focused on strong, representative sources.
+
+### Follow-up search notes
+
+The follow-up specifically searched Medium for AssetOpsBench, Asset Ops Bench, AOB with industrial-agent context, and related phrases; two substantial Medium articles were verified: Krupenich (August 19, 2025) and Harsoor (October 14, 2026). Additional results largely repeated these or syndicated first-party material. The current GitHub Pages homepage is the AAAI 2027 lab; do not confuse it with the previous AAAI 2026 lab link or the separate AAAI-27 Bridge.

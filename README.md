@@ -130,12 +130,15 @@ The portfolio below brings together AssetOpsBench and related work from its team
 
 ### Tutorials, bridge, and workshop contributions
 
+- **AAAI 2027 hands-on lab:** [A Hands-on Lab on Agentic Scientific Discovery for Time Series with the Model Context Protocol](https://ibm.github.io/AssetOpsBench/). The project page lists a 3.5-hour, five-sprint program; session date, venue, and registration are pending. [University preprint record](https://scholarcommons.sc.edu/aii_fac_pub/643/).
 - **KDD 2026 hands-on tutorial:** [Building Reliable Industrial Agents with MCP: A Hands-on AssetOpsBench Tutorial for AI-Driven Operations](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/). Also listed in the [official tutorial program](https://kdd2026.kdd.org/tutorials/).
 - **AAAI 2026 tutorial:** [From Inception to Productization: Hands-on Lab for the Lifecycle of Multimodal Agentic AI in Industry 4.0](https://research.ibm.com/publications/from-inception-to-productization-hands-on-lab-for-the-lifecycle-of-multimodal-agentic-ai-in-industry-40).
 - **AAAI 2026 bridge contribution:** [Knowledge-Guided AI for Industrial Asset Health Monitoring](https://sites.google.com/stevens.edu/kgml-bridge-aaai-26).
 - **AAAI 2026 workshop contribution:** [Agentic Code Generation for Heuristic Rules in Equipment Monitoring](https://underline.io/lecture/143674-agentic-code-generation-for-heuristic-rules-in-equipment-monitoring).
 
 ## Learn by building
+
+**Explore the AAAI 2027 lab.** The [time-series scientific-discovery lab](https://ibm.github.io/AssetOpsBench/) introduces TSM-MCP-Kit, an sktime-backed MCP server, through evidence inspection, recipe composition, diagnostic refinement, evaluation, and search. Lab materials are being released in stages; consult the site for availability.
 
 **Start with a guided lab.** The [KDD tutorial](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/) covers environment setup, industrial MCP tools, agent execution, and evaluation.
 
@@ -203,6 +206,7 @@ This gives evaluation science a visible place in the ecosystem: connecting scena
 
 | When | Event or activity | Explore |
 | :--- | :--- | :--- |
+| **AAAI 2027 · Session details pending** | Hands-on lab on agentic scientific discovery for time series with MCP | [Project site](https://ibm.github.io/AssetOpsBench/) · [University preprint record](https://scholarcommons.sc.edu/aii_fac_pub/643/) |
 | **February 16–17, 2027 · Upcoming** | AAAI-27 Bridge: From Agent Benchmarks to Deployment Evidence · Montréal | [Eval Science program](https://bench-to-evidence.github.io/) |
 | **August 11, 2026** | KDD hands-on MCP tutorial · Jeju, South Korea | [Tutorial and materials](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/) |
 | **July 7, 2026** | ACL BoF: What Makes an Enterprise Agent Benchmark Useful? Tasks, Tools & Trust · San Diego | [Event page](https://luma.com/jxdjefmv) |
@@ -260,6 +264,7 @@ AssetOpsBench is appearing in benchmarking communities, newsletters, external di
 
 | Source | What it contributes |
 | :--- | :--- |
+| [Sharan Harsoor on Medium](https://medium.com/@sharanharsoor/ai-learned-to-write-code-it-never-learned-to-hold-a-wrench-a87fb68f3552) | An October 14, 2026 article focused on AssetOpsBench, industrial tool orchestration, and the distinction between benchmark evidence and deployment claims |
 | [Siarhei Krupenich on Medium](https://medium.com/@siarhei.krupenich/putting-assetopsbench-to-the-test-an-ai-agent-adventure-74ab67121e72) | An August 19, 2025 introductory article about the framework and its industrial-agent motivation |
 | [HysenLabs](https://hysenlabs.com/projects/ibm-assetopsbench) | An external review of MCP tools, orchestration, documentation, and adoption considerations |
 | [Joshua Berkowitz](https://joshuaberkowitz.us/blog/news-1/assetopsbench-sets-new-standards-for-ai-in-industrial-asset-management-670) | Commentary on industrial-agent benchmarking and reliability |
@@ -268,6 +273,10 @@ AssetOpsBench is appearing in benchmarking communities, newsletters, external di
 | [Lancartech retrospective](https://lancartech.co.id/en/blog/assetopsbench-ibm-retrospektif-evaluasi-agent-industri) | External commentary on local debugging, score interpretation, and the limits of transferring benchmark results to deployments |
 
 These are attributed perspectives, not validation of every claim they contain. Read each review against the release and evaluation protocol it discusses.
+
+### Researchers and practitioners building on AOB
+
+The ecosystem includes named contributions across academic and industrial groups: **Kaoutar El Maghraoui** documents Columbia's HPML projects; **Chand Sahil Mansuri and Sadamori Kojaku** are listed on the Binghamton coordination project; and **Priyam Dalmia, Chin-Teng Lin, and Fred Chang** are listed on the exploratory UTS naval-maintenance project. **Yusuke Ozaki** co-authors SPIN, **Amit Sheth** co-authors IndustryAssetEQA, and **Deborah L. McGuinness** co-authors DiagnosticIQ. See the [named contribution records](docs/university-projects.md#named-contributions-and-evidence) for the specific work and source supporting each attribution.
 
 ### Education and practitioner perspectives
 
