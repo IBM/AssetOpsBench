@@ -27,6 +27,7 @@ The scenario root is expected to contain folders such as:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -57,6 +58,7 @@ SCENARIO_PROFILE_PATHS = {
     "mini": REPO_ROOT / "benchmarks/scenario_suite/mini.yaml",
     "open": REPO_ROOT / "benchmarks/scenario_suite/open.yaml",
 }
+
 
 def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
     """Load and validate a category-to-scenario-ids YAML profile."""
@@ -97,15 +99,11 @@ def load_scenario_profile(path: Path) -> dict[str, tuple[str, ...]]:
                 )
             scenario_id = str(raw_id).strip()
             if not scenario_id:
-                raise ValueError(
-                    f"Empty scenario id in category {category!r}: {path}"
-                )
+                raise ValueError(f"Empty scenario id in category {category!r}: {path}")
             scenario_ids.append(scenario_id)
 
         if len(set(scenario_ids)) != len(scenario_ids):
-            raise ValueError(
-                f"Duplicate scenario ids in category {category!r}: {path}"
-            )
+            raise ValueError(f"Duplicate scenario ids in category {category!r}: {path}")
         profile[category] = tuple(scenario_ids)
 
     if not any(profile.values()):
@@ -138,6 +136,7 @@ class MethodConfig:
     extra_args: tuple[str, ...] = ()
     workspace_root: Path | None = None
     reset_workspace: bool = True
+    timeout_seconds: float | None = None
 
 
 def model_dir_name(model_id: str) -> str:
@@ -318,7 +317,9 @@ def validate_workspace_root_outside_repo(workspace_root: Path, label: str) -> No
         )
 
 
-def reset_and_load_couchdb(scenario_id: str, scenario_root: Path, dry_run: bool) -> None:
+def reset_and_load_couchdb(
+    scenario_id: str, scenario_root: Path, dry_run: bool
+) -> None:
     """Reset CouchDB and load the scenario-specific data from scenario_root."""
     env = os.environ.copy()
     env["SCENARIOS_DATA_DIR"] = str(scenario_root)
@@ -355,6 +356,8 @@ def run_agent_for_scenario(
 
     env = os.environ.copy()
     env["AGENT_TRAJECTORY_DIR"] = str(trajectory_dir)
+    if scenario_root is not None:
+        env["SCENARIOS_DATA_DIR"] = str(scenario_root)
 
     extra_args = list(method.extra_args)
     if method.workspace_root is not None:
@@ -391,7 +394,12 @@ def run_agent_for_scenario(
     if dry_run:
         return
 
-    subprocess.run(cmd, check=True, env=env)
+    timeout_kwargs = (
+        {"timeout": method.timeout_seconds}
+        if method.timeout_seconds is not None
+        else {}
+    )
+    subprocess.run(cmd, check=True, env=env, **timeout_kwargs)
 
 
 def run_evaluation(
@@ -440,10 +448,37 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
     reasoning_effort = getattr(args, "reasoning_effort", None)
     if reasoning_effort is not None:
         stirrup_extra_args.extend(["--reasoning-effort", reasoning_effort])
-    if getattr(args, "preserve_workspaces", False) and getattr(
-        args, "stirrup_workspace_root", None
-    ) is not None:
+    if (
+        getattr(args, "preserve_workspaces", False)
+        and getattr(args, "stirrup_workspace_root", None) is not None
+    ):
         stirrup_extra_args.append("--preserve-workspace")
+
+    reactxen_extra_args = list(stirrup_extra_args)
+    for flag, attribute, default in (
+        ("--max-rounds", "reactxen_max_rounds", 2),
+        ("--max-turns", "reactxen_max_turns", 20),
+        ("--review-max-turns", "reactxen_review_max_turns", 20),
+        ("--reflect-max-turns", "reactxen_reflect_max_turns", 20),
+        (
+            "--review-finish-repair-attempts",
+            "reactxen_review_finish_repair_attempts",
+            2,
+        ),
+        (
+            "--reflect-finish-repair-attempts",
+            "reactxen_reflect_finish_repair_attempts",
+            2,
+        ),
+    ):
+        reactxen_extra_args.extend([flag, str(getattr(args, attribute, default))])
+    for attribute, flag in (
+        ("reactxen_no_distill_question", "--no-distill-question"),
+        ("reactxen_no_self_ask", "--no-self-ask"),
+        ("reactxen_no_review", "--no-review"),
+    ):
+        if getattr(args, attribute, False):
+            reactxen_extra_args.append(flag)
 
     opencode_extra_args: list[str] = []
     if args.opencode_allow_files:
@@ -490,6 +525,14 @@ def build_methods(args: argparse.Namespace) -> dict[str, MethodConfig]:
             agent_name="direct_llm",
             command="direct-llm-agent",
             model_id=args.model_id,
+        ),
+        "reactxen_agent": MethodConfig(
+            agent_name="reactxen_agent",
+            command="reactxen-agent",
+            model_id=args.model_id,
+            extra_args=tuple(reactxen_extra_args),
+            workspace_root=getattr(args, "stirrup_workspace_root", None),
+            timeout_seconds=getattr(args, "reactxen_timeout", 1200),
         ),
         "stirrup_agent": MethodConfig(
             agent_name="stirrup_agent",
@@ -538,6 +581,31 @@ def selected_methods(
     return [methods[method_name]]
 
 
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return parsed
+
+
+def completed_trajectory_exists(path: Path, agent_name: str) -> bool:
+    """Resume ReActXen only from completed loops, not intermediate checkpoints."""
+    if not path.exists():
+        return False
+    if agent_name != "reactxen_agent":
+        return True
+    try:
+        record = json.loads(path.read_text())
+        return record["trajectory"]["stopped_because"] in {
+            "accomplished",
+            "max_rounds",
+            "review_disabled",
+            "no_progress",
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scenario_suite_runner",
@@ -571,6 +639,33 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--reactxen-max-rounds", type=int, choices=range(1, 4), default=2
+    )
+    parser.add_argument("--reactxen-max-turns", type=positive_int, default=20)
+    parser.add_argument("--reactxen-review-max-turns", type=positive_int, default=20)
+    parser.add_argument("--reactxen-reflect-max-turns", type=positive_int, default=20)
+    parser.add_argument(
+        "--reactxen-review-finish-repair-attempts",
+        type=int,
+        choices=range(4),
+        default=2,
+    )
+    parser.add_argument(
+        "--reactxen-reflect-finish-repair-attempts",
+        type=int,
+        choices=range(4),
+        default=2,
+    )
+    parser.add_argument("--reactxen-no-distill-question", action="store_true")
+    parser.add_argument("--reactxen-no-self-ask", action="store_true")
+    parser.add_argument("--reactxen-no-review", action="store_true")
+    parser.add_argument(
+        "--reactxen-timeout",
+        type=positive_int,
+        default=1200,
+        help="Wall-clock seconds per ReActXen scenario, including all phases.",
+    )
+    parser.add_argument(
         "--scenario-ids",
         default="benchmarks/scenario_suite/scenarios.txt",
         metavar="SELECTOR_OR_FILE",
@@ -591,6 +686,7 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=[
             "direct_llm",
             "stirrup_agent",
+            "reactxen_agent",
             "opencode_agent",
             "gemini_cli_agent",
             "openclaw_cli_agent",
@@ -629,17 +725,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--gemini-model-id",
         default=_DEFAULT_GEMINI_MODEL_ID,
         help=(
-            "Model id used by gemini_cli_agent "
-            f"(default: {_DEFAULT_GEMINI_MODEL_ID})."
+            f"Model id used by gemini_cli_agent (default: {_DEFAULT_GEMINI_MODEL_ID})."
         ),
     )
     parser.add_argument(
         "--openclaw-model-id",
         default=_DEFAULT_MODEL_ID,
-        help=(
-            "Model id used by openclaw_cli_agent "
-            f"(default: {_DEFAULT_MODEL_ID})."
-        ),
+        help=(f"Model id used by openclaw_cli_agent (default: {_DEFAULT_MODEL_ID})."),
     )
     parser.add_argument(
         "--opencode-workspace-root",
@@ -866,6 +958,7 @@ def main() -> None:
             extra_args=method.extra_args,
             workspace_root=method_workspace_root,
             reset_workspace=method.reset_workspace and not args.preserve_workspaces,
+            timeout_seconds=method.timeout_seconds,
         )
 
         if not args.dry_run:
@@ -873,9 +966,13 @@ def main() -> None:
             report_dir.mkdir(parents=True, exist_ok=True)
 
         for scenario_id in scenario_ids:
-            expected_trajectory = trajectory_dir / f"{method.agent_name}_{scenario_id}.json"
+            expected_trajectory = (
+                trajectory_dir / f"{method.agent_name}_{scenario_id}.json"
+            )
 
-            if args.skip_existing and expected_trajectory.exists():
+            if args.skip_existing and completed_trajectory_exists(
+                expected_trajectory, method.agent_name
+            ):
                 print(
                     f"Skipping scenario {scenario_id}; trajectory exists: {expected_trajectory}"
                 )

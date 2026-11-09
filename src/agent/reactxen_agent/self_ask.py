@@ -78,3 +78,25 @@ class SelfAskTool:
         """Return this round's call count and zero the counter."""
         calls, self.calls = self.calls, 0
         return calls
+
+    def as_stirrup_tool(self):
+        """Adapt the callable to Stirrup's typed tool interface."""
+        from pydantic import BaseModel, Field
+        from stirrup.core.models import Tool, ToolResult, ToolUseCountMetadata
+
+        class SelfAskParams(BaseModel):
+            context: str = Field(
+                description="Current task and evidence retrieved so far."
+            )
+
+        async def execute(params: SelfAskParams):
+            return ToolResult(
+                content=await self(params.context), metadata=ToolUseCountMetadata()
+            )
+
+        return Tool(
+            name=SELF_ASK_TOOL_NAME,
+            description=SELF_ASK_TOOL_DESCRIPTION,
+            parameters=SelfAskParams,
+            executor=execute,
+        )

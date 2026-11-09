@@ -76,3 +76,14 @@ def agent_run_span(
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))
             raise
+
+
+@contextmanager
+def scoped_run_context(suffix: str):
+    """Give a phase a distinct trace ID and restore its parent's context."""
+    parent = _run_id_var.get()
+    token = _run_id_var.set(f"{parent}__{suffix}" if parent else None)
+    try:
+        yield
+    finally:
+        _run_id_var.reset(token)

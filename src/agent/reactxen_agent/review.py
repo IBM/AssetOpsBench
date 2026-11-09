@@ -122,7 +122,8 @@ def check_preconditions(
 
 def _render_calls(trajectory: Trajectory, limit: int = 40) -> str:
     lines = [
-        f"{c.name}({json.dumps(c.input, default=str)[:200]})"
+        f"{c.name}({json.dumps(c.input, default=str)[:200]}) "
+        f"-> {json.dumps(c.output, default=str)[:1000]}"
         for c in trajectory.all_tool_calls[:limit]
     ]
     return "\n".join(lines) or "(none)"
@@ -150,7 +151,16 @@ def parse_review(text: str) -> tuple[Outcome, str, list[str]]:
         if match:
             key, rest = match.group(1).upper(), match.group(2).strip()
             if key == "OUTCOME":
-                outcome = _OUTCOMES.get(rest.lower().strip(". "), Outcome.PARTIAL)
+                # Legacy completion critics may annotate the enum with an explanation.
+                verdict = re.match(
+                    r"^(not[_ ]accomplished|partially[_ ]accomplished|accomplished)(?=$|[\s.,:;—–-])",
+                    rest.lower(),
+                )
+                outcome = (
+                    _OUTCOMES.get(verdict.group(1), Outcome.PARTIAL)
+                    if verdict
+                    else Outcome.PARTIAL
+                )
                 current = None
             else:
                 current = key
@@ -208,7 +218,7 @@ async def review(
         _log.warning("review call failed; falling back to preconditions", exc_info=True)
         failed = [p for p in preconditions if not p.passed]
         return ReviewVerdict(
-            outcome=Outcome.NOT_ACCOMPLISHED if failed else Outcome.ACCOMPLISHED,
+            outcome=Outcome.NOT_ACCOMPLISHED if failed else Outcome.PARTIAL,
             preconditions=preconditions,
             critique="Review unavailable; verdict from preconditions only.",
         )

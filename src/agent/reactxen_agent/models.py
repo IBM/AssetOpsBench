@@ -75,6 +75,21 @@ class RoundRecord:
     """How often the model invoked the self-ask tool this round.  Self-ask is
     a tool rather than a mandatory step, so a condition can be nominally on
     and mechanically absent; this is the counter that shows it."""
+    self_ask_input_tokens: int = 0
+    self_ask_output_tokens: int = 0
+    review_trajectory: Trajectory | None = None
+    reflect_trajectory: Trajectory | None = None
+    review_report: str = ""
+    review_plan: dict = field(default_factory=dict)
+    reflection_plan: dict = field(default_factory=dict)
+    actor_completed: bool = True
+    actor_round_notice: str = ""
+    final_actor_attempt: bool = False
+    advisory_clarified_question: str = ""
+    distillation: dict = field(default_factory=dict)
+    distill_input_tokens: int = 0
+    distill_output_tokens: int = 0
+    phase_errors: dict[str, str] = field(default_factory=dict)
     reflect_input_tokens: int = 0
     reflect_output_tokens: int = 0
 
@@ -89,6 +104,9 @@ class ReActXenTrajectory:
 
     rounds: list[RoundRecord] = field(default_factory=list)
     started_at: str | None = None
+    workspace_dir: str | None = None
+    phase_configuration: dict = field(default_factory=dict)
+    candidate_ledger: list[dict] = field(default_factory=list)
     stopped_because: str = ""
     """``"accomplished"``, ``"max_rounds"`` or ``"no_progress"``."""
 
@@ -102,6 +120,8 @@ class ReActXenTrajectory:
             r.trajectory.total_input_tokens
             + (r.review.input_tokens if r.review else 0)
             + r.reflect_input_tokens
+            + r.self_ask_input_tokens
+            + r.distill_input_tokens
             for r in self.rounds
         )
 
@@ -111,6 +131,8 @@ class ReActXenTrajectory:
             r.trajectory.total_output_tokens
             + (r.review.output_tokens if r.review else 0)
             + r.reflect_output_tokens
+            + r.self_ask_output_tokens
+            + r.distill_output_tokens
             for r in self.rounds
         )
 
@@ -119,8 +141,19 @@ class ReActXenTrajectory:
         return sum(r.self_ask_calls for r in self.rounds)
 
     @property
+    def turns(self) -> list:
+        """Flatten rounds for the shared trajectory display interface."""
+        return [
+            turn
+            for r in self.rounds
+            for trajectory in (r.trajectory, r.review_trajectory, r.reflect_trajectory)
+            if trajectory is not None
+            for turn in trajectory.turns
+        ]
+
+    @property
     def all_tool_calls(self) -> list:
-        return [tc for r in self.rounds for tc in r.trajectory.all_tool_calls]
+        return [tc for turn in self.turns for tc in turn.tool_calls]
 
     def self_ask_rate(self) -> float:
         """Self-ask invocations per ReAct step, across all rounds.

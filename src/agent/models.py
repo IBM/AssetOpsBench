@@ -52,6 +52,8 @@ class Trajectory:
     """ISO-8601 UTC timestamp of when ``run()`` began, for replay
     alignment with the corresponding trace.  Populated by the runner."""
 
+    finish_repair_attempts: int = 0
+
     @property
     def total_input_tokens(self) -> int:
         return sum(t.input_tokens for t in self.turns)
@@ -72,3 +74,4 @@ class AgentResult:
     question: str
     answer: str
     trajectory: Any
+    completed: bool = True
