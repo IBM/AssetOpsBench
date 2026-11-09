@@ -39,7 +39,7 @@ from observability import agent_run_span, persist_trajectory
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
-from ..runner import AgentRunner
+from ..runner import AgentRunner, mcp_server_env
 
 _log = logging.getLogger(__name__)
 
@@ -76,6 +76,7 @@ def _build_run_config(model_id: str) -> RunConfig | None:
 
 def _build_mcp_servers(
     server_paths: dict[str, Path | str],
+    env: dict[str, str] | None = None,
 ) -> list[MCPServerStdio]:
     """Convert server_paths entries into MCPServerStdio instances.
 
@@ -86,13 +87,13 @@ def _build_mcp_servers(
     servers: list[MCPServerStdio] = []
     for name, spec in server_paths.items():
         cmd_arg = str(spec) if isinstance(spec, Path) else spec
+        params: dict = {"command": "uv", "args": ["run", cmd_arg]}
+        if env is not None:
+            params["env"] = env
         servers.append(
             MCPServerStdio(
                 name=name,
-                params={
-                    "command": "uv",
-                    "args": ["run", cmd_arg],
-                },
+                params=params,
                 cache_tools_list=True,
             )
         )
@@ -216,7 +217,9 @@ class OpenAIAgentRunner(AgentRunner):
         ) as span:
             run_started = time.perf_counter()
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
-            mcp_servers = _build_mcp_servers(self._server_paths)
+            mcp_servers = _build_mcp_servers(
+                self._server_paths, env=mcp_server_env(self._model_id)
+            )
 
             # AsyncExitStack enters every server and closes them in LIFO order
             # on exit (success or exception).

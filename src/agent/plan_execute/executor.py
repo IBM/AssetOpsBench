@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from llm import LLMBackend
-from ..runner import DEFAULT_SERVER_PATHS
+from ..runner import DEFAULT_SERVER_PATHS, mcp_server_env
 from .models import Plan, PlanStep, StepResult
 
 _log = logging.getLogger(__name__)
@@ -60,13 +60,14 @@ class Executor:
         self._server_paths = (
             DEFAULT_SERVER_PATHS if server_paths is None else server_paths
         )
+        self._server_env = mcp_server_env(getattr(llm, "model_id", None))
 
     async def get_server_descriptions(self) -> dict[str, str]:
         """Query each registered MCP server and return formatted tool signatures."""
         descriptions: dict[str, str] = {}
         for name, path in self._server_paths.items():
             try:
-                tools = await _list_tools(path)
+                tools = await _list_tools(path, env=self._server_env)
                 lines = []
                 for t in tools:
                     params = ", ".join(
@@ -93,7 +94,7 @@ class Executor:
             if path is None:
                 continue
             try:
-                tools = await _list_tools(path)
+                tools = await _list_tools(path, env=self._server_env)
                 tool_schemas[name] = {
                     t["name"]: ", ".join(
                         f"{p['name']}: {p['type']}{'?' if not p['required'] else ''}"
@@ -171,7 +172,9 @@ class Executor:
                 question, step.task, step.tool, tool_schema, context, self._llm
             )
 
-            response = await _call_tool(server_path, step.tool, resolved_args)
+            response = await _call_tool(
+                server_path, step.tool, resolved_args, env=self._server_env
+            )
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
@@ -258,7 +261,9 @@ def _parse_json(raw: str) -> dict | None:
 # ── MCP protocol helpers ──────────────────────────────────────────────────────
 
 
-def _make_stdio_params(server: Path | str) -> "StdioServerParameters":
+def _make_stdio_params(
+    server: Path | str, env: dict[str, str] | None = None
+) -> "StdioServerParameters":
     """Build StdioServerParameters for a server spec.
 
     - str  → entry-point name; invoked as ``uv run <name>`` from the repo root.
@@ -272,6 +277,7 @@ def _make_stdio_params(server: Path | str) -> "StdioServerParameters":
             command="uv",
             args=["run", server],
             cwd=str(_REPO_ROOT),
+            env=env,
         )
     try:
         rel = server.relative_to(_REPO_ROOT)
@@ -280,17 +286,20 @@ def _make_stdio_params(server: Path | str) -> "StdioServerParameters":
             command="python",
             args=["-m", module],
             cwd=str(_REPO_ROOT),
+            env=env,
         )
     except ValueError:
-        return StdioServerParameters(command="python", args=[str(server)])
+        return StdioServerParameters(command="python", args=[str(server)], env=env)
 
 
-async def _list_tools(server_path: Path | str) -> list[dict]:
+async def _list_tools(
+    server_path: Path | str, env: dict[str, str] | None = None
+) -> list[dict]:
     """Connect to an MCP server via stdio and list its tools with parameter info."""
     from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
-    params = _make_stdio_params(server_path)
+    params = _make_stdio_params(server_path, env)
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -318,12 +327,17 @@ async def _list_tools(server_path: Path | str) -> list[dict]:
             return tools
 
 
-async def _call_tool(server_path: Path | str, tool_name: str, args: dict) -> str:
+async def _call_tool(
+    server_path: Path | str,
+    tool_name: str,
+    args: dict,
+    env: dict[str, str] | None = None,
+) -> str:
     """Connect to an MCP server via stdio and call a tool."""
     from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
-    params = _make_stdio_params(server_path)
+    params = _make_stdio_params(server_path, env)
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()

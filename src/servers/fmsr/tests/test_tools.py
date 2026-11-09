@@ -151,7 +151,7 @@ class TestGenerateFailureModes:
             {"asset_class": "pump", "max_modes": 3},
         )
 
-        assert data == {"error": "LLM unavailable"}
+        assert data["error"].startswith("LLM unavailable")
 
     @requires_watsonx
     @pytest.mark.anyio

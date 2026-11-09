@@ -40,7 +40,7 @@ from observability import agent_run_span, persist_trajectory
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
-from ..runner import AgentRunner
+from ..runner import AgentRunner, mcp_server_env
 from .finish_tool import ASSETOPS_FINISH_TOOL
 from .trajectory import build_trajectory, classify_tool, final_answer
 from .handoff_tools import build_handoff_tools
@@ -234,12 +234,14 @@ class StirrupAgentRunner(AgentRunner):
         from stirrup.tools.mcp import MCPConfig
 
         servers: dict[str, dict] = {}
+        env = mcp_server_env(self._model_id)
         for name, spec in self._server_paths.items():
             cmd_arg = str(spec)
             servers[name] = {
                 "command": "uv",
                 "args": ["run", "--directory", str(_REPO_ROOT), cmd_arg],
                 "cwd": str(_REPO_ROOT),
+                "env": env,
             }
         return MCPConfig.model_validate({"mcpServers": servers})
 
