@@ -573,6 +573,11 @@ def select_features(
              ranking[(name,agg)], selected[names], cd_margin}.
     """
     ex = extractors or EXTRACTORS
+    if not np.isfinite(np.asarray(series, dtype=float)).all():
+        # Every window would carry the gap into its features, and _feature_matrix turns
+        # what fails into 0.0, so the ranking would score the gaps. Clean first
+        # (composition.gate_gaps); the select_features tool does.
+        raise ValueError("series has missing or non-finite values; impute before selecting")
     lw = lookback or discover_lookback(series)
     wins, y = _tabulate(series, lw)
     F, names = _feature_matrix(wins, ex)
