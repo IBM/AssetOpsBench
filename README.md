@@ -22,16 +22,19 @@ Industrial intelligence begins with a practical question: **can an AI agent turn
 
 AssetOpsBench brings that question into a reproducible environment. It connects sensor observations, failure knowledge, time-series analysis, and maintenance workflows so researchers and practitioners can build agents, inspect their decisions, and evaluate their performance. The research benchmark includes **141 expert-curated scenarios**, with **99 single-agent tasks and 42 tasks requiring multiple agents**. [Read the benchmark study →](https://arxiv.org/abs/2506.03828)
 
-## Open data. New models. Independent research.
+## Open data. Trained models. New benchmarks.
 
-**Train smaller models. Build new agents. Test ideas others can reproduce.**
+**Fine-tune smaller models. Build new testbeds. Share the evidence.**
 
-| Impact | Built on the benchmark family |
+| Verified impact | Built on the benchmark family |
 | :--- | :--- |
-| **Fine-tuning with public artifacts** | A [FailureSensorIQ LoRA adapter](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora), an [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker), and a [Qwen2.5-7B QLoRA project](https://github.com/viniciusjsdev/Pesquisa_IC_IA/blob/main/FineTuning/docs/models/ft_failure_v1.md) publish training provenance and model artifacts. |
-| **Company-built extensions and agents** | **Samyama / VaidhyaMegha** released an [AOB-derived knowledge graph](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg); **GyanData’s Smart Maintenance Crew** [won the AOB challenge](https://ikdd.acm.org/cods-2025/awards.php). |
-| **A testbed for independent researchers** | **Ilia Shumailov** and **Christian Schroeder de Witt** co-authored [multi-CaMeL’s AOB utility evaluation](https://arxiv.org/abs/2610.05640). **Moharram Challenger** co-authored [Industrial-Instruction’s FailureSensorIQ experiments](https://arxiv.org/abs/2608.22817). |
-| **Transfer across domains** | **Good Start Labs’ Alex Duffy** [reports improved AOB performance after Diplomacy fine-tuning](https://every.to/playtesting/we-trained-an-ai-on-a-board-game-it-became-a-better-customer-support-agent-299b5938-09dd-4881-803f-aea21f0d461f); no AOB-specific improvement percentage is supplied. |
+| **Data for training and fine-tuning** | FailureSensorIQ supports [LoRA](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and [QLoRA](https://github.com/viniciusjsdev/Pesquisa_IC_IA/blob/main/FineTuning/docs/models/ft_failure_v1.md) projects. AOB examples train an [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker) and a [Columbia DistilBERT router](https://github.com/jasonlee-1024/AssetOpsBench/blob/main/src/llm/prepare_training_data.py). |
+| **Operational data, new applications** | **Samyama / VaidhyaMegha** released an [AOB-derived knowledge graph](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg). [shopfloor-agent](https://github.com/GBR-RL/shopfloor-agent) uses AOB sample data for its own maintenance-agent evaluation with **143 test tasks**. |
+| **22 visual scenarios · 2 released models** | [Columbia Team 23](https://github.com/amaan784/hpml-final-project) adds visual inspection and releases [Qwen](https://huggingface.co/amaan784/Qwen2.5-VL-7B-AWQ-W4A16-substation) and [Llama](https://huggingface.co/amaan784/Llama3-LLaVA-NeXT-8B-AWQ-W4A16-substation) INT4 checkpoints: quantization and calibration evaluated on the extension. |
+| **24 battery scenarios** | The connected [BESS-Bench course project](https://github.com/YushengLiSam/bess-benchmark/tree/main/scenarios/phmforge_aligned) extends PHMForge's task format to NASA battery data, with traceable ground truth and scoring code. |
+| **Independent research** | **Ilia Shumailov** and **Christian Schroeder de Witt** co-authored [multi-CaMeL's AOB evaluation](https://arxiv.org/abs/2610.05640). **Moharram Challenger** co-authored [Industrial-Instruction's FailureSensorIQ experiments](https://arxiv.org/abs/2608.22817). |
+
+*Selected examples verified November 10, 2026. Task sets and scores belong to each downstream study. [Evidence, revisions, training-versus-evaluation distinctions, and counting rules →](METRICS.md#verified-reuse-highlights)*
 
 **Research reach:** Cited in [IndustryBench](https://arxiv.org/html/2605.10267v1#S2), [Confucius](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf) (Minlan Yu and Soudeh Ghorbani), and [FORGE](https://aclanthology.org/2026.findings-emnlp.888/) (Dacheng Tao). These are citations, separate from dataset reuse. [More stories, source evidence, and study limits →](RESEARCH_USE.md)
 

@@ -43,6 +43,15 @@ To refresh the visuals, edit the source SVGs and this file, update the saved met
 
 See the [Google Scholar audit](CITATION_AUDIT.md) for dated record-level counts and deduplication limits. These raw counts are excluded from the headline metrics because versions overlap and some indexed citing items are not papers.
 
-## Community model releases highlighted in the README
+## Verified reuse highlights
 
-The README highlights three selected projects with training provenance and model artifacts: the [FailureSensorIQ Qwen3-4B LoRA adapter](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora), [ASTRIS MiniLM-L6 reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker), and [Pesquisa_IC_IA QLoRA experiments](https://github.com/viniciusjsdev/Pesquisa_IC_IA/blob/main/FineTuning/docs/modelos_disponiveis.md). The first two released weight files were inspected previously; the third was checked through manifests, metrics, and Git LFS pointers, without downloading the weight payloads. These are examples, not a model/adopter census or independently reproduced results. Reviewed November 10, 2026; selected revisions are saved in [research-use-evidence.json](assets/research-use-evidence.json).
+Reviewed November 10, 2026. These are selected examples from the [research-use register](RESEARCH_USE.md), not totals of adopters or independently reproduced results. They do not change the dated November 9 headline strip above.
+
+| README highlight | Verified scope and limits |
+| :--- | :--- |
+| **Training and fine-tuning** | The [FSIQ LoRA adapter](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora), [Pesquisa_IC_IA QLoRA project](https://github.com/viniciusjsdev/Pesquisa_IC_IA/blob/main/FineTuning/docs/modelos_disponiveis.md), [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker), and [Columbia router](https://github.com/jasonlee-1024/AssetOpsBench) document training on family data or derived labels. These are distinct examples, not a count of all models. Pesquisa weights were checked through Git LFS pointers; the router's checkpoint requires university login. No blanket claim of public weights is made for all four. |
+| **143 test tasks** | shopfloor-agent's own test split; excludes its 37 development tasks. Its AOB sample-data loader is pinned and checksummed. This is a derivative evaluation, not 143 additional canonical AOB scenarios. |
+| **22 visual scenarios / 2 released models** | One Columbia Team 23 extension and its two HF checkpoint repositories (Qwen and Llama). Cards and weight-file listings were inspected. Quantization/calibration is not supervised fine-tuning on AOB. The linked HF VLM-22 dataset was inaccessible; the README links the checked GitHub project instead. |
+| **24 battery scenarios** | The connected BESS-Bench release's PHMForge-aligned battery scenarios. The NASA battery data retains its own provenance. This is not a count of independent research groups or a replacement PHMForge leaderboard. |
+
+Selected revisions and inspection limits are saved in [research-use-evidence.json](assets/research-use-evidence.json) and the [fork/model audit](assets/fork-model-audit.json). Model training and downstream evaluations were not rerun. Company competition use, reported transfer evaluation, and additional studies remain linked in [RESEARCH_USE.md](RESEARCH_USE.md).
