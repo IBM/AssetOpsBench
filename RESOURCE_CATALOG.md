@@ -83,7 +83,7 @@ Update the catalog when a resource is released, accepted, moved, or retired. Ver
 
 ## Companion benchmark versioning
 
-DiagnosticIQ and PHMForge have dedicated entries in the overview. Link their papers, datasets, and comparisons through stable IDs. PHMForge’s current dataset card documents 99 scenarios, overlap with AssetOpsBench, and known issues; its older 75-scenario description is a different release. Do not count overlapping scenarios twice. DiagnosticIQ’s current paper is verified; its separate public dataset/code location remains an unresolved lead in the coverage inventory.
+DiagnosticIQ and PHMForge have dedicated entries in the overview. Link their papers, datasets, and comparisons through stable IDs. PHMForge’s current dataset card documents 99 scenarios, overlap with AssetOpsBench, and known issues; its older 75-scenario description is a different release. Do not count overlapping scenarios twice. DiagnosticIQ’s [public Kaggle dataset](https://www.kaggle.com/datasets/devindesilva1710/diagnosticiq-paper-rules) is now verified (version 4); its package contains question JSONL and asset descriptions, not a standalone model or full harness release. PHMForge also has a [Harbor package](https://hub.harborframework.com/datasets/phmforge/phmforge) with 123 tasks derived from its 99 scenarios; the adapted evaluation is separate from the MCP-paper protocol.
 
 ## Research-use and citation records
 

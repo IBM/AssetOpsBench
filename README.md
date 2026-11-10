@@ -93,7 +93,7 @@ AssetOpsBench connects complementary research questions across industrial operat
 | :--- | :--- | :--- |
 | **AssetOpsBench** | Can agents coordinate tools and evidence to complete industrial operations tasks? | [Paper](https://arxiv.org/abs/2506.03828) · [Data](https://huggingface.co/datasets/ibm-research/AssetOpsBench) |
 | **FailureSensorIQ** | Can models reason about relationships between failure modes and sensors? | [Paper](https://arxiv.org/abs/2506.03278) · [Data](https://huggingface.co/datasets/ibm-research/FailureSensorIQ) |
-| **DiagnosticIQ** | Given a triggered symbolic rule, can a model recommend the appropriate maintenance action? | [Paper](https://arxiv.org/abs/2605.08614) |
+| **DiagnosticIQ** | Given a triggered symbolic rule, can a model recommend the appropriate maintenance action? | [Paper](https://arxiv.org/abs/2605.08614) · [Data on Kaggle](https://www.kaggle.com/datasets/devindesilva1710/diagnosticiq-paper-rules) |
 | **PHMForge** | Can agents select and sequence algorithm-grounded tools for prognostics and health management? | [Paper](https://arxiv.org/abs/2604.01532) · [Data and datasheet](https://huggingface.co/datasets/ibm-research/PHMForge) |
 | **IoTBench / ReActXen** | Can language agents retrieve the right industrial sensor data? | [Published study](https://aclanthology.org/2025.emnlp-industry.24/) |
 | **IndustryAssetEQA** | Can industrial explanations be grounded in telemetry and failure knowledge? | [Published study](https://aclanthology.org/2026.acl-industry.49/) |
@@ -102,6 +102,8 @@ AssetOpsBench connects complementary research questions across industrial operat
 
 **PHMForge** pairs 99 scenarios across eight asset classes with 39 MCP-native tools in the August 2026 paper. The current dataset card provides separate rotating/aero and lithium-ion configurations and documents overlap with the AssetOpsBench PHM release, so their counts should not be added as independent tasks. [PHMForge paper](https://arxiv.org/abs/2604.01532v3) · [Dataset card](https://huggingface.co/datasets/ibm-research/PHMForge)
 
+**PHMForge on Harbor:** [123 packaged tasks](https://hub.harborframework.com/datasets/phmforge/phmforge) adapt the 99 scenarios for general-purpose agents working from data. This setup omits PHMForge’s MCP servers; its scores are separate from the paper’s evaluation. [Package details](https://huggingface.co/datasets/yushengli/PHMForge/blob/a60751b0525226f54a1b190d60d956a9e00a7632/harbor/README.md)
+
 The team has [announced NeurIPS 2026 acceptance for DiagnosticIQ and PHMForge](https://www.linkedin.com/posts/devinyasithdesilva_github-ibmassetopsbench-assetopsbench-activity-7509303817298124800-nDY8); PHMForge's dataset card identifies the Evaluations & Datasets track. These are acceptance announcements, distinct from records of conference presentations already delivered.
 
 ## Open data for industrial intelligence
@@ -109,7 +111,7 @@ The team has [announced NeurIPS 2026 acceptance for DiagnosticIQ and PHMForge](h
 | Resource | Research focus | Access |
 | :--- | :--- | :--- |
 | **AssetOpsBench** | Task-oriented evaluation of industrial agents; the paper describes a 141-scenario benchmark | [Dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) · [Paper](https://arxiv.org/abs/2506.03828) |
-| **DiagnosticIQ** | Rule-to-action maintenance recommendation, with targeted robustness variants | [Paper and benchmark specification](https://arxiv.org/abs/2605.08614) |
+| **DiagnosticIQ** | Rule-to-action maintenance recommendation, with targeted robustness variants | [Paper](https://arxiv.org/abs/2605.08614) · [Dataset](https://www.kaggle.com/datasets/devindesilva1710/diagnosticiq-paper-rules) |
 | **PHMForge** | Industrial prognostics and health management; 99 scenarios in the current dataset card | [Dataset](https://huggingface.co/datasets/ibm-research/PHMForge) · [Paper](https://arxiv.org/abs/2604.01532) |
 | **FailureSensorIQ** | Sensor–failure reasoning: 8,296 multiple-choice questions across 10 industrial asset types | [Dataset](https://huggingface.co/datasets/ibm-research/FailureSensorIQ) · [Code and evaluation](https://github.com/IBM/FailureSensorIQ) |
 | **IoTBench / ReActXen** | Natural-language industrial data access: 400+ tasks across five industrial sites, described in the associated paper | [Paper](https://aclanthology.org/2025.emnlp-industry.24/) · [Repository](https://github.com/IBM/ReActXen) |
