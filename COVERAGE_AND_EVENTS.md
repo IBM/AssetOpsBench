@@ -259,3 +259,9 @@ The already recorded A2B project also publishes [evaluation records](https://hug
 | [TechWalker on Industrial-Instruction](https://www.techwalker.com/2026/0920/3199953.shtml), September 20 | Chinese-language coverage discusses the already cataloged study’s FailureSensorIQ comparison. Panasonic documents are training sources, not proof of Panasonic participation or training on FailureSensorIQ. |
 
 [Evidence revisions and rejected leads](assets/container-discovery-snapshot.json) retain the container’s placeholder-grading limitation and distinguish local smoke tests from benchmark sweeps. No additional company deployment or public fine-tuned checkpoint was verified in this pass.
+
+## Predictive-maintenance developer discovery
+
+| Source | Verified contribution |
+| :--- | :--- |
+| [PdMData / kokikwbt predictive-maintenance](https://github.com/kokikwbt/predictive-maintenance/blob/9a20d556d2f3af3b69155b32df5b666b0c34081c/pdmdata/README.md#llm--agent-benchmarks-pdm-related) | The public dataset catalog recommends **FailureSensorIQ** for sensor–failure-mode QA and **AssetOpsBench** for industrial agent evaluation. Both appear in its reference-links section, outside the implemented data adapters. Checked November 10, 2026; repository visibility verified public before inspection. |
