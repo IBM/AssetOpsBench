@@ -151,6 +151,18 @@ New verified evidence in the [research-use register](RESEARCH_USE.md) includes *
 
 Additional checked dataset links are retained in the [GitHub discovery table](RESEARCH_USE.md#github-dataset-links-and-discovery). Notable exclusions: TORQ's attributed data directories contain placeholders; PdMData explicitly lists AOB/FSIQ outside supported adapters; ContextLab's archived dataset-resolution record is not a completed experiment; RuiSue719's three apps recommend FSIQ without an inspected FSIQ loader; `hierarchical-graphs` mentions FSIQ in notebook reading material; SimulAgent's feasibility report explicitly defers implementation; `justsearch` labels its PHMForge comparison `self_reproduced: false`; `industrial-copilot` uses AI4I data and its AOB coverage note is not an AOB run. InspectionBench's related review package and the mirrored HPML smart-grid repositories are not counted twice.
 
+## Fork and linked-Hugging-Face follow-up — November 10, 2026
+
+The [saved audit](assets/fork-model-audit.json) covers fork listings for AOB, FailureSensorIQ, ReActXen, DiagnosticIQ, the PHMForge implementation, and EmbodiedQA. The latter complements IndustryAssetEQA's branch inside AOB. The API returned **372 forks**: 359 AOB, 3 FSIQ, 7 ReActXen, 3 PHMForge, and none for the other two listed repositories. Fork totals are discovery scope, not dataset adoption.
+
+- Attempted default-branch comparisons for every listed fork: **364 succeeded; 8 failed**. Six failures had no common ancestor; their READMEs were inspected separately. Two repositories could not be resolved. History mismatches are not treated as evidence of new reuse.
+- Listed branches for the **120 forks whose metadata showed a push after creation**, then inspected selected project branches and artifacts. Inherited upstream branches, maintenance fixes, unchanged copies, and duplicate course-team forks are not new adopters. This does not constitute a full review of every branch or commit.
+- Ran **21 HF model-discovery queries**: nine names/aliases, three canonical dataset tags, seven publication tags, and two linked-dataset tags. Followed model links from project READMEs; inspected six cards/revisions and their file listings, including the two previously recorded LoRA/reranker releases. Empty name/tag searches do not prove no untagged model exists.
+
+The [research-use register](RESEARCH_USE.md#forks-and-linked-model-releases) adds AOB-derived classifier training, released visual-model quantizations, FSIQ evaluation by the two Industrial-Instruction models, an interrupted GEPA notebook, and hydraulic/water-domain framework adaptations. These are explicitly different uses. In particular, quantization is not AOB supervised fine-tuning, and Industrial-Instruction's FSIQ test set is not its training corpus.
+
+The HF link `amaan784/AssetOpsBench-VLM-22` returned unauthorized; no public dataset-release claim is added. The Team 21 checkpoint requires university login. Empty planning/combined training-data files in the Columbia QLoRA repository were recorded rather than promoted as dataset releases. No new independently verified fine-tuned model on PHMForge, DiagnosticIQ, IoTBench, or IndustryAssetEQA was established in this pass.
+
 ## Refresh procedure
 
 Open each canonical publication and its preprint record; export or record the citing works; deduplicate by DOI, arXiv ID, and title. Check primary full text for the resource name, methods, tables, and bibliography. Record author overlap before calling use external. Count distinct works separately from distinct citing organizations. Keep coverage, citations, experiments, and extensions as separate measures. Record retrieval date and source whenever publishing a count.
