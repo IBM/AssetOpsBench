@@ -191,3 +191,21 @@ Or4k2!'s [Lost-in-the-Middle-Benchmark](https://www.kaggle.com/code/orecord/lost
 | [Authentic but Not Neutral](https://aclanthology.org/2026.realm-1.8/) | External evaluation-science discussion uses published AOB-Live cost statistics; not an AOB agent run. |
 
 Company or individual reposts of a study are not separate experiments. Use of Qwen models does not establish Alibaba's use of AOB; references to Arcee's use of a Diplomacy environment do not establish an Arcee AOB evaluation.
+
+## Additional public references — November 10
+
+These links broaden discovery across the family. Catalog entries, automated summaries, syndication, and conference context are kept separate from experimental reuse in the [research-use register](RESEARCH_USE.md).
+
+| Reference | What it establishes |
+| :--- | :--- |
+| [NeurIPS 2025 FailureSensorIQ poster](https://neurips.cc/virtual/2025/loc/san-diego/poster/121805) and [slides](https://neurips.cc/media/neurips-2025/Slides/121805.pdf) | Official December 4 poster-session record and public presentation material, supplementing the paper link. |
+| [IBM TechXchange 2025 session 3196 archive](https://community.ibm.com/community/user/viewdocument/3196-transforming-asset-managemen) | Anuradha Bhamidipaty’s Maximo generative-AI session archive; indexed slide text mentions AOB. Conference context, not evidence of a customer deployment or a dedicated AOB talk. |
+| [Kaggle Enterprise Operations Bench](https://www.kaggle.com/benchmarks/ibm-research/enterprise-ops) | Platform context connecting the IBM/Kaggle initiative with AssetOpsBench and ITBench; not a separate external adoption story. |
+| [Industrial Atlas](https://www.indatlas.com/datasets/failuresensoriq/), [BenchLM](https://benchlm.ai/benchmarks/failuresensoriq), and [benchgap](https://benchgap.net/b/failuresensoriq/current) | FailureSensorIQ catalog/score-discovery pages. Benchgap explicitly distinguishes sourced measurements from model-based estimates; estimates are not benchmark runs. No rankings are promoted here. |
+| [ELAMUR](https://research.elamur.ai/free/en/papers/shyalika-2026-industryasseteqa-neurosymbolic-operational-intelligence-system/) and [arXivLens](https://arxivlens.com/paperview/details/industryasseteqa-a-neurosymbolic-operational-intelligence-system-for-embodied-question-answering-in-industrial-asset-maintenance-413-bd14d63a) | IndustryAssetEQA research summaries; not independent evaluations or evidence of deployment by companies discussed in the paper. |
+| [AI Paper Notes](https://en.papernotes.org/NeurIPS2026/llm_agent/phmforge_evaluating_llm_agents_on_industrial_prognostics_through_mcp_native_algo/), [Emergent Mind](https://www.emergentmind.com/papers/2604.01532), and [Commonplace](https://commonplace.workforcefutures.net/paper/arxiv%3A2604.01532) | PHMForge paper summaries/annotations. Some describe an earlier paper version; use the primary current paper for task counts and venue status. |
+| [Paperium DiagnosticIQ](https://paperium.net/article/library/18321/diagnosticiq-a-benchmark-for-llm-based-industrial-maintenance-actionrecommendation-from-symbolic-rul) and [Paperium IndustryAssetEQA](https://paperium.net/article/en/17592/industryasseteqa-a-neurosymbolic-operational-intelligence-system-for-embodiedquestion-answering-in-i) | Paper-discovery summaries, including explicitly AI-generated content; not new studies. |
+| [Downstream, September 9](https://www.downstream.news/archive/2026-09-09/) | Aggregates the previously cataloged AgentBrief industrial-benchmark coverage and first-party sources; not a separate independent experiment. |
+| [Shadowgraph FailureSensorIQ](https://shadowgraph.io/IBM/FailureSensorIQ) and [MCP100 AssetOpsBench](https://mcp100.dev/mcp/assetopsbench) | Repository/directory discovery, not evidence that the directory publishers ran or extended the datasets. |
+
+The [reference snapshot](assets/reference-discovery-snapshot.json) records the bounded search and pinned public code revisions. A mention is not counted as reuse, a model-based estimate is not a measurement, and multiple pages describing one study are not multiple adopters.
