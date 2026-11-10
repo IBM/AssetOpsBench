@@ -90,3 +90,7 @@ DiagnosticIQ and PHMForge have dedicated entries in the overview. Link their pap
 Track impact for each benchmark family, using the [research-use register](RESEARCH_USE.md). Record `resource_id`, `citing_work`, `authors`, `author_overlap`, `study_version`, `evidence_location`, and `relationship`: `evaluated_on`, `extended`, `cited`, `discussed`, or `prospective_use`. An external article about AOB does not establish experimental reuse of FailureSensorIQ or another family member. Include a bibliographic index and retrieval date before publishing any citation count.
 
 For downstream reuse, record the exact training/evaluation split, whether weights or outputs are released, any fallback or synthetic data path, modified scoring, artifact revision, and whether an actual run is evidenced. A dataset loader, a model card, a saved experiment, and a citation support different claims.
+
+### Additional released scenario extension
+
+The [smart-grid transformer dataset](https://huggingface.co/datasets/rohithkanathur/assetopsbench-transformer-scenarios-dataset/blob/e3a0664ca455eb58be5fc5f3298bb06691cbb9bf/README.md) publishes 50 evaluation scenarios from a Columbia HPML project, with a Parquet data file and structured grading-rubric field. It extends the AOB task format; it does not increase the canonical scenario count. [Code-level integrations and limits](RESEARCH_USE.md#additional-artifacts-from-the-deeper-cross-family-pass--november-10).
