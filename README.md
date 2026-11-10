@@ -28,13 +28,12 @@ AssetOpsBench brings that question into a reproducible environment. It connects 
 
 | Verified impact | Built on the benchmark family |
 | :--- | :--- |
-| **Data for training and fine-tuning** | FailureSensorIQ supports [LoRA](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and [QLoRA](https://github.com/viniciusjsdev/Pesquisa_IC_IA/blob/main/FineTuning/docs/models/ft_failure_v1.md) projects. AOB examples train an [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker) and a [Columbia DistilBERT router](https://github.com/jasonlee-1024/AssetOpsBench/blob/main/src/llm/prepare_training_data.py). |
+| **Data for training and fine-tuning** | FailureSensorIQ supports [LoRA](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and [QLoRA](https://github.com/viniciusjsdev/Pesquisa_IC_IA/blob/main/FineTuning/docs/models/ft_failure_v1.md) projects. AOB-derived examples train an [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker) and a [Columbia DistilBERT router](https://github.com/jasonlee-1024/AssetOpsBench/blob/main/src/llm/prepare_training_data.py). |
 | **Operational data, new applications** | **Samyama / VaidhyaMegha** released an [AOB-derived knowledge graph](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg). [shopfloor-agent](https://github.com/GBR-RL/shopfloor-agent) uses AOB sample data for its own maintenance-agent evaluation with **143 test tasks**. |
 | **22 visual scenarios · 2 released models** | [Columbia Team 23](https://github.com/amaan784/hpml-final-project) adds visual inspection and releases [Qwen](https://huggingface.co/amaan784/Qwen2.5-VL-7B-AWQ-W4A16-substation) and [Llama](https://huggingface.co/amaan784/Llama3-LLaVA-NeXT-8B-AWQ-W4A16-substation) INT4 checkpoints: quantization and calibration evaluated on the extension. |
-| **24 battery scenarios** | The connected [BESS-Bench course project](https://github.com/YushengLiSam/bess-benchmark/tree/main/scenarios/phmforge_aligned) extends PHMForge's task format to NASA battery data, with traceable ground truth and scoring code. |
 | **Independent research** | **Ilia Shumailov** and **Christian Schroeder de Witt** co-authored [multi-CaMeL's AOB evaluation](https://arxiv.org/abs/2610.05640). **Moharram Challenger** co-authored [Industrial-Instruction's FailureSensorIQ experiments](https://arxiv.org/abs/2608.22817). |
 
-*Selected examples verified November 10, 2026. Task sets and scores belong to each downstream study. [Evidence, revisions, training-versus-evaluation distinctions, and counting rules →](METRICS.md#verified-reuse-highlights)*
+*Sources checked November 10, 2026; downstream experiments were not rerun. Task sets and scores belong to each study. [Evidence, revisions, training-versus-evaluation distinctions, and counting rules →](METRICS.md#verified-reuse-highlights)*
 
 **Research reach:** Cited in [IndustryBench](https://arxiv.org/html/2605.10267v1#S2), [Confucius](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf) (Minlan Yu and Soudeh Ghorbani), and [FORGE](https://aclanthology.org/2026.findings-emnlp.888/) (Dacheng Tao). These are citations, separate from dataset reuse. [More stories, source evidence, and study limits →](RESEARCH_USE.md)
 
@@ -109,7 +108,7 @@ The team has [announced NeurIPS 2026 acceptance for DiagnosticIQ and PHMForge](h
 | Resource | Research focus | Access |
 | :--- | :--- | :--- |
 | **AssetOpsBench** | Task-oriented evaluation of industrial agents; the paper describes a 141-scenario benchmark | [Dataset](https://huggingface.co/datasets/ibm-research/AssetOpsBench) · [Paper](https://arxiv.org/abs/2506.03828) |
-| **DiagnosticIQ** | Rule-to-action maintenance recommendation, with targeted robustness variants | [Paper and benchmark specification](https://arxiv.org/abs/2605.08614) · [Author-maintained code](https://github.com/DevinDeSilva/DiagnosticIQ) |
+| **DiagnosticIQ** | Rule-to-action maintenance recommendation, with targeted robustness variants | [Paper and benchmark specification](https://arxiv.org/abs/2605.08614) |
 | **PHMForge** | Industrial prognostics and health management; 99 scenarios in the current dataset card | [Dataset](https://huggingface.co/datasets/ibm-research/PHMForge) · [Paper](https://arxiv.org/abs/2604.01532) |
 | **FailureSensorIQ** | Sensor–failure reasoning: 8,296 multiple-choice questions across 10 industrial asset types | [Dataset](https://huggingface.co/datasets/ibm-research/FailureSensorIQ) · [Code and evaluation](https://github.com/IBM/FailureSensorIQ) |
 | **IoTBench / ReActXen** | Natural-language industrial data access: 400+ tasks across five industrial sites, described in the associated paper | [Paper](https://aclanthology.org/2025.emnlp-industry.24/) · [Repository](https://github.com/IBM/ReActXen) |
@@ -154,7 +153,7 @@ The portfolio below brings together AssetOpsBench and related work from its team
 - **KDD 2026 hands-on tutorial:** [Building Reliable Industrial Agents with MCP: A Hands-on AssetOpsBench Tutorial for AI-Driven Operations](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/). Also listed in the [official tutorial program](https://kdd2026.kdd.org/tutorials/).
 - **AAAI 2026 tutorial:** [From Inception to Productization: Hands-on Lab for the Lifecycle of Multimodal Agentic AI in Industry 4.0](https://research.ibm.com/publications/from-inception-to-productization-hands-on-lab-for-the-lifecycle-of-multimodal-agentic-ai-in-industry-40).
 - **AAAI 2026 bridge contribution:** [Knowledge-Guided AI for Industrial Asset Health Monitoring](https://sites.google.com/stevens.edu/kgml-bridge-aaai-26).
-- **AAAI 2026 workshop contribution:** [Agentic Code Generation for Heuristic Rules in Equipment Monitoring](https://underline.io/lecture/143674-agentic-code-generation-for-heuristic-rules-in-equipment-monitoring).
+- **AAAI 2026 workshop contribution:** [Agentic Code Generation for Heuristic Rules in Equipment Monitoring](https://research.ibm.com/publications/agentic-code-generation-for-heuristic-rules-in-equipment-monitoring).
 
 ## Learn by building
 
@@ -176,7 +175,7 @@ The portfolio below brings together AssetOpsBench and related work from its team
 | **DiagnosticIQ research leaderboard** | Maintenance-action recommendation and variant robustness; published tables rather than a verified standalone live service | [Paper and score definitions](https://arxiv.org/html/2605.08614v2#S5.SS1) |
 | **PHMForge research comparisons** | Framework/model configurations on PHM scenarios; the paper reports a public leaderboard | [Paper](https://arxiv.org/abs/2604.01532) · [Dataset release](https://huggingface.co/datasets/ibm-research/PHMForge) |
 | **CODS competition rankings** | Submitted systems evaluated in planning and execution tracks, including public and hidden evaluation | [Codabench competition](https://www.codabench.org/competitions/10206/) · [Results analysis](https://arxiv.org/abs/2605.08518) |
-| **Reproducible tutorial leaderboard** | Agent outputs evaluated against static scenario data in a guided workflow | [KDD tutorial](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/) · [Evaluation documentation](https://ibm.github.io/AssetOpsBench/docs/static-json-evaluation.html) |
+| **Reproducible tutorial leaderboard** | Agent outputs evaluated against static scenario data in a guided workflow | [KDD tutorial](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/) · [Evaluation documentation](docs/static-json-evaluation.md) |
 
 Read scores alongside the dataset revision, model configuration, track, and scoring protocol. The [CODS retrospective](https://arxiv.org/abs/2605.08518) shows why: public scores and hidden execution scores had a correlation of −0.13 in its analyzed sample, and changing the scaling of one composite-score term would exchange the top two teams. A ranking is meaningful only with its measurement context.
 
@@ -329,7 +328,7 @@ Explore the [contribution guide](https://github.com/IBM/AssetOpsBench/blob/main/
 
 ---
 
-*Reviewed November 9, 2026. This overview inventories resources identified through the public AssetOpsBench repository and linked primary sources. Paper titles and tracks follow publisher records where available. Repository-only event entries are linked to the project record; public listings may not capture every team activity.*
+*Reviewed November 10, 2026. Headline metrics retain their dated November 9 snapshot. This overview inventories resources identified through the public AssetOpsBench repository and linked primary sources. Paper titles and tracks follow publisher records where available. Repository-only event entries are linked to the project record; public listings may not capture every team activity.*
 
 
 ---
@@ -648,3 +647,5 @@ Thanks to these wonderful people ✨
 <div align="center">
 
 [![MseeP.ai Security Assessment Badge](https://mseep.net/pr/ibm-assetopsbench-badge.png)](https://mseep.ai/app/ibm-assetopsbench)
+
+</div>
