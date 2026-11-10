@@ -1,6 +1,6 @@
 # Citation discovery and verification
 
-Reviewed November 9, 2026 using Google Scholar's “Cited by” lists and primary papers. This is a dated research-discovery audit, not a unique-citation total. Keyword search results are not citation counts. Scholar may split proceedings, preprints, and changed titles into different records, and may index blogs or patents alongside papers.
+Reviewed November 10, 2026 using Google Scholar's “Cited by” lists and primary papers. This is a dated research-discovery audit, not a unique-citation total. Keyword search results are not citation counts. Scholar may split proceedings, preprints, and changed titles into different records, and may index blogs or patents alongside papers.
 
 ## Records inspected
 
@@ -115,7 +115,41 @@ The [supplied Google Scholar profile](https://scholar.google.com/citations?hl=en
 | [Inherit-MAS](https://arxiv.org/html/2610.02396v1) | Cites Evoflux; experiments use WorkBench and HotpotQA, not AOB. |
 | [AdvPlan-Bench](https://arxiv.org/html/2608.00832v1) and [Learning Compositional Meta-Routing](https://arxiv.org/html/2608.00106v1) | Cite SPIRAL as planning-related work; their own task collections do not establish AOB data reuse. |
 
-Further leads remain unpromoted: TrustTrajectory encountered browser verification; two SSRN records (Vigilance Unbundling and Dependency-Complete Tool Discovery) lack verified full-text context. ToolForge metadata was checked, but not its citation context. The semantic-collapse industrial-agent paper's publisher preview describes a separate Green Button benchmark; its exact CodeReAct citation context remains unverified. The latest Cost-Awareness revision and the remaining SPIRAL citing record still need checking. No new dataset-reuse claim is inferred from these leads.
+This November 9 snapshot left several primary-source checks open. Their November 10 dispositions and access limitations are recorded below; no dataset-reuse claim is inferred from an inaccessible lead.
+
+## Remaining-lead review and expanded GitHub scan — November 10, 2026
+
+This follow-up rechecked the outstanding leads from the six-family audit and related-method citation trails. The SPIRAL Scholar list was revisited on both pages: it now displays 12 records, including the previously unchecked **MCP-Cosmos** and a new SSRN path-planning record. This is another dated discovery snapshot, not 12 additional AOB dataset users.
+
+| Follow-up source | Verified disposition |
+| :--- | :--- |
+| [ToolForge](https://aclanthology.org/2026.emnlp-main.1250.pdf) | Full PDF checked. Section 2 cites SPIRAL; author block includes **Meituan**. Its synthesis/training uses separate virtual-tool data, not AOB datasets. |
+| [Cost-Awareness in Tree-Search LLM Planning, v2](https://arxiv.org/html/2505.14656v2) | Current revision checked, resolving the changed-title lead. Section 2 references SPIRAL; its experiments use its own planning setting. The earlier v1 inspection alone could not resolve this citation. |
+| [The Evolution of Tool Use in LLM Agents](https://arxiv.org/html/2603.22862) | Section 3.3/reference 223 discusses SPIRAL as reflective planning. Survey citation, not benchmark execution. |
+| [MetaRoute-Bench](https://arxiv.org/html/2608.00107v1) and [Adversarial Course-of-Action Generation](https://arxiv.org/html/2609.26059v1) | Related-work discussions cite SPIRAL. Their own routing/planning workloads are separate from the AOB family. |
+| [MCP-Cosmos](https://arxiv.org/html/2605.09131v1) | Connected method extension: Giridhar Ganapavarapu and Dhaval Patel evaluate a SPIRAL-Exec configuration with world models on MCP-Bench. Verified method reuse, not a new external AOB dataset experiment. |
+| [Imagine Before You Act](https://doi.org/10.1145/3841560.3841567) | The [publisher-deposited Crossref reference list](https://api.crossref.org/works/10.1145/3841560.3841567) explicitly contains AOB. Bibliographic citation verified; full-text experiment context remains inaccessible. No dataset-use claim. |
+| [Large-scale factor analysis](https://arxiv.org/html/2609.36515v1) | Rechecked full text; FailureSensorIQ remains a verified reference. Its per-benchmark score inclusion was not resolved, so no new raw-data or score-reuse claim is promoted. |
+
+### Access-limited leads after follow-up
+
+| Lead | Remaining limitation |
+| :--- | :--- |
+| Imagine Before You Act; Hard-CAD; CemEval; Han/Wang/Meng/Zio PHM foundation-model survey | Original four still lack inspectable full-text experiment context. ACM/Elsevier requests were unavailable; IEEE presented browser verification. Metadata, abstracts, and the Imagine bibliography do not establish dataset reuse. |
+| [TrustTrajectory](https://openreview.net/forum?id=u8TM3hZont) | OpenReview still presents browser verification. |
+| SSRN: [Vigilance Unbundling](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7406038), [Dependency-Complete Tool Discovery](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7620582), [CertiGATE](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7529119), [learned work-order dispatching](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7095162), [Legality, Not Routing](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7556542) | Primary requests failed or returned access denial; citation context and experiments remain unverified. |
+| [Semantic-collapse industrial-agent study](https://doi.org/10.1016/j.asoc.2026.116428) | Publisher preview describes a separate Green Button task set; full CodeReAct citation context remains unavailable. |
+| [Learning from supervision with semantic and episodic memory](https://doi.org/10.1145/3786335.3813154); [LLMs in Evolutionary Computation](https://ieeexplore.ieee.org/abstract/document/11755706/); [From Impasse to Adaptation](https://ojs.aaai.org/index.php/AAAI-SS/article/view/43399) | Scholar leads checked; primary full text could not be retrieved in this pass. No attribution of AOB data use to their authors or institutions. |
+
+These are checked but unresolved leads, not confirmed negative results. No access challenge was bypassed.
+
+### GitHub: code, notebooks, data attribution, and links
+
+Fourteen completed GitHub code searches covered **all six family names/aliases**, exact Hugging Face IDs for AOB/FailureSensorIQ, Python files, and notebooks. They returned **1,542 file hits / 1,309 distinct repository-path pairs across 293 repositories** before relevance filtering. These are discovery volumes, including unrelated IoTBench/DiagnosticIQ names, official code, repeated versions, catalogs, and mirrors. They are **not adoption counts**, and not every returned file was read in full. Search caps and selected inspected revisions are saved in the [search snapshot](assets/github-discovery-snapshot.json). GitHub's legacy code-search index is incomplete, particularly for forks; the scan is bounded.
+
+New verified evidence in the [research-use register](RESEARCH_USE.md) includes **Pesquisa_IC_IA QLoRA training**, **shopfloor-agent's pinned AOB sample-data evaluation**, **A2B's FailureSensorIQ harness and saved ablations**, **EviPlan's attributed software extension**, **InspectionBench's infrastructure/benchmark extension**, and **BESS-Bench's connected PHMForge-aligned battery scenarios**. A first-person AOB smoke test in `tesla_agent` and SelfGrowthGraphRag's experiment journal are qualified separately. None of these account names establishes an employer's use.
+
+Additional checked dataset links are retained in the [GitHub discovery table](RESEARCH_USE.md#github-dataset-links-and-discovery). Notable exclusions: TORQ's attributed data directories contain placeholders; PdMData explicitly lists AOB/FSIQ outside supported adapters; ContextLab's archived dataset-resolution record is not a completed experiment; RuiSue719's three apps recommend FSIQ without an inspected FSIQ loader; `hierarchical-graphs` mentions FSIQ in notebook reading material; SimulAgent's feasibility report explicitly defers implementation; `justsearch` labels its PHMForge comparison `self_reproduced: false`; `industrial-copilot` uses AI4I data and its AOB coverage note is not an AOB run. InspectionBench's related review package and the mirrored HPML smart-grid repositories are not counted twice.
 
 ## Refresh procedure
 
