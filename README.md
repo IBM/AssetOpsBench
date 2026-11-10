@@ -22,18 +22,19 @@ Industrial intelligence begins with a practical question: **can an AI agent turn
 
 AssetOpsBench brings that question into a reproducible environment. It connects sensor observations, failure knowledge, time-series analysis, and maintenance workflows so researchers and practitioners can build agents, inspect their decisions, and evaluate their performance. The research benchmark includes **141 expert-curated scenarios**, with **99 single-agent tasks and 42 tasks requiring multiple agents**. [Read the benchmark study →](https://arxiv.org/abs/2506.03828)
 
-## Open data. Trained models. New benchmarks.
+## Open data. Fine-tuned models. Independent research.
 
-**Fine-tune smaller models. Build new testbeds. Share the evidence.**
+**Released adapters · Public training code · New industrial testbeds**
 
 | Verified impact | Built on the benchmark family |
 | :--- | :--- |
-| **Data for training and fine-tuning** | FailureSensorIQ supports [LoRA](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and [QLoRA](https://github.com/viniciusjsdev/Pesquisa_IC_IA/blob/main/FineTuning/docs/models/ft_failure_v1.md) projects. AOB-derived examples train an [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker) and a [Columbia DistilBERT router](https://github.com/jasonlee-1024/AssetOpsBench/blob/main/src/llm/prepare_training_data.py). |
+| **From dataset to fine-tuned models** | **Damarla & Zhu** publish [FailureSensorIQ retrieval and QLoRA code](https://github.com/seshu-damarla/industrial-failure-sensor-reasoning/tree/70feb3b5afbd0d6e7b6d083d6069e32b295d9811). The family also supports a released [Qwen3 LoRA adapter](https://huggingface.co/predictive-maintenance/qwen3-4b-failuresensoriq-lora) and [ASTRIS reranker](https://huggingface.co/DestinyOtto/astris-minilm-l6-assetops-reranker), with [public training-data documentation](https://github.com/Otto-Destiny/assetops-minilm-l6-reranker/blob/49083a5081dc4910b0aa104196df4b00de0f90fb/docs/dataset_card.md). |
+| **Data for model-routing research** | **Jaeseob Han & Sangdon Park** use FailureSensorIQ in [small/large-model escalation research](https://github.com/Sangdon-Park/selfish-escalation/tree/6757a7611f388e8c0061e7da0b128d939d8229bf), publishing question-ID-keyed measurements, analysis code, and saved results. |
 | **Operational data, new applications** | **Samyama / VaidhyaMegha** released an [AOB-derived knowledge graph](https://huggingface.co/datasets/VaidhyaMegha/assetops-kg). [shopfloor-agent](https://github.com/GBR-RL/shopfloor-agent) uses AOB sample data for its own maintenance-agent evaluation with **143 test tasks**. |
 | **22 visual scenarios · 2 released models** | [Columbia Team 23](https://github.com/amaan784/hpml-final-project) adds visual inspection and releases [Qwen](https://huggingface.co/amaan784/Qwen2.5-VL-7B-AWQ-W4A16-substation) and [Llama](https://huggingface.co/amaan784/Llama3-LLaVA-NeXT-8B-AWQ-W4A16-substation) INT4 checkpoints: quantization and calibration evaluated on the extension. |
 | **Independent research** | **Ilia Shumailov** and **Christian Schroeder de Witt** co-authored [multi-CaMeL's AOB evaluation](https://arxiv.org/abs/2610.05640). **Moharram Challenger** co-authored [Industrial-Instruction's FailureSensorIQ experiments](https://arxiv.org/abs/2608.22817). |
 
-*Sources checked November 10, 2026; downstream experiments were not rerun. Task sets and scores belong to each study. [Evidence, revisions, training-versus-evaluation distinctions, and counting rules →](METRICS.md#verified-reuse-highlights)*
+*Sources checked November 10, 2026; downstream experiments were not rerun. Training claims are publisher-reported; task sets and scores belong to each study. [Evidence, revisions, training-versus-evaluation distinctions, and counting rules →](METRICS.md#verified-reuse-highlights)*
 
 **Research reach:** Cited in [IndustryBench](https://arxiv.org/html/2605.10267v1#S2), [Confucius](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf) (Minlan Yu and Soudeh Ghorbani), and [FORGE](https://aclanthology.org/2026.findings-emnlp.888/) (Dacheng Tao). These are citations, separate from dataset reuse. [More stories, source evidence, and study limits →](RESEARCH_USE.md)
 
