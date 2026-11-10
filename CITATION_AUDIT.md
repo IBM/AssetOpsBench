@@ -188,3 +188,7 @@ Disposition matters: GOMAX’s related-work comparison is not dataset use; PHMFo
 ## Platform follow-up — November 10
 
 The live, signed-out Harbor registry verifies `phmforge/phmforge`, revision 3. Its 123 tasks adapt 99 scenarios and use a different execution contract from the paper. Kaggle’s public dataset API and version-4 archive resolve the DiagnosticIQ dataset-access lead. The public PHMForge Hugging Face mirror was checked separately; private GitHub repositories were not used as publication evidence. Additional checks distinguish Mercor occupational mapping and whatmodel’s reuse of published scores from fresh benchmark execution. See the [platform snapshot](assets/platform-access-snapshot.json) and [coverage details](COVERAGE_AND_EVENTS.md#harbor-and-kaggle-platform-check--november-10). These findings do not alter headline paper/download counts.
+
+## Result-aggregation follow-up — November 10
+
+A further web/public-code pass verified BenchmarkList’s DiagnosticIQ table and model JSON, AI Pulse’s paper-linked DiagnosticIQ coverage, and University of Zagreb Benchmark Explorer records. The Explorer’s PHMForge-named record actually points to PHMForge-SME; retain that lineage distinction. Previously cataloged ReasonLab/Simplicity Paradox and Mahal Systems were deduplicated. These additions are published-result reuse or discovery, not independent model runs. [Pinned records and dispositions](assets/result-discovery-snapshot.json).
