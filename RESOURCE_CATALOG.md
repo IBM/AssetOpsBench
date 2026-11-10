@@ -98,3 +98,7 @@ The [smart-grid transformer dataset](https://huggingface.co/datasets/rohithkanat
 ### Further execution and evaluation artifacts
 
 [Stirrup](https://github.com/IBM/AssetOpsBench/blob/e844f6468c6c68b328022e7ca8e31da140842cc7/docs/stirrup-agent.md) and [OpenCode](https://github.com/IBM/AssetOpsBench/blob/e844f6468c6c68b328022e7ca8e31da140842cc7/docs/opencode-agent.md) have public AOB runner documentation, including provider routing and code-versus-tools execution scope. A2B additionally releases [evaluation-result JSONL](https://huggingface.co/datasets/ariffazil/a2b-eval-results/blob/c0888fb89a986b007fdef00a43512f5b678273dc/README.md); I-ARIF-CANON keeps [AOB-derived records in a separate held-out file](https://huggingface.co/datasets/ariffazil/I-ARIF-CANON/blob/238a4cea2fda40a15f7cee9abddf0fe5e96c77cc/i-arif-a2b-heldout.jsonl). These artifacts do not increase the core benchmark or paper counts.
+
+### Hydraulic-rig environment extension
+
+The [Edward-H26 fork](https://github.com/Edward-H26/AssetOpsBench/blob/106ee90e3b3e13c69a280a50221b3b7a600ef7e3/docs/hydraulic_rig/README.md) implements a timed hydraulic-rig environment, action/diagnosis MCP tools, and Gymnasium/OpenEnv interfaces. It reuses the IndustryAssetEQA facts-file format and a pinned 17-scenario AOB subset. [Evidence and release limitations](RESEARCH_USE.md#hydraulic-rig-adaptation--november-10); no additional trained model or canonical benchmark score is claimed.
