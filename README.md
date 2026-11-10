@@ -349,7 +349,7 @@ We are expanding **AssetOpsBench** to cover a broader range of industrial challe
 3. **Submit** a Pull Request or open an [Issue](https://github.com/IBM/AssetOpsBench/issues) with the tag `new-scenario`
 4. **Contact us** with questions:
    - Dhaval Patel — [pateldha@us.ibm.com](mailto:pateldha@us.ibm.com)
-   - Nianjun Zhou — [jzhou@us.ibm.com](mailto:jzhou@us.ibm.com)
+   - Shuxin Lin — [shuxin.lin@ibm.com](mailto:shuxin.lin@ibm.com)
 
 ---
 
