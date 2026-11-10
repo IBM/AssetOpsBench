@@ -75,7 +75,7 @@ Active development is on `main`. Publication-specific code is maintained on bran
 
 ## From operational evidence to evaluated action
 
-The current repository exposes five domain MCP servers—**IoT, failure modes, time-series analysis, work orders, and vibration**—plus shared utilities. Its agent implementations include Plan Execute, Deep Agent, Claude Agent, and OpenAI Agent. Explore their interfaces and configuration in the [repository](https://github.com/IBM/AssetOpsBench) and [server documentation](https://github.com/IBM/AssetOpsBench/blob/main/docs/mcp-servers.md).
+The current repository exposes five domain MCP servers—**IoT, failure modes, time-series analysis, work orders, and vibration**—plus shared utilities. Its agent implementations include Plan Execute, Deep Agent, Claude Agent, OpenAI Agent, [Stirrup](https://github.com/IBM/AssetOpsBench/blob/e844f6468c6c68b328022e7ca8e31da140842cc7/docs/stirrup-agent.md), and [OpenCode](https://github.com/IBM/AssetOpsBench/blob/e844f6468c6c68b328022e7ca8e31da140842cc7/docs/opencode-agent.md). Explore their interfaces and configuration in the [repository](https://github.com/IBM/AssetOpsBench) and [server documentation](https://github.com/IBM/AssetOpsBench/blob/main/docs/mcp-servers.md).
 
 Together, these components support a research workflow:
 

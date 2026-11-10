@@ -94,3 +94,7 @@ For downstream reuse, record the exact training/evaluation split, whether weight
 ### Additional released scenario extension
 
 The [smart-grid transformer dataset](https://huggingface.co/datasets/rohithkanathur/assetopsbench-transformer-scenarios-dataset/blob/e3a0664ca455eb58be5fc5f3298bb06691cbb9bf/README.md) publishes 50 evaluation scenarios from a Columbia HPML project, with a Parquet data file and structured grading-rubric field. It extends the AOB task format; it does not increase the canonical scenario count. [Code-level integrations and limits](RESEARCH_USE.md#additional-artifacts-from-the-deeper-cross-family-pass--november-10).
+
+### Further execution and evaluation artifacts
+
+[Stirrup](https://github.com/IBM/AssetOpsBench/blob/e844f6468c6c68b328022e7ca8e31da140842cc7/docs/stirrup-agent.md) and [OpenCode](https://github.com/IBM/AssetOpsBench/blob/e844f6468c6c68b328022e7ca8e31da140842cc7/docs/opencode-agent.md) have public AOB runner documentation, including provider routing and code-versus-tools execution scope. A2B additionally releases [evaluation-result JSONL](https://huggingface.co/datasets/ariffazil/a2b-eval-results/blob/c0888fb89a986b007fdef00a43512f5b678273dc/README.md); I-ARIF-CANON keeps [AOB-derived records in a separate held-out file](https://huggingface.co/datasets/ariffazil/I-ARIF-CANON/blob/238a4cea2fda40a15f7cee9abddf0fe5e96c77cc/i-arif-a2b-heldout.jsonl). These artifacts do not increase the core benchmark or paper counts.
