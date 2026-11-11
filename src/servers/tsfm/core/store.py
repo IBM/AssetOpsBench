@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 import os
 from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import quote
 
 from servers.db_errors import DATA_UNAVAILABLE
 
@@ -139,7 +141,11 @@ class CouchStore(Store):
         )
 
     def _u(self, *p):
-        return "/".join([self.url, *p])
+        # Requests normalizes dot segments even when percent-encoded. All other
+        # components must remain single segments, including IDs containing '/'.
+        if any(part in (".", "..") for part in p):
+            raise ValueError("database path components cannot be dot segments")
+        return "/".join([self.url, *(quote(part, safe="") for part in p)])
 
     def _req(self, method, *parts, **kwargs):
         """Send one request; an unreachable server raises StoreUnavailable rather than
