@@ -27,9 +27,29 @@ _TARGET_KEY = "_target_"
 
 
 def _import_target(path: str):
-    """Import a dotted path 'pkg.module.Name' -> the class/callable Name."""
+    """Resolve only public estimator classes from supported model packages."""
+    if not isinstance(path, str):
+        raise TypeError("estimator target must be a dotted class path")
+    parts = path.split(".")
+    if (
+        len(parts) < 3
+        or parts[0] not in {"sktime", "sklearn", "pyod"}
+        or any(not part.isidentifier() or part.startswith("_") for part in parts)
+    ):
+        raise ValueError(
+            "estimator target must be a public sktime, sklearn, or pyod class"
+        )
     module, name = path.rsplit(".", 1)
-    return getattr(importlib.import_module(module), name)
+    target = getattr(importlib.import_module(module), name)
+    base_module, base_name = {
+        "sktime": ("sktime.base", "BaseEstimator"),
+        "sklearn": ("sklearn.base", "BaseEstimator"),
+        "pyod": ("pyod.models.base", "BaseDetector"),
+    }[parts[0]]
+    base = getattr(importlib.import_module(base_module), base_name)
+    if not isinstance(target, type) or not issubclass(target, base):
+        raise TypeError("estimator target must be an estimator class")
+    return target
 
 
 def _build(spec: Any) -> Any:
