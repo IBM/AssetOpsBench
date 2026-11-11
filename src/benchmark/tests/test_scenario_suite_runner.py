@@ -63,10 +63,7 @@ def test_scenario_mappings_cover_expected_categories() -> None:
     assert mr.SCENARIO_IDS_ALL["wosr"] == tuple(
         str(scenario_id) for scenario_id in range(1, 67)
     )
-    assert all(
-        mr.SCENARIO_IDS_LITE[category]
-        for category in expected - {"fmea"}
-    )
+    assert all(mr.SCENARIO_IDS_LITE[category] for category in expected - {"fmea"})
     assert mr.SCENARIO_IDS_LITE["fmea"] == ()
     assert mr.SCENARIO_IDS_MINI["fcc"] == ("303", "318", "322", "324")
 
@@ -101,21 +98,15 @@ def test_scenario_ids_for_selector_resolves_combined_all_categories() -> None:
 
 
 def test_scenario_ids_for_selector_resolves_lite_category() -> None:
-    assert mr.scenario_ids_for_selector("fcc_lite") == list(
-        mr.SCENARIO_IDS_LITE["fcc"]
-    )
+    assert mr.scenario_ids_for_selector("fcc_lite") == list(mr.SCENARIO_IDS_LITE["fcc"])
 
 
 def test_scenario_ids_for_selector_resolves_mini_category() -> None:
-    assert mr.scenario_ids_for_selector("fcc_mini") == list(
-        mr.SCENARIO_IDS_MINI["fcc"]
-    )
+    assert mr.scenario_ids_for_selector("fcc_mini") == list(mr.SCENARIO_IDS_MINI["fcc"])
 
 
 def test_scenario_ids_for_selector_resolves_fmea_all() -> None:
-    assert mr.scenario_ids_for_selector("fmea_all") == list(
-        mr.SCENARIO_IDS_ALL["fmea"]
-    )
+    assert mr.scenario_ids_for_selector("fmea_all") == list(mr.SCENARIO_IDS_ALL["fmea"])
 
 
 def test_scenario_ids_for_selector_resolves_profile_shorthands() -> None:
@@ -334,8 +325,7 @@ def test_validate_workspace_root_rejects_repo_paths() -> None:
 def test_model_dir_name_normalizes_router_model_ids() -> None:
     assert mr.model_dir_name("tokenrouter/MiniMax-M3") == "tokenrouter-MiniMax-M3"
     assert (
-        mr.model_dir_name("tokenrouter/openai/gpt-5.4")
-        == "tokenrouter-openai-gpt-5.4"
+        mr.model_dir_name("tokenrouter/openai/gpt-5.4") == "tokenrouter-openai-gpt-5.4"
     )
     assert mr.model_dir_name(" rits/qwen3:30b ") == "rits-qwen3-30b"
 
@@ -913,3 +903,38 @@ def test_run_evaluation_dry_run_does_not_call_subprocess(
     )
 
     assert called is False
+
+
+def test_reactxen_suite_budgets_and_timeout_are_forwarded():
+    args = mr._build_parser().parse_args(
+        [
+            "--scenario-root",
+            "/private/scenarios",
+            "--agent_name",
+            "reactxen_agent",
+            "--reactxen-max-rounds",
+            "2",
+            "--reactxen-max-turns",
+            "15",
+            "--reactxen-review-max-turns",
+            "8",
+            "--reactxen-reflect-max-turns",
+            "9",
+            "--reactxen-no-distill-question",
+            "--reactxen-timeout",
+            "600",
+        ]
+    )
+    method = mr.build_methods(args)["reactxen_agent"]
+    assert method.timeout_seconds == 600
+    assert "--no-distill-question" in method.extra_args
+    assert method.extra_args[method.extra_args.index("--max-turns") + 1] == "15"
+    assert method.extra_args[method.extra_args.index("--review-max-turns") + 1] == "8"
+
+
+def test_reactxen_resume_does_not_skip_an_incomplete_checkpoint(tmp_path):
+    path = tmp_path / "run.json"
+    path.write_text('{"trajectory":{"stopped_because":"review_incomplete"}}')
+    assert not mr.completed_trajectory_exists(path, "reactxen_agent")
+    path.write_text('{"trajectory":{"stopped_because":"max_rounds"}}')
+    assert mr.completed_trajectory_exists(path, "reactxen_agent")
