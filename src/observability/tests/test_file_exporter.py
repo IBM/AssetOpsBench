@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -13,6 +14,9 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from observability import agent_run_span, set_run_context
 from observability import runspan as _runspan
 from observability.file_exporter import OTLPJsonFileExporter
+
+# Encoding needs protobuf and the OTLP encoder, both from the "otel" group.
+_OTLP_ENCODER = "opentelemetry.exporter.otlp.proto.common._internal.trace_encoder"
 
 
 def _reset_provider():
@@ -32,6 +36,7 @@ def _install_file_exporter(path: Path) -> TracerProvider:
 
 
 def test_file_exporter_writes_jsonl(tmp_path: Path):
+    pytest.importorskip(_OTLP_ENCODER)
     out = tmp_path / "traces.jsonl"
     _install_file_exporter(out)
 
@@ -64,6 +69,7 @@ def test_file_exporter_creates_parent_dir(tmp_path: Path):
 
 
 def test_file_exporter_appends(tmp_path: Path):
+    pytest.importorskip(_OTLP_ENCODER)
     out = tmp_path / "traces.jsonl"
     _install_file_exporter(out)
 
