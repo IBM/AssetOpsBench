@@ -9,6 +9,11 @@ from AssetOpsBench is the *MCP server definition* convention: a single
 
 Env (AssetOpsBench-compatible): COUCHDB_URL, COUCHDB_USERNAME, COUCHDB_PASSWORD,
 WO_DBNAME, FAILURE_CODE_DBNAME. Set AOB_READONLY=1 to expose only the read tools.
+
+Set AOB_REQUIRE_APPROVAL=1 to gate approve_workorder/close_workorder/cancel_workorder
+behind an operator pending-approval step instead of running them immediately (off by
+default; see governance.py and scripts/wo_pending.py). Uses WO_PENDING_DBNAME
+(default "workorder_pending") for the pending-action records.
 """
 
 import logging
@@ -19,6 +24,7 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from . import governance as gov
 from . import workorders as wo
 from .couch import CouchClient
 from .models import (
@@ -52,6 +58,7 @@ mcp = FastMCP(
 
 _db: Optional[CouchClient] = None
 _fcc_db: Optional[CouchClient] = None
+_pending_db: Optional[CouchClient] = None
 
 
 def db() -> CouchClient:
@@ -78,6 +85,18 @@ def failure_code_db() -> CouchClient:
     return _fcc_db
 
 
+def pending_db() -> CouchClient:
+    global _pending_db
+    if _pending_db is None:
+        _pending_db = CouchClient(
+            base_url=os.environ.get("COUCHDB_URL", "http://localhost:5984"),
+            db=os.environ.get("WO_PENDING_DBNAME", "workorder_pending"),
+            username=os.environ.get("COUCHDB_USERNAME", "admin"),
+            password=os.environ.get("COUCHDB_PASSWORD", "password"),
+        )
+    return _pending_db
+
+
 # --------------------------------------------------------------------------- #
 # MCP-facing tool functions: call the Maximo-derived logic (dict envelope), then
 # convert to the typed Pydantic result model (AssetOpsBench output convention).
@@ -88,6 +107,26 @@ def _failed(res: Dict[str, Any]) -> Optional[ErrorResult]:
     if not res.get("success"):
         return ErrorResult(error=res.get("error", "unknown error"))
     return None
+
+
+async def _check_approval(
+    tool: str, wonum: str, site_id: str, args: Dict[str, Any]
+) -> Optional[ErrorResult]:
+    """Gate a status-transition tool behind AOB_REQUIRE_APPROVAL.
+
+    Returns None when the call may proceed (gate off, or this exact call was
+    already approved and is being consumed now). Returns an ErrorResult when
+    it must not — including when the pending store is unreachable, which
+    fails closed rather than letting the call through.
+    """
+    if not gov.approval_required():
+        return None
+    result = await gov.PendingStore(pending_db()).try_consume(
+        tool, wonum, site_id, args
+    )
+    if result["ok"]:
+        return None
+    return _failed(gov.pending_response(tool, result["action_id"], result["status"]))
 
 
 def _mutation(
@@ -335,7 +374,10 @@ async def update_workorder(
 async def approve_workorder(
     wonum: str, site_id: str
 ) -> Union[WorkOrderMutationResult, ErrorResult]:
-    """Approve a work order (-> APPR)."""
+    """Approve a work order (-> APPR). Gated by AOB_REQUIRE_APPROVAL; see governance.py."""
+    gate = await _check_approval("approve_workorder", wonum, site_id, {})
+    if gate is not None:
+        return gate
     return _mutation(
         await wo.approve_workorder(db(), wonum, site_id), "approved (APPR)"
     )
@@ -363,7 +405,16 @@ async def close_workorder(
     failure_code: Optional[str] = None,
     resolution_notes: Optional[str] = None,
 ) -> Union[WorkOrderMutationResult, ErrorResult]:
-    """Close a work order (-> COMP) with actuals and resolution."""
+    """Close a work order (-> COMP) with actuals and resolution.
+    Gated by AOB_REQUIRE_APPROVAL; see governance.py."""
+    args = {
+        "actual_hours": actual_hours,
+        "failure_code": failure_code,
+        "resolution_notes": resolution_notes,
+    }
+    gate = await _check_approval("close_workorder", wonum, site_id, args)
+    if gate is not None:
+        return gate
     res = await wo.close_workorder(
         db(), wonum, site_id, actual_hours, failure_code, resolution_notes
     )
@@ -373,7 +424,10 @@ async def close_workorder(
 async def cancel_workorder(
     wonum: str, site_id: str, reason: Optional[str] = None
 ) -> Union[WorkOrderMutationResult, ErrorResult]:
-    """Cancel a work order (-> CAN)."""
+    """Cancel a work order (-> CAN). Gated by AOB_REQUIRE_APPROVAL; see governance.py."""
+    gate = await _check_approval("cancel_workorder", wonum, site_id, {"reason": reason})
+    if gate is not None:
+        return gate
     return _mutation(
         await wo.cancel_workorder(db(), wonum, site_id, reason), "cancelled (CAN)"
     )
@@ -411,7 +465,13 @@ _TOOL_ANNOTATIONS = {
         destructiveHint=False,
         idempotentHint=True,
         openWorldHint=True,
-    )
+    ),
+    # Status-transition tools: irreversible under the current data model (no
+    # status-transition guard — see docs/mcp-servers.md), so clients that honor
+    # MCP's destructiveHint can choose to confirm with a human before calling.
+    approve_workorder: ToolAnnotations(destructiveHint=True, idempotentHint=False),
+    close_workorder: ToolAnnotations(destructiveHint=True, idempotentHint=False),
+    cancel_workorder: ToolAnnotations(destructiveHint=True, idempotentHint=False),
 }
 for _fn, _title in _TOOLS:
     mcp.tool(title=_title, annotations=_TOOL_ANNOTATIONS.get(_fn))(_fn)
