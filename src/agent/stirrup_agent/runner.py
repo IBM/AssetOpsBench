@@ -35,15 +35,15 @@ import shutil
 import time
 from pathlib import Path
 
+from llm.routers import resolve_model, resolve_router_creds
 from observability import agent_run_span, persist_trajectory
 
-from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, Trajectory
 from ..runner import AgentRunner
-from .finish_tool import ASSETOPS_FINISH_TOOL
-from .trajectory import build_trajectory, classify_tool, final_answer
+from .finish_tool import ASSETOPS_FINISH_TOOL, structured_finish_answer
 from .handoff_tools import build_handoff_tools
+from .trajectory import build_trajectory, classify_tool, final_answer
 
 _log = logging.getLogger(__name__)
 
@@ -89,9 +89,7 @@ def _build_full_summary_logger():
     from stirrup.utils.logging import AgentLogger, console
 
     class _FullSummaryLogger(AgentLogger):
-        def context_summarization_complete(
-            self, summary: str, bridge: str
-        ) -> None:
+        def context_summarization_complete(self, summary: str, bridge: str) -> None:
             console.print(Text("✓ Summary Generated", style="bold green"))
             console.print(summary, markup=False, soft_wrap=True)
 
@@ -168,10 +166,38 @@ class StirrupAgentRunner(AgentRunner):
         max_turns: int = 30,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
+        system_prompt: str | None = None,
+        extra_tools: tuple | list = (),
+        code_provider=None,
+        runner_name: str = "stirrup-agent",
+        persist_result: bool = True,
+        network_disabled: bool = False,
+        require_finish: bool = False,
+        finish_tool=None,
+        finish_repair_attempts: int = 0,
     ) -> None:
         super().__init__(llm, server_paths)
         if code_backend not in {"docker", "local"}:
             raise ValueError("code_backend must be 'docker' or 'local'")
+        self._system_prompt = (
+            system_prompt if system_prompt is not None else AGENT_SYSTEM_PROMPT
+        )
+        self._extra_tools = list(extra_tools)
+        self._code_provider = code_provider
+        self._runner_name = runner_name
+        self._persist_result = persist_result
+        self._network_disabled = network_disabled
+        self._require_finish = require_finish
+        if not 0 <= finish_repair_attempts <= 3:
+            raise ValueError("finish_repair_attempts must be between 0 and 3")
+        self._finish_repair_attempts = finish_repair_attempts
+        self._finish_tool = (
+            finish_tool if finish_tool is not None else ASSETOPS_FINISH_TOOL
+        )
+        if code_enabled and network_disabled and code_backend != "docker":
+            raise ValueError(
+                "Network-disabled code execution requires the Docker backend"
+            )
         self._model_id = model
         self._code_enabled = code_enabled
         self._code_backend = code_backend
@@ -181,7 +207,9 @@ class StirrupAgentRunner(AgentRunner):
             else None
         )
         if preserve_workspace and self._workspace_dir is None:
-            raise ValueError("workspace_dir is required when preserve_workspace is enabled")
+            raise ValueError(
+                "workspace_dir is required when preserve_workspace is enabled"
+            )
         if preserve_workspace and code_backend not in {"docker", "local"}:
             raise ValueError(
                 "preserve_workspace is only supported with docker or local code backends"
@@ -240,6 +268,23 @@ class StirrupAgentRunner(AgentRunner):
                 "command": "uv",
                 "args": ["run", "--directory", str(_REPO_ROOT), cmd_arg],
                 "cwd": str(_REPO_ROOT),
+                "env": {
+                    key: value
+                    for key, value in os.environ.items()
+                    if key.startswith("COUCHDB_")
+                    or key.endswith("_DBNAME")
+                    or key
+                    in {
+                        "SCENARIOS_DATA_DIR",
+                        "DEFAULT_MANIFEST",
+                        "AOB_READONLY",
+                        "UV_NO_SYNC",
+                        "UV_PROJECT_ENVIRONMENT",
+                        "PYTHONPATH",
+                        "STIRRUP_CODE_IMAGE",
+                        "LOG_LEVEL",
+                    }
+                },
             }
         return MCPConfig.model_validate({"mcpServers": servers})
 
@@ -271,6 +316,11 @@ class StirrupAgentRunner(AgentRunner):
             return provider_cls(**kwargs)
         from stirrup.tools.code_backends.docker import DockerCodeExecToolProvider
 
+        if self._network_disabled:
+            from .offline_docker import OfflineDockerCodeExecToolProvider
+
+            DockerCodeExecToolProvider = OfflineDockerCodeExecToolProvider
+
         if self._preserve_workspace:
             provider_cls = _preserving_provider_class(DockerCodeExecToolProvider)
             return provider_cls(
@@ -286,26 +336,45 @@ class StirrupAgentRunner(AgentRunner):
 
     def _build_tools(self) -> list:
         if not self._code_enabled:
-            return [self._build_mcp_provider()]
+            return [
+                *([self._build_mcp_provider()] if self._server_paths else []),
+                *self._extra_tools,
+            ]
 
-        code_provider = self._build_code_provider()
+        code_provider = (
+            self._code_provider
+            if self._code_provider is not None
+            else self._build_code_provider()
+        )
         return [
             code_provider,
             *build_handoff_tools(code_provider),
-            self._build_mcp_provider(exec_env=code_provider),
+            *(
+                [self._build_mcp_provider(exec_env=code_provider)]
+                if self._server_paths
+                else []
+            ),
+            *self._extra_tools,
         ]
 
     def _build_system_prompt(self) -> str:
         """Append code-execution guidance when the code track is enabled."""
         if not self._code_enabled:
-            return AGENT_SYSTEM_PROMPT
+            return self._system_prompt
 
         backend_prompt = (
             _DOCKER_CODE_EXEC_SYSTEM_PROMPT
             if self._code_backend == "docker"
             else _LOCAL_CODE_EXEC_SYSTEM_PROMPT
         )
-        return f"{AGENT_SYSTEM_PROMPT}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}"
+        offline_prompt = (
+            "\nInternet access is disabled in this sandbox (Docker network=none). "
+            "Do not attempt Google/web searches, HTTP requests, curl, wget, browser tools, "
+            "or package downloads. Use collected workspace data and attached domain MCP tools only."
+            if self._network_disabled
+            else ""
+        )
+        return f"{self._system_prompt}\n{_CODE_EXEC_SYSTEM_PROMPT}\n{backend_prompt}{offline_prompt}"
 
     # -- run ---------------------------------------------------------------
 
@@ -313,7 +382,7 @@ class StirrupAgentRunner(AgentRunner):
         from stirrup import Agent
 
         with agent_run_span(
-            "stirrup-agent", model=self._model_id, question=question
+            self._runner_name, model=self._model_id, question=question
         ) as span:
             run_started = time.perf_counter()
             started_at = _dt.datetime.now(_dt.UTC).isoformat()
@@ -321,10 +390,12 @@ class StirrupAgentRunner(AgentRunner):
             client = self._build_client()
             agent = Agent(
                 client=client,
-                name="assetops",
+                name="assetops"
+                if self._runner_name == "stirrup-agent"
+                else self._runner_name,
                 system_prompt=self._build_system_prompt(),
                 tools=self._build_tools(),
-                finish_tool=ASSETOPS_FINISH_TOOL,
+                finish_tool=self._finish_tool,
                 max_turns=self._max_turns,
                 context_summarization_cutoff=_CONTEXT_SUMMARIZATION_CUTOFF,
                 logger=_build_full_summary_logger(),
@@ -341,20 +412,48 @@ class StirrupAgentRunner(AgentRunner):
 
             async with agent.session() as session:
                 finish_params, history, _metadata = await session.run(question)
+                repair_attempts = 0
+                if finish_params is None and self._finish_repair_attempts:
+                    from .finish_repair import repair_finish
+
+                    _log.warning(
+                        "%s: normal turn budget exhausted; entering up to %d finish-only repair steps",
+                        self._runner_name,
+                        self._finish_repair_attempts,
+                    )
+                    finish_params, repair_attempts = await repair_finish(
+                        session,
+                        self._finish_tool,
+                        history,
+                        self._finish_repair_attempts,
+                    )
+                    if finish_params is not None:
+                        # SessionAgent's result state also drives output preservation on exit.
+                        session._output_state.finish_params = finish_params
 
             trajectory = build_trajectory(history)
             trajectory.started_at = started_at
-            answer = final_answer(history, finish_params)
+            trajectory.finish_repair_attempts = repair_attempts
+            completed = structured_finish_answer(finish_params) is not None
+            answer = final_answer(
+                history, finish_params, require_finish=self._require_finish
+            )
 
             self._annotate_span(span, trajectory, answer, run_started)
-            persist_trajectory(
-                runner_name="stirrup-agent",
-                model=self._model_id,
+            if self._persist_result:
+                persist_trajectory(
+                    runner_name=self._runner_name,
+                    model=self._model_id,
+                    question=question,
+                    answer=answer,
+                    trajectory=trajectory,
+                )
+            return AgentResult(
                 question=question,
                 answer=answer,
                 trajectory=trajectory,
+                completed=completed,
             )
-            return AgentResult(question=question, answer=answer, trajectory=trajectory)
 
     def _annotate_span(
         self, span, trajectory: Trajectory, answer: str, started: float
