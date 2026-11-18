@@ -180,6 +180,38 @@ async def test_orchestrator_accumulates_token_usage_across_llm_calls():
 
 
 @pytest.mark.anyio
+async def test_orchestrator_persists_token_usage_alongside_trajectory(
+    monkeypatch, tmp_path
+):
+    """The meter's totals must reach the persisted record, not just the span.
+
+    Regression for the plan-execute runner's tracked usage never reaching
+    persist_trajectory(): metrics built from the persisted file (offline
+    evaluation) always saw tokens_in=tokens_out=0 for this runner.
+    """
+    from observability import set_run_context
+
+    monkeypatch.setenv("AGENT_TRAJECTORY_DIR", str(tmp_path))
+    set_run_context(run_id="run-usage")
+
+    llm = _UsageReportingLLM(
+        [
+            (_TWO_STEP_PLAN, 100, 50),
+            (_STEP1_ARGS, 20, 5),
+            (_STEP2_ARGS, 30, 5),
+            (_FINAL_ANSWER, 200, 40),
+        ]
+    )
+    runner = PlanExecuteRunner(llm)
+    with _patch_mcp()[0], _patch_mcp()[1]:
+        await runner.run("Q")
+
+    record = json.loads((tmp_path / "run-usage.json").read_text())
+    assert record["tokens_in"] == runner._meter.input_tokens == 350
+    assert record["tokens_out"] == runner._meter.output_tokens == 100
+
+
+@pytest.mark.anyio
 async def test_orchestrator_no_tool_returns_expected_output(sequential_llm):
     """A step with tool=none returns expected_output without any MCP or LLM call."""
     plan_with_no_tool = (
