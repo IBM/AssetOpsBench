@@ -36,12 +36,14 @@ def _install_fake_openai(monkeypatch, captured: dict):
 
 
 def test_is_openai_compat():
+    assert is_openai_compat("beatapi/gpt-5.6-sol")
     assert is_openai_compat("tokenrouter/MiniMax-M3")
     assert not is_openai_compat("litellm_proxy/aws/claude-opus-4-6")
     assert not is_openai_compat("watsonx/meta-llama/llama-3-3-70b-instruct")
 
 
 def test_make_backend_dispatch():
+    assert isinstance(make_backend("beatapi/gpt-5.6-sol"), OpenAICompatBackend)
     assert isinstance(make_backend("tokenrouter/MiniMax-M3"), OpenAICompatBackend)
     assert isinstance(make_backend("litellm_proxy/aws/claude-opus-4-6"), LiteLLMBackend)
     assert isinstance(make_backend("watsonx/meta-llama/x"), LiteLLMBackend)
@@ -65,6 +67,20 @@ def test_tokenrouter_strips_prefix_and_routes(monkeypatch):
     assert captured["api_key"] == "tr-key"
     assert result.text == "hi"
     assert (result.input_tokens, result.output_tokens) == (3, 2)
+
+
+def test_beatapi_strips_prefix_and_routes(monkeypatch):
+    captured: dict = {}
+    _install_fake_openai(monkeypatch, captured)
+    monkeypatch.setenv("BEATAPI_BASE_URL", "https://api.beatapi.io/v1")
+    monkeypatch.setenv("BEATAPI_API_KEY", "example-key")
+
+    result = make_backend("beatapi/gpt-5.6-sol").generate_with_usage("hello")
+
+    assert captured["model"] == "gpt-5.6-sol"
+    assert captured["base_url"] == "https://api.beatapi.io/v1"
+    assert captured["api_key"] == "example-key"
+    assert result.text == "hi"
 
 
 def test_model_id_property_keeps_full_string():

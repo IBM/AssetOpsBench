@@ -12,6 +12,7 @@ Prefixes::
 
     litellm_proxy/<model>   LiteLLM proxy  (LITELLM_BASE_URL / LITELLM_API_KEY)
     tokenrouter/<model>     TokenRouter    (TOKENROUTER_BASE_URL / TOKENROUTER_API_KEY)
+    beatapi/<model>         BeatAPI       (BEATAPI_BASE_URL / BEATAPI_API_KEY)
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from typing import NamedTuple
 
 LITELLM_PREFIX = "litellm_proxy/"
 TOKENROUTER_PREFIX = "tokenrouter/"
+BEATAPI_PREFIX = "beatapi/"
 
 
 class RouterCreds(NamedTuple):
@@ -35,11 +37,12 @@ class RouterCreds(NamedTuple):
 PROXY_ROUTERS: dict[str, tuple[str, str]] = {
     LITELLM_PREFIX: ("LITELLM_BASE_URL", "LITELLM_API_KEY"),
     TOKENROUTER_PREFIX: ("TOKENROUTER_BASE_URL", "TOKENROUTER_API_KEY"),
+    BEATAPI_PREFIX: ("BEATAPI_BASE_URL", "BEATAPI_API_KEY"),
 }
 
 # Prefixes whose endpoints speak the OpenAI Chat Completions API and can be
 # driven by the native ``openai`` SDK (llm.OpenAICompatBackend).
-OPENAI_COMPAT_PREFIXES: tuple[str, ...] = (TOKENROUTER_PREFIX,)
+OPENAI_COMPAT_PREFIXES: tuple[str, ...] = (TOKENROUTER_PREFIX, BEATAPI_PREFIX)
 
 
 def router_prefix(model_id: str) -> str | None:

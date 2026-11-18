@@ -192,16 +192,17 @@ def _resolve_opencode_model_and_provider(
         return model_id, {}, {}
 
     provider_id = creds.prefix.rstrip("/").replace("_", "-")
-    provider_name = "TokenRouter" if provider_id == "tokenrouter" else "LiteLLM Proxy"
+    provider_name = {
+        "tokenrouter": "TokenRouter",
+        "beatapi": "BeatAPI",
+    }.get(provider_id, "LiteLLM Proxy")
     model_name = resolve_model(model_id)
     opencode_model = f"{provider_id}/{model_name}"
-    is_tokenrouter_anthropic = (
-        provider_id == "tokenrouter" and model_name.startswith("anthropic/")
+    is_tokenrouter_anthropic = provider_id == "tokenrouter" and model_name.startswith(
+        "anthropic/"
     )
     provider_npm = (
-        "@ai-sdk/anthropic"
-        if is_tokenrouter_anthropic
-        else "@ai-sdk/openai-compatible"
+        "@ai-sdk/anthropic" if is_tokenrouter_anthropic else "@ai-sdk/openai-compatible"
     )
     model_config: dict[str, Any] = {"name": model_name}
     if _needs_reasoning_effort_none(provider_id, model_name):
@@ -885,8 +886,7 @@ class OpenCodeAgentRunner(AgentRunner):
             )
             if plain_lines:
                 _log.warning(
-                    "OpenCodeAgentRunner: ignored %d non-JSON stdout line(s); "
-                    "first=%r",
+                    "OpenCodeAgentRunner: ignored %d non-JSON stdout line(s); first=%r",
                     len(plain_lines),
                     plain_lines[0][:200],
                 )
