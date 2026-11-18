@@ -37,6 +37,13 @@ tracks:
   --code-enabled (default)  Add a sandboxed code-execution tool (code track).
   --no-code                 Tools-only: directly comparable to the other runners.
 
+topology:
+  --topology flat (default) Every MCP server on the root agent.
+  --topology subagent       One sub-agent per domain server; utilities stays on
+                            the root. Requires the code track, because domain
+                            sub-agents spill oversized MCP results into the
+                            root's code-execution workspace.
+
 environment variables:
   LITELLM_API_KEY       LiteLLM API key    (required for litellm_proxy/* models)
   LITELLM_BASE_URL      LiteLLM base URL   (required for litellm_proxy/* models)
@@ -73,11 +80,32 @@ examples:
         help="Code-execution sandbox backend (default: docker).",
     )
     parser.add_argument(
+        "--topology",
+        choices=["flat", "subagent"],
+        default="flat",
+        help=(
+            "Tool surface for the root agent. 'flat' attaches every MCP server "
+            "to the root (default, matches the other runners). 'subagent' gives "
+            "each domain server its own sub-agent and leaves the root one "
+            "delegation tool per domain; requires the code track."
+        ),
+    )
+    parser.add_argument(
         "--max-turns",
         type=int,
         default=30,
         metavar="N",
-        help="Maximum agent turns (default: 30).",
+        help="Maximum agent turns for the root agent (default: 30).",
+    )
+    parser.add_argument(
+        "--subagent-max-turns",
+        type=int,
+        default=12,
+        metavar="N",
+        help=(
+            "Maximum turns for each domain sub-agent under --topology subagent "
+            "(default: 12). Bounds the tree, not just the root."
+        ),
     )
     parser.add_argument(
         "--temperature",
@@ -136,9 +164,11 @@ async def _run(args: argparse.Namespace) -> None:
         model=args.model_id,
         code_enabled=args.code_enabled,
         code_backend=args.code_backend,
+        topology=args.topology,
         workspace_dir=args.workspace_dir,
         preserve_workspace=args.preserve_workspace,
         max_turns=args.max_turns,
+        subagent_max_turns=args.subagent_max_turns,
         temperature=args.temperature,
         reasoning_effort=args.reasoning_effort,
     )
