@@ -34,7 +34,7 @@ from observability import agent_run_span, persist_trajectory
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
-from ..runner import AgentRunner
+from ..runner import AgentRunner, fmsr_env_overrides
 
 _log = logging.getLogger(__name__)
 
@@ -105,6 +105,7 @@ class ClaudeAgentRunner(AgentRunner):
         super().__init__(llm, server_paths)
         self._model = resolve_model(model)
         self._sdk_env = _sdk_env(model)
+        self._fmsr_env = fmsr_env_overrides(model)
         self._max_turns = max_turns
         self._permission_mode = permission_mode
         self._mcp_servers = _build_mcp_servers(self._server_paths)
@@ -127,7 +128,7 @@ class ClaudeAgentRunner(AgentRunner):
                 mcp_servers=self._mcp_servers,
                 max_turns=self._max_turns,
                 permission_mode=self._permission_mode,
-                env=self._sdk_env,
+                env={**(self._sdk_env or {}), **self._fmsr_env} or None,
             )
 
             _log.info("ClaudeAgentRunner: starting query (model=%s)", self._model)

@@ -29,7 +29,7 @@ from observability import agent_run_span, persist_trajectory
 from llm.routers import resolve_model, resolve_router_creds
 from .._prompts import AGENT_SYSTEM_PROMPT
 from ..models import AgentResult, ToolCall, Trajectory, TurnRecord
-from ..runner import AgentRunner
+from ..runner import AgentRunner, mcp_server_env
 
 _log = logging.getLogger(__name__)
 
@@ -64,6 +64,7 @@ def _build_chat_model(model_id: str):
 
 def _build_mcp_connections(
     server_paths: dict[str, Path | str],
+    env: dict[str, str] | None = None,
 ) -> dict[str, dict]:
     """Convert ``server_paths`` entries into ``MultiServerMCPClient`` specs.
 
@@ -80,6 +81,8 @@ def _build_mcp_connections(
             "args": ["run", cmd_arg],
             "cwd": str(_REPO_ROOT),
         }
+        if env is not None:
+            connections[name]["env"] = env
     return connections
 
 
@@ -189,7 +192,9 @@ class DeepAgentRunner(AgentRunner):
             from deepagents import create_deep_agent
             from langchain_mcp_adapters.client import MultiServerMCPClient
 
-            connections = _build_mcp_connections(self._server_paths)
+            connections = _build_mcp_connections(
+                self._server_paths, env=mcp_server_env(self._model_id)
+            )
             client = MultiServerMCPClient(connections) if connections else None
             tools = await client.get_tools() if client is not None else []
 
