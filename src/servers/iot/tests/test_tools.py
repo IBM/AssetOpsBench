@@ -508,6 +508,35 @@ class TestFindAssetsBySensors:
             {"asset_id": "Pump-1", "matched_sensors": ["Discharge Pressure"]},
         ]
 
+    @pytest.mark.anyio
+    async def test_sensors_is_not_required_in_the_tool_schema(self):
+        # Agent clients validate arguments against this schema before the
+        # call reaches the server. If `sensors` is required there, an
+        # omitted value never reaches the tool's own error message.
+        tools = {tool.name: tool for tool in await mcp.list_tools()}
+        required = tools["find_assets_by_sensors"].inputSchema.get("required", [])
+
+        assert "sensors" not in required
+        assert "site_name" in required
+
+    @pytest.mark.anyio
+    @pytest.mark.parametrize(
+        "args",
+        [
+            pytest.param({"site_name": "MAIN"}, id="omitted"),
+            pytest.param({"site_name": "MAIN", "sensors": None}, id="null"),
+            pytest.param({"site_name": "MAIN", "sensors": []}, id="empty-list"),
+        ],
+    )
+    async def test_missing_sensors_returns_the_specific_error(
+        self, mock_asset_db, args
+    ):
+        mock_asset_db.find.side_effect = [{"docs": [{"siteid": "MAIN"}]}]
+
+        data = await call_tool(mcp, "find_assets_by_sensors", args)
+
+        assert data == {"error": "provide at least one sensor name"}
+
 
 class TestStreamExtent:
     @pytest.mark.anyio
