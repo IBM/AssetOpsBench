@@ -19,7 +19,7 @@ Dates below follow publisher records or event metadata where available. “Not e
 
 ## LinkedIn: industrial AI and manufacturing perspectives
 
-Verified November 19, 2026. These sources place the benchmark family in wider industry discussions.
+Verified November 19, 2026. Search scope: **AssetOpsBench, FailureSensorIQ, DiagnosticIQ, PHMForge, and AssetArena**, including paper titles and identifiers. These sources place the benchmark family in wider industry discussions.
 
 | Source | Verified mention and context |
 | :--- | :--- |
@@ -28,6 +28,16 @@ Verified November 19, 2026. These sources place the benchmark family in wider in
 | **The Year of the Graph — publication date not established:** [Knowledge Graphs as the Missing Data Layer for LLM-Based Industrial Asset Operations](https://www.linkedin.com/posts/year-of-the-graph_llm-emergingtech-assetmanagement-activity-7470785678201503744-IzcQ) | A detailed editorial post discusses Samyama’s conversion of AOB data into a typed knowledge graph, retrieval/query routing, and provenance-tagged enrichment; names Madhulatha Mandarapu and Sandeep Kunkunuru. Adds external coverage of the [already documented graph extension](RESEARCH_USE.md), rather than another independent experiment. |
 
 The Viji article was read directly in LinkedIn’s browser article view, including its date, Section 9, and source list; the other two sources were inspected in their public LinkedIn text. Search hits where AOB appeared only in Dhaval Patel’s comments, reactions, profile activity feeds, or recommended content were excluded. The Maximo digest’s generic “Asset Ops Benchmark” description was not counted without establishing that it refers to this research benchmark.
+
+### Additional family-specific LinkedIn coverage
+
+| Family | Source and verified context |
+| :--- | :--- |
+| **FailureSensorIQ / AssetOpsBench** | [Kaggle’s EntOps announcement](https://www.linkedin.com/posts/kaggle_enterprise-operations-bench-leaderboard-activity-7401625755744407552-I_jY) explicitly introduces the IBM Research collaboration, names AOB alongside ITBench, and describes FailureSensorIQ’s sensor–failure MCQA task. Platform-authored announcement, not an independent model experiment; publication day not established. |
+| **DiagnosticIQ** | [Daily AI Wire News](https://www.linkedin.com/posts/daily-ai-wire_diagnosticiq-benchmarks-llms-for-industrial-activity-7460246343308038144-Y5On) discusses maintenance decision support and the gap between nominal performance and robustness to structural changes. News/digest commentary; publication day not established. |
+| **PHMForge** | [Mehadi Hasan Shawon’s LinkedIn project entry](https://kr.linkedin.com/in/mehadi-hasan-shawon-93a3991b8) describes PHMForge-SME’s local-model bearing-diagnosis study and links its public implementation. This is the project author’s account of methodological adaptation, complementing the already documented study; not a new independent dataset run. |
+
+AssetArena was included in exact-name and industrial-paper-title searches. No matching public LinkedIn mention of the industrial benchmark was verified in this pass; similarly named sports-business content was excluded.
 
 ## Original articles, reviews, and practitioner perspectives
 
