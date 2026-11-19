@@ -17,6 +17,18 @@ Dates below follow publisher records or event metadata where available. “Not e
 | June 9, 2025 issue | [Daily Paper newsletter archive](https://groups.google.com/g/hf-daily-paper-newsletter/c/_JxXFToQ3A8) | Archived digest includes the original benchmark paper; publisher affiliation is not independently established. |
 | June 22, 2026 publication | [Mantas Lukauskas: AI News Week 25, June 15–21](https://www.linkedin.com/pulse/ai-news-week-25-june-15-21-2026-mantas-lukauskas-phd-brrwf) | External LinkedIn roundup; discusses the predictive-validity paper and AssetOpsBench studies. |
 
+## LinkedIn: industrial AI and manufacturing perspectives
+
+Verified November 19, 2026. These sources place the benchmark family in wider industry discussions.
+
+| Source | Verified mention and context |
+| :--- | :--- |
+| **Viji R, CEO of NeoFelis Labs — November 18, 2026:** [Claude for Manufacturing and a new pathway for industry](https://www.linkedin.com/pulse/claude-manufacturing-new-pathway-industry-viji-r-cmwue/) | Section 9, “Research evidence,” discusses AssetOpsBench’s industrial-maintenance setting and task completion, retrieval, and result verification. Source 27 directly links [the AOB paper](https://arxiv.org/abs/2506.03828). The article uses this research in a broader argument for evidence and assurance in industrial AI. Author commentary; no NeoFelis execution of AOB is reported in the inspected passage. |
+| **Reliability.ai — June 30, 2026:** [AI News for Maintenance, Reliability, and Asset Management](https://www.linkedin.com/pulse/ai-news-maintenance-reliability-asset-management-reliability-ai-amsac) | In “The research frontier: governed, auditable, human-on-the-loop,” the article discusses PHMForge’s scenarios, published pass@1 result, and orchestration failures to motivate governance and oversight. Published by Reliability.ai, whose profile describes an AI assistant; the article text names Terrence O’Hanlon and Uptime Elements. This is reported-result commentary, not an independent benchmark run or verified personal authorship by O’Hanlon. |
+| **The Year of the Graph — publication date not established:** [Knowledge Graphs as the Missing Data Layer for LLM-Based Industrial Asset Operations](https://www.linkedin.com/posts/year-of-the-graph_llm-emergingtech-assetmanagement-activity-7470785678201503744-IzcQ) | A detailed editorial post discusses Samyama’s conversion of AOB data into a typed knowledge graph, retrieval/query routing, and provenance-tagged enrichment; names Madhulatha Mandarapu and Sandeep Kunkunuru. Adds external coverage of the [already documented graph extension](RESEARCH_USE.md), rather than another independent experiment. |
+
+The Viji article was read directly in LinkedIn’s browser article view, including its date, Section 9, and source list; the other two sources were inspected in their public LinkedIn text. Search hits where AOB appeared only in Dhaval Patel’s comments, reactions, profile activity feeds, or recommended content were excluded. The Maximo digest’s generic “Asset Ops Benchmark” description was not counted without establishing that it refers to this research benchmark.
+
 ## Original articles, reviews, and practitioner perspectives
 
 | Date | Source | What the source discusses |
