@@ -20,6 +20,7 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "tsfm": "tsfm-mcp-server",
     "wo": "wo-mcp-server",
     "vibration": "vibration-mcp-server",
+    "robot": "robot-mcp-server",
 }
 
 
