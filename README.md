@@ -6,7 +6,7 @@
 
 An open ecosystem for industrial AI: data, tools, pipelines, leaderboards, competitions, evaluation science, and a growing research community.
 
-[Explore the code](https://github.com/IBM/AssetOpsBench) · [Get the data](https://huggingface.co/datasets/ibm-research/AssetOpsBench) · [Read the paper](https://arxiv.org/abs/2506.03828) · [Try the tutorial](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/) · [Leaderboards](#leaderboards) · [Competitions](#competitions) · [Eval Science](#evaluation-science-from-benchmarks-to-deployment-evidence)
+[Explore the code](https://github.com/IBM/AssetOpsBench) · [Get the data](https://huggingface.co/datasets/ibm-research/AssetOpsBench) · [Read the paper](https://arxiv.org/abs/2506.03828) · [Try the tutorial](https://shuxinlin.github.io/assetopsbench-kdd-tutorial-2026/) · [Leaderboards](#leaderboards) · [Competitions](#competitions) · [Eval Science](#evaluation-science-from-benchmarks-to-deployment-evidence) · [Community links](COMMUNITY_LINKS.md)
 
 </div>
 
@@ -36,7 +36,7 @@ AssetOpsBench brings that question into a reproducible environment. It connects 
 
 **Beyond benchmark runs:** [whatmodel](https://github.com/jakemanger/whatmodel/blob/2769f5ba536d5d78fc70a772048512471a499802/pages/model/gpt-5.md) and [BenchmarkList](https://benchmarklist.com/benchmarks/diagnosticiq_a_benchmark_for_llm_based_industrial_maintenance_action_recommendation_from_symbolic_rules/) reuse published DiagnosticIQ results; [Mercor maps AOB and PHMForge](https://www.mercor.com/research/labor-index/benchmark-map/benchmarks/) to economic work.
 
-*Sources checked November 10, 2026. [Reuse stories and source evidence →](RESEARCH_USE.md) · [Metric definitions →](METRICS.md#verified-reuse-highlights)*
+*Sources checked November 10, 2026. [Community use & useful links →](COMMUNITY_LINKS.md) · [Detailed reuse evidence →](RESEARCH_USE.md) · [Metric definitions →](METRICS.md#verified-reuse-highlights)*
 
 **Research reach:** Cited in [IndustryBench](https://arxiv.org/html/2605.10267v1#S2), [Confucius](https://minlanyu.seas.harvard.edu/writeup/sigcomm25.pdf) (Minlan Yu and Soudeh Ghorbani), and [FORGE](https://aclanthology.org/2026.findings-emnlp.888/) (Dacheng Tao). These are citations, separate from dataset reuse. [More research stories and sources →](RESEARCH_USE.md)
 
