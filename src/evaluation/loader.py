@@ -174,6 +174,18 @@ def join_records(
     trajectories: list[PersistedTrajectory],
 ) -> Iterator[tuple[Scenario, PersistedTrajectory]]:
     """Yield (scenario, trajectory) pairs joined on ``scenario_id``."""
+    seen_ids: set[str] = set()
+    duplicate_ids: set[str] = set()
+    for scenario in scenarios:
+        if scenario.id in seen_ids:
+            duplicate_ids.add(scenario.id)
+        else:
+            seen_ids.add(scenario.id)
+
+    if duplicate_ids:
+        duplicates = ", ".join(sorted(duplicate_ids))
+        raise ValueError(f"duplicate scenario IDs: {duplicates}")
+
     by_id: dict[str, Scenario] = {s.id: s for s in scenarios}
     for traj in trajectories:
         if traj.scenario_id is None:
