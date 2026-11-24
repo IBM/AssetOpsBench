@@ -83,7 +83,9 @@ def _assistant_tool_calls(message: Any) -> list[Any]:
     """Read tool calls from Stirrup 0.2 blocks or a legacy test double."""
     blocks = getattr(message, "blocks", None)
     if isinstance(blocks, list):
-        return [block for block in blocks if getattr(block, "kind", None) == "tool_call"]
+        return [
+            block for block in blocks if getattr(block, "kind", None) == "tool_call"
+        ]
     return list(getattr(message, "tool_calls", []) or [])
 
 
@@ -170,7 +172,9 @@ def build_trajectory(history: Iterable[Any]) -> Trajectory:
     return trajectory
 
 
-def final_answer(history: Iterable[Any], finish_params: Any) -> str:
+def final_answer(
+    history: Iterable[Any], finish_params: Any, *, require_finish: bool = False
+) -> str:
     """Return the user-facing answer from a completed Stirrup run.
 
     Prefer the explicit ``finish.answer`` supplied by the AssetOps finish tool.
@@ -182,6 +186,9 @@ def final_answer(history: Iterable[Any], finish_params: Any) -> str:
     structured_answer = getattr(finish_params, "answer", None)
     if isinstance(structured_answer, str) and structured_answer.strip():
         return structured_answer.strip()
+
+    if require_finish:
+        return ""
 
     messages = _flatten(history)
 
