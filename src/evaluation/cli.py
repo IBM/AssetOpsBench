@@ -58,8 +58,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--scorer-default",
         dest="scorer_default",
         default="llm_judge",
-        help="Scorer name when scenario.scoring_method is unset. "
-        "Default: llm_judge.",
+        help="Scorer name when scenario.scoring_method is unset. Default: llm_judge.",
     )
     p.add_argument(
         "--judge-model",
@@ -67,6 +66,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Model id for the LLM-As-Judge scorer (e.g. "
         "litellm_proxy/anthropic/claude-opus-4-5). "
         "Required when any scenario routes to llm_judge.",
+    )
+    p.add_argument(
+        "--charts",
+        action="store_true",
+        help=(
+            "Generate report-derived SVG and PNG leaderboards under "
+            "<reports-dir>/charts. Requires the visualization dependency group."
+        ),
     )
     p.add_argument(
         "-v",
@@ -114,6 +121,17 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    if args.charts:
+        from .visualization import (
+            VisualizationDependencyError,
+            require_visualization_dependency,
+        )
+
+        try:
+            require_visualization_dependency()
+        except VisualizationDependencyError as exc:
+            parser.error(str(exc))
+
     try:
         scenario_ids = _resolve_scenario_ids(args.scenario_ids)
     except (FileNotFoundError, ValueError) as exc:
@@ -131,8 +149,21 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     out_dir = write_reports_dir(report, args.reports_dir)
+    chart_paths: tuple[Path, ...] = ()
+    if args.charts:
+        from .visualization import render_leaderboards
+
+        chart_paths = render_leaderboards(report, out_dir / "charts")
     print(render_summary(report))
     print(f"\nAggregate report written: {out_dir}/_aggregate.json")
+    if args.charts:
+        if chart_paths:
+            print(f"Leaderboard charts written: {out_dir}/charts")
+        else:
+            print(
+                "No leaderboard charts generated: the report has no applicable "
+                "Boolean llm_judge criterion results."
+            )
     return 0
 
 
