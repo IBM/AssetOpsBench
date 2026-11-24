@@ -5,10 +5,13 @@ from __future__ import annotations
 import pytest
 
 from llm.routers import (
+    ATLASCLOUD_DEFAULT_BASE_URL,
+    ATLASCLOUD_PREFIX,
     LITELLM_PREFIX,
     TOKENROUTER_PREFIX,
     is_openai_compat,
     resolve_model,
+    resolve_openai_compat_creds,
     resolve_router_creds,
     router_prefix,
 )
@@ -17,6 +20,7 @@ from llm.routers import (
 def test_prefix_constants():
     assert LITELLM_PREFIX == "litellm_proxy/"
     assert TOKENROUTER_PREFIX == "tokenrouter/"
+    assert ATLASCLOUD_PREFIX == "atlascloud/"
 
 
 @pytest.mark.parametrize(
@@ -24,6 +28,7 @@ def test_prefix_constants():
     [
         ("litellm_proxy/aws/claude-opus-4-6", "aws/claude-opus-4-6"),
         ("tokenrouter/MiniMax-M3", "MiniMax-M3"),
+        ("atlascloud/openai/gpt-5.4", "openai/gpt-5.4"),
         ("anthropic/claude-sonnet-4-6", "anthropic/claude-sonnet-4-6"),
         ("gpt-4o", "gpt-4o"),
         ("", ""),
@@ -38,6 +43,7 @@ def test_resolve_model(model_id, expected):
     [
         ("litellm_proxy/aws/claude-opus-4-6", "litellm_proxy/"),
         ("tokenrouter/MiniMax-M3", "tokenrouter/"),
+        ("atlascloud/openai/gpt-5.4", "atlascloud/"),
         ("anthropic/claude-sonnet-4-6", None),
     ],
 )
@@ -47,6 +53,7 @@ def test_router_prefix(model_id, expected_prefix):
 
 def test_is_openai_compat():
     assert is_openai_compat("tokenrouter/MiniMax-M3")
+    assert is_openai_compat("atlascloud/openai/gpt-5.4")
     assert not is_openai_compat("litellm_proxy/aws/claude-opus-4-6")
     assert not is_openai_compat("watsonx/meta-llama/x")
 
@@ -62,6 +69,33 @@ def test_resolve_router_creds_tokenrouter(monkeypatch):
 
 def test_resolve_router_creds_native_passthrough():
     assert resolve_router_creds("anthropic/claude-sonnet-4-6") is None
+    assert resolve_router_creds("atlascloud/openai/gpt-5.4") is None
+
+
+def test_resolve_openai_compat_creds_atlascloud(monkeypatch):
+    monkeypatch.setenv("ATLASCLOUD_API_KEY", "atlas-key")  # pragma: allowlist secret
+    monkeypatch.delenv("ATLASCLOUD_API_BASE", raising=False)
+
+    creds = resolve_openai_compat_creds("atlascloud/openai/gpt-5.4")
+
+    assert creds.prefix == ATLASCLOUD_PREFIX
+    assert creds.base_url == ATLASCLOUD_DEFAULT_BASE_URL
+    assert creds.api_key == "atlas-key"  # pragma: allowlist secret
+
+
+def test_resolve_openai_compat_creds_atlascloud_custom_base(monkeypatch):
+    monkeypatch.setenv("ATLASCLOUD_API_KEY", "atlas-key")  # pragma: allowlist secret
+    monkeypatch.setenv("ATLASCLOUD_API_BASE", "https://atlas.example/v1")
+
+    creds = resolve_openai_compat_creds("atlascloud/openai/gpt-5.4")
+
+    assert creds.base_url == "https://atlas.example/v1"
+
+
+def test_resolve_openai_compat_creds_atlascloud_requires_key(monkeypatch):
+    monkeypatch.delenv("ATLASCLOUD_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="ATLASCLOUD_API_KEY"):
+        resolve_openai_compat_creds("atlascloud/openai/gpt-5.4")
 
 
 def test_resolve_router_creds_strict_raises(monkeypatch):
