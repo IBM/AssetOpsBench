@@ -482,7 +482,7 @@ def assets(
 @mcp.tool(title="Find Assets By Sensors")
 def find_assets_by_sensors(
     site_name: str,
-    sensors: List[str],
+    sensors: list[str] | None = None,
     match: str = "all",
     substring: bool = False,
     source: str = "measured",
@@ -495,7 +495,8 @@ def find_assets_by_sensors(
     Args:
         site_name: Exact site id to query, such as `MAIN`. Use `sites()` to
             discover valid site ids.
-        sensors: Sensor names, or fragments when `substring` is true.
+        sensors: Required. Sensor names, or fragments when `substring` is
+            true.
         match: `all` requires every query; `any` requires at least one.
         substring: Use case-insensitive fragment matching instead of exact,
             case-sensitive matching.
