@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from evaluation.loader import (
     join_records,
     load_scenarios,
@@ -84,6 +86,81 @@ def test_join_drops_orphans(make_persisted_record):
     pairs = list(join_records(scenarios, trajs))
     assert len(pairs) == 1
     assert pairs[0][0].id == "1"
+
+
+def test_join_records_with_unique_scenario_ids(make_scenario, make_persisted_record):
+    from evaluation.models import PersistedTrajectory
+
+    scenarios = [make_scenario(id="1"), make_scenario(id="2")]
+    trajectories = [
+        PersistedTrajectory.from_raw(make_persisted_record(scenario_id="2")),
+        PersistedTrajectory.from_raw(make_persisted_record(scenario_id="1")),
+    ]
+
+    pairs = list(join_records(scenarios, trajectories))
+
+    assert [
+        (scenario.id, trajectory.scenario_id) for scenario, trajectory in pairs
+    ] == [
+        ("2", "2"),
+        ("1", "1"),
+    ]
+
+
+def test_join_records_rejects_duplicate_scenario_ids(
+    make_scenario, make_persisted_record
+):
+    from evaluation.models import PersistedTrajectory
+
+    scenarios = [make_scenario(id="1"), make_scenario(id="1")]
+    trajectories = [
+        PersistedTrajectory.from_raw(make_persisted_record(scenario_id="1"))
+    ]
+
+    with pytest.raises(ValueError, match="duplicate scenario IDs: 1"):
+        list(join_records(scenarios, trajectories))
+
+
+def test_join_records_reports_all_duplicates_in_sorted_order(make_scenario):
+    scenarios = [
+        make_scenario(id="3"),
+        make_scenario(id="2"),
+        make_scenario(id="1"),
+        make_scenario(id="3"),
+        make_scenario(id="2"),
+    ]
+
+    with pytest.raises(ValueError, match="duplicate scenario IDs: 2, 3"):
+        list(join_records(scenarios, []))
+
+
+def test_join_records_detects_duplicates_before_yielding(
+    make_scenario, make_persisted_record
+):
+    from evaluation.models import PersistedTrajectory
+
+    scenarios = [make_scenario(id="1"), make_scenario(id="1")]
+    trajectories = [
+        PersistedTrajectory.from_raw(make_persisted_record(scenario_id="1"))
+    ]
+    pairs = join_records(scenarios, trajectories)
+
+    with pytest.raises(ValueError, match="duplicate scenario IDs: 1"):
+        next(pairs)
+
+
+def test_join_records_skips_null_and_unmatched_trajectory_ids(
+    make_scenario, make_persisted_record
+):
+    from evaluation.models import PersistedTrajectory
+
+    scenarios = [make_scenario(id="1")]
+    trajectories = [
+        PersistedTrajectory.from_raw(make_persisted_record(scenario_id=None)),
+        PersistedTrajectory.from_raw(make_persisted_record(scenario_id="99")),
+    ]
+
+    assert list(join_records(scenarios, trajectories)) == []
 
 
 def test_load_trajectory_uses_filename_as_scenario_id_when_missing(tmp_path):
