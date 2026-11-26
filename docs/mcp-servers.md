@@ -161,6 +161,11 @@ Priorities are integers `1`–`5` (`wopriority`), 1 being most urgent.
   `cancel_workorder` apply their target status from *any* current state; they do not enforce
   `WAPPR → APPR → COMP`. Scenarios that need to test illegal transitions must assert on the
   sequence themselves.
+- Separately, these same three tools can be gated behind an operator approval step: set
+  `AOB_REQUIRE_APPROVAL=1` and the first call to any of them returns an `action_id` instead of
+  running, until an operator approves it with `scripts/wo_pending.py` and the agent repeats the
+  identical call. Off by default; see `governance.py`. This does not add the status-transition
+  check above — it adds a human checkpoint in front of whatever transition the agent requests.
 - Every status change stamps `status_date`; `close_workorder` additionally sets `actlabhrs` and
   `actfinish`.
 - `notes` (create/update), `reason` (cancel), and `resolution_notes` (close) all write the same
