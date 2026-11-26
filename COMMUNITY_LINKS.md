@@ -4,6 +4,14 @@ Explore how people use, extend, evaluate and discuss **AssetOpsBench, FailureSen
 
 [Dataset reuse](#dataset-reuse--research) · [Models & training](#models--training) · [Platforms & leaderboards](#platforms--leaderboards) · [Projects](#projects--evaluation-tools) · [Industry & coverage](#industry--community-coverage) · [Tutorials & events](#tutorials--events)
 
+## Weekly discoveries — November 20–26, 2026
+
+**New public experiment:** [WalterVetrivel / ICAIEA experiment](https://github.com/WalterVetrivel/icaiea_26_experiment/tree/2d86429d1aa68a6fb736c206a57f72b44a717ccf), created **November 25**, publishes FailureSensorIQ notebooks, **24 Colab prediction CSVs**, and CPU-laptop evaluation artifacts. It samples **1,000 questions across all 10 asset classes**, comparing Qwen3.5 2B/4B and Gemma4 E2B under zero-shot, chain-of-thought and BM25 retrieval, including simple/complex perturbations and reduced documentation coverage. The notebook clones IBM's FailureSensorIQ repository and loads its released question files. This is direct dataset evaluation reuse, not fine-tuning or an established conference acceptance. Saved CSV counts and selected accuracy calculations were cross-checked; model runs were not repeated. [Results](https://github.com/WalterVetrivel/icaiea_26_experiment/tree/2d86429d1aa68a6fb736c206a57f72b44a717ccf/colab_results) · [Laptop summary](https://github.com/WalterVetrivel/icaiea_26_experiment/blob/2d86429d1aa68a6fb736c206a57f72b44a717ccf/laptop_results_v2/laptop_summary.csv)
+
+**New results integration:** Benchmark Almanac [added a PHMForge importer on November 21](https://github.com/brianlzhou/benchmark-almanac/commit/2ae333cb502263a0414553450c7d5ae2d4498c2b). Its [implementation](https://github.com/brianlzhou/benchmark-almanac/blob/2ae333cb502263a0414553450c7d5ae2d4498c2b/scripts/leaderboards/phmforge.ts) reads the paper's full **99-scenario** comparison, preserving agent framework and five task-category metrics. This expands the previously documented AOB/FailureSensorIQ integration; it is reuse of published results, not another model experiment.
+
+[Verification notes and search scope](assets/community-weekly-audit-2026-11-26.json). Dates above are repository creation or integration dates, not inferred dates of model execution.
+
 ## Dataset reuse & research
 
 | Resource | How it builds on the family |
@@ -75,6 +83,6 @@ Explore how people use, extend, evaluate and discuss **AssetOpsBench, FailureSen
 
 [Detailed research-use register](RESEARCH_USE.md) · [Citation audit](CITATION_AUDIT.md) · [Metric definitions](METRICS.md) · [Back to README](README.md)
 
-Directory assembled November 20, 2026, from the linked public sources and the existing evidence registers. New discoveries are not necessarily newly published work. Public cards, code and author-reported results establish different kinds of use; downstream workloads were not rerun. AssetArena-specific evidence will be added as it is verified, without conflating similarly named products.
+Directory assembled November 20 and updated November 26, 2026, from the linked public sources and the existing evidence registers. New discoveries are not necessarily newly published work. Public cards, code and author-reported results establish different kinds of use; downstream workloads were not rerun. AssetArena-specific evidence will be added as it is verified, without conflating similarly named products.
 
 To suggest an addition, open a PR with a public source, the relevant benchmark family, and a short description of what was actually used or released.
